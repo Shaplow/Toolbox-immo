@@ -61,7 +61,7 @@ export async function buildHTML(
   const visibleFieldKeys = getVisibleFieldKeys(template.schema ?? [], template.formSections ?? [], listing);
   const autoLayoutGroups = (template.groups ?? [])
     .filter((group) => isAutoLayoutGroup(group))
-    .map((group) => ({ id: group.id, ...normalizeGroupLayout(group.layout) }));
+    .map((group) => ({ id: group.id, parentGroupId: group.parentGroupId, ...normalizeGroupLayout(group.layout) }));
 
   // Sort blocks by z-index
   const sorted = [...blocks].sort((a, b) => a.z - b.z);
@@ -104,6 +104,9 @@ export async function buildHTML(
           `data-layout-source-z="${resolvedBlock.z}"`,
           `data-layout-block-type="${resolvedBlock.type}"`
         );
+        if (group?.layout?.sizeToContent) {
+          rootAttributes.push('data-layout-size-to-content="true"');
+        }
         if (resolvedBlock.type === "text") {
           rootAttributes.push(
             `data-layout-text-align="${resolvedBlock.style.textAlign ?? "left"}"`,
@@ -158,7 +161,7 @@ export async function buildHTML(
 </html>`;
 }
 
-function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free" | "row" | "column"; width?: number; height?: number; gap?: number; justify?: "start" | "center" | "end"; align?: "top" | "middle" | "bottom"; order?: string[]; anchorBlockId?: string }>, layoutDebug = false): string {
+function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId?: string; mode?: "free" | "row" | "column"; width?: number; height?: number; gap?: number; justify?: "start" | "center" | "end"; align?: "top" | "middle" | "bottom"; order?: string[]; anchorBlockId?: string; sizeToContent?: boolean }>, layoutDebug = false): string {
   return `<script>
     window.__templateReady = false;
     window.__layoutDebugSnapshot = null;
@@ -315,7 +318,10 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free"
 
       function getEffectiveSize(block) {
         if (!(block instanceof HTMLElement)) return { width: block.offsetWidth, height: block.offsetHeight };
-        const measured = block.querySelector('.block-text-background') || block;
+        const sizeToContent = block.dataset.layoutSizeToContent === 'true';
+        const measured = block.querySelector('.block-text-background')
+          || (sizeToContent ? block.querySelector('.block-text-content') : null)
+          || block;
         const rect = measured instanceof HTMLElement ? measured.getBoundingClientRect() : null;
         const fallbackRect = block.getBoundingClientRect();
         return {
@@ -387,8 +393,215 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free"
         return { x: Math.max(0, x), y: Math.max(0, y), size };
       }
 
+      function nodesForGroup(groupId) {
+        return [...document.querySelectorAll('[data-layout-group-id="' + groupId + '"]')].filter((node) => node instanceof HTMLElement);
+      }
+
+      function buildLayoutItemFromNode(node) {
+        return {
+          id: String(node.dataset.layoutBlockId || ''),
+          node: node,
+          sourceX: Number(node.dataset.layoutSourceX || '0'),
+          sourceY: Number(node.dataset.layoutSourceY || '0'),
+          sourceZ: Number(node.dataset.layoutSourceZ || '0'),
+          left: Number.parseFloat(node.style.left || '0'),
+          top: Number.parseFloat(node.style.top || '0'),
+          frameWidth: node.getBoundingClientRect().width || node.offsetWidth,
+          frameHeight: node.getBoundingClientRect().height || node.offsetHeight,
+          size: getEffectiveSize(node),
+          boxOffset: getEffectiveBoxOffset(node),
+          anchorOffset: getAnchorOffset(node),
+        };
+      }
+
+      // Miroir EXACT de computeAutoLayoutPositions (groupLayout.ts). Renvoie
+      // { [id]: {x,y} } (coin haut-gauche, boxOffset déjà soustrait).
+      // PARITÉ : toute modif de l'algo TS doit être reportée ici.
+      function positionLayoutItems(groupLayout, items) {
+        const result = {};
+        if (items.length === 0) return result;
+        const mode = groupLayout.mode === 'column' ? 'column' : 'row';
+        const order = Array.isArray(groupLayout.order) ? groupLayout.order : [];
+        const blocks = items.slice().sort((left, right) => {
+          const leftIndex = order.indexOf(left.id);
+          const rightIndex = order.indexOf(right.id);
+          if (leftIndex !== -1 || rightIndex !== -1) {
+            if (leftIndex === -1) return 1;
+            if (rightIndex === -1) return -1;
+            if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+          }
+          if (mode === 'column') {
+            return left.sourceY - right.sourceY || left.sourceX - right.sourceX || left.sourceZ - right.sourceZ;
+          }
+          return left.sourceX - right.sourceX || left.sourceY - right.sourceY || left.sourceZ - right.sourceZ;
+        });
+
+        const minX = Math.min(...blocks.map((item) => item.left));
+        const minY = Math.min(...blocks.map((item) => item.top));
+        const maxX = Math.max(...blocks.map((item) => item.left + item.frameWidth));
+        const maxY = Math.max(...blocks.map((item) => item.top + item.frameHeight));
+        const frameWidth = Math.max(1, Number(groupLayout.width || Math.round(maxX - minX)));
+        const frameHeight = Math.max(1, Number(groupLayout.height || Math.round(maxY - minY)));
+        const gap = Math.max(0, Number(groupLayout.gap || 16));
+
+        if (mode === 'column') {
+          const anchorIndex = groupLayout.justify === 'center' && groupLayout.anchorBlockId
+            ? blocks.findIndex((item) => item.id === groupLayout.anchorBlockId)
+            : -1;
+          if (anchorIndex >= 0) {
+            const anchorOffset = blocks[anchorIndex].anchorOffset;
+            const anchorStartY = minY + Math.round(frameHeight / 2 - anchorOffset.y);
+            let topCursor = anchorStartY - gap;
+            let bottomCursor = anchorStartY + blocks[anchorIndex].size.height + gap;
+            for (let index = 0; index < blocks.length; index += 1) {
+              const item = blocks[index];
+              const boxOffset = item.boxOffset;
+              let nextX = minX;
+              if (groupLayout.align === 'middle') nextX += Math.round((frameWidth - item.size.width) / 2);
+              else if (groupLayout.align === 'bottom') nextX += Math.round(frameWidth - item.size.width);
+              if (index === anchorIndex) {
+                result[item.id] = { x: Math.round(nextX - boxOffset.x), y: Math.round(anchorStartY - boxOffset.y) };
+                continue;
+              }
+              if (index < anchorIndex) {
+                const nextY = topCursor - item.size.height;
+                result[item.id] = { x: Math.round(nextX - boxOffset.x), y: Math.round(nextY - boxOffset.y) };
+                topCursor = nextY - gap;
+                continue;
+              }
+              result[item.id] = { x: Math.round(nextX - boxOffset.x), y: Math.round(bottomCursor - boxOffset.y) };
+              bottomCursor += item.size.height + gap;
+            }
+            return result;
+          }
+          const totalHeight = blocks.reduce((sum, item) => sum + item.size.height, 0) + Math.max(0, blocks.length - 1) * gap;
+          let cursorY = minY;
+          if (groupLayout.justify === 'center') cursorY += Math.round((frameHeight - totalHeight) / 2);
+          else if (groupLayout.justify === 'end') cursorY += Math.round(frameHeight - totalHeight);
+          for (const item of blocks) {
+            const boxOffset = item.boxOffset;
+            let nextX = minX;
+            if (groupLayout.align === 'middle') nextX += Math.round((frameWidth - item.size.width) / 2);
+            else if (groupLayout.align === 'bottom') nextX += Math.round(frameWidth - item.size.width);
+            result[item.id] = { x: Math.round(nextX - boxOffset.x), y: Math.round(cursorY - boxOffset.y) };
+            cursorY += item.size.height + gap;
+          }
+          return result;
+        }
+
+        const anchorIndexRow = groupLayout.justify === 'center' && groupLayout.anchorBlockId
+          ? blocks.findIndex((item) => item.id === groupLayout.anchorBlockId)
+          : -1;
+        if (anchorIndexRow >= 0) {
+          const anchorOffset = blocks[anchorIndexRow].anchorOffset;
+          const anchorStartX = minX + Math.round(frameWidth / 2 - anchorOffset.x);
+          let leftCursor = anchorStartX - gap;
+          let rightCursor = anchorStartX + blocks[anchorIndexRow].size.width + gap;
+          for (let index = 0; index < blocks.length; index += 1) {
+            const item = blocks[index];
+            const boxOffset = item.boxOffset;
+            let nextY = minY;
+            if (groupLayout.align === 'middle') nextY += Math.round((frameHeight - item.size.height) / 2);
+            else if (groupLayout.align === 'bottom') nextY += Math.round(frameHeight - item.size.height);
+            if (index === anchorIndexRow) {
+              result[item.id] = { x: Math.round(anchorStartX - boxOffset.x), y: Math.round(nextY - boxOffset.y) };
+              continue;
+            }
+            if (index < anchorIndexRow) {
+              const nextX = leftCursor - item.size.width;
+              result[item.id] = { x: Math.round(nextX - boxOffset.x), y: Math.round(nextY - boxOffset.y) };
+              leftCursor = nextX - gap;
+              continue;
+            }
+            result[item.id] = { x: Math.round(rightCursor - boxOffset.x), y: Math.round(nextY - boxOffset.y) };
+            rightCursor += item.size.width + gap;
+          }
+          return result;
+        }
+        const totalWidth = blocks.reduce((sum, item) => sum + item.size.width, 0) + Math.max(0, blocks.length - 1) * gap;
+        let cursorX = minX;
+        if (groupLayout.justify === 'center') cursorX += Math.round((frameWidth - totalWidth) / 2);
+        else if (groupLayout.justify === 'end') cursorX += Math.round(frameWidth - totalWidth);
+        for (const item of blocks) {
+          const boxOffset = item.boxOffset;
+          let nextY = minY;
+          if (groupLayout.align === 'middle') nextY += Math.round((frameHeight - item.size.height) / 2);
+          else if (groupLayout.align === 'bottom') nextY += Math.round(frameHeight - item.size.height);
+          result[item.id] = { x: Math.round(cursorX - boxOffset.x), y: Math.round(nextY - boxOffset.y) };
+          cursorX += item.size.width + gap;
+        }
+        return result;
+      }
+
+      // Layout d'un groupe parent contenant des sous-groupes (1 niveau). Miroir
+      // de computeAutoLayoutPositionsForTree (groupLayout.ts) : bottom-up pour les
+      // tailles (bbox de chaque sous-groupe), top-down pour les positions.
+      function layoutTreeGroup(parentLayout, childGroups) {
+        const directItems = nodesForGroup(parentLayout.id).map(buildLayoutItemFromNode);
+        const virtualItems = [];
+        const childCommits = [];
+        for (const child of childGroups) {
+          const childNodes = nodesForGroup(child.id);
+          if (childNodes.length === 0) continue;
+          const childItems = childNodes.map(buildLayoutItemFromNode);
+          const childPositions = positionLayoutItems(child, childItems);
+          let cMinX = Infinity, cMinY = Infinity, cMaxX = -Infinity, cMaxY = -Infinity, cMinZ = Infinity, nomX = Infinity, nomY = Infinity;
+          for (const it of childItems) {
+            const p = childPositions[it.id];
+            if (!p) continue;
+            cMinX = Math.min(cMinX, p.x); cMinY = Math.min(cMinY, p.y);
+            cMaxX = Math.max(cMaxX, p.x + it.size.width); cMaxY = Math.max(cMaxY, p.y + it.size.height);
+            cMinZ = Math.min(cMinZ, it.sourceZ);
+            nomX = Math.min(nomX, it.left); nomY = Math.min(nomY, it.top);
+          }
+          if (!Number.isFinite(cMinX)) continue;
+          const bw = Math.max(0, cMaxX - cMinX);
+          const bh = Math.max(0, cMaxY - cMinY);
+          virtualItems.push({
+            id: child.id, node: null,
+            sourceX: Number.isFinite(nomX) ? nomX : cMinX,
+            sourceY: Number.isFinite(nomY) ? nomY : cMinY,
+            sourceZ: Number.isFinite(cMinZ) ? cMinZ : 0,
+            left: Number.isFinite(nomX) ? nomX : cMinX,
+            top: Number.isFinite(nomY) ? nomY : cMinY,
+            frameWidth: bw, frameHeight: bh,
+            size: { width: bw, height: bh },
+            boxOffset: { x: 0, y: 0 },
+            anchorOffset: { x: Math.round(bw / 2), y: Math.round(bh / 2) },
+          });
+          childCommits.push({ virtualId: child.id, positions: childPositions, items: childItems, minX: cMinX, minY: cMinY });
+        }
+
+        const parentPositions = positionLayoutItems(parentLayout, directItems.concat(virtualItems));
+
+        for (const item of directItems) {
+          const p = parentPositions[item.id];
+          if (!p || !item.node) continue;
+          item.node.style.left = p.x + 'px';
+          item.node.style.top = p.y + 'px';
+        }
+        for (const c of childCommits) {
+          const vpos = parentPositions[c.virtualId];
+          if (!vpos) continue;
+          const dx = vpos.x - c.minX;
+          const dy = vpos.y - c.minY;
+          for (const it of c.items) {
+            const p = c.positions[it.id];
+            if (!p || !it.node) continue;
+            it.node.style.left = Math.round(p.x + dx) + 'px';
+            it.node.style.top = Math.round(p.y + dy) + 'px';
+          }
+        }
+      }
+
       function layoutAutoGroups() {
+        const groupById = {};
+        for (const g of autoLayoutGroups) groupById[g.id] = g;
         for (const groupLayout of autoLayoutGroups) {
+          // Sous-groupe : positionné par son parent (cf. layoutTreeGroup).
+          if (groupLayout.parentGroupId && groupById[groupLayout.parentGroupId]) continue;
+          const childGroups = autoLayoutGroups.filter((g) => g.parentGroupId === groupLayout.id);
+          if (childGroups.length > 0) { layoutTreeGroup(groupLayout, childGroups); continue; }
           const nodes = [...document.querySelectorAll('[data-layout-group-id="' + groupLayout.id + '"]')].filter((node) => node instanceof HTMLElement);
           if (nodes.length === 0) continue;
           const mode = groupLayout.mode === 'column' ? 'column' : 'row';
@@ -635,12 +848,43 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free"
         } catch {}
       }
 
+      // Centrage vertical OPTIQUE des capitales. PARITÉ : formule identique à
+      // capCenteringOffsetEm() de textMetrics.ts (utilisée côté builder Canvas).
+      // Le décalage est en em → indépendant du zoom/pt-px. transform:translateY
+      // sur le contenu ne modifie pas le rect de .block-text-background, donc le
+      // layout des groupes (getEffectiveSize) reste inchangé.
+      function applyCapCentering() {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        document.querySelectorAll('[data-cap-center="true"]').forEach((block) => {
+          if (!(block instanceof HTMLElement)) return;
+          const content = block.querySelector('.block-text-content');
+          if (!(content instanceof HTMLElement)) return;
+          const text = (content.textContent || '').trim();
+          if (!text) return;
+          const cs = window.getComputedStyle(content);
+          const fontSizePx = Number.parseFloat(cs.fontSize || '0');
+          if (!(fontSizePx > 0)) return;
+          ctx.font = (cs.fontStyle || 'normal') + ' ' + (cs.fontWeight || '400') + ' ' + fontSizePx + 'px ' + (cs.fontFamily || 'sans-serif');
+          const m = ctx.measureText(text);
+          if (m.fontBoundingBoxAscent == null || m.actualBoundingBoxAscent == null) return;
+          const spaceAbove = m.fontBoundingBoxAscent - m.actualBoundingBoxAscent;
+          const spaceBelow = m.fontBoundingBoxDescent - m.actualBoundingBoxDescent;
+          let offsetEm = ((spaceBelow - spaceAbove) / 2) / fontSizePx;
+          if (!Number.isFinite(offsetEm)) return;
+          offsetEm = Math.max(-0.5, Math.min(0.5, offsetEm));
+          content.style.transform = 'translateY(' + offsetEm + 'em)';
+        });
+      }
+
       async function run() {
         try {
           if (document.fonts && document.fonts.ready) {
             await document.fonts.ready;
           }
           document.querySelectorAll('.block-text').forEach(fitTextBlock);
+          applyCapCentering();
           layoutAutoGroups();
           if (layoutDebug) {
             publishDebugSnapshot(buildDebugSnapshot());

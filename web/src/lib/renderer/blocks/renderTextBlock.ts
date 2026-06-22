@@ -295,5 +295,10 @@ export function renderTextBlock(
 
   const backgroundStyle = backgroundParts.join(";");
 
-  return `<div class="block block-text" data-text-background-mode="${backgroundMode}" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" data-max-lines="${rules.maxLines ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${alignStyle}"><div class="block-text-background" style="${backgroundStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div></div>`;
+  // Centrage optique des capitales : seulement en cartouche centré verticalement
+  // (le mode per-line a sa propre géométrie et est exclu). Le décalage réel est
+  // calculé/appliqué au runtime par applyCapCentering() dans buildHTML.ts.
+  const capCenter = vAlign === "middle" ? "true" : "false";
+
+  return `<div class="block block-text" data-text-background-mode="${backgroundMode}" data-cap-center="${capCenter}" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" data-max-lines="${rules.maxLines ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${alignStyle}"><div class="block-text-background" style="${backgroundStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div></div>`;
 }

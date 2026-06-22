@@ -1,4 +1,4 @@
-import type { AnyBlock, GroupLayoutConfig, LayerGroup } from "@/types/template";
+import type { AnyBlock, GroupLayoutConfig, LayerGroup, ShapeBlock } from "@/types/template";
 import { getEffectiveTextAnchorPadding } from "@/lib/textBackground";
 
 export type AutoLayoutMode = "row" | "column";
@@ -161,6 +161,7 @@ export function normalizeGroupLayout(layout: GroupLayoutConfig | undefined): Gro
     anchorBlockId: typeof layout.anchorBlockId === "string" && layout.anchorBlockId.length > 0
       ? layout.anchorBlockId
       : undefined,
+    sizeToContent: layout.sizeToContent === true ? true : undefined,
   };
 }
 
@@ -342,4 +343,109 @@ export function computeAutoLayoutPositions(
   });
 
   return positions;
+}
+
+/** Sous-groupes auto-layout directs d'un groupe parent (1 niveau). */
+export function getChildAutoLayoutGroups(parentId: string, groups: LayerGroup[]): LayerGroup[] {
+  return groups.filter((g) => g.parentGroupId === parentId && isAutoLayoutGroup(g));
+}
+
+/**
+ * Bloc « virtuel » représentant un sous-groupe dans le flux de son parent : se
+ * comporte comme un bloc non-texte (boxOffset {0,0}, ancre = centre).
+ */
+function makeVirtualGroupBlock(id: string, x: number, y: number, w: number, h: number, z: number): ShapeBlock {
+  return { id, type: "shape", x, y, w, h, z, animations: [], shape: "rectangle", fillColor: "transparent" };
+}
+
+/**
+ * Layout d'un groupe parent qui peut contenir des **sous-groupes** (1 niveau).
+ * Renvoie les positions absolues de TOUS les blocs de l'arbre (membres directs
+ * du parent + membres des sous-groupes). Pour un parent sans sous-groupe, le
+ * résultat est identique à `computeAutoLayoutPositions` (rétro-compat groupes plats).
+ *
+ * Algo : bottom-up pour les tailles (chaque sous-groupe est layouté en interne,
+ * sa bbox devient la taille d'un bloc virtuel), puis top-down pour les positions
+ * (le parent place les blocs directs + les blocs virtuels, puis on translate les
+ * membres de chaque sous-groupe du delta entre sa position virtuelle et son
+ * origine interne).
+ */
+export function computeAutoLayoutPositionsForTree(
+  parentGroup: LayerGroup,
+  allGroups: LayerGroup[],
+  allBlocks: AnyBlock[],
+  sizeMap?: Map<string, BlockLayoutSize>
+): Map<string, BlockLayoutPosition> {
+  const result = new Map<string, BlockLayoutPosition>();
+  if (!getAutoLayoutMode(parentGroup)) return result;
+
+  const directBlocks = allBlocks.filter((block) => block.groupId === parentGroup.id);
+  const childGroups = getChildAutoLayoutGroups(parentGroup.id, allGroups);
+
+  // Pas de sous-groupe → exactement le comportement plat.
+  if (childGroups.length === 0) {
+    return computeAutoLayoutPositions(parentGroup, directBlocks, sizeMap);
+  }
+
+  const sizeOf = (block: AnyBlock): BlockLayoutSize => ({
+    width: Math.max(0, sizeMap?.get(block.id)?.width ?? block.w),
+    height: Math.max(0, sizeMap?.get(block.id)?.height ?? block.h),
+  });
+
+  const virtualSizeMap = new Map<string, BlockLayoutSize>(sizeMap ?? []);
+  const virtualBlocks: AnyBlock[] = [];
+  const childInternal = new Map<string, { positions: Map<string, BlockLayoutPosition>; minX: number; minY: number }>();
+
+  for (const child of childGroups) {
+    const childMembers = allBlocks.filter((block) => block.groupId === child.id);
+    if (childMembers.length === 0) continue;
+
+    const childPositions = computeAutoLayoutPositions(child, childMembers, sizeMap);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let minZ = Infinity;
+    for (const member of childMembers) {
+      const p = childPositions.get(member.id);
+      if (!p) continue;
+      const size = sizeOf(member);
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + size.width);
+      maxY = Math.max(maxY, p.y + size.height);
+      minZ = Math.min(minZ, member.z);
+    }
+    if (!Number.isFinite(minX)) continue;
+
+    const frameBounds = getGroupBounds(childMembers);
+    const nominalX = frameBounds?.minX ?? minX;
+    const nominalY = frameBounds?.minY ?? minY;
+    const bbox: BlockLayoutSize = { width: Math.max(0, maxX - minX), height: Math.max(0, maxY - minY) };
+
+    virtualBlocks.push(makeVirtualGroupBlock(child.id, nominalX, nominalY, bbox.width, bbox.height, Number.isFinite(minZ) ? minZ : 0));
+    virtualSizeMap.set(child.id, bbox);
+    childInternal.set(child.id, { positions: childPositions, minX, minY });
+  }
+
+  const parentItems: AnyBlock[] = [...directBlocks, ...virtualBlocks];
+  const parentPositions = computeAutoLayoutPositions(parentGroup, parentItems, virtualSizeMap);
+
+  for (const block of directBlocks) {
+    const p = parentPositions.get(block.id);
+    if (p) result.set(block.id, p);
+  }
+
+  for (const child of childGroups) {
+    const internal = childInternal.get(child.id);
+    const virtualPos = parentPositions.get(child.id);
+    if (!internal || !virtualPos) continue;
+    const dx = virtualPos.x - internal.minX;
+    const dy = virtualPos.y - internal.minY;
+    internal.positions.forEach((p, blockId) => {
+      result.set(blockId, { x: Math.round(p.x + dx), y: Math.round(p.y + dy) });
+    });
+  }
+
+  return result;
 }

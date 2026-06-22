@@ -111,7 +111,7 @@ function normalizeLayerGroup(group: LayerGroup): LayerGroup {
  * permettant aux lectures suivantes de skip le travail (et de tracer les
  * templates jamais ré-écrits depuis l'ajout d'une nouvelle règle).
  */
-export const CURRENT_TEMPLATE_SCHEMA_VERSION = 1;
+export const CURRENT_TEMPLATE_SCHEMA_VERSION = 2;
 
 export function normalizeTemplateJSON(template: TemplateJSON): TemplateJSON {
   const normalizedSections = (template.formSections ?? [])
@@ -138,11 +138,35 @@ export function normalizeTemplateJSON(template: TemplateJSON): TemplateJSON {
     blockIdsByGroup.get(block.groupId)?.add(block.id);
   }
 
-  const sanitizedGroups = groups.map((group) => {
-    const memberIds = blockIdsByGroup.get(group.id) ?? new Set<string>();
+  // Garde-fous imbrication (schemaVersion 2) : profondeur 1 max, pas de cycle,
+  // parent existant. Un parentGroupId invalide → groupe promu top-level.
+  const groupById = new Map(groups.map((group) => [group.id, group]));
+  const nestedGroups = groups.map((group) => {
+    let parentGroupId = group.parentGroupId;
+    if (parentGroupId) {
+      const parent = groupById.get(parentGroupId);
+      // parent inexistant | cycle direct | profondeur > 1 (parent a déjà un parent)
+      if (!parent || parentGroupId === group.id || parent.parentGroupId) {
+        parentGroupId = undefined;
+      }
+    }
+    return parentGroupId === group.parentGroupId ? group : { ...group, parentGroupId };
+  });
+
+  const childGroupIdsByParent = new Map<string, Set<string>>();
+  for (const group of nestedGroups) {
+    if (!group.parentGroupId) continue;
+    if (!childGroupIdsByParent.has(group.parentGroupId)) childGroupIdsByParent.set(group.parentGroupId, new Set());
+    childGroupIdsByParent.get(group.parentGroupId)?.add(group.id);
+  }
+
+  const sanitizedGroups = nestedGroups.map((group) => {
     if (!group.layout) return group;
-    const nextOrder = (group.layout.order ?? []).filter((id) => memberIds.has(id));
-    const anchorBlockId = group.layout.anchorBlockId && memberIds.has(group.layout.anchorBlockId)
+    const memberIds = blockIdsByGroup.get(group.id) ?? new Set<string>();
+    const childGroupIds = childGroupIdsByParent.get(group.id) ?? new Set<string>();
+    const isMember = (id: string) => memberIds.has(id) || childGroupIds.has(id);
+    const nextOrder = (group.layout.order ?? []).filter((id) => isMember(id));
+    const anchorBlockId = group.layout.anchorBlockId && isMember(group.layout.anchorBlockId)
       ? group.layout.anchorBlockId
       : undefined;
     return {

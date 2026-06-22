@@ -2,8 +2,9 @@
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { buildDpeSvg } from "@/lib/dpeSvg";
-import { computeAutoLayoutPositions, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
+import { computeAutoLayoutPositionsForTree, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
 import { buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getOpaqueTextBackgroundColor, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
+import { capCenteringOffsetEm } from "@/lib/renderer/textMetrics";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
@@ -661,19 +662,19 @@ export function Canvas({
   const displayedPositionMap = useMemo(() => {
     const positions = new Map<string, { x: number; y: number }>();
     const sizeMap = new Map<string, BlockLayoutSize>(Object.entries(measuredAutoLayoutSizes));
+    const allDisplayBlocks = visibleResolvedBlocks.map((item) => item.displayBlock);
 
     for (const group of template.groups) {
       if (!isAutoLayoutGroup(group)) continue;
-      const members = visibleResolvedBlocks
-        .filter((item) => item.displayBlock.groupId === group.id)
-        .map((item) => item.displayBlock);
+      // Sous-groupe : positionné par le tree de son parent.
+      if (group.parentGroupId && groupMap.get(group.parentGroupId)) continue;
 
-      const layoutPositions = computeAutoLayoutPositions(group, members, sizeMap);
+      const layoutPositions = computeAutoLayoutPositionsForTree(group, template.groups, allDisplayBlocks, sizeMap);
       layoutPositions.forEach((position, blockId) => positions.set(blockId, position));
     }
 
     return positions;
-  }, [measuredAutoLayoutSizes, template.groups, visibleResolvedBlocks]);
+  }, [measuredAutoLayoutSizes, template.groups, visibleResolvedBlocks, groupMap]);
 
   const autoLayoutMeasurementBlocks = useMemo(() => {
     return visibleResolvedBlocks.filter(({ group }) => isAutoLayoutGroup(group));
@@ -810,11 +811,19 @@ export function Canvas({
   useLayoutEffect(() => {
     const nextEntries: Array<[string, BlockLayoutSize]> = [];
 
-    for (const { block } of autoLayoutMeasurementBlocks) {
+    for (const { block, group } of autoLayoutMeasurementBlocks) {
       const element = measurementLayerRef.current?.querySelector<HTMLElement>(`[data-builder-measure-block-id="${block.id}"]`);
       if (!element) continue;
 
-      const measured = element.querySelector<HTMLElement>(".block-text-background") ?? element;
+      // sizeToContent : pour un texte SANS cartouche, mesurer la hauteur réelle
+      // du contenu (.block-text-content) plutôt que de retomber sur le cadre
+      // figé. Sinon (cas historique), on garde .block-text-background ?? cadre.
+      const sizeToContent = group?.layout?.sizeToContent === true;
+      const background = element.querySelector<HTMLElement>(".block-text-background");
+      const measured =
+        background ??
+        (sizeToContent ? element.querySelector<HTMLElement>(".block-text-content") : null) ??
+        element;
       const measuredRect = measured.getBoundingClientRect();
       const fallbackRect = element.getBoundingClientRect();
       const width = measuredRect.width || fallbackRect.width || 0;
@@ -855,7 +864,12 @@ export function Canvas({
         const element = measurementLayerRef.current?.querySelector<HTMLElement>(`[data-builder-measure-block-id="${block.id}"]`);
         if (!element || !group) return null;
 
-        const measured = element.querySelector<HTMLElement>(".block-text-background") ?? element;
+        const sizeToContent = group.layout?.sizeToContent === true;
+        const background = element.querySelector<HTMLElement>(".block-text-background");
+        const measured =
+          background ??
+          (sizeToContent ? element.querySelector<HTMLElement>(".block-text-content") : null) ??
+          element;
         const measuredRect = measured.getBoundingClientRect();
         const frameRect = element.getBoundingClientRect();
         const visibleWidth = measuredRect.width || frameRect.width || 0;
@@ -1424,6 +1438,15 @@ function BlockPreview({
   void _autoLayout;
   const textContentRef = useRef<HTMLDivElement>(null);
   const [fittedFontSizePx, setFittedFontSizePx] = useState<number | null>(null);
+  // Centrage vertical optique des capitales : seulement en cartouche (fond)
+  // centré verticalement, hors per-line. Décalage en em → parité avec le rendu
+  // HTML/vidéo (applyCapCentering dans buildHTML.ts).
+  const [capOffsetEm, setCapOffsetEm] = useState(0);
+  const capCenterScope =
+    block.type === "text" &&
+    isTextBackgroundEnabled(block.style) &&
+    getTextBackgroundMode(block.style) !== "per-line" &&
+    (block.style.verticalAlign ?? "top") === "middle";
   const useTransformScaling = !preferPrintUnits && zoom !== 1;
   const styleScale = useTransformScaling ? 1 : zoom;
   const style: React.CSSProperties = {
@@ -1568,6 +1591,39 @@ function BlockPreview({
     };
   }, [baseTextFontSizePx, block, fontMetricsVersion, styleScale, fittedFontSizePx]);
 
+  // Mesure du décalage optique des capitales (en em, indépendant de la taille).
+  // Lit le contenu rendu + sa police via canvas ; formule partagée avec le rendu
+  // HTML (capCenteringOffsetEm). Le translateY n'affecte pas .block-text-background
+  // donc le layout des groupes reste intact.
+  useLayoutEffect(() => {
+    let next = 0;
+    const node = textContentRef.current;
+    const text = (node?.textContent ?? "").trim();
+    if (capCenterScope && node && text) {
+      const cs = window.getComputedStyle(node);
+      const fontSizePx = Number.parseFloat(cs.fontSize || "0");
+      const canvas = fontSizePx > 0 ? document.createElement("canvas") : null;
+      const ctx = canvas?.getContext("2d") ?? null;
+      if (ctx) {
+        ctx.font = `${cs.fontStyle || "normal"} ${cs.fontWeight || "400"} ${fontSizePx}px ${cs.fontFamily || "sans-serif"}`;
+        const m = ctx.measureText(text);
+        if (m.fontBoundingBoxAscent != null && m.actualBoundingBoxAscent != null) {
+          next = capCenteringOffsetEm(
+            {
+              fontBoundingBoxAscent: m.fontBoundingBoxAscent,
+              fontBoundingBoxDescent: m.fontBoundingBoxDescent,
+              actualBoundingBoxAscent: m.actualBoundingBoxAscent,
+              actualBoundingBoxDescent: m.actualBoundingBoxDescent,
+            },
+            fontSizePx,
+          );
+        }
+      }
+    }
+    const frameId = window.requestAnimationFrame(() => setCapOffsetEm(next));
+    return () => window.cancelAnimationFrame(frameId);
+  }, [capCenterScope, fontMetricsVersion, fittedFontSizePx, block, zoom]);
+
   let content: React.ReactNode;
 
   switch (block.type) {
@@ -1629,6 +1685,10 @@ function BlockPreview({
 
       if (backgroundEnabled && backgroundMode === "fixed") {
         innerTextStyle.width = "100%";
+      }
+
+      if (capCenterScope && capOffsetEm) {
+        innerTextStyle.transform = `translateY(${capOffsetEm}em)`;
       }
 
       const textNode = (

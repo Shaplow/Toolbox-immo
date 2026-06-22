@@ -152,6 +152,14 @@ export interface LayerGroup {
   collapsed?: boolean;
   layout?: GroupLayoutConfig;
   conditionalRules?: BlockConditionalRule[];
+  /**
+   * Groupe parent (pour l'imbrication ligne-dans-colonne). Absent = groupe
+   * top-level (comportement historique). Profondeur limitée à **1 niveau** :
+   * un groupe qui a un `parentGroupId` ne peut pas lui-même être parent (garde-fou
+   * appliqué à la normalisation). `block.groupId` reste plat et pointe toujours
+   * vers le groupe feuille direct du bloc.
+   */
+  parentGroupId?: string;
 }
 
 export interface GroupLayoutConfig {
@@ -163,6 +171,14 @@ export interface GroupLayoutConfig {
   align?: "top" | "middle" | "bottom";
   order?: string[];
   anchorBlockId?: string;
+  /**
+   * Si vrai, l'auto-layout mesure la hauteur RÉELLE du contenu texte (glyphes
+   * wrappés) au lieu de la hauteur du cadre figé `block.h` pour les blocs sans
+   * cartouche. Permet aux blocs suivants (ex: surface m²) de coller au titre,
+   * que celui-ci tienne sur 1 ou 2 lignes. Défaut absent/false = comportement
+   * historique (cadre figé), zéro régression.
+   */
+  sizeToContent?: boolean;
 }
 
 export interface BlockStyle {

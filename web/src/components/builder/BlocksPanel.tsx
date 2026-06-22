@@ -113,6 +113,20 @@ export function BlocksPanel() {
     () => sortedBlocks.filter((block) => !block.groupId || !groupIds.has(block.groupId)),
     [groupIds, sortedBlocks]
   );
+  // Sous-groupes par parent (imbrication 1 niveau).
+  const childGroupsByParent = useMemo(() => {
+    const out = new Map<string, LayerGroup[]>();
+    for (const group of template.groups) {
+      if (!group.parentGroupId || !groupIds.has(group.parentGroupId)) continue;
+      if (!out.has(group.parentGroupId)) out.set(group.parentGroupId, []);
+      out.get(group.parentGroupId)?.push(group);
+    }
+    return out;
+  }, [template.groups, groupIds]);
+  const topLevelGroups = useMemo(
+    () => template.groups.filter((group) => !group.parentGroupId || !groupIds.has(group.parentGroupId)),
+    [template.groups, groupIds]
+  );
 
   function handleDropOnGroup(blockId: string | null, targetGroupId?: string) {
     const resolvedBlockId = blockId ?? draggedBlockId;
@@ -133,6 +147,24 @@ export function BlocksPanel() {
     const [moved] = nextOrder.splice(index, 1);
     nextOrder.splice(nextIndex, 0, moved);
     updateGroup(group.id, { layout: { ...group.layout, mode: group.layout?.mode ?? "row", order: nextOrder } });
+  }
+
+  function createSubGroupFromSelection(parentId: string) {
+    const memberIds = new Set((groupedBlocks.get(parentId) ?? []).map((b) => b.id));
+    const selected = multiSelectedBlockIds.filter((id) => memberIds.has(id));
+    if (selected.length < 1) return;
+    const subId = nanoid();
+    addGroup({
+      id: subId,
+      name: "Sous-groupe",
+      hidden: false,
+      locked: false,
+      collapsed: false,
+      conditionalRules: [],
+      parentGroupId: parentId,
+      layout: { mode: "row", gap: 8, justify: "start", align: "middle" },
+    });
+    assignBlocksToGroup(selected, subId);
   }
 
   function renderBlockRow(block: AnyBlock, options?: { nested?: boolean; group?: LayerGroup; index?: number; total?: number }) {
@@ -263,7 +295,7 @@ export function BlocksPanel() {
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Calques ({template.blocks.length})</p>
 
-        {template.groups.map((group) => {
+        {topLevelGroups.map((group) => {
           const blocks = groupedBlocks.get(group.id) ?? [];
           const isSelected = selectedGroupId === group.id;
           const isDropTarget = dropTarget === group.id;
@@ -368,13 +400,65 @@ export function BlocksPanel() {
 
               {!group.collapsed && (
                 <div className="px-2.5 pb-2 space-y-1">
-                  {blocks.length === 0 ? (
+                  {blocks.length === 0 && (childGroupsByParent.get(group.id)?.length ?? 0) === 0 ? (
                     <p className="ml-3 rounded-lg border border-dashed border-border px-2 py-2 text-[11px] text-muted-foreground">
                       Dépose un calque ici pour l&apos;ajouter au groupe.
                     </p>
                   ) : (
                     blocks.map((block, index) => renderBlockRow(block, { nested: true, group, index, total: blocks.length }))
                   )}
+
+                  {(childGroupsByParent.get(group.id) ?? []).map((child) => {
+                    const childBlocks = groupedBlocks.get(child.id) ?? [];
+                    const childSelected = selectedGroupId === child.id;
+                    return (
+                      <div
+                        key={child.id}
+                        className={`ml-3 rounded-lg border ${dropTarget === child.id ? "border-indigo-400 bg-indigo-50" : childSelected ? "border-indigo-200 bg-indigo-50/40" : "border-border bg-white"}`}
+                        onDragOver={(event) => { event.preventDefault(); if (draggedBlockId) setDropTarget(child.id); }}
+                        onDragLeave={() => { if (dropTarget === child.id) setDropTarget(null); }}
+                        onDrop={(event) => { event.preventDefault(); const blockId = event.dataTransfer.getData("text/plain"); handleDropOnGroup(blockId || null, child.id); }}
+                      >
+                        <div onClick={() => selectGroup(child.id)} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer">
+                          <span className="text-[10px] text-indigo-500" title="Sous-groupe">⊟</span>
+                          <span className="flex-1 truncate text-[11px] font-medium text-foreground">{child.name}</span>
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {child.layout?.mode === "column" ? "colonne" : "ligne"} · {childBlocks.length}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); removeGroup(child.id); }}
+                            title="Dissoudre le sous-groupe"
+                            className="shrink-0 rounded border border-border bg-white px-1 py-0.5 text-[10px] text-muted-foreground hover:border-red-300 hover:text-red-600"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="px-2 pb-2 space-y-1">
+                          {childBlocks.length > 0 ? (
+                            childBlocks.map((b, i) => renderBlockRow(b, { nested: true, group: child, index: i, total: childBlocks.length }))
+                          ) : (
+                            <p className="ml-3 rounded-lg border border-dashed border-border px-2 py-1.5 text-[10px] text-muted-foreground">Dépose un calque ici.</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {isAutoLayoutGroup(group) ? (() => {
+                    const memberIds = new Set(blocks.map((b) => b.id));
+                    const selectedInGroup = multiSelectedBlockIds.filter((id) => memberIds.has(id));
+                    if (selectedInGroup.length < 2) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => createSubGroupFromSelection(group.id)}
+                        className="ml-3 w-[calc(100%-0.75rem)] rounded-lg border border-dashed border-indigo-300 px-2 py-1.5 text-[11px] text-indigo-700 hover:bg-indigo-50"
+                      >
+                        ⊟ Grouper {selectedInGroup.length} calques en sous-groupe (ligne)
+                      </button>
+                    );
+                  })() : null}
                 </div>
               )}
             </div>

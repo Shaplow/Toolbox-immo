@@ -298,6 +298,18 @@ export function GroupPropertiesPanel({
                   unit="px"
                 />
 
+                <div className="flex flex-col gap-1">
+                  <ToggleSwitch
+                    checked={group.layout?.sizeToContent === true}
+                    onChange={(v) => updateAutoLayout({ sizeToContent: v ? true : undefined })}
+                    label="Hauteur réelle du texte"
+                  />
+                  <span className="text-[10px] text-muted-foreground italic">
+                    Les blocs suivent la hauteur réelle du contenu (utile pour que les m² collent au
+                    titre, qu&apos;il tienne sur 1 ou 2 lignes).
+                  </span>
+                </div>
+
                 <label className="flex flex-col gap-1">
                   <span className="text-xs font-medium text-muted-foreground uppercase">{justifyLabel}</span>
                   <select

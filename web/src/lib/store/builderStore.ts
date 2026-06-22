@@ -90,11 +90,22 @@ function syncAutoLayoutGroups(template: TemplateJSON): TemplateJSON {
     blocksByGroup.get(block.groupId)?.push(block.id);
   }
 
+  // Les sous-groupes sont des "membres" de leur parent (pour l'ordre auto-layout).
+  const childGroupsByParent = new Map<string, string[]>();
+  for (const group of template.groups) {
+    if (!group.parentGroupId) continue;
+    if (!childGroupsByParent.has(group.parentGroupId)) childGroupsByParent.set(group.parentGroupId, []);
+    childGroupsByParent.get(group.parentGroupId)?.push(group.id);
+  }
+
   return {
     ...template,
     groups: template.groups.map((group) => {
       if (!group.layout) return group;
-      const memberIds = blocksByGroup.get(group.id) ?? [];
+      const memberIds = [
+        ...(blocksByGroup.get(group.id) ?? []),
+        ...(childGroupsByParent.get(group.id) ?? []),
+      ];
       const memberSet = new Set(memberIds);
       const existingOrder = (group.layout.order ?? []).filter((id) => memberSet.has(id));
       const missingIds = memberIds.filter((id) => !existingOrder.includes(id));
@@ -157,8 +168,9 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
       set({ selectedGroupId: null, selectedBlockId: null, multiSelectedBlockIds: [] });
       return;
     }
+    const groupIds = new Set<string>([id, ...get().template.groups.filter((g) => g.parentGroupId === id).map((g) => g.id)]);
     const groupBlockIds = get().template.blocks
-      .filter((b) => b.groupId === id)
+      .filter((b) => b.groupId !== undefined && groupIds.has(b.groupId))
       .map((b) => b.id);
     set({ selectedGroupId: id, selectedBlockId: null, multiSelectedBlockIds: groupBlockIds });
   },
@@ -252,10 +264,12 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
   },
 
   moveGroupBlocks: (groupId, deltaX, deltaY, options) => {
+    // Déplacer un groupe parent déplace aussi les blocs de ses sous-groupes.
+    const targetGroupIds = new Set<string>([groupId, ...get().template.groups.filter((g) => g.parentGroupId === groupId).map((g) => g.id)]);
     const next = {
       ...get().template,
       blocks: get().template.blocks.map((block) => (
-        block.groupId === groupId
+        block.groupId !== undefined && targetGroupIds.has(block.groupId)
           ? { ...block, x: Math.round(block.x + deltaX), y: Math.round(block.y + deltaY) }
           : block
       )),
@@ -277,15 +291,19 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
   },
 
   removeGroup: (id) => {
+    // Dissoudre un groupe dissout aussi ses sous-groupes ; leurs blocs sont
+    // détachés (groupId undefined) plutôt que laissés orphelins.
+    const removed = new Set<string>([id, ...get().template.groups.filter((g) => g.parentGroupId === id).map((g) => g.id)]);
     const next = syncAutoLayoutGroups({
       ...get().template,
-      groups: get().template.groups.filter((group) => group.id !== id),
+      groups: get().template.groups.filter((group) => !removed.has(group.id)),
       blocks: get().template.blocks.map((block) => (
-        block.groupId === id ? { ...block, groupId: undefined } : block
+        block.groupId !== undefined && removed.has(block.groupId) ? { ...block, groupId: undefined } : block
       )),
     });
     withHistory(get, set, next);
-    if (get().selectedGroupId === id) set({ selectedGroupId: null });
+    const selected = get().selectedGroupId;
+    if (selected !== null && removed.has(selected)) set({ selectedGroupId: null });
   },
 
   duplicateBlock: (id) => {
