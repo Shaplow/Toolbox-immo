@@ -45,7 +45,8 @@ export interface PublicationHeaderProps {
     /** null = slot stocké en banque (sans date programmée). */
     scheduledAt: Date | null;
   };
-  account: { id: string; handle: string; name: string };
+  /** null = mission sans compte Instagram (production stock). */
+  account: { id: string; handle: string; name: string } | null;
   /** Listing lié — gardé dans les props pour compat appelant, non utilisé visuellement. */
   listing?: { id: string } | null;
   pattern: { id: string; label: string } | null;
@@ -129,7 +130,9 @@ export function PublicationHeader({
               {currentUserRole === "ADMIN" ? "Calendrier" : "Ma liste"}
             </Link>
             <ChevronRight size={11} className="flex-shrink-0 text-muted-foreground/60" />
-            {currentUserRole === "ADMIN" ? (
+            {account === null ? (
+              <span className="text-muted-foreground">Sans compte</span>
+            ) : currentUserRole === "ADMIN" ? (
               <Link
                 href={`/admin/accounts/${account.id}`}
                 className="hover:text-foreground transition-colors"

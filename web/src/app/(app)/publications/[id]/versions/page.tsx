@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   });
   return {
     title: slot
-      ? `Versions · @${slot.account.handle} | Toolbox Immo`
+      ? `Versions · ${slot.account ? `@${slot.account.handle}` : "Sans compte"} | Toolbox Immo`
       : "Versions | Toolbox Immo",
   };
 }
@@ -99,7 +99,7 @@ export default async function PublicationVersionsPage({ params }: PageProps) {
               Retour à la publication
             </Link>
             <p className="mt-4 text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
-              Publication · @{slot.account.handle}
+              Publication · {slot.account?.handle ?? "Sans compte"}
             </p>
             <h1 className="mt-1 text-[28px] sm:text-[36px] font-semibold tracking-tight text-foreground leading-[1.05]">
               Versions livrées

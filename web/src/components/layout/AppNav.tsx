@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { KbdChord } from "@/components/ui/Kbd";
 import type { AppUserIdentity } from "@/lib/userContext";
-import { parsePermissions } from "@/lib/permissions/parsePermissions";
+import { canAccessTool } from "@/lib/permissions/tools";
 import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
@@ -101,15 +101,11 @@ export function AppNav({
   const navUser = isImpersonating || isRoleOverride ? effectiveUser : actualUser;
   const isAdminView = canSeeAdmin && !isImpersonating && !isRoleOverride;
 
-  const userPerms = parsePermissions(navUser.permissions);
-  const hasCaptions = userPerms.includes("captions");
-  const hasCovers = userPerms.includes("covers");
-  const hasTranscription = userPerms.includes("transcription");
-  const hasDescription = userPerms.includes("description");
-  const hasTemplates = userPerms.includes("templates");
-
-  const hasAnyToolPerm =
-    hasTemplates || hasTranscription || hasCaptions || hasDescription || hasCovers;
+  // canAccessTool honore le scope de rôle ET les permissions individuelles →
+  // cohérent avec le hub Atelier et le gate serveur (hasTool). Inclut "mission".
+  const hasAnyToolPerm = ["templates", "captions", "covers", "transcription", "description", "mission"].some(
+    (t) => canAccessTool(navUser, t),
+  );
 
   const isExternalGenerator = navUser.role === "EXTERNAL_GENERATOR";
 

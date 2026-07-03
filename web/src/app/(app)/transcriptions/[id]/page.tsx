@@ -95,7 +95,7 @@ export default async function TranscriptionJobPage({
                     className="font-semibold text-info-700 hover:text-info-700 hover:underline inline-flex items-center gap-1"
                   >
                     <FileText size={12} />
-                    {sourceSlot.title ?? `@${sourceSlot.account.handle}`}
+                    {sourceSlot.title ?? (sourceSlot.account ? `@${sourceSlot.account.handle}` : "Sans compte")}
                   </Link>
                 </>
               )}

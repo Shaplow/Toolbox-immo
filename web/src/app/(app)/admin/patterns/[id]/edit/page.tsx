@@ -46,7 +46,7 @@ export default async function PatternEditPage({ params }: PageProps) {
   });
   if (!tpl) notFound();
 
-  const [builderTemplates, captionPresets, descriptionPrompts] = await Promise.all([
+  const [builderTemplates, captionPresets, descriptionPrompts, videoLibraries] = await Promise.all([
     prisma.template.findMany({
       select: { id: true, name: true },
       orderBy: { name: "asc" },
@@ -60,7 +60,22 @@ export default async function PatternEditPage({ params }: PageProps) {
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    prisma.mediaLibrary.findMany({
+      where: { type: "video" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
+
+  // fieldSchema est stocké en JSON string en DB — on le parse ici pour passer
+  // un string[] au formulaire.
+  let parsedFieldSchema: string[] = [];
+  try {
+    const raw: unknown = JSON.parse(tpl.fieldSchema);
+    if (Array.isArray(raw)) parsedFieldSchema = raw as string[];
+  } catch {
+    // garde le tableau vide par défaut
+  }
 
   return (
     <PatternEditClient
@@ -81,10 +96,13 @@ export default async function PatternEditPage({ params }: PageProps) {
         needsBrief: tpl.needsBrief,
         notes: tpl.notes,
         bindingCount: tpl._count.bindings,
+        fieldSchema: parsedFieldSchema,
+        autoSaveToLibraryId: tpl.autoSaveToLibraryId ?? null,
       }}
       builderTemplates={builderTemplates}
       captionPresets={captionPresets}
       descriptionPrompts={descriptionPrompts}
+      videoLibraries={videoLibraries}
     />
   );
 }

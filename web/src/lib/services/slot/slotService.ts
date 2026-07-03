@@ -37,14 +37,25 @@ import { safeJSON } from "@/lib/utils/json";
 // ─── Types I/O ────────────────────────────────────────────────────────────────
 
 export interface CreateSlotInput {
-  accountId: string;
-  scheduledAt: string;
+  /**
+   * Compte Instagram cible. Optionnel (Missions) : null = production « stock »
+   * pilotée uniquement par une recette globale (patternTemplateId requis alors).
+   */
+  accountId?: string | null;
+  /** Date/heure de publication. Optionnel : absente = mission en banque (sans date). */
+  scheduledAt?: string | null;
   title?: string | null;
   description?: string | null;
   notes?: string | null;
   templateId?: string | null;
   fields?: Record<string, string>;
   fieldSchema?: string[];
+  /**
+   * Missions — Recette GLOBALE (PatternTemplate) appliquée directement au slot,
+   * sans binding ni compte. Requis quand accountId est absent. La config
+   * effective est résolue via resolveSlotEffectivePattern (branche patternTemplate).
+   */
+  patternTemplateId?: string | null;
   /** Pattern-based creation (Phase 1.6). Si fourni, les assignees sont préfilés depuis le pattern. */
   patternId?: string | null;
   /**
@@ -111,18 +122,34 @@ export async function assertAssigneeRole(
  *  5. Création + retour du slot avec fields/fieldSchema déjà parsés.
  *
  * Throw :
- *  - `ForbiddenError` si l'appelant n'est pas ADMIN réel.
+ *  - `ForbiddenError` si l'appelant n'est pas ADMIN réel (sauf opts.requireAdmin=false).
  *  - `ValidationError` si données invalides ou références manquantes.
  *  - `NotFoundError` si le compte Instagram cible n'existe pas.
+ *
+ * @param opts.requireAdmin  Défaut true (création calendrier = admin-only). La
+ *   route Missions passe `false` APRÈS avoir autorisé via l'outil `mission`
+ *   (hasTool) — l'autorisation est faite en amont, le garde admin serait un
+ *   doublon incorrect (une CM avec l'outil mission doit pouvoir créer).
  */
-export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
-  // POST réservé aux admins — l'impersonation ne donne pas canAdminBypass.
-  if (!ctx.canAdminBypass) {
+export async function createSlot(
+  input: CreateSlotInput,
+  ctx: UserContext,
+  opts: { requireAdmin?: boolean } = {},
+) {
+  // POST réservé aux admins par défaut — l'impersonation ne donne pas canAdminBypass.
+  // La route Missions autorise en amont via l'outil et passe requireAdmin=false.
+  const requireAdmin = opts.requireAdmin ?? true;
+  if (requireAdmin && !ctx.canAdminBypass) {
     throw new ForbiddenError("Réservé aux administrateurs");
   }
 
-  if (!input.accountId || !input.scheduledAt) {
-    throw new ValidationError("accountId et scheduledAt sont requis");
+  // Missions — le compte devient optionnel. Une mission sans compte est une
+  // production « stock » : elle DOIT alors être pilotée par une recette globale
+  // (patternTemplateId). La date reste optionnelle (mission en banque).
+  if (!input.accountId && !input.patternTemplateId) {
+    throw new ValidationError(
+      "Un compte Instagram OU une recette (mission) est requis pour créer une publication",
+    );
   }
 
   // Résolution pattern → préfill des assignees (l'override admin du body prime).
@@ -136,6 +163,10 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
 
   // Titre par défaut = label de la recette quand l'admin n'en saisit pas.
   let patternLabel: string | null = null;
+
+  // Missions — champs personnalisés hérités de la recette (Phase 2). Fallback du
+  // fieldSchema du slot quand l'input n'en fournit pas.
+  let resolvedFieldSchema: string[] | null = null;
 
   let resolvedPattern: {
     accountId: string;
@@ -241,20 +272,54 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
     if (linked) {
       resolvedBindingId = linked.id;
     }
+  } else if (input.patternTemplateId) {
+    // Missions — recette GLOBALE directe (pas de binding, compte optionnel).
+    // Aucun garde cross-account : une recette globale n'appartient à aucun compte.
+    const template = await prisma.patternTemplate.findUnique({
+      where: { id: input.patternTemplateId },
+    });
+    if (!template) {
+      throw new ValidationError("Recette introuvable");
+    }
+    if (template.isArchived) {
+      throw new ValidationError("Recette archivée : impossible de créer une mission dessus");
+    }
+    patternLabel = template.label;
+    resolvedPattern = {
+      accountId: input.accountId ?? "",
+      source: template.source,
+      captionPresetId: template.captionPresetId,
+      descriptionPromptId: template.descriptionPromptId,
+      needsCaptions: template.needsCaptions,
+      needsDescription: template.needsDescription,
+      coverMode: template.coverMode,
+      coverConfig: template.coverConfig,
+      defaultAssigneeMonteurId: null,
+      defaultAssigneeCmId: null,
+      defaultAssigneeVideasteId: null,
+    };
+    initialStatus = mapSourceToInitialStatus(template.source);
+    // Héritage des champs personnalisés définis sur la recette (Phase 2).
+    resolvedFieldSchema = safeJSON<string[]>(template.fieldSchema, []);
   }
 
-  // Compte cible
-  const account = await prisma.instagramAccount.findUnique({
-    where: { id: input.accountId },
-  });
-  if (!account) {
-    throw new NotFoundError("Compte");
+  // Compte cible (optionnel pour une mission). Validé seulement si fourni.
+  if (input.accountId) {
+    const account = await prisma.instagramAccount.findUnique({
+      where: { id: input.accountId },
+    });
+    if (!account) {
+      throw new NotFoundError("Compte");
+    }
   }
 
-  // Date
-  const parsedScheduledAt = new Date(input.scheduledAt);
-  if (isNaN(parsedScheduledAt.getTime())) {
-    throw new ValidationError("scheduledAt invalide");
+  // Date (optionnelle : absente = mission en banque, sans date programmée).
+  let parsedScheduledAt: Date | null = null;
+  if (input.scheduledAt) {
+    parsedScheduledAt = new Date(input.scheduledAt);
+    if (isNaN(parsedScheduledAt.getTime())) {
+      throw new ValidationError("scheduledAt invalide");
+    }
   }
 
   // Validation existence + rôle des assignees référencés (parité avec patchSlot).
@@ -303,7 +368,7 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
 
   const slot = await prisma.publicationSlot.create({
     data: {
-      accountId: input.accountId,
+      accountId: input.accountId ?? null,
       scheduledAt: parsedScheduledAt,
       // Fallback titre = nom de la recette si l'admin ne saisit rien.
       title: (input.title?.trim() || patternLabel) ?? null,
@@ -315,10 +380,16 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
       status: initialStatus,
       templateId: input.templateId ?? null,
       fields: input.fields ? JSON.stringify(input.fields) : "{}",
-      fieldSchema: input.fieldSchema ? JSON.stringify(input.fieldSchema) : "[]",
+      // fieldSchema : input explicite > hérité de la recette (mission) > vide.
+      fieldSchema: input.fieldSchema
+        ? JSON.stringify(input.fieldSchema)
+        : resolvedFieldSchema
+          ? JSON.stringify(resolvedFieldSchema)
+          : "[]",
       isAuto: false,
       patternId: input.patternId ?? null,
       patternBindingId: resolvedBindingId,
+      patternTemplateId: input.patternTemplateId ?? null,
       assigneeMonteurId: resolvedAssigneeMonteurId,
       assigneeCmId: resolvedAssigneeCmId,
       assigneeVideasteId: resolvedAssigneeVideasteId,

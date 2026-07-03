@@ -25,6 +25,8 @@ type PatchBody = {
   needsBrief?: boolean;
   notes?: string | null;
   isArchived?: boolean;
+  fieldSchema?: unknown;
+  autoSaveToLibraryId?: string | null;
 };
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"];
@@ -85,6 +87,49 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.coverMode !== undefined && !VALID_COVER_MODES.includes(body.coverMode)) {
     return NextResponse.json({ error: "coverMode invalide" }, { status: 400 });
   }
+  if (body.fieldSchema !== undefined) {
+    if (!Array.isArray(body.fieldSchema)) {
+      return NextResponse.json({ error: "fieldSchema doit être un tableau" }, { status: 400 });
+    }
+    for (const f of body.fieldSchema as unknown[]) {
+      if (typeof f !== "string" || !(f as string).trim()) {
+        return NextResponse.json(
+          { error: "fieldSchema : chaque champ doit être une chaîne non vide" },
+          { status: 400 },
+        );
+      }
+    }
+  }
+  // Valide autoSaveToLibraryId si fourni (non null).
+  if (body.autoSaveToLibraryId) {
+    const lib = await prisma.mediaLibrary.findUnique({
+      where: { id: body.autoSaveToLibraryId },
+      select: { id: true, type: true },
+    });
+    if (!lib) {
+      return NextResponse.json({ error: "autoSaveToLibraryId : bibliothèque introuvable" }, { status: 400 });
+    }
+    if (lib.type !== "video") {
+      return NextResponse.json(
+        { error: "autoSaveToLibraryId : la bibliothèque doit être de type vidéo" },
+        { status: 400 },
+      );
+    }
+  }
+
+  /** Nettoie un fieldSchema reçu : trim + dédupe. */
+  function cleanFieldSchema(raw: unknown[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const f of raw) {
+      const s = (f as string).trim();
+      if (s && !seen.has(s)) {
+        seen.add(s);
+        result.push(s);
+      }
+    }
+    return result;
+  }
 
   const updated = await prisma.patternTemplate.update({
     where: { id },
@@ -111,6 +156,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.needsBrief !== undefined ? { needsBrief: body.needsBrief } : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
       ...(body.isArchived !== undefined ? { isArchived: body.isArchived } : {}),
+      ...(body.fieldSchema !== undefined
+        ? { fieldSchema: JSON.stringify(cleanFieldSchema(body.fieldSchema as unknown[])) }
+        : {}),
+      ...(body.autoSaveToLibraryId !== undefined
+        ? { autoSaveToLibraryId: body.autoSaveToLibraryId }
+        : {}),
       // Sprint D — audit log light : trace l'auteur de l'édition.
       updatedByUserId: ctx.actualUser.id,
     },

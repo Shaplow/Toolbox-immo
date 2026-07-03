@@ -85,7 +85,7 @@ export default async function RenderPage({ params }: Props) {
             href: `/publications/${render.publicationSlot.id}`,
             label:
               render.publicationSlot.title ??
-              `@${render.publicationSlot.account.handle}`,
+              (render.publicationSlot.account ? `@${render.publicationSlot.account.handle}` : "Sans compte"),
           },
         ]
       : [

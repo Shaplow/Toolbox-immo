@@ -16,6 +16,7 @@ import { RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 import { onRenderCompleted } from "@/lib/services/slot/pipelineHooks";
+import { triggerAutoSaveToLibrary } from "@/lib/services/slot/autoSaveToLibrary";
 
 type RenderOutput = {
   video_url?: string;
@@ -155,6 +156,12 @@ export async function POST(req: NextRequest) {
         userId,
       ).catch((err) =>
         console.error(`[webhook/renders] triggerAutoCoverPack threw: ${String(err)}`),
+      );
+
+      void triggerAutoSaveToLibrary(render.id).catch((err) =>
+        console.error(
+          `[webhook/renders] triggerAutoSaveToLibrary threw pour render=${render.id} : ${String(err)}`,
+        ),
       );
     }
   } else {

@@ -88,7 +88,9 @@ export function ScheduleFromBankModal({
           <h2 className="mt-0.5 text-[15px] font-semibold text-foreground truncate leading-tight">
             {title}
           </h2>
-          <p className="text-[11px] text-muted-foreground truncate">@{slot.account.handle}</p>
+          <p className="text-[11px] text-muted-foreground truncate">
+            {slot.account ? `@${slot.account.handle}` : "Sans compte"}
+          </p>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3">

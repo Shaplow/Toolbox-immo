@@ -69,7 +69,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
       slotBannerContext = {
         id: slot.id,
         title: slot.title,
-        handle: slot.account.handle,
+        handle: slot.account?.handle ?? "Sans compte",
       };
     }
   }
@@ -284,7 +284,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
       templateName: p.template?.name ?? null,
       slotId: linkedSlot?.id ?? null,
       slotTitle: linkedSlot?.title ?? null,
-      accountHandle: linkedSlot?.account.handle ?? null,
+      accountHandle: linkedSlot?.account?.handle ?? null,
     };
   });
 

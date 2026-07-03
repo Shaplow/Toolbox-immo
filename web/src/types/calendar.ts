@@ -27,8 +27,10 @@ export type SlotStatus =
 
 export interface PublicationSlot {
   id: string;
-  accountId: string;
-  account: { id: string; name: string; handle: string };
+  /** null = mission sans compte Instagram (production stock). */
+  accountId: string | null;
+  /** null = mission sans compte Instagram. */
+  account: { id: string; name: string; handle: string } | null;
   scheduledAt: string | null; // ISO ; null = slot stocké en banque
   status: SlotStatus;
   title: string | null;

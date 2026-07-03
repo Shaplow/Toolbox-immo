@@ -94,7 +94,7 @@ export function SlotCard({
       tabIndex={0}
       onClick={onClick}
       onKeyDown={handleKeyDown}
-      title={`${phaseLabel} · ${title} · @${slot.account.handle}`}
+      title={`${phaseLabel} · ${title} · ${slot.account ? `@${slot.account.handle}` : "Sans compte"}`}
       className={[
         "group relative w-full text-left rounded-md px-2 py-1.5 cursor-pointer transition-colors",
         "bg-card border border-border hover:bg-muted hover:border-zinc-300",
@@ -141,7 +141,7 @@ export function SlotCard({
       {/* Ligne 3 : compte IG (gauche) + avatars assignés (droite) */}
       <div className="mt-1 flex items-center justify-between gap-1.5">
         <span className="text-[10px] text-muted-foreground truncate min-w-0">
-          @{slot.account.handle}
+          {slot.account ? `@${slot.account.handle}` : "Sans compte"}
         </span>
         {avatars.length > 0 && (
           <AvatarGroup avatars={avatars} max={3} size="xs" />

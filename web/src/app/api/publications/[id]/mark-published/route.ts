@@ -43,6 +43,21 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Permission insuffisante pour marquer ce slot comme publié" }, { status: 403 });
   }
 
+  // Missions — une publication sur Instagram suppose un compte. Une mission sans
+  // compte (production stock) ne peut pas être marquée publiée tant qu'aucun
+  // compte n'a été assigné. resolveSlotContext ne charge pas accountId (volontairement
+  // minimal) → petit findUnique dédié.
+  const slotAccount = await prisma.publicationSlot.findUnique({
+    where: { id: slotId },
+    select: { accountId: true },
+  });
+  if (!slotAccount?.accountId) {
+    return NextResponse.json(
+      { error: "Assignez d'abord un compte Instagram à cette mission avant de la marquer publiée." },
+      { status: 400 },
+    );
+  }
+
   // L5 — Vérification de transition : seul ADMIN peut passer depuis n'importe quel statut.
   // CM ne peut publier que depuis SCHEDULED (statut attendu avant publication IG).
   // L'ADMIN bypass la matrice (canTransition retourne true pour ADMIN vers tout statut).

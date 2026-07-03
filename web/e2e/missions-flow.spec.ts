@@ -1,0 +1,202 @@
+import { test, expect } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+import { loginAs } from "./fixtures/auth";
+import { getCookieHeader } from "./helpers/rotation-e2e";
+
+/**
+ * E2E — Flux « Missions ».
+ *
+ * Une mission = PublicationSlot piloté par une recette GLOBALE (PatternTemplate,
+ * obligatoire) avec un compte Instagram OPTIONNEL. Sans compte = production stock.
+ *
+ * Couvre :
+ *   1. Création API sans compte → slot accountId=null + patternTemplateId + fieldSchema hérité.
+ *   2. Recette obligatoire (400 sans patternTemplateId).
+ *   3. Gating outil : un rôle sans l'outil `mission` → 403.
+ *   4. Garde mark-published : mission sans compte → 400 (compte requis pour publier).
+ *   5. UI /missions/new rendue (heading + copy compte optionnel).
+ *
+ * Pré-requis : `npm run test:db:setup && npm run test:db:seed`.
+ */
+
+const prismaTest = new PrismaClient({
+  datasources: {
+    db: {
+      url:
+        process.env.TEST_DATABASE_URL ??
+        "postgresql://toolbox:toolbox@localhost:5433/toolbox_test",
+    },
+  },
+});
+
+const RECIPE_ID = "e2e-mission-recipe";
+const RECIPE_FIELDS = ["adresse", "prix"];
+const createdSlotIds: string[] = [];
+
+test.beforeAll(async () => {
+  // Recette globale minimale (sans compte, sans overrides bloquants).
+  await prismaTest.patternTemplate.upsert({
+    where: { id: RECIPE_ID },
+    update: {
+      isArchived: false,
+      fieldSchema: JSON.stringify(RECIPE_FIELDS),
+    },
+    create: {
+      id: RECIPE_ID,
+      label: "E2E Mission Recipe",
+      source: "auto_template",
+      templateId: null,
+      coverMode: "none",
+      coverConfig: undefined,
+      needsCaptions: false,
+      needsCaptionsMode: "none",
+      needsDescription: "none",
+      needsAdminValidation: false,
+      needsClientValidation: false,
+      allowsClientRevision: false,
+      needsBrief: false,
+      fieldSchema: JSON.stringify(RECIPE_FIELDS),
+      isArchived: false,
+    },
+  });
+});
+
+test.afterAll(async () => {
+  // Teardown tolérant : slots créés puis la recette fixture.
+  if (createdSlotIds.length) {
+    await prismaTest.publicationSlot
+      .deleteMany({ where: { id: { in: createdSlotIds } } })
+      .catch(() => {});
+  }
+  await prismaTest.publicationSlot
+    .deleteMany({ where: { patternTemplateId: RECIPE_ID } })
+    .catch(() => {});
+  await prismaTest.patternTemplate.delete({ where: { id: RECIPE_ID } }).catch(() => {});
+  await prismaTest.$disconnect();
+});
+
+test.describe("Missions — création API", () => {
+  test("admin crée une mission SANS compte → slot accountId=null + recette + fieldSchema hérité", async ({
+    page,
+    request,
+  }) => {
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+
+    const res = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { patternTemplateId: RECIPE_ID },
+    });
+    expect(res.ok()).toBeTruthy();
+
+    const slot = await res.json();
+    createdSlotIds.push(slot.id);
+
+    expect(slot.accountId).toBeNull();
+    expect(slot.patternTemplateId).toBe(RECIPE_ID);
+    // Titre par défaut = label de la recette.
+    expect(slot.title).toBe("E2E Mission Recipe");
+    // fieldSchema hérité de la recette (non fourni dans le body).
+    expect(slot.fieldSchema).toEqual(RECIPE_FIELDS);
+
+    // Vérification DB : le slot existe bien sans compte.
+    const dbSlot = await prismaTest.publicationSlot.findUnique({
+      where: { id: slot.id },
+      select: { accountId: true, patternTemplateId: true },
+    });
+    expect(dbSlot?.accountId).toBeNull();
+    expect(dbSlot?.patternTemplateId).toBe(RECIPE_ID);
+  });
+
+  test("champs personnalisés ponctuels transmis → mergés au slot", async ({
+    page,
+    request,
+  }) => {
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+
+    const res = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: {
+        patternTemplateId: RECIPE_ID,
+        fields: { adresse: "12 rue des Lilas", prix: "350 000 €" },
+        fieldSchema: ["adresse", "prix"],
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+    const slot = await res.json();
+    createdSlotIds.push(slot.id);
+    expect(slot.fields).toMatchObject({ adresse: "12 rue des Lilas", prix: "350 000 €" });
+  });
+
+  test("recette obligatoire : POST sans patternTemplateId → 400", async ({
+    page,
+    request,
+  }) => {
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+
+    const res = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { accountId: null },
+    });
+    expect(res.status()).toBe(400);
+  });
+});
+
+test.describe("Missions — gating outil", () => {
+  test("rôle sans l'outil `mission` → 403", async ({ page, request }) => {
+    // MONTEUR n'a pas l'outil `mission` (ni admin, ni perm individuelle).
+    await loginAs(page, "monteur");
+    const Cookie = await getCookieHeader(page);
+
+    const res = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { patternTemplateId: RECIPE_ID },
+    });
+    expect(res.status()).toBe(403);
+  });
+});
+
+test.describe("Missions — garde publication", () => {
+  test("mission sans compte : mark-published → 400 (compte requis)", async ({
+    page,
+    request,
+  }) => {
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+
+    // Crée une mission sans compte.
+    const createRes = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { patternTemplateId: RECIPE_ID },
+    });
+    expect(createRes.ok()).toBeTruthy();
+    const slot = await createRes.json();
+    createdSlotIds.push(slot.id);
+
+    // Tente de marquer publié → doit être refusé (pas de compte Instagram).
+    const publishRes = await request.post(`/api/publications/${slot.id}/mark-published`, {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { url: "https://www.instagram.com/p/ABC123/" },
+    });
+    expect(publishRes.status()).toBe(400);
+    const body = await publishRes.json();
+    expect(body.error).toMatch(/compte Instagram/i);
+  });
+});
+
+test.describe("Missions — UI /missions/new", () => {
+  test("la page de création rend le formulaire (recette + compte optionnel)", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    await page.goto("/missions/new");
+
+    await expect(page.getByRole("heading", { name: /Nouvelle mission/i })).toBeVisible();
+    // Copy clé : le compte est optionnel (production stock).
+    await expect(page.getByText(/production stock/i).first()).toBeVisible();
+    // Le bouton de création est présent.
+    await expect(page.getByRole("button", { name: /Créer la mission/i })).toBeVisible();
+  });
+});

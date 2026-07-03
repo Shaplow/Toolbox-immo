@@ -2,7 +2,8 @@
  * Tests d'intégration sur createSlot — fige les invariants critiques :
  *
  *  1. ForbiddenError si non-admin (canAdminBypass=false)
- *  2. ValidationError si accountId/scheduledAt manquants
+ *  2. ValidationError si ni compte ni recette (Missions : compte optionnel mais
+ *     recette obligatoire quand pas de compte ; scheduledAt optionnel = banque)
  *  3. ValidationError si pattern d'un autre compte (cross-account guard)
  *  4. ValidationError si pattern inexistant
  *  5. Préfille les assignees depuis pattern.default* (override admin prime)
@@ -26,6 +27,8 @@ const mockUserFindUnique = vi.fn();
 // renvoie null par défaut (le test focus l'AccountPattern legacy path).
 const mockBindingFindUnique = vi.fn().mockResolvedValue(null);
 const mockBindingFindFirst = vi.fn().mockResolvedValue(null);
+// Missions — résolution recette GLOBALE directe (patternTemplateId).
+const mockPatternTemplateFindUnique = vi.fn().mockResolvedValue(null);
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -34,6 +37,9 @@ vi.mock("@/lib/prisma", () => ({
     },
     accountPattern: {
       findUnique: (...args: unknown[]) => mockPatternFindUnique(...args),
+    },
+    patternTemplate: {
+      findUnique: (...args: unknown[]) => mockPatternTemplateFindUnique(...args),
     },
     patternBinding: {
       findUnique: (...args: unknown[]) => mockBindingFindUnique(...args),
@@ -86,6 +92,7 @@ beforeEach(() => {
   mockUserFindUnique.mockReset();
   mockBindingFindUnique.mockReset().mockResolvedValue(null);
   mockBindingFindFirst.mockReset().mockResolvedValue(null);
+  mockPatternTemplateFindUnique.mockReset().mockResolvedValue(null);
 
   // Mock par défaut : create renvoie un objet stub plausible
   mockSlotCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
@@ -127,7 +134,9 @@ describe("createSlot — auth ADMIN only", () => {
 // ─── Invariant 2 : champs requis ────────────────────────────────────────────
 
 describe("createSlot — champs requis", () => {
-  it("accountId manquant → ValidationError", async () => {
+  it("ni compte ni recette → ValidationError", async () => {
+    // Missions : accountId est devenu optionnel, mais une mission sans compte
+    // DOIT porter une recette (patternTemplateId). Aucun des deux → rejet.
     await expect(
       createSlot(
         { accountId: "", scheduledAt: "2026-06-01T10:00:00Z" },
@@ -136,10 +145,15 @@ describe("createSlot — champs requis", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("scheduledAt manquant → ValidationError", async () => {
-    await expect(
-      createSlot({ accountId: "account-A", scheduledAt: "" }, makeAdminCtx()),
-    ).rejects.toBeInstanceOf(ValidationError);
+  it("scheduledAt vide → mission en banque (scheduledAt null, pas d'erreur)", async () => {
+    // Contrat élargi (Missions) : une date absente crée un slot en banque
+    // (comme bulkStockSlots), plus un rejet.
+    const slot = await createSlot(
+      { accountId: "account-A", scheduledAt: "" },
+      makeAdminCtx(),
+    );
+    expect(slot.scheduledAt).toBeNull();
+    expect(mockSlotCreate).toHaveBeenCalledOnce();
   });
 
   it("scheduledAt invalide → ValidationError", async () => {
@@ -148,6 +162,55 @@ describe("createSlot — champs requis", () => {
         { accountId: "account-A", scheduledAt: "pas-une-date" },
         makeAdminCtx(),
       ),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("mission : patternTemplateId sans compte → slot créé (compte null, fieldSchema hérité)", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValue({
+      id: "tpl-1",
+      label: "Recette Mission",
+      source: "auto_template",
+      isArchived: false,
+      captionPresetId: "capt-1",
+      descriptionPromptId: null,
+      needsCaptions: false,
+      needsDescription: "none",
+      coverMode: "none",
+      coverConfig: null,
+      fieldSchema: JSON.stringify(["adresse", "prix"]),
+    });
+
+    const slot = await createSlot(
+      { patternTemplateId: "tpl-1" },
+      makeAdminCtx(),
+    );
+
+    expect(mockPatternTemplateFindUnique).toHaveBeenCalledOnce();
+    // Compte non résolu (mission stock) + aucun findUnique compte déclenché.
+    expect(slot.accountId).toBeNull();
+    expect(mockAccountFindUnique).not.toHaveBeenCalled();
+    // Champs personnalisés hérités de la recette.
+    expect(slot.fieldSchema).toEqual(["adresse", "prix"]);
+    // Titre par défaut = label de la recette.
+    expect(slot.title).toBe("Recette Mission");
+  });
+
+  it("mission : recette archivée → ValidationError", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValue({
+      id: "tpl-archived",
+      label: "Ancienne",
+      source: "auto_template",
+      isArchived: true,
+      captionPresetId: null,
+      descriptionPromptId: null,
+      needsCaptions: false,
+      needsDescription: "none",
+      coverMode: "none",
+      coverConfig: null,
+      fieldSchema: "[]",
+    });
+    await expect(
+      createSlot({ patternTemplateId: "tpl-archived" }, makeAdminCtx()),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 });

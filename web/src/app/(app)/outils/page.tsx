@@ -10,9 +10,9 @@
  */
 
 import { redirect } from "next/navigation";
-import { Subtitles, FileText, Mic, Wrench } from "lucide-react";
+import { Subtitles, FileText, Mic, Wrench, Clapperboard } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
-import { parsePermissions } from "@/lib/permissions/parsePermissions";
+import { canAccessTool } from "@/lib/permissions/tools";
 import { Hub, type HubItem } from "@/components/ui/molecules/Hub";
 
 interface ToolEntry extends HubItem {
@@ -20,6 +20,14 @@ interface ToolEntry extends HubItem {
 }
 
 const TOOLS: ToolEntry[] = [
+  // Missions — création d'une mission (recette + compte optionnel) → génération.
+  {
+    perm: "mission",
+    href: "/missions/new",
+    label: "Lancer une mission",
+    description: "Générer depuis une recette, compte Instagram optionnel.",
+    icon: Clapperboard,
+  },
   // Templates volontairement retiré : déjà accessible top-level dans la nav.
   {
     perm: "captions",
@@ -52,9 +60,14 @@ export default async function OutilsHubPage() {
   const userContext = await getUserContext();
   if (!userContext?.effectiveUser.id) redirect("/login");
 
+  // canAccessTool honore le scope de rôle (ROLE_TOOL_SCOPE) ET les permissions
+  // individuelles — cohérent avec le gate serveur des pages outils (hasTool).
+  // Avant : perms.includes() ne voyait que les perms individuelles → un outil
+  // accordé au niveau rôle (ex. CM) restait invisible dans le hub.
   const isAdmin = userContext.canAdminBypass;
-  const perms = parsePermissions(userContext.effectiveUser.permissions);
-  const available = TOOLS.filter((t) => isAdmin || perms.includes(t.perm));
+  const available = TOOLS.filter(
+    (t) => isAdmin || canAccessTool(userContext.effectiveUser, t.perm),
+  );
 
   if (available.length === 0) redirect("/home");
 

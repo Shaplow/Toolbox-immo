@@ -52,7 +52,7 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
   // slot (anti-énumération via /descriptions?slotId=X).
   const slotIsAccessible = !!(slotContext && canUserAccessSlot(slotContext, role, userId));
   const slotForBanner = slotIsAccessible && slotContext
-    ? { title: slotContext.title, handle: slotContext.account.handle }
+    ? { title: slotContext.title, handle: slotContext.account?.handle ?? "Sans compte" }
     : null;
   // returnTo validé côté server (anti open-redirect) ; fallback fiche.
   const safeReturnTo =

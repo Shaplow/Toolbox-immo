@@ -62,7 +62,7 @@ export default async function PublicationCoverPage({ params }: Props) {
     notFound();
   }
 
-  const slotLabel = slot.title ?? `@${slot.account.handle}`;
+  const slotLabel = slot.title ?? (slot.account ? `@${slot.account.handle}` : "Sans compte");
   const backHref = `/publications/${slot.id}`;
 
   // Phase 2.5 — mode effectif. Si manualSelect : on bascule direct sur l'onglet

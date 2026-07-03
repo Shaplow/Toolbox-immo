@@ -37,9 +37,9 @@ export interface InboxItem {
     scheduledAt: string | null;
     updatedAt: string;
     patternLabel: string | null;
-    accountHandle: string;
-    accountName: string;
-    accountId: string;
+    accountHandle: string | null;
+    accountName: string | null;
+    accountId: string | null;
     assigneeMonteurId: string | null;
     assigneeVideasteId: string | null;
     assigneeCmId: string | null;
@@ -99,9 +99,9 @@ function serializeSlot(s: SlotRaw): InboxItem["slot"] {
     scheduledAt: s.scheduledAt ? s.scheduledAt.toISOString() : null,
     updatedAt: s.updatedAt.toISOString(),
     patternLabel: s.pattern?.label ?? null,
-    accountHandle: s.account.handle,
-    accountName: s.account.name,
-    accountId: s.account.id,
+    accountHandle: s.account?.handle ?? null,
+    accountName: s.account?.name ?? null,
+    accountId: s.account?.id ?? null,
     assigneeMonteurId: s.assigneeMonteurId,
     assigneeVideasteId: s.assigneeVideasteId,
     assigneeCmId: s.assigneeCmId,

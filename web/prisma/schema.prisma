@@ -433,15 +433,15 @@ model DescriptionJob {
 
 /// Bibliothèque de médias (vidéos rush ou musiques). Gérée par les admins.
 model MediaLibrary {
-  id             String                 @id @default(cuid())
-  name           String
+  id               String                 @id @default(cuid())
+  name             String
   /// "video" | "audio"
-  type           String
+  type             String
   /// JSON string[] — tags de type template : ["RPI","RTIPS","RPOD"]
-  tags           String                 @default("[]")
-  description    String?
+  tags             String                 @default("[]")
+  description      String?
   /// JSON string[] — ordre explicite des setTags pour la rotation : ["tenue1-set1","tenue2-set1","tenue1-set2"]
-  setSequence    String                 @default("[]")
+  setSequence      String                 @default("[]")
   /// JSON Record<string,string> — setTag → famille : {"tenue1-set1":"tenue1","tenue1-set2":"tenue1","tenue2-set1":"tenue2"}
   /// En mode auto, tous les setTags d'une même famille sont exclus ensemble après utilisation.
   /// Portée de la rotation :
@@ -449,17 +449,17 @@ model MediaLibrary {
   ///   dans la bibliothèque indépendamment des autres.
   /// - "shared" : un seul curseur partagé entre tous les comptes. Tous les comptes voient le
   ///   même contenu à chaque génération (utile pour une bibliothèque commune).
-  rotationScope  String                 @default("per_account")
+  rotationScope    String                 @default("per_account")
   /// JSON { key: string; label: string; type: "text" | "number" | "url" }[] — champs de
   /// métadonnées structurées pouvant être remplis sur chaque asset de cette bibliothèque.
-  metadataSchema String                 @default("[]")
+  metadataSchema   String                 @default("[]")
   /// Burn-once / consommation max par asset.
   /// - `null` (défaut) : rotation infinie, les assets sont recyclés quand tous épuisés.
   /// - `N > 0` : chaque asset peut être utilisé max N fois avant d'être filtré de la rotation.
   /// La sémantique dépend de rotationScope :
   /// - `per_account` : N usages MAX par compte (MediaAssetUsage.usageCount par (asset, account))
   /// - `shared`      : N usages MAX au total tous comptes confondus (MediaAsset.usageCount global)
-  maxUsageCount  Int?
+  maxUsageCount    Int?
   /// Mode de rotation explicite :
   /// - `"auto"` (défaut) : least-used round-robin (déduit aussi de setSequence vide en legacy).
   /// - `"override"` : ordre fixe défini par setSequence.
@@ -467,56 +467,64 @@ model MediaLibrary {
   ///   (champ formulaire du builder). selectMediaAsset() et selectMediaAssetBySetSequence()
   ///   retournent null directement pour cette lib.
   /// - `null` : back-compat — comportement déduit du contenu de setSequence (vide=auto, rempli=override).
-  rotationMode   String?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  assets         MediaAsset[]
-  accountCursors AccountLibraryCursor[]
-  autocutBatches MediaAutocutBatch[]
-  autocutJobs    MediaAutocutJob[]
+  rotationMode     String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  assets           MediaAsset[]
+  accountCursors   AccountLibraryCursor[]
+  autocutBatches   MediaAutocutBatch[]
+  autocutJobs      MediaAutocutJob[]
+  /// Recettes qui auto-sauvent leur sortie de génération dans cette bibliothèque.
+  autoSavePatterns PatternTemplate[]      @relation("PatternTemplateAutoSaveLibrary")
 }
 
 /// Un fichier média dans une bibliothèque (stocké sur R2).
 model MediaAsset {
-  id          String             @id @default(cuid())
-  libraryId   String
-  library     MediaLibrary       @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  filename    String
-  r2Key       String             @unique
-  url         String
+  id             String             @id @default(cuid())
+  libraryId      String
+  library        MediaLibrary       @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  filename       String
+  r2Key          String             @unique
+  url            String
   /// "video/mp4" | "audio/mpeg" etc.
-  mimeType    String
+  mimeType       String
   /// URL publique R2 d'une image poster (frame extraite à l'upload côté
   /// navigateur). Sert de vignette légère dans la grille — la vidéo n'est
   /// chargée qu'au hover/détail. Null = pas de poster (fallback <video>).
-  posterUrl   String?
+  posterUrl      String?
   /// Durée en secondes (remplie au probe après upload)
-  duration    Float?
+  duration       Float?
   /// JSON string[] — tags métier associés au fichier : ["RPI","RTIPS","RPOD"]
-  tags        String             @default("[]")
+  tags           String             @default("[]")
   /// Clé de groupement pour les paires intro/outro (même lieu, même tenue).
   /// Les assets partageant le même setTag sont sélectionnés ensemble lors d'une résolution theme_sequence.
-  setTag      String?
+  setTag         String?
   /// Catégorie de rotation : stockée par asset (permet le même nom de set dans plusieurs catégories).
   /// L'unité de rotation est le couple (category, setTag). Null = pas de catégorie assignée.
-  category    String?
+  category       String?
   /// Nombre de fois utilisé dans une génération (agrégat global)
-  usageCount  Int                @default(0)
+  usageCount     Int                @default(0)
   /// Dernier timestamp d'utilisation global (agrégat de tous comptes)
-  lastUsedAt  DateTime?
+  lastUsedAt     DateTime?
   /// Désactivé de la rotation : reste dans la bibliothèque mais jamais suggéré
-  disabled    Boolean            @default(false)
+  disabled       Boolean            @default(false)
   /// JSON Record<string, string | number | null> — valeurs de métadonnées structurées
   /// définies par le MediaLibrary.metadataSchema de la bibliothèque parente.
-  metadata    String             @default("{}")
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  editJobs    MediaEditJob[]
+  metadata       String             @default("{}")
+  /// Provenance de l'asset : "upload" (défaut historique, null) | "import" | "generated".
+  /// "generated" = créé par l'auto-save d'une mission à la fin d'un render.
+  source         String?
+  /// Render source pour un asset "generated" (traçabilité). Pas de FK : le render
+  /// peut être purgé (r2Cleanup) sans supprimer l'asset copié.
+  sourceRenderId String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  editJobs       MediaEditJob[]
   /// Entrées de contrôle d'accès (0 entrées = global/tous comptes)
-  accesses    MediaAssetAccess[]
+  accesses       MediaAssetAccess[]
   /// Suivi d'utilisation par compte
-  usages      MediaAssetUsage[]
-  autocutJobs MediaAutocutJob[]
+  usages         MediaAssetUsage[]
+  autocutJobs    MediaAutocutJob[]
 }
 
 /// Job d'édition d'un rush (trim, audio fix). Traitement RunPod, destructif (écrase l'original).
@@ -788,13 +796,16 @@ model AccountDataLibraryCursor {
 
 /// Slot réel dans le calendrier opérationnel pour un compte Instagram donné.
 model PublicationSlot {
-  id                 String           @id @default(cuid())
-  accountId          String
-  account            InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id                 String            @id @default(cuid())
+  /// Compte Instagram cible. Nullable : une « mission » (production stock) peut
+  /// exister sans compte, pilotée uniquement par une recette globale
+  /// (patternTemplateId). Un compte peut être adopté plus tard via un flux dédié.
+  accountId          String?
+  account            InstagramAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   /// Date et heure cible de publication (UTC). null = slot stocké en banque (sans date programmée).
   scheduledAt        DateTime?
   /// "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE"
-  status             String           @default("TO_DO")
+  status             String            @default("TO_DO")
   title              String?
   /// Texte de la légende Instagram (rédigée par la CM ou générée par IA).
   /// Anciennement scindée en `caption` + `description` — fusionnée Phase 2.1.
@@ -802,17 +813,17 @@ model PublicationSlot {
   description        String?
   /// Champs libres saisis par l'utilisateur (JSON Record<string, string>)
   /// ex: {"adresse":"12 rue ...","prix":"350 000 €","propriétaire":"Dupont"}
-  fields             String           @default("{}")
+  fields             String            @default("{}")
   /// Noms des champs définis par l'admin ou l'utilisateur (JSON string[])
   /// ex: ["adresse","prix","propriétaire"]
-  fieldSchema        String           @default("[]")
+  fieldSchema        String            @default("[]")
   /// Template lié (optionnel — peut être déterminé après création du slot)
   templateId         String?
-  template           Template?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  template           Template?         @relation(fields: [templateId], references: [id], onDelete: SetNull)
   /// Render final rattaché au slot (relation inverse de Render.publicationSlotId)
   render             Render?
   /// true = créé automatiquement par le moteur de génération / cron
-  isAuto             Boolean          @default(false)
+  isAuto             Boolean           @default(false)
   notes              String?
   /// URL Instagram de la publication (renseignée via mark-published)
   publishedUrl       String?
@@ -820,23 +831,29 @@ model PublicationSlot {
   publishedAt        DateTime?
   /// Monteur assigné à ce slot
   assigneeMonteurId  String?
-  assigneeMonteur    User?            @relation("SlotMonteur", fields: [assigneeMonteurId], references: [id], onDelete: SetNull)
+  assigneeMonteur    User?             @relation("SlotMonteur", fields: [assigneeMonteurId], references: [id], onDelete: SetNull)
   /// Community manager assigné à ce slot
   assigneeCmId       String?
-  assigneeCm         User?            @relation("SlotCm", fields: [assigneeCmId], references: [id], onDelete: SetNull)
+  assigneeCm         User?             @relation("SlotCm", fields: [assigneeCmId], references: [id], onDelete: SetNull)
   /// Vidéaste assigné au shoot (celui qui filme + upload les rushs)
   assigneeVideasteId String?
-  assigneeVideaste   User?            @relation("SlotVideaste", fields: [assigneeVideasteId], references: [id], onDelete: SetNull)
+  assigneeVideaste   User?             @relation("SlotVideaste", fields: [assigneeVideasteId], references: [id], onDelete: SetNull)
   /// @deprecated P2 — remplacé par patternBindingId. Conservé tant que les
   /// slots historiques n'ont pas été backfillés (backfill fait via script
   /// migrate-patterns-to-templates puis cleanup release+1).
   patternId          String?
-  pattern            AccountPattern?  @relation(fields: [patternId], references: [id], onDelete: SetNull)
+  pattern            AccountPattern?   @relation(fields: [patternId], references: [id], onDelete: SetNull)
   /// P2 — Liaison vers PatternBinding (recette appliquée au compte). Source
   /// canonique du pattern effectif. Nullable pour les slots historiques pas
   /// encore backfillés et les slots créés ad-hoc sans recette.
   patternBindingId   String?
-  patternBinding     PatternBinding?  @relation("SlotPatternBinding", fields: [patternBindingId], references: [id], onDelete: SetNull)
+  patternBinding     PatternBinding?   @relation("SlotPatternBinding", fields: [patternBindingId], references: [id], onDelete: SetNull)
+  /// Missions — Liaison directe vers une recette GLOBALE (PatternTemplate) sans
+  /// binding ni compte. Utilisée quand un slot est créé comme « mission » à
+  /// partir du catalogue global. Résolu par resolveSlotEffectivePattern (3e
+  /// branche) via un mapping 1:1 du template (aucun override binding).
+  patternTemplateId  String?
+  patternTemplate    PatternTemplate?  @relation("SlotPatternTemplate", fields: [patternTemplateId], references: [id], onDelete: SetNull)
 
   /// Override per-slot de needsAdminValidation du pattern. null = hérite.
   /// Phase 2.3 : permet d'activer la validation admin du montage (status
@@ -910,6 +927,7 @@ model PublicationSlot {
   @@index([assigneeCmId])
   @@index([assigneeVideasteId])
   @@index([patternId])
+  @@index([patternTemplateId])
 }
 
 model PublicationComment {
@@ -995,6 +1013,17 @@ model PatternTemplate {
   descriptionPromptId String?
   descriptionPrompt   DescriptionPrompt? @relation("PatternTemplateDescriptionPrompt", fields: [descriptionPromptId], references: [id], onDelete: SetNull)
 
+  /// Missions — Noms des champs personnalisés hérités par une mission créée
+  /// depuis cette recette (JSON string[], même shape que PublicationSlot.fieldSchema).
+  /// L'utilisateur peut compléter avec des champs ad-hoc au niveau de la mission.
+  fieldSchema String @default("[]")
+
+  /// Missions — Bibliothèque de média cible pour l'auto-save de la sortie de
+  /// génération. null = auto-save désactivé. Présence = la sortie du render est
+  /// copiée en MediaAsset dans cette library à la fin de la génération.
+  autoSaveToLibraryId String?
+  autoSaveToLibrary   MediaLibrary? @relation("PatternTemplateAutoSaveLibrary", fields: [autoSaveToLibraryId], references: [id], onDelete: SetNull)
+
   /// Recette désactivée : ne s'affiche plus dans le catalogue ni dans les
   /// pickers de nouvelle liaison. Les bindings existants restent valides.
   isArchived Boolean @default(false)
@@ -1010,6 +1039,8 @@ model PatternTemplate {
   updatedBy       User?   @relation("PatternTemplateUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
   bindings PatternBinding[]
+  /// Missions rattachées directement à cette recette globale (sans binding).
+  slots    PublicationSlot[] @relation("SlotPatternTemplate")
 }
 
 /// PatternBinding = application d'une recette globale à un compte IG.

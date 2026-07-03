@@ -76,7 +76,7 @@ export default async function PublicationCaptionsManualPage({ params }: Props) {
     redirect(`/publications/${slot.id}`);
   }
 
-  const slotLabel = slot.title ?? `@${slot.account.handle}`;
+  const slotLabel = slot.title ?? (slot.account ? `@${slot.account.handle}` : "Sans compte");
   const backHref = `/publications/${slot.id}`;
   const initialSrt = slot.captionJobs[0]?.srtContent ?? null;
 

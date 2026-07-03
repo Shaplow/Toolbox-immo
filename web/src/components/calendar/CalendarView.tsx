@@ -18,6 +18,7 @@ import {
   Square,
   UserCheck,
   Ban,
+  Clapperboard,
 } from "lucide-react";
 import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
@@ -406,7 +407,8 @@ export function CalendarView({
         const ta = new Date(a.scheduledAt as string).getTime();
         const tb = new Date(b.scheduledAt as string).getTime();
         if (ta !== tb) return ta - tb;
-        return a.account.handle.localeCompare(b.account.handle);
+        // account peut être null (mission sans compte) — ne jamais throw dans le tri.
+        return (a.account?.handle ?? "").localeCompare(b.account?.handle ?? "");
       });
   }
 
@@ -703,6 +705,19 @@ export function CalendarView({
                     title="Créer des missions sans date"
                   >
                     Nouvelles missions
+                  </Button>
+                )}
+
+                {/* Missions — création recette-first (compte optionnel) via l'outil. */}
+                {isAdmin && view === "bank" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Clapperboard}
+                    onClick={() => router.push("/missions/new")}
+                    title="Générer depuis une recette (compte optionnel)"
+                  >
+                    Depuis une recette
                   </Button>
                 )}
 

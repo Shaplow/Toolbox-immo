@@ -107,7 +107,7 @@ function BankRailItem({
           onSchedule();
         }
       }}
-      title={`${title} · @${slot.account.handle} — glisser sur un jour ou cliquer pour programmer`}
+      title={`${title} · ${slot.account ? `@${slot.account.handle}` : "Sans compte"} — glisser sur un jour ou cliquer pour programmer`}
       className={[
         "group w-full text-left rounded-md border border-border bg-card px-2 py-1.5 cursor-grab touch-none transition-colors",
         "hover:bg-muted hover:border-zinc-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
@@ -128,7 +128,7 @@ function BankRailItem({
       </div>
       <div className="mt-1 flex items-center justify-between gap-1.5 pl-[18px]">
         <span className="text-[10.5px] text-muted-foreground truncate">
-          @{slot.account.handle}
+          {slot.account ? `@${slot.account.handle}` : "Sans compte"}
         </span>
         <Chip className={`${PHASE_COLORS[phase]} text-[9.5px] shrink-0`}>
           {STATUS_LABELS[slot.status]}

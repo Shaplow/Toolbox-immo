@@ -130,6 +130,12 @@ const SURFACES: Surface[] = [
     wait: 600,
     desc: "Page validation client avec token invalide — vérifier not-found dédié (commit 11f5866)",
   },
+  {
+    name: "11-missions-new",
+    path: "/missions/new",
+    wait: 800,
+    desc: "Création de mission — recette (catalogue global) + compte optionnel + champs perso",
+  },
 ];
 
 // ─── SCENARIOS (workflows multi-pages) ──────────────────────────────────────

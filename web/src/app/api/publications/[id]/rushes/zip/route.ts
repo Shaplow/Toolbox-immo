@@ -117,7 +117,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
   });
 
   const archiveName = slugifyForFilename(
-    `${slot.account.handle}-${slot.title ?? slotId}-rushes`,
+    `${slot.account?.handle ?? "sans-compte"}-${slot.title ?? slotId}-rushes`,
   );
 
   return new NextResponse(new Uint8Array(zipBuffer), {

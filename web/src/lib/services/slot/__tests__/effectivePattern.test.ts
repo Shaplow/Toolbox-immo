@@ -16,6 +16,26 @@ import {
 
 type LegacyPattern = NonNullable<SlotWithEffectivePattern["pattern"]>;
 type Binding = NonNullable<SlotWithEffectivePattern["patternBinding"]>;
+type Template = NonNullable<SlotWithEffectivePattern["patternTemplate"]>;
+
+function makeTemplate(over: Partial<Template> = {}): Template {
+  return {
+    source: "auto_template",
+    templateId: "builder-tpl-mission",
+    captionPresetId: "capt-mission",
+    descriptionPromptId: "prompt-mission",
+    coverMode: "autoPack",
+    coverConfig: { coverPresetId: "preset-mission" },
+    needsCaptions: false,
+    needsCaptionsMode: "none",
+    needsDescription: "autoGenerate",
+    needsAdminValidation: false,
+    needsClientValidation: false,
+    allowsClientRevision: false,
+    needsBrief: false,
+    ...over,
+  } as Template;
+}
 
 function makeLegacyPattern(over: Partial<LegacyPattern> = {}): LegacyPattern {
   return {
@@ -84,6 +104,7 @@ describe("resolveSlotEffectivePattern", () => {
     const eff = resolveSlotEffectivePattern({
       pattern: makeLegacyPattern({ coverMode: "manualSelect", needsDescription: "manualWrite" }),
       patternBinding: null,
+      patternTemplate: null,
     });
     expect(eff?.coverMode).toBe("manualSelect");
     expect(eff?.needsDescription).toBe("manualWrite");
@@ -94,6 +115,7 @@ describe("resolveSlotEffectivePattern", () => {
     const eff = resolveSlotEffectivePattern({
       pattern: null,
       patternBinding: makeBinding(),
+      patternTemplate: null,
     });
     expect(eff).not.toBeNull();
     expect(eff?.coverMode).toBe("autoPack"); // avant le fix : "none"
@@ -109,6 +131,7 @@ describe("resolveSlotEffectivePattern", () => {
         { coverMode: "none", descriptionPromptId: "prompt-tpl" },
         { coverModeOverride: "autoPack", descriptionPromptIdOverride: "prompt-override" },
       ),
+      patternTemplate: null,
     });
     expect(eff?.coverMode).toBe("autoPack");
     expect(eff?.descriptionPromptId).toBe("prompt-override");
@@ -118,11 +141,46 @@ describe("resolveSlotEffectivePattern", () => {
     const eff = resolveSlotEffectivePattern({
       pattern: makeLegacyPattern({ coverMode: "manualSelect" }),
       patternBinding: makeBinding({ coverMode: "autoPack" }),
+      patternTemplate: null,
     });
     expect(eff?.coverMode).toBe("manualSelect");
   });
 
-  it("ni pattern ni binding → null", () => {
-    expect(resolveSlotEffectivePattern({ pattern: null, patternBinding: null })).toBeNull();
+  it("mission : patternTemplate direct (sans compte ni binding) → dérive du template", () => {
+    const eff = resolveSlotEffectivePattern({
+      pattern: null,
+      patternBinding: null,
+      patternTemplate: makeTemplate(),
+    });
+    expect(eff).not.toBeNull();
+    expect(eff?.coverMode).toBe("autoPack");
+    expect(eff?.needsDescription).toBe("autoGenerate");
+    expect(eff?.descriptionPromptId).toBe("prompt-mission");
+    expect(eff?.templateId).toBe("builder-tpl-mission");
+    expect(eff?.source).toBe("auto_template");
+  });
+
+  it("mission : needsRushes dérivé de source === 'manual_rushes'", () => {
+    const eff = resolveSlotEffectivePattern({
+      pattern: null,
+      patternBinding: null,
+      patternTemplate: makeTemplate({ source: "manual_rushes" }),
+    });
+    expect(eff?.needsRushes).toBe(true);
+  });
+
+  it("binding prioritaire sur patternTemplate direct quand les deux existent", () => {
+    const eff = resolveSlotEffectivePattern({
+      pattern: null,
+      patternBinding: makeBinding({ coverMode: "autoPack" }),
+      patternTemplate: makeTemplate({ coverMode: "manualSelect" }),
+    });
+    expect(eff?.coverMode).toBe("autoPack");
+  });
+
+  it("ni pattern ni binding ni template → null", () => {
+    expect(
+      resolveSlotEffectivePattern({ pattern: null, patternBinding: null, patternTemplate: null }),
+    ).toBeNull();
   });
 });

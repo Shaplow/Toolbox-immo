@@ -46,7 +46,7 @@ export default async function TranscriptionPage({
       slotContext = {
         id: slot.id,
         title: slot.title,
-        accountHandle: slot.account.handle,
+        accountHandle: slot.account?.handle ?? "Sans compte",
       };
     }
   }

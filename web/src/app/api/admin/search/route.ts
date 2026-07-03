@@ -172,7 +172,7 @@ export async function GET(req: NextRequest) {
         (s.scheduledAt
           ? `Publication du ${s.scheduledAt.toLocaleDateString("fr-FR")}`
           : "Publication en banque"),
-      sublabel: `@${s.account.handle}`,
+      sublabel: s.account ? `@${s.account.handle}` : "Sans compte",
       href: `/publications/${s.id}`,
     })),
     ...mediaLibraries.map((m) => ({

@@ -10,10 +10,10 @@
  * - badge      : optional badge text (e.g. "Bêta"), null if none
  */
 
-import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText } from "lucide-react";
+import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText, Clapperboard } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type ToolKey = "templates" | "captions" | "covers" | "transcription" | "description";
+export type ToolKey = "templates" | "captions" | "covers" | "transcription" | "description" | "mission";
 
 export type ToolMeta = {
   href: string;
@@ -74,6 +74,16 @@ export const TOOL_META: Record<ToolKey, ToolMeta> = {
       "Générez des descriptions de biens immobiliers à partir d'une transcription ou d'un fichier SRT.",
     Icon: FileText,
     color: "amber",
+    badge: null,
+  },
+  mission: {
+    href: "/missions/new",
+    navLabel: "Missions",
+    cardLabel: "Lancer une mission",
+    description:
+      "Générez depuis une recette (compte Instagram optionnel) et archivez le résultat en médiathèque.",
+    Icon: Clapperboard,
+    color: "indigo",
     badge: null,
   },
 };

@@ -235,7 +235,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
                             {slot.pattern?.label ?? slot.title ?? "Publication"}
                           </p>
                           <p className="text-[11px] text-muted-foreground">
-                            @{slot.account.handle}
+                            {slot.account ? `@${slot.account.handle}` : "Sans compte"}
                           </p>
                         </div>
                         <span className="text-[10.5px] text-muted-foreground font-mono tabular-nums shrink-0">

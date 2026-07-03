@@ -48,9 +48,12 @@ interface FlexFieldsEditorProps {
   values: Record<string, string>;
   onChange: (schema: string[], values: Record<string, string>) => void;
   readOnly?: boolean;
+  /** Mode schéma seul — masque la colonne "valeur". Utile quand on édite
+   *  uniquement les noms de champs (ex : formulaire de recette). */
+  schemaOnly?: boolean;
 }
 
-export function FlexFieldsEditor({ schema, values, onChange, readOnly = false }: FlexFieldsEditorProps) {
+export function FlexFieldsEditor({ schema, values, onChange, readOnly = false, schemaOnly = false }: FlexFieldsEditorProps) {
   const [newKey, setNewKey] = useState("");
 
   function updateValue(key: string, value: string) {
@@ -104,15 +107,17 @@ export function FlexFieldsEditor({ schema, values, onChange, readOnly = false }:
             <KeyEditor originalKey={key} onCommit={(next) => renameField(key, next)} />
           )}
 
-          {/* Value */}
-          <input
-            type="text"
-            value={values[key] ?? ""}
-            onChange={(e) => updateValue(key, e.target.value)}
-            readOnly={readOnly}
-            placeholder={`Valeur pour « ${key} »`}
-            className="flex-1 text-xs border border-border rounded px-2 py-1 text-gray-800 focus:outline-none focus:ring-1 focus:ring-info-200 disabled:bg-muted"
-          />
+          {/* Value — masqué en mode schéma seul */}
+          {!schemaOnly && (
+            <input
+              type="text"
+              value={values[key] ?? ""}
+              onChange={(e) => updateValue(key, e.target.value)}
+              readOnly={readOnly}
+              placeholder={`Valeur pour « ${key} »`}
+              className="flex-1 text-xs border border-border rounded px-2 py-1 text-gray-800 focus:outline-none focus:ring-1 focus:ring-info-200 disabled:bg-muted"
+            />
+          )}
 
           {!readOnly && (
             <button

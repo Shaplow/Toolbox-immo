@@ -117,9 +117,15 @@ export function WorklistSlotCard({ slot, monteurBadges, cmBadges }: WorklistSlot
             {title}
           </p>
           <p className="mt-0.5 text-[12px] text-muted-foreground truncate">
-            @{slot.account.handle}
-            {slot.account.name !== slot.account.handle && (
-              <span className="text-muted-foreground/70"> · {slot.account.name}</span>
+            {slot.account ? (
+              <>
+                @{slot.account.handle}
+                {slot.account.name !== slot.account.handle && (
+                  <span className="text-muted-foreground/70"> · {slot.account.name}</span>
+                )}
+              </>
+            ) : (
+              <span className="text-muted-foreground/70">Sans compte</span>
             )}
           </p>
           <p

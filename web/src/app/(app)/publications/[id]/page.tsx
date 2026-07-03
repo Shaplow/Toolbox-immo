@@ -39,8 +39,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     slot.patternBinding?.patternTemplate?.label ??
     null;
   const label = recipeLabel ?? slot.title ?? "Publication";
+  const accountSuffix = slot.account ? ` · @${slot.account.handle}` : "";
   return {
-    title: `${label} · @${slot.account.handle} | Toolbox Immo`,
+    title: `${label}${accountSuffix} | Toolbox Immo`,
   };
 }
 
@@ -112,6 +113,26 @@ export default async function PublicationPage({ params }: PageProps) {
               descriptionPromptId: true,
             },
           },
+        },
+      },
+      // Missions — recette GLOBALE directe (PatternTemplate sans binding).
+      // Synthétisée en `slot.pattern` plus bas (3e branche) pour que la chaîne
+      // de production s'affiche sur une mission sans compte.
+      patternTemplate: {
+        select: {
+          id: true,
+          label: true,
+          source: true,
+          templateId: true,
+          coverMode: true,
+          needsCaptions: true,
+          needsCaptionsMode: true,
+          needsDescription: true,
+          needsClientValidation: true,
+          allowsClientRevision: true,
+          needsBrief: true,
+          captionPresetId: true,
+          descriptionPromptId: true,
         },
       },
       assigneeMonteur: { select: { id: true, name: true, email: true } },
@@ -226,6 +247,29 @@ export default async function PublicationPage({ params }: PageProps) {
       needsBrief: t.needsBrief,
       captionPresetId: b.captionPresetIdOverride ?? t.captionPresetId,
       descriptionPromptId: b.descriptionPromptIdOverride ?? t.descriptionPromptId,
+    };
+  }
+
+  // Missions — même synthèse depuis la recette GLOBALE directe (patternTemplate
+  // sans binding). Sans ça, une mission sans compte afficherait une chaîne vide
+  // et la RenderSection serait masquée (pattern null).
+  if (!slot.pattern && slot.patternTemplate) {
+    const t = slot.patternTemplate;
+    slot.pattern = {
+      id: t.id,
+      label: t.label,
+      source: t.source,
+      templateId: t.templateId,
+      coverMode: t.coverMode,
+      needsCaptions: t.needsCaptions,
+      needsCaptionsMode: t.needsCaptionsMode,
+      needsDescription: t.needsDescription,
+      needsClientValidation: t.needsClientValidation,
+      allowsClientRevision: t.allowsClientRevision,
+      needsRushes: t.source === "manual_rushes",
+      needsBrief: t.needsBrief,
+      captionPresetId: t.captionPresetId,
+      descriptionPromptId: t.descriptionPromptId,
     };
   }
 
@@ -566,11 +610,15 @@ export default async function PublicationPage({ params }: PageProps) {
         captionPresetIdOverride: slot.captionPresetIdOverride,
         descriptionPromptIdOverride: slot.descriptionPromptIdOverride,
       }}
-      account={{
-        id: slot.account.id,
-        handle: slot.account.handle,
-        name: slot.account.name,
-      }}
+      account={
+        slot.account
+          ? {
+              id: slot.account.id,
+              handle: slot.account.handle,
+              name: slot.account.name,
+            }
+          : null
+      }
       listing={listing}
       pattern={
         effectivePattern

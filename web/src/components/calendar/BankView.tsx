@@ -363,7 +363,7 @@ function BankCard({
               {title}
             </p>
             <p className="mt-0.5 text-[11.5px] text-muted-foreground truncate">
-              @{slot.account.handle}
+              {slot.account ? `@${slot.account.handle}` : "Sans compte"}
             </p>
           </div>
           <Chip className={`${phaseClasses} text-[10px] shrink-0`}>

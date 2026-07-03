@@ -16,6 +16,7 @@ export const TOOLS = {
   COVERS:        "covers",
   TRANSCRIPTION: "transcription",
   DESCRIPTION:   "description",
+  MISSION:       "mission",
 } as const;
 
 export type Tool = (typeof TOOLS)[keyof typeof TOOLS];
@@ -26,6 +27,7 @@ export const TOOL_LABELS: Record<Tool, string> = {
   covers:        "Générateur de covers",
   transcription: "Transcription audio/vidéo",
   description:   "Générateur de descriptions",
+  mission:       "Lancer une mission",
 };
 
 export const TOOL_DESCRIPTIONS: Record<Tool, string> = {
@@ -34,6 +36,7 @@ export const TOOL_DESCRIPTIONS: Record<Tool, string> = {
   covers:        "Extraction de frames depuis une vidéo pour choisir une cover idéale",
   transcription: "Transcription automatique de fichiers audio/vidéo avec identification des intervenants",
   description:   "Génération de descriptions texte à partir d'un fichier SRT ou d'une transcription",
+  mission:       "Créer une mission depuis une recette (compte Instagram optionnel) et générer",
 };
 
 /**

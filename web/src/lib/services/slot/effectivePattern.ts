@@ -62,6 +62,27 @@ const LEGACY_PATTERN_SELECT = {
 } satisfies Prisma.AccountPatternSelect;
 
 /**
+ * Champs PatternTemplate chargés pour la résolution directe « mission » (recette
+ * globale sans binding). Identique à LEGACY_PATTERN_SELECT SAUF `needsRushes`,
+ * qui n'existe pas sur PatternTemplate (dérivé de `source === "manual_rushes"`).
+ */
+const TEMPLATE_PATTERN_SELECT = {
+  source: true,
+  templateId: true,
+  captionPresetId: true,
+  descriptionPromptId: true,
+  coverMode: true,
+  coverConfig: true,
+  needsCaptions: true,
+  needsCaptionsMode: true,
+  needsDescription: true,
+  needsAdminValidation: true,
+  needsClientValidation: true,
+  allowsClientRevision: true,
+  needsBrief: true,
+} satisfies Prisma.PatternTemplateSelect;
+
+/**
  * Fragment à fusionner (`...slotEffectivePatternSelect`) dans un `select` de
  * PublicationSlot (direct ou imbriqué via render.publicationSlot / version.slot)
  * pour pouvoir appeler {@link resolveSlotEffectivePattern}. Charge le pattern
@@ -70,18 +91,26 @@ const LEGACY_PATTERN_SELECT = {
 export const slotEffectivePatternSelect = {
   pattern: { select: LEGACY_PATTERN_SELECT },
   patternBinding: { include: { patternTemplate: true } },
+  patternTemplate: { select: TEMPLATE_PATTERN_SELECT },
 } satisfies Prisma.PublicationSlotSelect;
 
 /** Slot minimal chargé avec {@link slotEffectivePatternSelect}. */
 export type SlotWithEffectivePattern = {
   pattern: Prisma.AccountPatternGetPayload<{ select: typeof LEGACY_PATTERN_SELECT }> | null;
   patternBinding: Prisma.PatternBindingGetPayload<{ include: { patternTemplate: true } }> | null;
+  patternTemplate: Prisma.PatternTemplateGetPayload<{ select: typeof TEMPLATE_PATTERN_SELECT }> | null;
 };
 
 /**
  * Résout la config de recette effective d'un slot.
  * Précédence : AccountPattern legacy si présent (slots historiques inchangés),
- * sinon dérivé du PatternBinding (recette par compte). null si aucun des deux.
+ * sinon dérivé du PatternBinding (recette par compte), sinon dérivé directement
+ * du PatternTemplate global (missions sans compte ni binding). null si aucun.
+ *
+ * La 3e branche (patternTemplate direct) est indispensable : sans elle, une
+ * mission account-less résout `null` et TOUTE la chaîne auto (captions/cover/
+ * description/transitions) se skippe silencieusement — c'est le bug P2 que ce
+ * module existe pour corriger.
  */
 export function resolveSlotEffectivePattern(
   slot: SlotWithEffectivePattern,
@@ -106,6 +135,25 @@ export function resolveSlotEffectivePattern(
       allowsClientRevision: e.allowsClientRevision,
       needsBrief: e.needsBrief,
       needsRushes: e.needsRushes,
+    };
+  }
+  if (slot.patternTemplate) {
+    const t = slot.patternTemplate;
+    return {
+      source: t.source,
+      templateId: t.templateId,
+      captionPresetId: t.captionPresetId,
+      descriptionPromptId: t.descriptionPromptId,
+      coverMode: t.coverMode,
+      coverConfig: t.coverConfig,
+      needsCaptions: t.needsCaptions,
+      needsCaptionsMode: t.needsCaptionsMode,
+      needsDescription: t.needsDescription,
+      needsAdminValidation: t.needsAdminValidation,
+      needsClientValidation: t.needsClientValidation,
+      allowsClientRevision: t.allowsClientRevision,
+      needsBrief: t.needsBrief,
+      needsRushes: t.source === "manual_rushes",
     };
   }
   return null;

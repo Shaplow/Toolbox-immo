@@ -24,6 +24,8 @@ type CreateBody = {
   allowsClientRevision?: boolean;
   needsBrief?: boolean;
   notes?: string | null;
+  fieldSchema?: unknown;
+  autoSaveToLibraryId?: string | null;
 };
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"];
@@ -48,7 +50,29 @@ function validateBody(body: CreateBody, requireAll: boolean): string | null {
   if (body.coverMode !== undefined && !VALID_COVER_MODES.includes(body.coverMode)) {
     return `coverMode invalide`;
   }
+  if (body.fieldSchema !== undefined) {
+    if (!Array.isArray(body.fieldSchema)) return "fieldSchema doit être un tableau";
+    for (const f of body.fieldSchema as unknown[]) {
+      if (typeof f !== "string" || !(f as string).trim()) {
+        return "fieldSchema : chaque champ doit être une chaîne non vide";
+      }
+    }
+  }
   return null;
+}
+
+/** Nettoie un fieldSchema reçu : trim + dédupe. */
+function cleanFieldSchema(raw: unknown[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const f of raw) {
+    const s = (f as string).trim();
+    if (s && !seen.has(s)) {
+      seen.add(s);
+      result.push(s);
+    }
+  }
+  return result;
 }
 
 export async function GET() {
@@ -80,6 +104,24 @@ export async function POST(req: NextRequest) {
   const err = validateBody(body, true);
   if (err) return NextResponse.json({ error: err }, { status: 400 });
 
+  // Valide autoSaveToLibraryId si fourni.
+  if (body.autoSaveToLibraryId) {
+    const lib = await prisma.mediaLibrary.findUnique({
+      where: { id: body.autoSaveToLibraryId },
+      select: { id: true, type: true },
+    });
+    if (!lib) {
+      return NextResponse.json({ error: "autoSaveToLibraryId : bibliothèque introuvable" }, { status: 400 });
+    }
+    if (lib.type !== "video") {
+      return NextResponse.json({ error: "autoSaveToLibraryId : la bibliothèque doit être de type vidéo" }, { status: 400 });
+    }
+  }
+
+  const cleanedFieldSchema = body.fieldSchema
+    ? cleanFieldSchema(body.fieldSchema as unknown[])
+    : [];
+
   const created = await prisma.patternTemplate.create({
     data: {
       label: body.label!.trim(),
@@ -100,6 +142,8 @@ export async function POST(req: NextRequest) {
       allowsClientRevision: body.allowsClientRevision ?? false,
       needsBrief: body.needsBrief ?? false,
       notes: body.notes ?? null,
+      fieldSchema: JSON.stringify(cleanedFieldSchema),
+      autoSaveToLibraryId: body.autoSaveToLibraryId ?? null,
       // Sprint D — audit log light : trace l'auteur de la création.
       updatedByUserId: ctx.actualUser.id,
     },

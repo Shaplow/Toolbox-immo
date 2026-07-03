@@ -18,6 +18,7 @@ import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { useAutoSave } from "@/hooks/useAutoSave";
+import { FlexFieldsEditor } from "@/components/calendar/FlexFieldsEditor";
 import { DeployTemplateModal } from "./DeployTemplateModal";
 
 const SOURCE_OPTIONS = [
@@ -59,6 +60,10 @@ export interface PatternTemplateInitial {
   needsBrief: boolean;
   notes: string | null;
   bindingCount?: number;
+  /** Noms des champs personnalisés hérités par les missions créées depuis cette recette. */
+  fieldSchema?: string[];
+  /** Bibliothèque vidéo cible pour l'auto-save de la sortie. null = désactivé. */
+  autoSaveToLibraryId?: string | null;
 }
 
 export interface PatternTemplateFormValues {
@@ -75,6 +80,8 @@ export interface PatternTemplateFormValues {
   allowsClientRevision: boolean;
   needsBrief: boolean;
   notes: string | null;
+  fieldSchema: string[];
+  autoSaveToLibraryId: string | null;
 }
 
 interface PatternTemplateFormProps {
@@ -83,6 +90,8 @@ interface PatternTemplateFormProps {
   builderTemplates: { id: string; name: string }[];
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
+  /** Bibliothèques de type "video" disponibles pour l'auto-save de sortie. */
+  videoLibraries: { id: string; name: string }[];
   saving: boolean;
   onSave: (values: PatternTemplateFormValues) => Promise<void> | void;
   onArchive?: () => void;
@@ -120,6 +129,7 @@ export function PatternTemplateForm({
   builderTemplates,
   captionPresets,
   descriptionPrompts,
+  videoLibraries,
   saving,
   onSave,
   onArchive,
@@ -146,6 +156,12 @@ export function PatternTemplateForm({
   );
   const [needsBrief, setNeedsBrief] = useState(initial?.needsBrief ?? false);
   const [notes, setNotes] = useState<string>(initial?.notes ?? "");
+  // Missions — champs personnalisés hérités par les missions créées depuis cette recette.
+  const [fieldSchema, setFieldSchema] = useState<string[]>(initial?.fieldSchema ?? []);
+  // Missions — bibliothèque vidéo cible pour l'auto-save. "" = null (désactivé).
+  const [autoSaveLibraryId, setAutoSaveLibraryId] = useState<string>(
+    initial?.autoSaveToLibraryId ?? "",
+  );
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Sprint D — confirmation impact avant save quand la recette est utilisée
@@ -252,6 +268,8 @@ export function PatternTemplateForm({
           templateId?: string | null;
           captionPresetId?: string | null;
           descriptionPromptId?: string | null;
+          fieldSchema?: string | null;
+          autoSaveToLibraryId?: string | null;
           bindings?: LinkedBinding[];
           updatedBy?: { name: string | null } | null;
           updatedAt?: string;
@@ -265,6 +283,17 @@ export function PatternTemplateForm({
           setCaptionPresetId(d.captionPresetId ?? "");
         if (d.descriptionPromptId !== undefined)
           setDescriptionPromptId(d.descriptionPromptId ?? "");
+        // Missions — fieldSchema est stocké en JSON string en DB.
+        if (d.fieldSchema !== undefined && d.fieldSchema !== null) {
+          try {
+            const parsed: unknown = JSON.parse(d.fieldSchema);
+            if (Array.isArray(parsed)) setFieldSchema(parsed as string[]);
+          } catch {
+            // ignore parse error — garde l'état courant
+          }
+        }
+        if (d.autoSaveToLibraryId !== undefined)
+          setAutoSaveLibraryId(d.autoSaveToLibraryId ?? "");
         setLinkedBindings(d.bindings ?? []);
         if (d.updatedBy?.name && d.updatedAt) {
           setUpdatedBy({ name: d.updatedBy.name, at: d.updatedAt });
@@ -321,6 +350,8 @@ export function PatternTemplateForm({
       allowsClientRevision: needsClientValidation && allowsClientRevision,
       needsBrief,
       notes: notes.trim() || null,
+      fieldSchema,
+      autoSaveToLibraryId: autoSaveLibraryId || null,
     };
 
     // Sprint D — Si la recette est utilisée par au moins 1 binding et que
@@ -337,7 +368,9 @@ export function PatternTemplateForm({
         initial.descriptionPromptId !== values.descriptionPromptId ||
         initial.coverMode !== values.coverMode ||
         initial.needsCaptionsMode !== values.needsCaptionsMode ||
-        initial.needsDescription !== values.needsDescription);
+        initial.needsDescription !== values.needsDescription ||
+        JSON.stringify(initial.fieldSchema ?? []) !== JSON.stringify(values.fieldSchema) ||
+        (initial.autoSaveToLibraryId ?? null) !== values.autoSaveToLibraryId);
     if (bindingCount > 0 && isStructuralChange) {
       setPendingValues(values);
       return;
@@ -545,6 +578,37 @@ export function PatternTemplateForm({
               />
             </div>
           )}
+        </section>
+
+        {/* Missions */}
+        <section className="space-y-3 pt-4 border-t border-white/40">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
+            Missions
+          </h3>
+          <FormField
+            label="Champs personnalisés"
+            help="Noms des champs hérités par les missions créées depuis cette recette."
+          >
+            <FlexFieldsEditor
+              schema={fieldSchema}
+              values={{}}
+              schemaOnly
+              onChange={(schema) => setFieldSchema(schema)}
+            />
+          </FormField>
+          <FormField
+            label="Auto-save sortie vers bibliothèque"
+            help="La sortie de génération est copiée automatiquement en tant que média vidéo."
+          >
+            <Combobox
+              value={autoSaveLibraryId}
+              onChange={setAutoSaveLibraryId}
+              options={[
+                { value: "", label: "Aucune (désactivé)" },
+                ...videoLibraries.map((lib) => ({ value: lib.id, label: lib.name })),
+              ]}
+            />
+          </FormField>
         </section>
 
         {/* Notes */}

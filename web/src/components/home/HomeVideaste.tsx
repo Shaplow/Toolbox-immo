@@ -186,7 +186,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                                 {slot.pattern?.label ?? slot.title ?? "Publication"}
                               </p>
                               <p className="text-[11px] text-muted-foreground">
-                                @{slot.account.handle}
+                                {slot.account ? `@${slot.account.handle}` : "Sans compte"}
                               </p>
                             </div>
                             <span className="text-[10.5px] text-success-700 shrink-0">
@@ -222,7 +222,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                                 {slot.pattern?.label ?? slot.title ?? "Publication"}
                               </p>
                               <p className="text-[11px] text-muted-foreground">
-                                @{slot.account.handle}
+                                {slot.account ? `@${slot.account.handle}` : "Sans compte"}
                               </p>
                             </div>
                             <span className="text-[10.5px] text-muted-foreground shrink-0">

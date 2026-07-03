@@ -20,6 +20,7 @@ import {
   MoreVertical,
   Rocket,
   Trash2,
+  Clapperboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
@@ -62,6 +63,7 @@ interface PatternsCatalogClientProps {
   builderTemplates: { id: string; name: string }[];
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
+  videoLibraries: { id: string; name: string }[];
 }
 
 export function PatternsCatalogClient({
@@ -69,6 +71,7 @@ export function PatternsCatalogClient({
   builderTemplates,
   captionPresets,
   descriptionPrompts,
+  videoLibraries,
 }: PatternsCatalogClientProps) {
   const router = useRouter();
   const [items, setItems] = useState<CatalogItem[]>(initialTemplates);
@@ -229,6 +232,11 @@ export function PatternsCatalogClient({
                     }
                     items={[
                       {
+                        label: "Lancer une mission",
+                        icon: Clapperboard,
+                        onClick: () => router.push(`/missions/new?recipeId=${item.id}`),
+                      },
+                      {
                         label: "Appliquer à des comptes",
                         icon: Rocket,
                         onClick: () => setDeployTarget(item),
@@ -341,6 +349,7 @@ export function PatternsCatalogClient({
             builderTemplates={builderTemplates}
             captionPresets={captionPresets}
             descriptionPrompts={descriptionPrompts}
+            videoLibraries={videoLibraries}
             saving={saving}
             onSave={handleCreate}
             onClose={closeDrawer}

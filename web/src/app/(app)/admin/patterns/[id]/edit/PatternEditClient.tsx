@@ -25,6 +25,7 @@ interface PatternEditClientProps {
   builderTemplates: { id: string; name: string }[];
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
+  videoLibraries: { id: string; name: string }[];
 }
 
 export function PatternEditClient({
@@ -33,6 +34,7 @@ export function PatternEditClient({
   builderTemplates,
   captionPresets,
   descriptionPrompts,
+  videoLibraries,
 }: PatternEditClientProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -112,6 +114,7 @@ export function PatternEditClient({
                 builderTemplates={builderTemplates}
                 captionPresets={captionPresets}
                 descriptionPrompts={descriptionPrompts}
+                videoLibraries={videoLibraries}
                 saving={saving}
                 onSave={handleSave}
                 onArchive={handleArchive}

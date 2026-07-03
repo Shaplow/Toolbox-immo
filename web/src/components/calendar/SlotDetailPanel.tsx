@@ -581,24 +581,34 @@ export function SlotDetailPanel({
               </h2>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {dateLabel} · {timeLabel} ·{" "}
-                <Link
-                  href={`/admin/accounts/${slot.accountId}`}
-                  className="hover:text-foreground transition-colors"
-                >
-                  @{slot.account.handle}
-                </Link>
+                {slot.account ? (
+                  <Link
+                    href={`/admin/accounts/${slot.accountId}`}
+                    className="hover:text-foreground transition-colors"
+                  >
+                    @{slot.account.handle}
+                  </Link>
+                ) : (
+                  <span>Sans compte</span>
+                )}
               </p>
               {slot.pattern?.label && (
                 <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Sparkles size={11} className="shrink-0" />
                   <span>Recette :</span>
-                  <Link
-                    href={`/admin/accounts/${slot.accountId}`}
-                    className="text-foreground hover:underline truncate max-w-[18ch]"
-                    title={`Éditer la recette « ${slot.pattern.label} » sur @${slot.account.handle}`}
-                  >
-                    {slot.pattern.label}
-                  </Link>
+                  {slot.account ? (
+                    <Link
+                      href={`/admin/accounts/${slot.accountId}`}
+                      className="text-foreground hover:underline truncate max-w-[18ch]"
+                      title={`Éditer la recette « ${slot.pattern.label} » sur @${slot.account.handle}`}
+                    >
+                      {slot.pattern.label}
+                    </Link>
+                  ) : (
+                    <span className="text-foreground truncate max-w-[18ch]" title={slot.pattern.label}>
+                      {slot.pattern.label}
+                    </span>
+                  )}
                 </p>
               )}
             </div>
@@ -807,7 +817,7 @@ export function SlotDetailPanel({
               {/* Lien rapide Générer pour slots one-off avec templateId */}
               {!isRestricted && slot.templateId && (
                 <a
-                  href={`/generate/${slot.templateId}?accountId=${slot.accountId}&slotId=${slot.id}`}
+                  href={`/generate/${slot.templateId}?${slot.accountId ? `accountId=${slot.accountId}&` : ""}slotId=${slot.id}`}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-[13px] text-info-700 rounded-md bg-info-50/60  hover:bg-info-50/85 transition-colors"

@@ -79,8 +79,8 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       },
     });
     if (slot) {
-      if (!accountId) accountId = slot.accountId;
-      slotBannerContext = { title: slot.title, handle: slot.account.handle };
+      if (!accountId) accountId = slot.accountId ?? undefined;
+      slotBannerContext = { title: slot.title, handle: slot.account?.handle ?? "Sans compte" };
       try {
         const slotFields = JSON.parse(slot.fields) as Record<string, string>;
         // Slot fields are base values; listingId data (if any) takes precedence

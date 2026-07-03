@@ -249,7 +249,8 @@ export interface PublicationFichePermissions {
 
 export interface PublicationFicheProps {
   slot: SlotInfo;
-  account: AccountInfo;
+  /** null = mission sans compte Instagram (production stock). */
+  account: AccountInfo | null;
   listing: { id: string } | null;
   pattern: PatternInfo | null;
   render: RenderInfo | null;
