@@ -213,6 +213,78 @@ describe("createSlot — champs requis", () => {
       createSlot({ patternTemplateId: "tpl-archived" }, makeAdminCtx()),
     ).rejects.toBeInstanceOf(ValidationError);
   });
+
+  it("mission avec compte + binding existant → hérite des assignés par défaut du binding", async () => {
+    // Un binding existe pour (compte, recette) → il doit être résolu et ses
+    // assignés par défaut (monteur/cm/vidéaste) reportés sur la mission.
+    mockBindingFindFirst.mockResolvedValue({ id: "binding-1" });
+    mockBindingFindUnique.mockResolvedValue({
+      id: "binding-1",
+      accountId: "account-A",
+      captionPresetIdOverride: null,
+      descriptionPromptIdOverride: null,
+      coverModeOverride: null,
+      defaultAssigneeMonteurId: "monteur-1",
+      defaultAssigneeCmId: "cm-1",
+      defaultAssigneeVideasteId: "videaste-1",
+      patternTemplate: {
+        label: "Recette Compte",
+        source: "auto_template",
+        captionPresetId: "capt-1",
+        descriptionPromptId: null,
+        needsCaptions: false,
+        needsDescription: "none",
+        coverMode: "none",
+        coverConfig: null,
+      },
+    });
+    mockUserFindUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) => {
+        const roleById: Record<string, string> = {
+          "monteur-1": "MONTEUR",
+          "cm-1": "CM",
+          "videaste-1": "VIDEASTE",
+        };
+        return Promise.resolve({ role: roleById[where.id] ?? "ADMIN" });
+      },
+    );
+
+    const slot = await createSlot(
+      { patternTemplateId: "tpl-1", accountId: "account-A" },
+      makeAdminCtx(),
+    );
+
+    expect(mockBindingFindFirst).toHaveBeenCalled();
+    expect(slot.assigneeMonteurId).toBe("monteur-1");
+    expect(slot.assigneeCmId).toBe("cm-1");
+    expect(slot.assigneeVideasteId).toBe("videaste-1");
+    // Slot binding normal : patternBindingId renseigné, patternTemplateId nullifié.
+    expect(slot.patternBindingId).toBe("binding-1");
+    expect(slot.patternTemplateId).toBeNull();
+  });
+
+  it("mission SANS compte → pas de binding résolu, aucun assigné par défaut", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValue({
+      id: "tpl-1",
+      label: "Recette Mission",
+      source: "auto_template",
+      isArchived: false,
+      captionPresetId: null,
+      descriptionPromptId: null,
+      needsCaptions: false,
+      needsDescription: "none",
+      coverMode: "none",
+      coverConfig: null,
+      fieldSchema: "[]",
+    });
+
+    const slot = await createSlot({ patternTemplateId: "tpl-1" }, makeAdminCtx());
+
+    expect(mockBindingFindFirst).not.toHaveBeenCalled();
+    expect(slot.assigneeMonteurId).toBeNull();
+    expect(slot.patternBindingId).toBeNull();
+    expect(slot.patternTemplateId).toBe("tpl-1");
+  });
 });
 
 // ─── Invariant 3 : pattern cross-account ────────────────────────────────────

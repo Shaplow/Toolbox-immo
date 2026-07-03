@@ -33,6 +33,11 @@ const RECIPE_ID = "e2e-mission-recipe";
 const RECIPE_FIELDS = ["adresse", "prix"];
 const createdSlotIds: string[] = [];
 
+// Fixtures pour le cas « mission avec compte hérite du binding ».
+let bindingId: string | null = null;
+let seededAccountId: string | null = null;
+let seededMonteurId: string | null = null;
+
 test.beforeAll(async () => {
   // Recette globale minimale (sans compte, sans overrides bloquants).
   await prismaTest.patternTemplate.upsert({
@@ -59,10 +64,34 @@ test.beforeAll(async () => {
       isArchived: false,
     },
   });
+
+  // Binding (recette appliquée à un compte) avec un monteur par défaut — pour
+  // vérifier qu'une mission avec compte en hérite.
+  const [monteur, account] = await Promise.all([
+    prismaTest.user.findFirst({ where: { role: "MONTEUR" }, select: { id: true } }),
+    prismaTest.instagramAccount.findFirst({ select: { id: true } }),
+  ]);
+  seededMonteurId = monteur?.id ?? null;
+  seededAccountId = account?.id ?? null;
+  if (seededAccountId && seededMonteurId) {
+    const binding = await prismaTest.patternBinding.create({
+      data: {
+        accountId: seededAccountId,
+        patternTemplateId: RECIPE_ID,
+        dayOfWeek: [],
+        publishTime: "09:00",
+        isActive: true,
+        defaultAssigneeMonteurId: seededMonteurId,
+      },
+      select: { id: true },
+    });
+    bindingId = binding.id;
+  }
 });
 
 test.afterAll(async () => {
-  // Teardown tolérant : slots créés puis la recette fixture.
+  // Teardown tolérant : slots créés, puis binding, puis la recette fixture
+  // (le binding référence le template avec onDelete=Restrict → avant la recette).
   if (createdSlotIds.length) {
     await prismaTest.publicationSlot
       .deleteMany({ where: { id: { in: createdSlotIds } } })
@@ -71,6 +100,12 @@ test.afterAll(async () => {
   await prismaTest.publicationSlot
     .deleteMany({ where: { patternTemplateId: RECIPE_ID } })
     .catch(() => {});
+  if (bindingId) {
+    await prismaTest.publicationSlot
+      .deleteMany({ where: { patternBindingId: bindingId } })
+      .catch(() => {});
+    await prismaTest.patternBinding.delete({ where: { id: bindingId } }).catch(() => {});
+  }
   await prismaTest.patternTemplate.delete({ where: { id: RECIPE_ID } }).catch(() => {});
   await prismaTest.$disconnect();
 });
@@ -127,6 +162,30 @@ test.describe("Missions — création API", () => {
     const slot = await res.json();
     createdSlotIds.push(slot.id);
     expect(slot.fields).toMatchObject({ adresse: "12 rue des Lilas", prix: "350 000 €" });
+  });
+
+  test("mission avec compte lié à la recette → hérite du monteur par défaut du binding", async ({
+    page,
+    request,
+  }) => {
+    test.skip(
+      !bindingId || !seededAccountId || !seededMonteurId,
+      "fixtures compte/monteur/binding absentes du seed",
+    );
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+
+    const res = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { patternTemplateId: RECIPE_ID, accountId: seededAccountId },
+    });
+    expect(res.ok()).toBeTruthy();
+    const slot = await res.json();
+    createdSlotIds.push(slot.id);
+
+    // Le binding (compte, recette) est résolu → assigné par défaut reporté.
+    expect(slot.assigneeMonteurId).toBe(seededMonteurId);
+    expect(slot.patternBindingId).toBe(bindingId);
   });
 
   test("recette obligatoire : POST sans patternTemplateId → 400", async ({

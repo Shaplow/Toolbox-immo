@@ -182,14 +182,34 @@ export async function createSlot(
     defaultAssigneeVideasteId: string | null;
   } | null = null;
 
+  // Missions — si une recette GLOBALE (patternTemplateId) est fournie AVEC un
+  // compte, et qu'un binding existe pour (compte, recette), on l'utilise : la
+  // mission hérite alors de TOUTE la config du compte — overrides ET assignés
+  // par défaut (monteur / cm / vidéaste). Sans compte ni binding correspondant,
+  // on reste sur la recette globale brute (pas d'assignés par défaut : ils
+  // vivent au niveau du binding, per-compte, pas sur le PatternTemplate global).
+  let effectiveBindingId: string | null = input.patternBindingId ?? null;
+  if (!effectiveBindingId && input.patternTemplateId && input.accountId) {
+    const accountBinding = await prisma.patternBinding.findFirst({
+      where: {
+        accountId: input.accountId,
+        patternTemplateId: input.patternTemplateId,
+        isActive: true,
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (accountBinding) effectiveBindingId = accountBinding.id;
+  }
+
   // P2 — Résolution du pattern via PatternBinding (canonique) avec compat
   // legacy : on accepte patternBindingId (préféré) OU patternId (legacy).
   // Si seul patternId est fourni, on tente de résoudre vers le binding
   // équivalent (créé par le backfill migrate-patterns-to-templates).
-  let resolvedBindingId: string | null = input.patternBindingId ?? null;
-  if (input.patternBindingId) {
+  let resolvedBindingId: string | null = effectiveBindingId;
+  if (effectiveBindingId) {
     const binding = await prisma.patternBinding.findUnique({
-      where: { id: input.patternBindingId },
+      where: { id: effectiveBindingId },
       include: { patternTemplate: true },
     });
     if (!binding) {
@@ -389,7 +409,9 @@ export async function createSlot(
       isAuto: false,
       patternId: input.patternId ?? null,
       patternBindingId: resolvedBindingId,
-      patternTemplateId: input.patternTemplateId ?? null,
+      // Si un binding a été résolu (mission avec compte → recette du compte), le
+      // slot devient un slot binding normal ; on ne double pas avec le template.
+      patternTemplateId: resolvedBindingId ? null : (input.patternTemplateId ?? null),
       assigneeMonteurId: resolvedAssigneeMonteurId,
       assigneeCmId: resolvedAssigneeCmId,
       assigneeVideasteId: resolvedAssigneeVideasteId,
