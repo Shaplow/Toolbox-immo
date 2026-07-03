@@ -136,6 +136,18 @@ const SURFACES: Surface[] = [
     wait: 800,
     desc: "Création de mission — recette (catalogue global) + compte optionnel + champs perso",
   },
+  {
+    name: "12-biens-list",
+    path: "/biens",
+    wait: 700,
+    desc: "Liste des biens (fiches de données partagées) — recherche + création",
+  },
+  {
+    name: "13-bien-editor",
+    path: "/biens/ux-bien-demo",
+    wait: 700,
+    desc: "Éditeur d'un bien — label + champs partagés + Lancer des missions",
+  },
 ];
 
 // ─── SCENARIOS (workflows multi-pages) ──────────────────────────────────────

@@ -609,6 +609,7 @@ export default async function PublicationPage({ params }: PageProps) {
         notes: slot.notes,
         captionPresetIdOverride: slot.captionPresetIdOverride,
         descriptionPromptIdOverride: slot.descriptionPromptIdOverride,
+        propertyId: slot.propertyId,
       }}
       account={
         slot.account

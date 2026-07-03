@@ -43,35 +43,69 @@ export function BienEditorClient({
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [launchOpen, setLaunchOpen] = useState(false);
+  // Modifications non enregistrées — pilote l'auto-save avant « Lancer des missions »
+  // (sinon les missions se prérempliraient depuis les valeurs figées en base).
+  const [dirty, setDirty] = useState(false);
+
+  function handleLabelChange(value: string) {
+    setLabel(value);
+    setDirty(true);
+  }
 
   function handleFlexChange(schema: string[], values: Record<string, string>) {
     setFieldSchema(schema);
     setFields(values);
+    setDirty(true);
+  }
+
+  /** PATCH le bien. Retourne true si enregistré. Toast d'erreur en cas d'échec. */
+  async function persist(): Promise<boolean> {
+    if (!label.trim()) {
+      toast.error("Le nom du bien est requis.");
+      return false;
+    }
+    const res = await fetch(`/api/properties/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: label.trim(), fields, fieldSchema }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      toast.error(data.error ?? "Erreur lors de la sauvegarde");
+      return false;
+    }
+    setDirty(false);
+    return true;
   }
 
   async function handleSave() {
-    if (!label.trim()) {
-      toast.error("Le nom du bien est requis.");
-      return;
-    }
     setSaving(true);
     try {
-      const res = await fetch(`/api/properties/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: label.trim(), fields, fieldSchema }),
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        toast.error(data.error ?? "Erreur lors de la sauvegarde");
-        return;
-      }
-      toast.success("Bien enregistré.");
+      if (await persist()) toast.success("Bien enregistré.");
     } catch {
       toast.error("Erreur réseau");
     } finally {
       setSaving(false);
     }
+  }
+
+  /** Ouvre la modal de lancement — auto-enregistre d'abord si des changements
+   *  sont en attente, pour que les missions partent des valeurs à jour. */
+  async function handleOpenLaunch() {
+    if (dirty) {
+      setSaving(true);
+      let ok = false;
+      try {
+        ok = await persist();
+      } catch {
+        toast.error("Erreur réseau");
+      } finally {
+        setSaving(false);
+      }
+      if (!ok) return;
+      toast.success("Modifications enregistrées.");
+    }
+    setLaunchOpen(true);
   }
 
   async function handleArchive() {
@@ -109,7 +143,7 @@ export function BienEditorClient({
         <FormField label="Nom du bien" required>
           <Input
             value={label}
-            onChange={(value) => setLabel(value)}
+            onChange={handleLabelChange}
             placeholder="Ex : 12 rue des Lilas — T3"
             maxLength={200}
           />
@@ -132,14 +166,15 @@ export function BienEditorClient({
           <h2 className="text-[13px] font-semibold text-foreground">Missions du bien</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Créez plusieurs vidéos de ce bien en une fois — une par recette, toutes
-            préremplies depuis ses champs.
+            préremplies depuis ses champs{dirty ? " (les modifications en cours seront enregistrées d'abord)" : ""}.
           </p>
         </div>
         <Button
           variant="secondary"
           size="sm"
           icon={Clapperboard}
-          onClick={() => setLaunchOpen(true)}
+          onClick={handleOpenLaunch}
+          disabled={saving}
           className="shrink-0"
         >
           Lancer des missions

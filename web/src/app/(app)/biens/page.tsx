@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { safeJSON } from "@/lib/utils/json";
 import { BiensListClient, type BienListItem } from "./BiensListClient";
 
+const DEFAULT_SCHEMA_KEY = "property.defaultFieldSchema";
+
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -23,17 +25,20 @@ export default async function BiensPage() {
     redirect("/home");
   }
 
-  const raw = await prisma.property.findMany({
-    where: { isArchived: false },
-    select: {
-      id: true,
-      label: true,
-      fieldSchema: true,
-      updatedAt: true,
-      _count: { select: { slots: true } },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+  const [raw, defaultSetting] = await Promise.all([
+    prisma.property.findMany({
+      where: { isArchived: false },
+      select: {
+        id: true,
+        label: true,
+        fieldSchema: true,
+        updatedAt: true,
+        _count: { select: { slots: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.appSetting.findUnique({ where: { key: DEFAULT_SCHEMA_KEY } }),
+  ]);
 
   const biens: BienListItem[] = raw.map((p) => ({
     id: p.id,
@@ -43,5 +48,9 @@ export default async function BiensPage() {
     slotCount: p._count.slots,
   }));
 
-  return <BiensListClient initialBiens={biens} />;
+  const defaultFieldSchema = defaultSetting
+    ? safeJSON<string[]>(defaultSetting.value, [])
+    : [];
+
+  return <BiensListClient initialBiens={biens} defaultFieldSchema={defaultFieldSchema} />;
 }

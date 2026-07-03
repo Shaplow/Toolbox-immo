@@ -13,7 +13,6 @@ import {
   X,
   Inbox,
   Calendar as CalendarIcon,
-  PackagePlus,
   CheckSquare,
   Square,
   UserCheck,
@@ -26,7 +25,6 @@ import type { UserRole } from "@/types/roles";
 import { SlotCard } from "./SlotCard";
 import { SlotDetailPanel, type SlotDetailPanelMode } from "./SlotDetailPanel";
 import { AddSlotModal } from "./AddSlotModal";
-import { BulkStockModal } from "./BulkStockModal";
 import { BankView } from "./BankView";
 import { BankRail } from "./BankRail";
 import { isReadyToSchedule } from "@/lib/slots/bankReady";
@@ -162,7 +160,6 @@ export function CalendarView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<PublicationSlot | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [showBulkStock, setShowBulkStock] = useState(false);
   const [scheduleFromBank, setScheduleFromBank] = useState<PublicationSlot | null>(null);
   const [addDefaultDate, setAddDefaultDate] = useState<string | undefined>(undefined);
   // Phase 2 — rail latéral banque en vue semaine (drag→jour). Slots possédés
@@ -696,28 +693,17 @@ export function CalendarView({
 
             {/* Actions admin contextuelles */}
             <>
+                {/* Missions — un seul point d'entrée : le formulaire complet
+                    (recette + compte optionnel + bien). */}
                 {isAdmin && view === "bank" && (
                   <Button
                     variant="primary"
                     size="sm"
-                    icon={PackagePlus}
-                    onClick={() => setShowBulkStock(true)}
-                    title="Créer des missions sans date"
-                  >
-                    Nouvelles missions
-                  </Button>
-                )}
-
-                {/* Missions — création recette-first (compte optionnel) via l'outil. */}
-                {isAdmin && view === "bank" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
                     icon={Clapperboard}
                     onClick={() => router.push("/missions/new")}
-                    title="Générer depuis une recette (compte optionnel)"
+                    title="Créer une mission (recette, compte optionnel, bien)"
                   >
-                    Depuis une recette
+                    Nouvelle mission
                   </Button>
                 )}
 
@@ -960,24 +946,6 @@ export function CalendarView({
           defaultDate={addDefaultDate}
           onCreated={handleSlotCreated}
           onClose={() => setShowAdd(false)}
-        />
-      )}
-
-      {/* Modal bulk-stock banque (admin only) */}
-      {showBulkStock && isAdmin && (
-        <BulkStockModal
-          accounts={accounts}
-          monteurs={monteurs}
-          defaultAccountId={filters.accountId || undefined}
-          onCreated={(count) => {
-            // Maj optimiste du compteur banque : N slots créés en RUSHES_EXPECTED
-            // → +N au total, pas de changement sur readyCount.
-            setBacklogTotal((prev) => prev + count);
-            // Bascule sur la vue banque pour voir les missions créées.
-            switchView("bank");
-            void load();
-          }}
-          onClose={() => setShowBulkStock(false)}
         />
       )}
 

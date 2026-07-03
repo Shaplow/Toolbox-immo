@@ -1090,6 +1090,7 @@ export async function patchSlot(
     title,
     description,
     templateId,
+    propertyId,
     scheduledAt,
     fields,
     fieldSchema,
@@ -1422,6 +1423,8 @@ export async function patchSlot(
         description: (v) => v as string | null,
         notes: (v) => v as string | null,
         templateId: (v) => v as string | null,
+        // Biens — rattacher (id) ou détacher (null) la fiche bien partagée.
+        propertyId: (v) => v as string | null,
         // null = remise en banque ; string ISO = (re)planification.
         scheduledAt: (v) => (v === null ? null : new Date(v as string)),
         fields: (v) => JSON.stringify(v),
@@ -1447,7 +1450,7 @@ export async function patchSlot(
       };
 
       const FIELD_VALUES: Record<string, unknown> = {
-        status, title, description, notes, templateId, scheduledAt,
+        status, title, description, notes, templateId, propertyId, scheduledAt,
         fields, fieldSchema,
         assigneeMonteurId, assigneeCmId, assigneeVideasteId,
         patternId, currentVersionId, isAuto,

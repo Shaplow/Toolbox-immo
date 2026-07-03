@@ -278,6 +278,49 @@ test.describe("Missions — bien partagé", () => {
     });
     expect(res.status()).toBe(400);
   });
+
+  test("rattacher/changer le bien d'une mission EXISTANTE via PATCH", async ({
+    page,
+    request,
+  }) => {
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+
+    // Mission sans bien.
+    const createRes = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { patternTemplateId: RECIPE_ID },
+    });
+    expect(createRes.ok()).toBeTruthy();
+    const slot = await createRes.json();
+    createdSlotIds.push(slot.id);
+    expect(slot.propertyId).toBeNull();
+
+    // Rattache le bien via PATCH (champ propertyId whitelisté ADMIN).
+    const patchRes = await request.patch(`/api/calendar/slots/${slot.id}`, {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { propertyId: PROPERTY_ID },
+    });
+    expect(patchRes.ok()).toBeTruthy();
+
+    const dbSlot = await prismaTest.publicationSlot.findUnique({
+      where: { id: slot.id },
+      select: { propertyId: true },
+    });
+    expect(dbSlot?.propertyId).toBe(PROPERTY_ID);
+
+    // Détache (null).
+    const detachRes = await request.patch(`/api/calendar/slots/${slot.id}`, {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { propertyId: null },
+    });
+    expect(detachRes.ok()).toBeTruthy();
+    const dbSlot2 = await prismaTest.publicationSlot.findUnique({
+      where: { id: slot.id },
+      select: { propertyId: true },
+    });
+    expect(dbSlot2?.propertyId).toBeNull();
+  });
 });
 
 test.describe("Missions — gating outil", () => {

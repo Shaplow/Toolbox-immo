@@ -183,6 +183,8 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "patternId",
       "currentVersionId",
       "isAuto",
+      // Biens — rattacher/changer la fiche bien partagée d'une mission existante.
+      "propertyId",
       // W2 — override per-slot de la config validation client
       "needsClientValidationOverride",
       "allowsClientRevisionOverride",
@@ -206,7 +208,7 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
     ],
     // CM édite la légende IG (champ `description` depuis la fusion Phase 2.1)
     // en plus de notes.
-    CM: ["status", "title", "notes", "description"],
+    CM: ["status", "title", "notes", "description", "propertyId"],
     // VIDEASTE : peut changer le statut (ex: shoot annulé) et écrire des notes
     // (compte-rendu sur place). Ne touche pas aux assignations ni au planning.
     VIDEASTE: ["status", "notes"],

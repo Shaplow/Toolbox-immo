@@ -31,6 +31,8 @@ export interface PublicationSlot {
   accountId: string | null;
   /** null = mission sans compte Instagram. */
   account: { id: string; name: string; handle: string } | null;
+  /** Biens — fiche de données partagée rattachée (résolue live à la génération). */
+  propertyId: string | null;
   scheduledAt: string | null; // ISO ; null = slot stocké en banque
   status: SlotStatus;
   title: string | null;

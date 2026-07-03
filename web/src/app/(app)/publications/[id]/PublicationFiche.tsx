@@ -16,6 +16,7 @@ import { PublicationHeader } from "@/components/publications/PublicationHeader";
 import { PublicationLiveRefresh } from "@/components/publications/PublicationLiveRefresh";
 import { NextActionBanner } from "@/components/publications/NextActionBanner";
 import { ProductionChain } from "@/components/publications/ProductionChain";
+import { SlotPropertySelect } from "@/components/publications/SlotPropertySelect";
 import { RenderSection } from "@/components/publications/sections/RenderSection";
 import { getSlotFinalVideoUrl, isFinalVideoCaptioned } from "@/lib/publications/finalVideo";
 import { CoverSection } from "@/components/publications/sections/CoverSection";
@@ -147,6 +148,8 @@ interface SlotInfo {
   // Phase 5 — overrides ressources (per-slot, ont priorité sur pattern)
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
+  /** Biens — fiche de données partagée rattachée. */
+  propertyId?: string | null;
 }
 
 interface AccountInfo {
@@ -499,6 +502,21 @@ export function PublicationFiche({
         <div className="mt-4 p-4 rounded-lg bg-card border border-border">
           <ProductionChain steps={steps} viewerRole={currentUserRole} />
         </div>
+
+        {/* Biens — rattacher/changer la fiche partagée (admin + CM). */}
+        {(currentUserRole === "ADMIN" || currentUserRole === "CM") && (
+          <div className="mt-4 p-4 rounded-lg bg-card border border-border flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-foreground">Bien</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Fiche partagée (adresse, prix…) qui préremplit la génération.
+              </p>
+            </div>
+            <div className="w-64 shrink-0">
+              <SlotPropertySelect slotId={slot.id} initialPropertyId={slot.propertyId ?? null} />
+            </div>
+          </div>
+        )}
 
         <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-6">
           {/* Colonne workflow — sections d'action */}

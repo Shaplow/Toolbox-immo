@@ -49,6 +49,7 @@ import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { FormField } from "@/components/ui/FormField";
+import { SlotPropertySelect } from "@/components/publications/SlotPropertySelect";
 import { Textarea } from "@/components/ui/Textarea";
 import { Combobox } from "@/components/ui/Combobox";
 import { DatePicker } from "@/components/ui/DatePicker";
@@ -778,6 +779,10 @@ export function SlotDetailPanel({
                   placeholder="Choisir un statut"
                   emptyMessage="Aucun statut"
                 />
+              </FormField>
+
+              <FormField label="Bien" help="Fiche partagée (adresse, prix…) qui préremplit la génération. Éditée une fois, propagée.">
+                <SlotPropertySelect slotId={slot.id} initialPropertyId={slot.propertyId} />
               </FormField>
 
               <FormField label="Notes internes" help="Visible uniquement par l'équipe interne. Auto-sauvegardé.">

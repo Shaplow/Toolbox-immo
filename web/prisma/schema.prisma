@@ -1344,3 +1344,11 @@ model PodState {
   activeJobCount Int       @default(0)
   updatedAt      DateTime  @updatedAt
 }
+
+/// Réglages applicatifs génériques clé/valeur (valeurs JSON sérialisées).
+/// Exemple : key="property.defaultFieldSchema" → value='["Mandat","Rue","Surface"]'
+model AppSetting {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}

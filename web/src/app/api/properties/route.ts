@@ -112,9 +112,18 @@ export async function POST(req: NextRequest) {
   const schemaErr = validateFieldSchema(body.fieldSchema);
   if (schemaErr) return NextResponse.json({ error: schemaErr }, { status: 400 });
 
-  const cleanSchema = body.fieldSchema
-    ? cleanFieldSchema(body.fieldSchema as unknown[])
-    : [];
+  // Si aucun fieldSchema fourni (ou vide), on hérite du modèle par défaut.
+  let cleanSchema: string[];
+  if (body.fieldSchema && (body.fieldSchema as unknown[]).length > 0) {
+    cleanSchema = cleanFieldSchema(body.fieldSchema as unknown[]);
+  } else {
+    const defaultSetting = await prisma.appSetting.findUnique({
+      where: { key: "property.defaultFieldSchema" },
+    });
+    cleanSchema = defaultSetting
+      ? (safeJSON<string[]>(defaultSetting.value, []))
+      : [];
+  }
 
   const created = await prisma.property.create({
     data: {
