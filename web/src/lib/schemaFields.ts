@@ -4,6 +4,7 @@ import type { ConditionMatch, SchemaField, SchemaFieldSectionLayout, SchemaField
 
 export const SCHEMA_FIELD_TYPES: { value: SchemaFieldType; label: string }[] = [
   { value: "text", label: "Texte" },
+  { value: "textarea", label: "Texte long" },
   { value: "number", label: "Nombre" },
   { value: "url", label: "URL" },
   { value: "image", label: "Image" },

@@ -33,11 +33,10 @@ export interface InstagramAccount {
   handle: string;
 }
 
-export type MetadataField = {
-  key: string;
-  label: string;
-  type: "text" | "number" | "url" | "textarea";
-};
+// Alias vers le type canonique partagé (customFields.ts).
+// Les ~10 imports existants `MetadataField` restent valides sans modification.
+import type { CustomField } from "@/lib/customFields";
+export type MetadataField = CustomField;
 
 export interface MediaLibrary {
   id: string;

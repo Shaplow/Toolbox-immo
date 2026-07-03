@@ -9,6 +9,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { safeJSON } from "@/lib/utils/json";
+import {
+  normalizeCustomFields,
+  validateCustomFields,
+  serializeCustomFields,
+} from "@/lib/customFields";
 
 const MAX_LABEL = 200;
 const MAX_KEY = 100;
@@ -35,28 +40,12 @@ function validateFields(fields: unknown): string | null {
   return null;
 }
 
-function validateFieldSchema(fieldSchema: unknown): string | null {
-  if (fieldSchema === undefined) return null;
-  if (!Array.isArray(fieldSchema)) return "fieldSchema doit être un tableau";
-  for (const f of fieldSchema as unknown[]) {
-    if (typeof f !== "string" || !(f as string).trim()) {
-      return "fieldSchema : chaque champ doit être une chaîne non vide";
-    }
+function parseFieldSchema(raw: unknown): { fields: ReturnType<typeof normalizeCustomFields>; error: string | null } {
+  if (raw !== undefined && !Array.isArray(raw)) {
+    return { fields: [], error: "fieldSchema doit être un tableau" };
   }
-  return null;
-}
-
-function cleanFieldSchema(raw: unknown[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const f of raw) {
-    const s = (f as string).trim();
-    if (s && !seen.has(s)) {
-      seen.add(s);
-      result.push(s);
-    }
-  }
-  return result;
+  const fields = normalizeCustomFields(raw);
+  return { fields, error: validateCustomFields(fields) };
 }
 
 interface Params {
@@ -77,7 +66,7 @@ function serialize(p: PropertyRow) {
     id: p.id,
     label: p.label,
     fields: safeJSON<Record<string, string>>(p.fields, {}),
-    fieldSchema: safeJSON<string[]>(p.fieldSchema, []),
+    fieldSchema: normalizeCustomFields(p.fieldSchema),
     updatedAt: p.updatedAt,
   };
 }
@@ -120,7 +109,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const fieldsErr = validateFields(body.fields);
   if (fieldsErr) return NextResponse.json({ error: fieldsErr }, { status: 400 });
 
-  const schemaErr = validateFieldSchema(body.fieldSchema);
+  const { fields: parsedSchema, error: schemaErr } = parseFieldSchema(body.fieldSchema);
   if (schemaErr) return NextResponse.json({ error: schemaErr }, { status: 400 });
 
   const existing = await prisma.property.findUnique({
@@ -137,7 +126,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.label !== undefined ? { label: (body.label as string).trim() } : {}),
       ...(body.fields !== undefined ? { fields: JSON.stringify(body.fields) } : {}),
       ...(body.fieldSchema !== undefined
-        ? { fieldSchema: JSON.stringify(cleanFieldSchema(body.fieldSchema as unknown[])) }
+        ? { fieldSchema: serializeCustomFields(parsedSchema) }
         : {}),
     },
     select: { id: true, label: true, fields: true, fieldSchema: true, updatedAt: true },

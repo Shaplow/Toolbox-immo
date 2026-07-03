@@ -13,6 +13,7 @@ import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { safeJSON } from "@/lib/utils/json";
+import { normalizeCustomFields } from "@/lib/customFields";
 import { PageShell } from "@/components/ui/PageShell";
 import { MissionForm } from "./MissionForm";
 
@@ -58,7 +59,7 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
     label: t.label,
     source: t.source,
     templateId: t.templateId,
-    fieldSchema: safeJSON<string[]>(t.fieldSchema, []),
+    fieldSchema: normalizeCustomFields(t.fieldSchema),
     autoSaveLibraryName: t.autoSaveToLibrary?.name ?? null,
   }));
 

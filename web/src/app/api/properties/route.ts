@@ -8,6 +8,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { safeJSON } from "@/lib/utils/json";
+import {
+  normalizeCustomFields,
+  validateCustomFields,
+  serializeCustomFields,
+} from "@/lib/customFields";
 
 const MAX_LABEL = 200;
 const MAX_KEY = 100;
@@ -34,28 +39,13 @@ function validateFields(fields: unknown): string | null {
   return null;
 }
 
-function validateFieldSchema(fieldSchema: unknown): string | null {
-  if (fieldSchema === undefined) return null;
-  if (!Array.isArray(fieldSchema)) return "fieldSchema doit être un tableau";
-  for (const f of fieldSchema as unknown[]) {
-    if (typeof f !== "string" || !(f as string).trim()) {
-      return "fieldSchema : chaque champ doit être une chaîne non vide";
-    }
+/** Normalise + valide un fieldSchema (accepte le legacy string[] ET CustomField[]). */
+function parseFieldSchema(raw: unknown): { fields: ReturnType<typeof normalizeCustomFields>; error: string | null } {
+  if (raw !== undefined && !Array.isArray(raw)) {
+    return { fields: [], error: "fieldSchema doit être un tableau" };
   }
-  return null;
-}
-
-function cleanFieldSchema(raw: unknown[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const f of raw) {
-    const s = (f as string).trim();
-    if (s && !seen.has(s)) {
-      seen.add(s);
-      result.push(s);
-    }
-  }
-  return result;
+  const fields = normalizeCustomFields(raw);
+  return { fields, error: validateCustomFields(fields) };
 }
 
 export async function GET(req: NextRequest) {
@@ -85,7 +75,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     properties.map((p) => ({
       ...p,
-      fieldSchema: safeJSON<string[]>(p.fieldSchema, []),
+      fieldSchema: normalizeCustomFields(p.fieldSchema),
     })),
   );
 }
@@ -109,27 +99,23 @@ export async function POST(req: NextRequest) {
   const fieldsErr = validateFields(body.fields);
   if (fieldsErr) return NextResponse.json({ error: fieldsErr }, { status: 400 });
 
-  const schemaErr = validateFieldSchema(body.fieldSchema);
+  const { fields: providedSchema, error: schemaErr } = parseFieldSchema(body.fieldSchema);
   if (schemaErr) return NextResponse.json({ error: schemaErr }, { status: 400 });
 
   // Si aucun fieldSchema fourni (ou vide), on hérite du modèle par défaut.
-  let cleanSchema: string[];
-  if (body.fieldSchema && (body.fieldSchema as unknown[]).length > 0) {
-    cleanSchema = cleanFieldSchema(body.fieldSchema as unknown[]);
-  } else {
+  let schema = providedSchema;
+  if (schema.length === 0) {
     const defaultSetting = await prisma.appSetting.findUnique({
       where: { key: "property.defaultFieldSchema" },
     });
-    cleanSchema = defaultSetting
-      ? (safeJSON<string[]>(defaultSetting.value, []))
-      : [];
+    schema = normalizeCustomFields(defaultSetting?.value);
   }
 
   const created = await prisma.property.create({
     data: {
       label: (body.label as string).trim(),
       fields: body.fields !== undefined ? JSON.stringify(body.fields) : "{}",
-      fieldSchema: JSON.stringify(cleanSchema),
+      fieldSchema: serializeCustomFields(schema),
       createdByUserId: ctx.actualUser.id,
     },
   });
@@ -138,7 +124,7 @@ export async function POST(req: NextRequest) {
     {
       ...created,
       fields: safeJSON<Record<string, string>>(created.fields, {}),
-      fieldSchema: safeJSON<string[]>(created.fieldSchema, []),
+      fieldSchema: normalizeCustomFields(created.fieldSchema),
     },
     { status: 201 },
   );

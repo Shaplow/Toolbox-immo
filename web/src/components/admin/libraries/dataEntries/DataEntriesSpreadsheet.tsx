@@ -27,6 +27,7 @@ import { AvatarGroup } from "@/components/ui/Avatar";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { toast } from "@/components/ui/Toast";
 import type { DataEntry, InstagramAccount } from "@/components/admin/libraries/DataEntriesPanel";
+import type { CustomField, CustomFieldType } from "@/lib/customFields";
 
 type SortKey = "setTag" | "category" | { fieldKey: string };
 type SortDir = "asc" | "desc";
@@ -36,15 +37,9 @@ function sortKeyEqual(a: SortKey, b: SortKey): boolean {
   return a.fieldKey === b.fieldKey;
 }
 
-export type FieldType = "text" | "number" | "url" | "textarea";
-
-export interface FieldDef {
-  key: string;
-  label: string;
-  type: FieldType;
-  required?: boolean;
-  primary?: boolean;
-}
+// Aliases vers les types canoniques — pas de duplication locale.
+export type FieldType = CustomFieldType;
+export type FieldDef = CustomField;
 
 interface Props {
   campaignId: string;

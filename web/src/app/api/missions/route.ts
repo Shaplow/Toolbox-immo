@@ -18,6 +18,7 @@ import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { createSlot, type CreateSlotInput } from "@/lib/services/slot/slotService";
 import { mapServiceError } from "@/lib/services/_runtime/mapServiceError";
+import { normalizeCustomFields } from "@/lib/customFields";
 
 export async function POST(req: NextRequest) {
   const userContext = await getUserContext();
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
         ? (body.fields as Record<string, string>)
         : undefined,
     fieldSchema: Array.isArray(body.fieldSchema)
-      ? (body.fieldSchema as string[])
+      ? normalizeCustomFields(body.fieldSchema)
       : undefined,
   };
 

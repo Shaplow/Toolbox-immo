@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { safeJSON } from "@/lib/utils/json";
+import { normalizeCustomFields } from "@/lib/customFields";
 import { BiensListClient, type BienListItem } from "./BiensListClient";
 
 const DEFAULT_SCHEMA_KEY = "property.defaultFieldSchema";
@@ -43,14 +43,12 @@ export default async function BiensPage() {
   const biens: BienListItem[] = raw.map((p) => ({
     id: p.id,
     label: p.label,
-    fieldSchema: safeJSON<string[]>(p.fieldSchema, []),
+    fieldSchema: normalizeCustomFields(p.fieldSchema),
     updatedAt: p.updatedAt.toISOString(),
     slotCount: p._count.slots,
   }));
 
-  const defaultFieldSchema = defaultSetting
-    ? safeJSON<string[]>(defaultSetting.value, [])
-    : [];
+  const defaultFieldSchema = normalizeCustomFields(defaultSetting?.value);
 
   return <BiensListClient initialBiens={biens} defaultFieldSchema={defaultFieldSchema} />;
 }

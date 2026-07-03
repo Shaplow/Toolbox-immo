@@ -35,15 +35,11 @@ import {
   Settings2,
   SlidersHorizontal,
   Tag,
-  Trash2,
   X,
 } from "lucide-react";
-
-interface MetadataField {
-  key: string;
-  label: string;
-  type: "text" | "number" | "url" | "textarea";
-}
+import type { CustomField } from "@/lib/customFields";
+import { normalizeCustomFields, validateCustomFields } from "@/lib/customFields";
+import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
 
 interface LibrarySettings {
   id: string;
@@ -74,21 +70,12 @@ function parseStringArray(json: string | null | undefined): string[] {
   }
 }
 
-function parseMetadataFields(json: string | null | undefined): MetadataField[] {
-  if (!json) return [];
-  try {
-    const v = JSON.parse(json);
-    if (!Array.isArray(v)) return [];
-    return v.filter((f) => f && typeof f.key === "string");
-  } catch {
-    return [];
-  }
-}
+// parseMetadataFields remplacée par normalizeCustomFields (importée depuis @/lib/customFields).
 
 export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }: Props) {
   const initialTags = useMemo(() => parseStringArray(library?.tags), [library?.tags]);
   const initialSeq = useMemo(() => parseStringArray(library?.setSequence), [library?.setSequence]);
-  const initialMeta = useMemo(() => parseMetadataFields(library?.metadataSchema), [library?.metadataSchema]);
+  const initialMeta = useMemo(() => normalizeCustomFields(library?.metadataSchema), [library?.metadataSchema]);
 
   const [name, setName] = useState(library?.name ?? "");
   const [description, setDescription] = useState(library?.description ?? "");
@@ -109,7 +96,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
   );
   const [sequence, setSequence] = useState<string[]>(initialSeq);
   const [seqDraft, setSeqDraft] = useState("");
-  const [metadataFields, setMetadataFields] = useState<MetadataField[]>(initialMeta);
+  const [metadataFields, setMetadataFields] = useState<CustomField[]>(initialMeta);
   // Burn-once : null = rotation infinie, sinon entier ≥ 1
   const [maxUsageCount, setMaxUsageCount] = useState<string>(
     library?.maxUsageCount != null ? String(library.maxUsageCount) : "",
@@ -197,7 +184,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
               : s.length > 0 ? "override" : "auto",
       );
       setRotationScope(library.rotationScope === "shared" ? "shared" : "per_account");
-      setMetadataFields(parseMetadataFields(library.metadataSchema));
+      setMetadataFields(normalizeCustomFields(library.metadataSchema));
       setMaxUsageCount(library.maxUsageCount != null ? String(library.maxUsageCount) : "");
       setSeqDraft("");
     }
@@ -226,32 +213,16 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
     setSequence((prev) => [...prev, v]);
     setSeqDraft("");
   }
-  function addMetaField() {
-    let n = metadataFields.length + 1;
-    while (metadataFields.some((f) => f.key === `champ${n}`)) n++;
-    setMetadataFields((prev) => [...prev, { key: `champ${n}`, label: "", type: "text" }]);
-  }
-  function updateMetaField(idx: number, patch: Partial<MetadataField>) {
-    setMetadataFields((prev) => prev.map((f, i) => (i === idx ? { ...f, ...patch } : f)));
-  }
-  function removeMetaField(idx: number) {
-    setMetadataFields((prev) => prev.filter((_, i) => i !== idx));
-  }
-
   async function handleSave() {
     if (!library) return;
     if (!name.trim()) {
       toast.error("Le nom est requis");
       return;
     }
-    // Validate metadata keys
-    const keys = metadataFields.map((f) => f.key.trim()).filter(Boolean);
-    if (new Set(keys).size !== keys.length) {
-      toast.error("Deux champs personnalisés ont la même clé");
-      return;
-    }
-    if (metadataFields.some((f) => !f.key.trim())) {
-      toast.error("Tous les champs personnalisés doivent avoir une clé");
+    // Validate metadata keys via le validateur canonique.
+    const metaError = validateCustomFields(metadataFields);
+    if (metaError) {
+      toast.error(metaError);
       return;
     }
     // Parse maxUsageCount : vide → null, sinon entier ≥ 1
@@ -460,51 +431,16 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
 
         {tab === "fields" && (
         <section className="rounded-2xl bg-card border border-border p-4  space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
-              Champs personnalisés
-            </h3>
-            <Button variant="ghost" size="sm" icon={Plus} onClick={addMetaField}>
-              Ajouter
-            </Button>
-          </div>
-          {metadataFields.length === 0 && (
-            <p className="text-[11px] text-muted-foreground italic">
-              Aucun champ personnalisé. Ajoute des champs comme « propriétaire », « prix », « lien », etc.
-            </p>
-          )}
-          {metadataFields.map((field, idx) => (
-            <div key={idx} className="grid grid-cols-[1fr_1.5fr_auto_auto] gap-2 items-center p-2 rounded-md bg-card border border-border">
-              <Input
-                value={field.key}
-                onChange={(v) => updateMetaField(idx, { key: v })}
-                placeholder="clé"
-              />
-              <Input
-                value={field.label}
-                onChange={(v) => updateMetaField(idx, { label: v })}
-                placeholder="Libellé visible"
-              />
-              <select
-                value={field.type}
-                onChange={(e) => updateMetaField(idx, { type: e.target.value as MetadataField["type"] })}
-                className="h-8 text-[12px] rounded-md bg-white/70 border border-border px-2 focus:outline-none focus:ring-2 focus:ring-info-200"
-              >
-                <option value="text">Texte</option>
-                <option value="number">Nombre</option>
-                <option value="url">URL</option>
-                <option value="textarea">Texte long</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => removeMetaField(idx)}
-                className="p-1.5 text-muted-foreground/60 hover:text-danger-600 rounded"
-                title="Supprimer ce champ"
-              >
-                <Trash2 size={12} />
-              </button>
-            </div>
-          ))}
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
+            Champs personnalisés
+          </h3>
+          <p className="text-[11px] text-muted-foreground italic">
+            Ajoute des champs comme « propriétaire », « prix », « lien »…
+          </p>
+          <CustomFieldsSchemaEditor
+            fields={metadataFields}
+            onChange={setMetadataFields}
+          />
         </section>
         )}
 

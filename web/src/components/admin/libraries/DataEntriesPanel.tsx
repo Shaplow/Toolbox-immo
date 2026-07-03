@@ -100,16 +100,11 @@ export interface InstagramAccount {
   handle: string;
 }
 
-type FieldType = "text" | "number" | "url" | "textarea";
-
-export interface FieldDef {
-  key: string;
-  label: string;
-  type: FieldType;
-  required?: boolean;
-  /** Marque le champ pour affichage dans la vue table compacte (Phase 1.x design). */
-  primary?: boolean;
-}
+// Aliases vers les types canoniques (customFields.ts) — pas de duplication locale.
+import type { CustomField, CustomFieldType } from "@/lib/customFields";
+import { normalizeCustomFields } from "@/lib/customFields";
+export type FieldType = CustomFieldType;
+export type FieldDef = CustomField;
 
 interface Props {
   campaignId: string;
@@ -118,18 +113,7 @@ interface Props {
   fieldsSchema?: string;
 }
 
-function parseFieldsSchema(raw: string | null | undefined): FieldDef[] {
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    if (!Array.isArray(v)) return [];
-    return v.filter((f): f is FieldDef =>
-      f && typeof f.key === "string" && typeof f.label === "string" && typeof f.type === "string",
-    );
-  } catch {
-    return [];
-  }
-}
+// parseFieldsSchema remplacée par normalizeCustomFields (importée depuis @/lib/customFields).
 
 import { useConfirm } from "@/components/ui/useConfirm";
 import { useBulkEditDataEntries } from "@/components/admin/libraries/dataEntries/useBulkEditDataEntries";
@@ -141,7 +125,7 @@ import {
 
 export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props) {
   // Phase 1.x — schéma de champs au niveau lib (source de vérité).
-  const declaredSchema = useMemo(() => parseFieldsSchema(fieldsSchema), [fieldsSchema]);
+  const declaredSchema = useMemo(() => normalizeCustomFields(fieldsSchema), [fieldsSchema]);
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [campaign, setCampaign] = useState<DataCampaign | null>(null);
   const [entries, setEntries] = useState<DataEntry[]>([]);

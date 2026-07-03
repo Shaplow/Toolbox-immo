@@ -18,20 +18,12 @@ import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
-import { Combobox } from "@/components/ui/Combobox";
+
 import { toast } from "@/components/ui/Toast";
-import { Copy, Link2, Plus, RefreshCw, Settings2, Trash2 } from "lucide-react";
-
-type FieldType = "text" | "number" | "url" | "textarea";
-
-interface FieldDef {
-  key: string;
-  label: string;
-  type: FieldType;
-  required?: boolean;
-  /** Visible dans la vue table compacte (Phase 1.x design). */
-  primary?: boolean;
-}
+import { Copy, Link2, RefreshCw, Settings2, Trash2 } from "lucide-react";
+import type { CustomField } from "@/lib/customFields";
+import { normalizeCustomFields, validateCustomFields } from "@/lib/customFields";
+import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
 
 interface DataLibrarySettings {
   id: string;
@@ -51,28 +43,10 @@ interface Props {
   onUpdated: () => void | Promise<void>;
 }
 
-const FIELD_TYPE_OPTIONS = [
-  { value: "text", label: "Texte court" },
-  { value: "textarea", label: "Texte long" },
-  { value: "number", label: "Nombre" },
-  { value: "url", label: "Lien URL" },
-];
-
-function parseSchema(raw: string | null | undefined): FieldDef[] {
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    if (!Array.isArray(v)) return [];
-    return v.filter((f): f is FieldDef =>
-      f && typeof f.key === "string" && typeof f.label === "string" && typeof f.type === "string",
-    );
-  } catch {
-    return [];
-  }
-}
+// FIELD_TYPE_OPTIONS et parseSchema remplacés par CustomFieldsSchemaEditor + normalizeCustomFields.
 
 export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }: Props) {
-  const initialSchema = useMemo(() => parseSchema(library?.fieldsSchema), [library?.fieldsSchema]);
+  const initialSchema = useMemo(() => normalizeCustomFields(library?.fieldsSchema), [library?.fieldsSchema]);
 
   const [name, setName] = useState(library?.name ?? "");
   const [description, setDescription] = useState(library?.description ?? "");
@@ -85,7 +59,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
   const [maxUsageCount, setMaxUsageCount] = useState<string>(
     library?.maxUsageCount != null ? String(library.maxUsageCount) : "",
   );
-  const [fields, setFields] = useState<FieldDef[]>(initialSchema);
+  const [fields, setFields] = useState<CustomField[]>(initialSchema);
   const [saving, setSaving] = useState(false);
   // Phase 1.x Vague 3 — token de remplissage public.
   const [publicToken, setPublicToken] = useState<string | null>(library?.publicFillToken ?? null);
@@ -99,7 +73,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
     setRotationMode(library.rotationMode);
     setRotationScope(library.rotationScope);
     setMaxUsageCount(library.maxUsageCount != null ? String(library.maxUsageCount) : "");
-    setFields(parseSchema(library.fieldsSchema));
+    setFields(normalizeCustomFields(library.fieldsSchema));
     setPublicToken(library.publicFillToken ?? null);
   }, [library]);
 
@@ -156,18 +130,6 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
     }
   }
 
-  function addField() {
-    setFields((prev) => [...prev, { key: "", label: "", type: "text", required: false, primary: false }]);
-  }
-
-  function updateField(idx: number, patch: Partial<FieldDef>) {
-    setFields((prev) => prev.map((f, i) => (i === idx ? { ...f, ...patch } : f)));
-  }
-
-  function removeField(idx: number) {
-    setFields((prev) => prev.filter((_, i) => i !== idx));
-  }
-
   async function handleSave() {
     if (!library) return;
     if (!name.trim()) {
@@ -175,23 +137,16 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
       return;
     }
     // Validation locale du schéma avant envoi (l'API revalide aussi).
-    for (const [i, f] of fields.entries()) {
-      if (!f.key.trim()) {
-        toast.error(`Champ #${i + 1} : la clé est requise`);
-        return;
-      }
-      if (!/^[a-z][a-z0-9_]*$/i.test(f.key)) {
-        toast.error(`Champ #${i + 1} : clé invalide (lettres/chiffres/underscore, commence par une lettre)`);
-        return;
-      }
-      if (["set_tag", "category"].includes(f.key.toLowerCase())) {
-        toast.error(`« ${f.key} » est réservé (ajouté automatiquement)`);
-        return;
-      }
-      if (!f.label.trim()) {
-        toast.error(`Champ #${i + 1} : le libellé est requis`);
-        return;
-      }
+    const schemaError = validateCustomFields(fields);
+    if (schemaError) {
+      toast.error(schemaError);
+      return;
+    }
+    const reserved = ["set_tag", "category"];
+    const reservedHit = fields.find((f) => reserved.includes(f.key.toLowerCase()));
+    if (reservedHit) {
+      toast.error(`« ${reservedHit.key} » est réservé (ajouté automatiquement)`);
+      return;
     }
     setSaving(true);
     try {
@@ -328,14 +283,9 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
 
         {/* Champs personnalisés */}
         <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
-              Champs des fiches
-            </h3>
-            <Button variant="ghost" size="sm" icon={Plus} onClick={addField}>
-              Ajouter
-            </Button>
-          </div>
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
+            Champs des fiches
+          </h3>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             Définis les colonnes attendues dans une fiche (ex : <code className="text-[10.5px] bg-white/60 px-1 rounded">titre</code>, <code className="text-[10.5px] bg-white/60 px-1 rounded">prix</code>, <code className="text-[10.5px] bg-white/60 px-1 rounded">surface</code>). Ces champs servent à&nbsp;:
             <br />— générer un modèle CSV propre (même sans fiche existante),
@@ -343,67 +293,19 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
             <br />— valider les imports.
             <br />Les colonnes <code className="text-[10.5px] bg-white/60 px-1 rounded">set_tag</code> et <code className="text-[10.5px] bg-white/60 px-1 rounded">category</code> sont ajoutées automatiquement.
           </p>
-
-          {fields.length === 0 ? (
-            <div className="rounded-lg bg-white/40 px-3 py-4 text-center text-[12px] text-muted-foreground italic ">
-              Aucun champ défini — ajoute-en pour structurer tes fiches.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-[10.5px] text-muted-foreground">
-                <span className="font-medium">Table</span> = champ visible dans la vue table compacte (max 5 affichés).
-                Si rien n&apos;est coché, les 3 premiers champs servent par défaut.
-              </p>
-              {fields.map((f, i) => (
-                <div
-                  key={i}
-                  className="grid grid-cols-[1fr_1fr_130px_auto_auto_auto] gap-2 items-center rounded-lg bg-card border border-border p-2 "
-                >
-                  <Input
-                    value={f.key}
-                    onChange={(v) => updateField(i, { key: v.toLowerCase().replace(/[^a-z0-9_]/g, "_") })}
-                    placeholder="clé (ex: titre)"
-                  />
-                  <Input
-                    value={f.label}
-                    onChange={(v) => updateField(i, { label: v })}
-                    placeholder="libellé (ex: Titre)"
-                  />
-                  <Combobox
-                    value={f.type}
-                    onChange={(v) => updateField(i, { type: v as FieldType })}
-                    options={FIELD_TYPE_OPTIONS}
-                  />
-                  <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground select-none cursor-pointer" title="Champ visible dans la vue table">
-                    <input
-                      type="checkbox"
-                      checked={!!f.primary}
-                      onChange={(e) => updateField(i, { primary: e.target.checked })}
-                      className="h-3 w-3 accent-sky-600"
-                    />
-                    table
-                  </label>
-                  <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground select-none cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!f.required}
-                      onChange={(e) => updateField(i, { required: e.target.checked })}
-                      className="h-3 w-3 accent-sky-600"
-                    />
-                    requis
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => removeField(i)}
-                    className="p-1 text-muted-foreground/60 hover:text-danger-600 transition-colors"
-                    title="Supprimer ce champ"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
+          {fields.length > 0 && (
+            <p className="text-[10.5px] text-muted-foreground">
+              <span className="font-medium">Table</span> = champ visible dans la vue table compacte (max 5 affichés).
+              Si rien n&apos;est coché, les 3 premiers champs servent par défaut.
+            </p>
           )}
+          <CustomFieldsSchemaEditor
+            fields={fields}
+            onChange={setFields}
+            allowRequired
+            allowPrimary
+            reservedKeys={["set_tag", "category"]}
+          />
         </section>
         {/* Lien public de remplissage (Phase 1.x Vague 3) */}
         <section className="rounded-2xl bg-card border border-border p-4  space-y-3">

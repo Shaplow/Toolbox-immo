@@ -451,7 +451,7 @@ model MediaLibrary {
   /// - "shared" : un seul curseur partagé entre tous les comptes. Tous les comptes voient le
   ///   même contenu à chaque génération (utile pour une bibliothèque commune).
   rotationScope    String                 @default("per_account")
-  /// JSON { key: string; label: string; type: "text" | "number" | "url" }[] — champs de
+  /// JSON { key: string; label: string; type: "text" | "textarea" | "number" | "url" }[] — champs de
   /// métadonnées structurées pouvant être remplis sur chaque asset de cette bibliothèque.
   metadataSchema   String                 @default("[]")
   /// Burn-once / consommation max par asset.

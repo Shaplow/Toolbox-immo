@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { normalizeCustomFields } from "@/lib/customFields";
 import { PatternEditClient } from "./PatternEditClient";
 
 export const dynamic = "force-dynamic";
@@ -67,16 +68,6 @@ export default async function PatternEditPage({ params }: PageProps) {
     }),
   ]);
 
-  // fieldSchema est stocké en JSON string en DB — on le parse ici pour passer
-  // un string[] au formulaire.
-  let parsedFieldSchema: string[] = [];
-  try {
-    const raw: unknown = JSON.parse(tpl.fieldSchema);
-    if (Array.isArray(raw)) parsedFieldSchema = raw as string[];
-  } catch {
-    // garde le tableau vide par défaut
-  }
-
   return (
     <PatternEditClient
       templateId={tpl.id}
@@ -96,7 +87,7 @@ export default async function PatternEditPage({ params }: PageProps) {
         needsBrief: tpl.needsBrief,
         notes: tpl.notes,
         bindingCount: tpl._count.bindings,
-        fieldSchema: parsedFieldSchema,
+        fieldSchema: normalizeCustomFields(tpl.fieldSchema),
         autoSaveToLibraryId: tpl.autoSaveToLibraryId ?? null,
       }}
       builderTemplates={builderTemplates}

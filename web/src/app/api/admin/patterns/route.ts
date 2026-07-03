@@ -8,6 +8,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import {
+  normalizeCustomFields,
+  validateCustomFields,
+  serializeCustomFields,
+} from "@/lib/customFields";
 
 type CreateBody = {
   label?: string;
@@ -52,27 +57,11 @@ function validateBody(body: CreateBody, requireAll: boolean): string | null {
   }
   if (body.fieldSchema !== undefined) {
     if (!Array.isArray(body.fieldSchema)) return "fieldSchema doit être un tableau";
-    for (const f of body.fieldSchema as unknown[]) {
-      if (typeof f !== "string" || !(f as string).trim()) {
-        return "fieldSchema : chaque champ doit être une chaîne non vide";
-      }
-    }
+    const fields = normalizeCustomFields(body.fieldSchema);
+    const fieldErr = validateCustomFields(fields);
+    if (fieldErr) return `fieldSchema : ${fieldErr}`;
   }
   return null;
-}
-
-/** Nettoie un fieldSchema reçu : trim + dédupe. */
-function cleanFieldSchema(raw: unknown[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const f of raw) {
-    const s = (f as string).trim();
-    if (s && !seen.has(s)) {
-      seen.add(s);
-      result.push(s);
-    }
-  }
-  return result;
 }
 
 export async function GET() {
@@ -119,7 +108,7 @@ export async function POST(req: NextRequest) {
   }
 
   const cleanedFieldSchema = body.fieldSchema
-    ? cleanFieldSchema(body.fieldSchema as unknown[])
+    ? normalizeCustomFields(body.fieldSchema)
     : [];
 
   const created = await prisma.patternTemplate.create({
@@ -142,7 +131,7 @@ export async function POST(req: NextRequest) {
       allowsClientRevision: body.allowsClientRevision ?? false,
       needsBrief: body.needsBrief ?? false,
       notes: body.notes ?? null,
-      fieldSchema: JSON.stringify(cleanedFieldSchema),
+      fieldSchema: serializeCustomFields(cleanedFieldSchema),
       autoSaveToLibraryId: body.autoSaveToLibraryId ?? null,
       // Sprint D — audit log light : trace l'auteur de la création.
       updatedByUserId: ctx.actualUser.id,

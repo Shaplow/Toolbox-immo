@@ -510,6 +510,14 @@ export function FieldInput({
           />
           <span className="text-sm text-muted-foreground">Oui</span>
         </label>
+      ) : field.type === "textarea" ? (
+        <textarea
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          rows={4}
+          className={controlClassName}
+        />
       ) : field.type === "number" ? (
         <input
           type="text"

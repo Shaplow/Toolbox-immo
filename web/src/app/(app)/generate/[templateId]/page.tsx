@@ -10,6 +10,11 @@ import { getUserContext } from "@/lib/userContext";
 import { buildLibraryPrefillContext } from "@/lib/generate/buildLibraryPrefillContext";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 import { buildMergedSchema } from "@/lib/generate/buildMergedSchema";
+import {
+  normalizeCustomFields,
+  customFieldToSchemaField,
+  type CustomField,
+} from "@/lib/customFields";
 
 function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number> {
   const ratios = new Map<string, { ratio: number; area: number }>();
@@ -68,16 +73,21 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   // If slotId provided: load slot to derive accountId and merge flex fields
   // + capture context for banner (title, account handle).
   let slotBannerContext: { title: string | null; handle: string } | null = null;
+  // Biens/missions — schéma des champs perso (bien < mission) fusionné dans le
+  // formulaire de génération (Phase 4) : un champ typé du bien/mission apparaît
+  // même s'il n'est pas déclaré dans le template.
+  let customFormFields: CustomField[] = [];
   if (slotId) {
     const slot = await prisma.publicationSlot.findFirst({
       where: { id: slotId },
       select: {
         accountId: true,
         fields: true,
+        fieldSchema: true,
         title: true,
         account: { select: { handle: true } },
         // Biens — fiche partagée : ses valeurs servent de base, résolues LIVE.
-        property: { select: { fields: true } },
+        property: { select: { fields: true, fieldSchema: true } },
       },
     });
     if (slot) {
@@ -91,6 +101,11 @@ export default async function GeneratePage({ params, searchParams }: Props) {
         const slotFields = JSON.parse(slot.fields) as Record<string, string>;
         initialValues = { ...propertyFields, ...slotFields, ...initialValues };
       } catch { /* ignore malformed JSON */ }
+      // Schéma : bien puis mission (la mission surcharge par clé).
+      const byKey = new Map<string, CustomField>();
+      for (const f of normalizeCustomFields(slot.property?.fieldSchema)) byKey.set(f.key, f);
+      for (const f of normalizeCustomFields(slot.fieldSchema)) byKey.set(f.key, f);
+      customFormFields = [...byKey.values()];
     }
   }
 
@@ -110,6 +125,14 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   const json = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
 
   const mergedSchema = buildMergedSchema(json);
+
+  // Phase 4 — fusionne les champs perso typés du bien/mission absents du template
+  // (le template reste prioritaire sur conflit de clé).
+  for (const cf of customFormFields) {
+    if (!mergedSchema.some((f) => f.key === cf.key)) {
+      mergedSchema.push(customFieldToSchemaField(cf));
+    }
+  }
 
   // For video fields that will be auto-resolved from a metadata-values-from-library
   // select field at render time, remove the required constraint.

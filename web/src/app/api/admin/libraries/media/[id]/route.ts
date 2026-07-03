@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
+import { normalizeCustomFields, validateCustomFields, serializeCustomFields } from "@/lib/customFields";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; rotationScope?: string; rotationMode?: string | null; metadataSchema?: { key: string; label: string; type: string }[]; maxUsageCount?: number | null };
+  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; rotationScope?: string; rotationMode?: string | null; metadataSchema?: unknown; maxUsageCount?: number | null };
 
   const data: Record<string, unknown> = {};
   if (body.name?.trim()) data.name = body.name.trim();
@@ -41,15 +42,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "maxUsageCount doit être null ou un entier ≥ 1" }, { status: 400 });
     }
   }
-  if (Array.isArray(body.metadataSchema)) {
-    const metaKeys = body.metadataSchema.map((f) => (f.key ?? "").trim());
-    if (metaKeys.some((k) => !k)) {
-      return NextResponse.json({ error: "Toutes les clés de champs de métadonnées doivent être non vides" }, { status: 400 });
+  if (body.metadataSchema !== undefined) {
+    const normalized = normalizeCustomFields(body.metadataSchema as unknown);
+    const metaError = validateCustomFields(normalized);
+    if (metaError) {
+      return NextResponse.json({ error: metaError }, { status: 400 });
     }
-    if (new Set(metaKeys).size !== metaKeys.length) {
-      return NextResponse.json({ error: "Les clés de champs de métadonnées doivent être uniques" }, { status: 400 });
-    }
-    data.metadataSchema = JSON.stringify(body.metadataSchema);
+    data.metadataSchema = serializeCustomFields(normalized);
   }
 
   try {

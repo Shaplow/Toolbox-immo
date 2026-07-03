@@ -11,36 +11,19 @@ import { useState, useMemo } from "react";
 import { Plus, Send, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
 import { toast } from "@/components/ui/Toast";
+import type { CustomField } from "@/lib/customFields";
+import { normalizeCustomFields } from "@/lib/customFields";
+import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
 
-type FieldType = "text" | "number" | "url" | "textarea";
-
-interface FieldDef {
-  key: string;
-  label: string;
-  type: FieldType;
-  required?: boolean;
-}
+// Alias local pour compatibilité avec les usages existants dans ce fichier.
+type FieldDef = CustomField;
 
 interface EntryDraft {
   setTag: string;
   category: string;
   fields: Record<string, string>;
-}
-
-function parseSchema(raw: string | null | undefined): FieldDef[] {
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    if (!Array.isArray(v)) return [];
-    return v.filter((f): f is FieldDef =>
-      f && typeof f.key === "string" && typeof f.label === "string" && typeof f.type === "string",
-    );
-  } catch {
-    return [];
-  }
 }
 
 function blankEntry(schema: FieldDef[]): EntryDraft {
@@ -55,7 +38,7 @@ interface Props {
 }
 
 export function DataFillForm({ token, fieldsSchema }: Props) {
-  const schema = useMemo(() => parseSchema(fieldsSchema), [fieldsSchema]);
+  const schema = useMemo(() => normalizeCustomFields(fieldsSchema), [fieldsSchema]);
   const [entries, setEntries] = useState<EntryDraft[]>([blankEntry(schema)]);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<{ count: number } | null>(null);
@@ -188,19 +171,11 @@ export function DataFillForm({ token, fieldsSchema }: Props) {
           <div className="space-y-2.5">
             {schema.map((f) => (
               <FormField key={f.key} label={f.label} required={f.required}>
-                {f.type === "textarea" ? (
-                  <Textarea
-                    value={entry.fields[f.key] ?? ""}
-                    onChange={(v) => updateField(idx, f.key, v)}
-                    rows={3}
-                  />
-                ) : (
-                  <Input
-                    type={f.type === "number" ? "number" : f.type === "url" ? "url" : "text"}
-                    value={entry.fields[f.key] ?? ""}
-                    onChange={(v) => updateField(idx, f.key, v)}
-                  />
-                )}
+                <CustomFieldValueInput
+                  field={f}
+                  value={entry.fields[f.key] ?? ""}
+                  onChange={(v) => updateField(idx, f.key, v)}
+                />
               </FormField>
             ))}
           </div>

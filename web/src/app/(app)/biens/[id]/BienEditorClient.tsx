@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/Input";
 import { PageShell } from "@/components/ui/PageShell";
 import { toast } from "@/components/ui/Toast";
 import { Clapperboard } from "lucide-react";
-import { FlexFieldsEditor } from "@/components/calendar/FlexFieldsEditor";
+import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
+import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
+import type { CustomField } from "@/lib/customFields";
 import {
   LaunchMissionsModal,
   type LaunchRecipe,
@@ -22,7 +24,7 @@ interface BienEditorClientProps {
   id: string;
   initialLabel: string;
   initialFields: Record<string, string>;
-  initialFieldSchema: string[];
+  initialFieldSchema: CustomField[];
   recipes: LaunchRecipe[];
   accounts: LaunchAccount[];
 }
@@ -37,7 +39,7 @@ export function BienEditorClient({
 }: BienEditorClientProps) {
   const router = useRouter();
   const [label, setLabel] = useState(initialLabel);
-  const [fieldSchema, setFieldSchema] = useState<string[]>(initialFieldSchema);
+  const [fieldSchema, setFieldSchema] = useState<CustomField[]>(initialFieldSchema);
   const [fields, setFields] = useState<Record<string, string>>(initialFields);
   const [saving, setSaving] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -52,9 +54,20 @@ export function BienEditorClient({
     setDirty(true);
   }
 
-  function handleFlexChange(schema: string[], values: Record<string, string>) {
-    setFieldSchema(schema);
-    setFields(values);
+  function setValue(key: string, value: string) {
+    setFields((prev) => ({ ...prev, [key]: value }));
+    setDirty(true);
+  }
+
+  function handleSchemaChange(nextSchema: CustomField[]) {
+    setFieldSchema(nextSchema);
+    // Élague les valeurs des champs supprimés.
+    setFields((prev) => {
+      const keys = new Set(nextSchema.map((f) => f.key));
+      const next: Record<string, string> = {};
+      for (const [k, v] of Object.entries(prev)) if (keys.has(k)) next[k] = v;
+      return next;
+    });
     setDirty(true);
   }
 
@@ -150,14 +163,39 @@ export function BienEditorClient({
         </FormField>
       </div>
 
-      {/* Flex fields */}
+      {/* Valeurs des champs (saisie typée) + définition repliable */}
       <Card className="p-4 mb-6">
         <h2 className="text-[13px] font-semibold text-foreground mb-3">Champs du bien</h2>
-        <FlexFieldsEditor
-          schema={fieldSchema}
-          values={fields}
-          onChange={handleFlexChange}
-        />
+
+        {fieldSchema.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">
+            Aucun champ. Ajoutez-en via « Modifier les champs » ci-dessous.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {fieldSchema.map((field) => (
+              <CustomFieldValueInput
+                key={field.key}
+                field={field}
+                value={fields[field.key] ?? ""}
+                onChange={(v) => setValue(field.key, v)}
+                showLabel
+              />
+            ))}
+          </div>
+        )}
+
+        <details className="mt-4 group">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground select-none">
+            Modifier les champs (nom, type…)
+          </summary>
+          <div className="mt-3 pt-3 border-t border-border">
+            <CustomFieldsSchemaEditor
+              fields={fieldSchema}
+              onChange={handleSchemaChange}
+            />
+          </div>
+        </details>
       </Card>
 
       {/* Lancer des missions depuis ce bien */}

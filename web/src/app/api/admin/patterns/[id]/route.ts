@@ -8,6 +8,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import {
+  normalizeCustomFields,
+  validateCustomFields,
+  serializeCustomFields,
+} from "@/lib/customFields";
 
 type PatchBody = {
   label?: string;
@@ -91,13 +96,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (!Array.isArray(body.fieldSchema)) {
       return NextResponse.json({ error: "fieldSchema doit être un tableau" }, { status: 400 });
     }
-    for (const f of body.fieldSchema as unknown[]) {
-      if (typeof f !== "string" || !(f as string).trim()) {
-        return NextResponse.json(
-          { error: "fieldSchema : chaque champ doit être une chaîne non vide" },
-          { status: 400 },
-        );
-      }
+    const fields = normalizeCustomFields(body.fieldSchema);
+    const fieldErr = validateCustomFields(fields);
+    if (fieldErr) {
+      return NextResponse.json({ error: `fieldSchema : ${fieldErr}` }, { status: 400 });
     }
   }
   // Valide autoSaveToLibraryId si fourni (non null).
@@ -115,20 +117,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         { status: 400 },
       );
     }
-  }
-
-  /** Nettoie un fieldSchema reçu : trim + dédupe. */
-  function cleanFieldSchema(raw: unknown[]): string[] {
-    const seen = new Set<string>();
-    const result: string[] = [];
-    for (const f of raw) {
-      const s = (f as string).trim();
-      if (s && !seen.has(s)) {
-        seen.add(s);
-        result.push(s);
-      }
-    }
-    return result;
   }
 
   const updated = await prisma.patternTemplate.update({
@@ -157,7 +145,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
       ...(body.isArchived !== undefined ? { isArchived: body.isArchived } : {}),
       ...(body.fieldSchema !== undefined
-        ? { fieldSchema: JSON.stringify(cleanFieldSchema(body.fieldSchema as unknown[])) }
+        ? { fieldSchema: serializeCustomFields(normalizeCustomFields(body.fieldSchema as unknown[])) }
         : {}),
       ...(body.autoSaveToLibraryId !== undefined
         ? { autoSaveToLibraryId: body.autoSaveToLibraryId }

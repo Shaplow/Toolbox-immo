@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
+import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
 import {
   FolderOpen,
   Layers,
@@ -340,14 +341,15 @@ export function MediaAssetDetailDrawer({
                         <span className="text-[11px] text-muted-foreground w-24 shrink-0 truncate" title={field.label}>
                           {field.label}
                         </span>
-                        <Input
-                          value={String(value)}
-                          onChange={(v) => {
-                            if (asset) void inline.handleSaveMetadata(asset, field.key, v);
-                          }}
-                          placeholder={field.type === "number" ? "0" : "…"}
-                          type={field.type === "number" ? "number" : field.type === "url" ? "url" : "text"}
-                        />
+                        <div className="flex-1 min-w-0">
+                          <CustomFieldValueInput
+                            field={field}
+                            value={String(value)}
+                            onChange={(v) => {
+                              if (asset) void inline.handleSaveMetadata(asset, field.key, v);
+                            }}
+                          />
+                        </div>
                       </div>
                     );
                   })}

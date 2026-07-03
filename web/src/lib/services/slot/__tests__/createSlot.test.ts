@@ -189,8 +189,12 @@ describe("createSlot — champs requis", () => {
     // Compte non résolu (mission stock) + aucun findUnique compte déclenché.
     expect(slot.accountId).toBeNull();
     expect(mockAccountFindUnique).not.toHaveBeenCalled();
-    // Champs personnalisés hérités de la recette.
-    expect(slot.fieldSchema).toEqual(["adresse", "prix"]);
+    // Champs personnalisés hérités de la recette — normalisés en CustomField[].
+    // Le mock legacy string[] est upgradé via normalizeCustomFields.
+    expect(slot.fieldSchema).toEqual([
+      { key: "adresse", label: "adresse", type: "text" },
+      { key: "prix", label: "prix", type: "text" },
+    ]);
     // Titre par défaut = label de la recette.
     expect(slot.title).toBe("Recette Mission");
   });

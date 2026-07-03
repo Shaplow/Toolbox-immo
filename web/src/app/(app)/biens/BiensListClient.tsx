@@ -10,12 +10,13 @@ import { Input } from "@/components/ui/Input";
 import { PageShell } from "@/components/ui/PageShell";
 import { Table, type TableColumn } from "@/components/ui/Table";
 import { toast } from "@/components/ui/Toast";
-import { FlexFieldsEditor } from "@/components/calendar/FlexFieldsEditor";
+import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
+import type { CustomField } from "@/lib/customFields";
 
 export interface BienListItem {
   id: string;
   label: string;
-  fieldSchema: string[];
+  fieldSchema: CustomField[];
   updatedAt: string;
   slotCount: number;
 }
@@ -23,7 +24,7 @@ export interface BienListItem {
 interface BiensListClientProps {
   initialBiens: BienListItem[];
   /** Modèle de champs par défaut chargé depuis AppSetting. */
-  defaultFieldSchema: string[];
+  defaultFieldSchema: CustomField[];
 }
 
 export function BiensListClient({ initialBiens, defaultFieldSchema }: BiensListClientProps) {
@@ -33,7 +34,7 @@ export function BiensListClient({ initialBiens, defaultFieldSchema }: BiensListC
 
   // --- Drawer "Champs par défaut" ---
   const [defaultsOpen, setDefaultsOpen] = useState(false);
-  const [draftSchema, setDraftSchema] = useState<string[]>(defaultFieldSchema);
+  const [draftSchema, setDraftSchema] = useState<CustomField[]>(defaultFieldSchema);
   const [saving, setSaving] = useState(false);
 
   function openDefaults() {
@@ -108,7 +109,7 @@ export function BiensListClient({ initialBiens, defaultFieldSchema }: BiensListC
         <span className="text-muted-foreground text-xs">
           {row.fieldSchema.length === 0
             ? "Aucun"
-            : row.fieldSchema.slice(0, 3).join(", ") +
+            : row.fieldSchema.slice(0, 3).map((f) => f.label).join(", ") +
               (row.fieldSchema.length > 3 ? ` +${row.fieldSchema.length - 3}` : "")}
         </span>
       ),
@@ -203,11 +204,9 @@ export function BiensListClient({ initialBiens, defaultFieldSchema }: BiensListC
           <p className="text-[13px] text-muted-foreground mb-4">
             Ces champs préremplissent chaque nouveau bien. Ils restent modifiables ensuite par bien.
           </p>
-          <FlexFieldsEditor
-            schema={draftSchema}
-            values={{}}
-            schemaOnly
-            onChange={(schema) => setDraftSchema(schema)}
+          <CustomFieldsSchemaEditor
+            fields={draftSchema}
+            onChange={setDraftSchema}
           />
         </Drawer.Body>
         <Drawer.Footer>

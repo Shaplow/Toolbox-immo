@@ -11,14 +11,16 @@ import { Select } from "@/components/ui/Select";
 import { FormField } from "@/components/ui/FormField";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { toast } from "@/components/ui/Toast";
-import { FlexFieldsEditor } from "@/components/calendar/FlexFieldsEditor";
+import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
+import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
+import { type CustomField } from "@/lib/customFields";
 
 export interface MissionRecipe {
   id: string;
   label: string;
   source: string;
   templateId: string | null;
-  fieldSchema: string[];
+  fieldSchema: CustomField[];
   autoSaveLibraryName: string | null;
 }
 
@@ -75,9 +77,9 @@ export function MissionForm({
   const [propertyId, setPropertyId] = useState(
     properties.some((p) => p.id === initialPropertyId) ? initialPropertyId : "",
   );
-  const [schema, setSchema] = useState<string[]>(validInitialRecipe?.fieldSchema ?? []);
+  const [schema, setSchema] = useState<CustomField[]>(validInitialRecipe?.fieldSchema ?? []);
   const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries((validInitialRecipe?.fieldSchema ?? []).map((k) => [k, ""])),
+    Object.fromEntries((validInitialRecipe?.fieldSchema ?? []).map((f) => [f.key, ""])),
   );
   const [submitting, setSubmitting] = useState(false);
 
@@ -99,12 +101,19 @@ export function MissionForm({
     // par l'utilisateur (et toutes les valeurs déjà saisies) sont conservés.
     const prevInherited = recipes.find((r) => r.id === recipeId)?.fieldSchema ?? [];
     const nextInherited = recipes.find((r) => r.id === next)?.fieldSchema ?? [];
-    const adHoc = schema.filter((k) => !prevInherited.includes(k));
-    const nextSchema = Array.from(new Set([...nextInherited, ...adHoc]));
+    const prevInheritedKeys = new Set(prevInherited.map((f) => f.key));
+    const nextInheritedKeys = new Set(nextInherited.map((f) => f.key));
+    // Champs ad-hoc = dans le schema courant mais pas dans l'héritage de l'ancienne recette.
+    const adHoc = schema.filter((f) => !prevInheritedKeys.has(f.key));
+    // Nouveau schema : inherited de la nouvelle recette + ad-hoc non déjà présents.
+    const merged: CustomField[] = [
+      ...nextInherited,
+      ...adHoc.filter((f) => !nextInheritedKeys.has(f.key)),
+    ];
     const nextValues: Record<string, string> = {};
-    for (const k of nextSchema) nextValues[k] = values[k] ?? "";
+    for (const f of merged) nextValues[f.key] = values[f.key] ?? "";
     setRecipeId(next);
-    setSchema(nextSchema);
+    setSchema(merged);
     setValues(nextValues);
   }
 
@@ -281,16 +290,37 @@ export function MissionForm({
               ? "S'ajoutent aux champs partagés du bien et les surchargent si même nom. Laissez vide pour tout hériter du bien."
               : "Hérités de la recette. Ajoutez-en d'autres au besoin — ils préremplissent le formulaire de génération."}
           </p>
-          <div className="mt-1">
-            <FlexFieldsEditor
-              schema={schema}
-              values={values}
-              onChange={(nextSchema, nextValues) => {
-                setSchema(nextSchema);
-                setValues(nextValues);
-              }}
-            />
-          </div>
+          {/* Saisie des valeurs — une par champ du schema. */}
+          {schema.length > 0 && (
+            <div className="mt-1 space-y-3">
+              {schema.map((field) => (
+                <CustomFieldValueInput
+                  key={field.key}
+                  field={field}
+                  value={values[field.key] ?? ""}
+                  onChange={(v) => setValues((prev) => ({ ...prev, [field.key]: v }))}
+                  showLabel
+                />
+              ))}
+            </div>
+          )}
+          {/* Éditeur de définitions (ajout/suppression/renommage de champs). */}
+          <details className="mt-2 group">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground select-none">
+              Modifier les champs (nom, type…)
+            </summary>
+            <div className="mt-2 pt-2 border-t border-border">
+              <CustomFieldsSchemaEditor
+                fields={schema}
+                onChange={(nextSchema) => {
+                  const nextValues: Record<string, string> = {};
+                  for (const f of nextSchema) nextValues[f.key] = values[f.key] ?? "";
+                  setSchema(nextSchema);
+                  setValues(nextValues);
+                }}
+              />
+            </div>
+          </details>
         </div>
 
         {selectedRecipe?.autoSaveLibraryName && (

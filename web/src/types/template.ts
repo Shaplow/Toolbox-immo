@@ -467,6 +467,7 @@ export type AnyBlock =
 // ─── Schema (variables attendues par le template) ──────────────────────────────
 export type SchemaFieldType =
   | "text"
+  | "textarea"
   | "number"
   | "image"
   | "video"

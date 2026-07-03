@@ -18,7 +18,8 @@ import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { useAutoSave } from "@/hooks/useAutoSave";
-import { FlexFieldsEditor } from "@/components/calendar/FlexFieldsEditor";
+import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
+import { normalizeCustomFields, type CustomField } from "@/lib/customFields";
 import { DeployTemplateModal } from "./DeployTemplateModal";
 
 const SOURCE_OPTIONS = [
@@ -60,8 +61,8 @@ export interface PatternTemplateInitial {
   needsBrief: boolean;
   notes: string | null;
   bindingCount?: number;
-  /** Noms des champs personnalisés hérités par les missions créées depuis cette recette. */
-  fieldSchema?: string[];
+  /** Champs personnalisés hérités par les missions créées depuis cette recette. */
+  fieldSchema?: CustomField[];
   /** Bibliothèque vidéo cible pour l'auto-save de la sortie. null = désactivé. */
   autoSaveToLibraryId?: string | null;
 }
@@ -80,7 +81,7 @@ export interface PatternTemplateFormValues {
   allowsClientRevision: boolean;
   needsBrief: boolean;
   notes: string | null;
-  fieldSchema: string[];
+  fieldSchema: CustomField[];
   autoSaveToLibraryId: string | null;
 }
 
@@ -157,7 +158,7 @@ export function PatternTemplateForm({
   const [needsBrief, setNeedsBrief] = useState(initial?.needsBrief ?? false);
   const [notes, setNotes] = useState<string>(initial?.notes ?? "");
   // Missions — champs personnalisés hérités par les missions créées depuis cette recette.
-  const [fieldSchema, setFieldSchema] = useState<string[]>(initial?.fieldSchema ?? []);
+  const [fieldSchema, setFieldSchema] = useState<CustomField[]>(initial?.fieldSchema ?? []);
   // Missions — bibliothèque vidéo cible pour l'auto-save. "" = null (désactivé).
   const [autoSaveLibraryId, setAutoSaveLibraryId] = useState<string>(
     initial?.autoSaveToLibraryId ?? "",
@@ -283,14 +284,9 @@ export function PatternTemplateForm({
           setCaptionPresetId(d.captionPresetId ?? "");
         if (d.descriptionPromptId !== undefined)
           setDescriptionPromptId(d.descriptionPromptId ?? "");
-        // Missions — fieldSchema est stocké en JSON string en DB.
+        // Missions — normalise le fieldSchema (gère legacy string[] ET CustomField[]).
         if (d.fieldSchema !== undefined && d.fieldSchema !== null) {
-          try {
-            const parsed: unknown = JSON.parse(d.fieldSchema);
-            if (Array.isArray(parsed)) setFieldSchema(parsed as string[]);
-          } catch {
-            // ignore parse error — garde l'état courant
-          }
+          setFieldSchema(normalizeCustomFields(d.fieldSchema));
         }
         if (d.autoSaveToLibraryId !== undefined)
           setAutoSaveLibraryId(d.autoSaveToLibraryId ?? "");
@@ -587,13 +583,11 @@ export function PatternTemplateForm({
           </h3>
           <FormField
             label="Champs personnalisés"
-            help="Noms des champs hérités par les missions créées depuis cette recette."
+            help="Définitions des champs hérités par les missions créées depuis cette recette."
           >
-            <FlexFieldsEditor
-              schema={fieldSchema}
-              values={{}}
-              schemaOnly
-              onChange={(schema) => setFieldSchema(schema)}
+            <CustomFieldsSchemaEditor
+              fields={fieldSchema}
+              onChange={setFieldSchema}
             />
           </FormField>
           <FormField

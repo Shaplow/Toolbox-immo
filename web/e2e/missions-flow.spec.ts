@@ -152,8 +152,11 @@ test.describe("Missions — création API", () => {
     expect(slot.patternTemplateId).toBe(RECIPE_ID);
     // Titre par défaut = label de la recette.
     expect(slot.title).toBe("E2E Mission Recipe");
-    // fieldSchema hérité de la recette (non fourni dans le body).
-    expect(slot.fieldSchema).toEqual(RECIPE_FIELDS);
+    // fieldSchema hérité de la recette (legacy string[] → normalisé en CustomField[]).
+    expect(slot.fieldSchema).toEqual([
+      { key: "adresse", label: "adresse", type: "text" },
+      { key: "prix", label: "prix", type: "text" },
+    ]);
 
     // Vérification DB : le slot existe bien sans compte.
     const dbSlot = await prismaTest.publicationSlot.findUnique({

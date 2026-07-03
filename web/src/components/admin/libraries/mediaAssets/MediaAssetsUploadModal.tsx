@@ -30,6 +30,8 @@ import { Chip } from "@/components/ui/Chip";
 import { Modal } from "@/components/ui/Modal";
 import { captureVideoPoster } from "./captureVideoPoster";
 import type { InstagramAccount, MediaLibrary } from "./types";
+import { normalizeCustomFields } from "@/lib/customFields";
+import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
 
 /**
  * Analyse les filenames pour suggérer Catégorie + Pack.
@@ -102,15 +104,11 @@ export function MediaAssetsUploadModal({
   // Mode manuel (rotation "none") : on cache Catégorie + Pack et on affiche
   // à la place les champs metadata pour identifier l'asset (ex: nom du bien, prix…).
   const isManualMode = library.rotationMode === "none";
-  // Parse metadataSchema pour avoir la liste des champs à proposer en manual.
-  const metadataFields = useMemo<Array<{ key: string; label: string; type: string }>>(() => {
-    try {
-      const v = JSON.parse(library.metadataSchema ?? "[]");
-      return Array.isArray(v) ? v.filter((f) => f && typeof f.key === "string") : [];
-    } catch {
-      return [];
-    }
-  }, [library.metadataSchema]);
+  // Parse metadataSchema via le parser canonique (supporte legacy string[]).
+  const metadataFields = useMemo(
+    () => normalizeCustomFields(library.metadataSchema),
+    [library.metadataSchema],
+  );
 
   // ─ State local à la modal (extrait de MediaAssetsPanel)
   const [uploadCategory, setUploadCategory] = useState("");
@@ -538,15 +536,11 @@ export function MediaAssetsUploadModal({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {metadataFields.map((f) => (
                       <div key={f.key}>
-                        <label className="text-[11px] font-medium text-muted-foreground block mb-1 truncate" title={f.label || f.key}>
-                          {f.label || f.key}
-                        </label>
-                        <input
-                          type={f.type === "number" ? "number" : f.type === "url" ? "url" : "text"}
+                        <CustomFieldValueInput
+                          field={f}
                           value={uploadMetadata[f.key] ?? ""}
-                          onChange={(e) => setUploadMetadata((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                          placeholder={f.type === "number" ? "0" : "…"}
-                          className="w-full rounded-lg border border-border px-3 py-2 text-sm text-gray-900 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-info-200"
+                          onChange={(v) => setUploadMetadata((prev) => ({ ...prev, [f.key]: v }))}
+                          showLabel
                         />
                       </div>
                     ))}

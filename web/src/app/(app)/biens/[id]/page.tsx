@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { safeJSON } from "@/lib/utils/json";
+import { normalizeCustomFields } from "@/lib/customFields";
 import { BienEditorClient } from "./BienEditorClient";
 
 export const dynamic = "force-dynamic";
@@ -66,7 +67,7 @@ export default async function BienEditorPage({
       id={property.id}
       initialLabel={property.label}
       initialFields={safeJSON<Record<string, string>>(property.fields, {})}
-      initialFieldSchema={safeJSON<string[]>(property.fieldSchema, [])}
+      initialFieldSchema={normalizeCustomFields(property.fieldSchema)}
       recipes={recipes}
       accounts={accounts}
     />

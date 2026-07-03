@@ -33,6 +33,11 @@ import {
 import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
 import { deleteFromR2 } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
+import {
+  normalizeCustomFields,
+  serializeCustomFields,
+  type CustomField,
+} from "@/lib/customFields";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
 
@@ -49,7 +54,7 @@ export interface CreateSlotInput {
   notes?: string | null;
   templateId?: string | null;
   fields?: Record<string, string>;
-  fieldSchema?: string[];
+  fieldSchema?: CustomField[];
   /**
    * Missions — Recette GLOBALE (PatternTemplate) appliquée directement au slot,
    * sans binding ni compte. Requis quand accountId est absent. La config
@@ -173,7 +178,7 @@ export async function createSlot(
 
   // Missions — champs personnalisés hérités de la recette (Phase 2). Fallback du
   // fieldSchema du slot quand l'input n'en fournit pas.
-  let resolvedFieldSchema: string[] | null = null;
+  let resolvedFieldSchema: CustomField[] | null = null;
 
   let resolvedPattern: {
     accountId: string;
@@ -327,7 +332,8 @@ export async function createSlot(
     };
     initialStatus = mapSourceToInitialStatus(template.source);
     // Héritage des champs personnalisés définis sur la recette (Phase 2).
-    resolvedFieldSchema = safeJSON<string[]>(template.fieldSchema, []);
+    // normalizeCustomFields gère le legacy string[] ET le nouveau CustomField[].
+    resolvedFieldSchema = normalizeCustomFields(template.fieldSchema);
   }
 
   // Compte cible (optionnel pour une mission). Validé seulement si fourni.
@@ -409,9 +415,9 @@ export async function createSlot(
       fields: input.fields ? JSON.stringify(input.fields) : "{}",
       // fieldSchema : input explicite > hérité de la recette (mission) > vide.
       fieldSchema: input.fieldSchema
-        ? JSON.stringify(input.fieldSchema)
+        ? serializeCustomFields(input.fieldSchema)
         : resolvedFieldSchema
-          ? JSON.stringify(resolvedFieldSchema)
+          ? serializeCustomFields(resolvedFieldSchema)
           : "[]",
       isAuto: false,
       patternId: input.patternId ?? null,
@@ -458,7 +464,7 @@ export async function createSlot(
   return {
     ...slot,
     fields: safeJSON<Record<string, string>>(slot.fields, {}),
-    fieldSchema: safeJSON<string[]>(slot.fieldSchema, []),
+    fieldSchema: normalizeCustomFields(slot.fieldSchema),
   };
 }
 
