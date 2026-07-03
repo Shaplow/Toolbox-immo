@@ -82,13 +82,14 @@ export function DeployTemplateModal({
     let cancelled = false;
     void (async () => {
       try {
-        const [accountsRes, templateRes, monteursRes, cmsRes, videastesRes] =
+        const [accountsRes, templateRes, monteursRes, cmsRes, videastesRes, adminsRes] =
           await Promise.all([
             fetch("/api/admin/accounts"),
             fetch(`/api/admin/patterns/${templateId}`),
             fetch("/api/admin/users?role=MONTEUR"),
             fetch("/api/admin/users?role=CM"),
             fetch("/api/admin/users?role=VIDEASTE"),
+            fetch("/api/admin/users?role=ADMIN"),
           ]);
         if (cancelled) return;
         const accounts = accountsRes.ok
@@ -99,22 +100,22 @@ export function DeployTemplateModal({
               bindings?: { accountId: string }[];
             })
           : { bindings: [] };
-        const allUsers = (
-          [
-            await monteursRes.json().catch(() => []),
-            await cmsRes.json().catch(() => []),
-            await videastesRes.json().catch(() => []),
-          ] as Array<{ id: string; name: string; role: string }[]>
-        ).flat();
-        const monteurs = allUsers
-          .filter((u) => u.role === "MONTEUR" || u.role === "ADMIN")
-          .map((u) => ({ id: u.id, name: u.name }));
-        const cms = allUsers
-          .filter((u) => u.role === "CM" || u.role === "ADMIN")
-          .map((u) => ({ id: u.id, name: u.name }));
-        const videastes = allUsers
-          .filter((u) => u.role === "VIDEASTE" || u.role === "ADMIN")
-          .map((u) => ({ id: u.id, name: u.name }));
+        // Chaque réponse est DÉJÀ filtrée par rôle côté serveur (payload allégé
+        // {id,name,email}, SANS champ `role`). On les utilise donc directement —
+        // re-filtrer sur `u.role` renvoyait des listes vides (le bug). Les ADMIN
+        // sont ajoutés à chaque liste : un admin peut être assigné comme
+        // monteur / cm / vidéaste (cf. assertAssigneeRole).
+        const parseUsers = async (r: Response): Promise<AssigneeOption[]> =>
+          r.ok ? ((await r.json().catch(() => [])) as AssigneeOption[]) : [];
+        const [monteurUsers, cmUsers, videasteUsers, adminUsers] = await Promise.all([
+          parseUsers(monteursRes),
+          parseUsers(cmsRes),
+          parseUsers(videastesRes),
+          parseUsers(adminsRes),
+        ]);
+        const monteurs = [...monteurUsers, ...adminUsers];
+        const cms = [...cmUsers, ...adminUsers];
+        const videastes = [...videasteUsers, ...adminUsers];
         setData({
           accounts,
           alreadyLinkedAccountIds: (tpl.bindings ?? []).map((b) => b.accountId),
