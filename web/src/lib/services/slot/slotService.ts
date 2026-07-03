@@ -56,6 +56,13 @@ export interface CreateSlotInput {
    * effective est résolue via resolveSlotEffectivePattern (branche patternTemplate).
    */
   patternTemplateId?: string | null;
+  /**
+   * Biens — Fiche de données PARTAGÉE (Property) référencée par la mission. Les
+   * valeurs du bien sont résolues LIVE à la génération (base) ; slot.fields reste
+   * la couche override. On ne copie PAS property.fields dans slot.fields (sinon
+   * l'édition du bien ne se propagerait plus).
+   */
+  propertyId?: string | null;
   /** Pattern-based creation (Phase 1.6). Si fourni, les assignees sont préfilés depuis le pattern. */
   patternId?: string | null;
   /**
@@ -412,6 +419,8 @@ export async function createSlot(
       // Si un binding a été résolu (mission avec compte → recette du compte), le
       // slot devient un slot binding normal ; on ne double pas avec le template.
       patternTemplateId: resolvedBindingId ? null : (input.patternTemplateId ?? null),
+      // Biens — référence vers la fiche partagée (résolue live à la génération).
+      propertyId: input.propertyId ?? null,
       assigneeMonteurId: resolvedAssigneeMonteurId,
       assigneeCmId: resolvedAssigneeCmId,
       assigneeVideasteId: resolvedAssigneeVideasteId,

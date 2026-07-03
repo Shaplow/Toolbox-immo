@@ -25,6 +25,7 @@ import {
   Hammer,
   History,
   MoreHorizontal,
+  MapPin,
 } from "lucide-react";
 import { KbdChord } from "@/components/ui/Kbd";
 import type { AppUserIdentity } from "@/lib/userContext";
@@ -125,6 +126,7 @@ export function AppNav({
           { href: "/calendar", label: "Calendrier", icon: <CalendarDays size={14} /> },
           { href: "/admin/accounts", label: "Comptes Instagram", icon: <Instagram size={14} /> },
           { href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> },
+          { href: "/biens", label: "Biens", icon: <MapPin size={14} /> },
         ],
       },
       {

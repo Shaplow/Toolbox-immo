@@ -76,15 +76,20 @@ export default async function GeneratePage({ params, searchParams }: Props) {
         fields: true,
         title: true,
         account: { select: { handle: true } },
+        // Biens — fiche partagée : ses valeurs servent de base, résolues LIVE.
+        property: { select: { fields: true } },
       },
     });
     if (slot) {
       if (!accountId) accountId = slot.accountId ?? undefined;
       slotBannerContext = { title: slot.title, handle: slot.account?.handle ?? "Sans compte" };
       try {
+        // Précédence : bien (base) < overrides mission (slot.fields) < Listing figé.
+        const propertyFields = slot.property
+          ? (JSON.parse(slot.property.fields) as Record<string, string>)
+          : {};
         const slotFields = JSON.parse(slot.fields) as Record<string, string>;
-        // Slot fields are base values; listingId data (if any) takes precedence
-        initialValues = { ...slotFields, ...initialValues };
+        initialValues = { ...propertyFields, ...slotFields, ...initialValues };
       } catch { /* ignore malformed JSON */ }
     }
   }

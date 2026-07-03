@@ -46,6 +46,7 @@ model User {
   assignedAsVideaste            PublicationSlot[]       @relation("SlotVideaste")
   defaultVideasteForPatterns    AccountPattern[]        @relation("PatternDefaultVideaste")
   patternTemplatesUpdated       PatternTemplate[]       @relation("PatternTemplateUpdatedBy")
+  propertiesCreated             Property[]              @relation("PropertyCreatedBy")
 }
 
 // (Les inverses de PatternBinding pour User sont déclarées plus haut dans
@@ -854,6 +855,12 @@ model PublicationSlot {
   /// branche) via un mapping 1:1 du template (aucun override binding).
   patternTemplateId  String?
   patternTemplate    PatternTemplate?  @relation("SlotPatternTemplate", fields: [patternTemplateId], references: [id], onDelete: SetNull)
+  /// Biens — Fiche de données PARTAGÉE (Property) référencée par cette mission.
+  /// Les valeurs du bien (property.fields) sont résolues LIVE à la génération
+  /// (base), surchargées par slot.fields (overrides mission). Éditer le bien →
+  /// propagé aux prochaines générations de toutes ses missions.
+  propertyId         String?
+  property           Property?         @relation("SlotProperty", fields: [propertyId], references: [id], onDelete: SetNull)
 
   /// Override per-slot de needsAdminValidation du pattern. null = hérite.
   /// Phase 2.3 : permet d'activer la validation admin du montage (status
@@ -928,6 +935,32 @@ model PublicationSlot {
   @@index([assigneeVideasteId])
   @@index([patternId])
   @@index([patternTemplateId])
+  @@index([propertyId])
+}
+
+/// Bien immobilier (UI = « Bien ») — fiche de données PARTAGÉE, référencée par
+/// N missions (PublicationSlot). Résout la duplication : les infos du bien
+/// (adresse, prix…) sont saisies/éditées UNE fois ici, et chaque mission les
+/// résout live à la génération. Global (pas de rattachement compte/client).
+/// Pas de rotation ni de compteur d'usage (différence clé avec DataEntry) :
+/// une référence répétée est le comportement voulu.
+model Property {
+  id              String            @id @default(cuid())
+  /// Nom du bien (ex "12 rue des Lilas — T3").
+  label           String
+  /// Valeurs partagées — JSON Record<string,string> (ex {"adresse":"…","prix":"350 000 €"}).
+  fields          String            @default("{}")
+  /// Noms des champs — JSON string[] (même shape que PublicationSlot.fieldSchema).
+  fieldSchema     String            @default("[]")
+  isArchived      Boolean           @default(false)
+  createdByUserId String?
+  createdBy       User?             @relation("PropertyCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  /// Missions référençant ce bien.
+  slots           PublicationSlot[] @relation("SlotProperty")
+
+  @@index([isArchived, label])
 }
 
 model PublicationComment {

@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
   const input: CreateSlotInput = {
     patternTemplateId: body.patternTemplateId,
     accountId: typeof body.accountId === "string" && body.accountId ? body.accountId : null,
+    // Biens — fiche de données partagée référencée par la mission (résolue live).
+    propertyId: typeof body.propertyId === "string" && body.propertyId ? body.propertyId : null,
     title: typeof body.title === "string" ? body.title : null,
     description: typeof body.description === "string" ? body.description : null,
     notes: typeof body.notes === "string" ? body.notes : null,

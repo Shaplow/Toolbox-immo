@@ -28,11 +28,20 @@ export interface MissionAccount {
   handle: string;
 }
 
+export interface MissionProperty {
+  id: string;
+  label: string;
+  /** Valeurs partagées du bien (résolues live à la génération). */
+  fields: Record<string, string>;
+}
+
 interface MissionFormProps {
   recipes: MissionRecipe[];
   accounts: MissionAccount[];
+  properties: MissionProperty[];
   initialRecipeId?: string;
   initialAccountId?: string;
+  initialPropertyId?: string;
   /** L'utilisateur peut-il créer une recette (admin) ? Pilote l'empty-state du
    *  catalogue vide : lien vers /admin/patterns pour un admin, message d'attente sinon. */
   canCreateRecipe?: boolean;
@@ -47,8 +56,10 @@ const SOURCE_LABEL: Record<string, string> = {
 export function MissionForm({
   recipes,
   accounts,
+  properties,
   initialRecipeId = "",
   initialAccountId = "",
+  initialPropertyId = "",
   canCreateRecipe = false,
 }: MissionFormProps) {
   const router = useRouter();
@@ -61,6 +72,9 @@ export function MissionForm({
     accounts.some((a) => a.id === initialAccountId) ? initialAccountId : "",
   );
   const [title, setTitle] = useState("");
+  const [propertyId, setPropertyId] = useState(
+    properties.some((p) => p.id === initialPropertyId) ? initialPropertyId : "",
+  );
   const [schema, setSchema] = useState<string[]>(validInitialRecipe?.fieldSchema ?? []);
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries((validInitialRecipe?.fieldSchema ?? []).map((k) => [k, ""])),
@@ -71,6 +85,13 @@ export function MissionForm({
     () => recipes.find((r) => r.id === recipeId) ?? null,
     [recipes, recipeId],
   );
+  const selectedProperty = useMemo(
+    () => properties.find((p) => p.id === propertyId) ?? null,
+    [properties, propertyId],
+  );
+  const sharedFieldEntries = selectedProperty
+    ? Object.entries(selectedProperty.fields).filter(([, v]) => v !== "")
+    : [];
 
   function onRecipeChange(next: string) {
     // Au changement de recette, on remplace SEULEMENT les champs hérités de
@@ -100,6 +121,7 @@ export function MissionForm({
         body: JSON.stringify({
           patternTemplateId: recipeId,
           accountId: accountId || null,
+          propertyId: propertyId || null,
           title: title.trim() || null,
           fields: values,
           fieldSchema: schema,
@@ -135,6 +157,11 @@ export function MissionForm({
   const accountOptions = [
     { value: "", label: "Aucun compte — production stock" },
     ...accounts.map((a) => ({ value: a.id, label: `@${a.handle} · ${a.name}` })),
+  ];
+
+  const propertyOptions = [
+    { value: "", label: "Aucun bien" },
+    ...properties.map((p) => ({ value: p.id, label: p.label })),
   ];
 
   return (
@@ -182,6 +209,52 @@ export function MissionForm({
           )}
         </FormField>
 
+        <FormField
+          label="Bien"
+          help="Optionnel. Fiche partagée (adresse, prix…) réutilisée par plusieurs missions. Éditée une fois, propagée aux prochaines générations."
+        >
+          {properties.length > 0 ? (
+            <Select
+              value={propertyId}
+              onChange={setPropertyId}
+              options={propertyOptions}
+              placeholder="Aucun bien"
+            />
+          ) : (
+            <div className="rounded-md border border-input bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+              Aucun bien pour l&apos;instant.{" "}
+              <Link href="/biens" className="font-medium text-primary hover:underline">
+                Créez-en un
+              </Link>{" "}
+              pour partager ses infos entre plusieurs missions.
+            </div>
+          )}
+          {selectedProperty && (
+            <div className="mt-2 rounded-md border border-border bg-muted/60 px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
+                Champs partagés du bien
+              </p>
+              {sharedFieldEntries.length > 0 ? (
+                <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
+                  {sharedFieldEntries.map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt className="text-muted-foreground truncate">{k}</dt>
+                      <dd className="text-foreground truncate">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">
+                  Ce bien n&apos;a pas encore de valeurs.{" "}
+                  <Link href={`/biens/${selectedProperty.id}`} className="text-primary hover:underline">
+                    Compléter
+                  </Link>
+                </p>
+              )}
+            </div>
+          )}
+        </FormField>
+
         <FormField label="Compte Instagram" help="Optionnel. Laissez vide pour une production stock (archivable en médiathèque).">
           <Select
             value={accountId}
@@ -201,11 +274,12 @@ export function MissionForm({
 
         <div className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Champs personnalisés
+            {selectedProperty ? "Champs spécifiques à cette mission" : "Champs personnalisés"}
           </span>
           <p className="text-xs text-muted-foreground">
-            Hérités de la recette. Ajoutez-en d&apos;autres au besoin — ils préremplissent
-            le formulaire de génération.
+            {selectedProperty
+              ? "S'ajoutent aux champs partagés du bien et les surchargent si même nom. Laissez vide pour tout hériter du bien."
+              : "Hérités de la recette. Ajoutez-en d'autres au besoin — ils préremplissent le formulaire de génération."}
           </p>
           <div className="mt-1">
             <FlexFieldsEditor

@@ -38,7 +38,24 @@ let bindingId: string | null = null;
 let seededAccountId: string | null = null;
 let seededMonteurId: string | null = null;
 
+// Fixture « bien partagé ».
+const PROPERTY_ID = "e2e-property";
+const PROPERTY_FIELDS = { adresse: "12 rue des Lilas", prix: "350 000 €" };
+
 test.beforeAll(async () => {
+  // Bien partagé (fiche référencée par des missions).
+  await prismaTest.property.upsert({
+    where: { id: PROPERTY_ID },
+    update: { isArchived: false, fields: JSON.stringify(PROPERTY_FIELDS) },
+    create: {
+      id: PROPERTY_ID,
+      label: "E2E Bien",
+      fields: JSON.stringify(PROPERTY_FIELDS),
+      fieldSchema: JSON.stringify(["adresse", "prix"]),
+      isArchived: false,
+    },
+  });
+
   // Recette globale minimale (sans compte, sans overrides bloquants).
   await prismaTest.patternTemplate.upsert({
     where: { id: RECIPE_ID },
@@ -106,7 +123,11 @@ test.afterAll(async () => {
       .catch(() => {});
     await prismaTest.patternBinding.delete({ where: { id: bindingId } }).catch(() => {});
   }
+  await prismaTest.publicationSlot
+    .deleteMany({ where: { propertyId: PROPERTY_ID } })
+    .catch(() => {});
   await prismaTest.patternTemplate.delete({ where: { id: RECIPE_ID } }).catch(() => {});
+  await prismaTest.property.delete({ where: { id: PROPERTY_ID } }).catch(() => {});
   await prismaTest.$disconnect();
 });
 
@@ -198,6 +219,62 @@ test.describe("Missions — création API", () => {
     const res = await request.post("/api/missions", {
       headers: { "Content-Type": "application/json", Cookie },
       data: { accountId: null },
+    });
+    expect(res.status()).toBe(400);
+  });
+});
+
+test.describe("Missions — bien partagé", () => {
+  test("mission avec propertyId → référence le bien", async ({ page, request }) => {
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+
+    const res = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { patternTemplateId: RECIPE_ID, propertyId: PROPERTY_ID },
+    });
+    expect(res.ok()).toBeTruthy();
+    const slot = await res.json();
+    createdSlotIds.push(slot.id);
+    expect(slot.propertyId).toBe(PROPERTY_ID);
+
+    const dbSlot = await prismaTest.publicationSlot.findUnique({
+      where: { id: slot.id },
+      select: { propertyId: true },
+    });
+    expect(dbSlot?.propertyId).toBe(PROPERTY_ID);
+  });
+
+  test("batch : POST /api/properties/[id]/missions crée N missions rattachées au bien", async ({
+    page,
+    request,
+  }) => {
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+
+    const res = await request.post(`/api/properties/${PROPERTY_ID}/missions`, {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { recipeIds: [RECIPE_ID], accountId: null },
+    });
+    expect(res.ok()).toBeTruthy();
+    const { count, createdIds } = await res.json();
+    expect(count).toBe(1);
+    (createdIds as string[]).forEach((id) => createdSlotIds.push(id));
+
+    const dbSlot = await prismaTest.publicationSlot.findUnique({
+      where: { id: createdIds[0] },
+      select: { propertyId: true, patternTemplateId: true },
+    });
+    expect(dbSlot?.propertyId).toBe(PROPERTY_ID);
+    expect(dbSlot?.patternTemplateId).toBe(RECIPE_ID);
+  });
+
+  test("batch : recette manquante → 400", async ({ page, request }) => {
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+    const res = await request.post(`/api/properties/${PROPERTY_ID}/missions`, {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { recipeIds: [] },
     });
     expect(res.status()).toBe(400);
   });

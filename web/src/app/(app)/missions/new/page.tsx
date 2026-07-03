@@ -17,7 +17,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { MissionForm } from "./MissionForm";
 
 interface PageProps {
-  searchParams: Promise<{ recipeId?: string; accountId?: string }>;
+  searchParams: Promise<{ recipeId?: string; accountId?: string; propertyId?: string }>;
 }
 
 export default async function NewMissionPage({ searchParams }: PageProps) {
@@ -29,7 +29,7 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
     redirect("/home");
   }
 
-  const [templates, accounts] = await Promise.all([
+  const [templates, accounts, propertyRows] = await Promise.all([
     prisma.patternTemplate.findMany({
       where: { isArchived: false },
       select: {
@@ -46,6 +46,11 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
       select: { id: true, name: true, handle: true },
       orderBy: { handle: "asc" },
     }),
+    prisma.property.findMany({
+      where: { isArchived: false },
+      select: { id: true, label: true, fields: true },
+      orderBy: { updatedAt: "desc" },
+    }),
   ]);
 
   const recipes = templates.map((t) => ({
@@ -57,15 +62,23 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
     autoSaveLibraryName: t.autoSaveToLibrary?.name ?? null,
   }));
 
-  const { recipeId, accountId } = await searchParams;
+  const properties = propertyRows.map((p) => ({
+    id: p.id,
+    label: p.label,
+    fields: safeJSON<Record<string, string>>(p.fields, {}),
+  }));
+
+  const { recipeId, accountId, propertyId } = await searchParams;
 
   return (
     <PageShell variant="narrow">
       <MissionForm
         recipes={recipes}
         accounts={accounts}
+        properties={properties}
         initialRecipeId={recipeId ?? ""}
         initialAccountId={accountId ?? ""}
+        initialPropertyId={propertyId ?? ""}
         canCreateRecipe={isAdmin}
       />
     </PageShell>

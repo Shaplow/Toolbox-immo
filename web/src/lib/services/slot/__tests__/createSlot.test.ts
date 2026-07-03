@@ -285,6 +285,31 @@ describe("createSlot — champs requis", () => {
     expect(slot.patternBindingId).toBeNull();
     expect(slot.patternTemplateId).toBe("tpl-1");
   });
+
+  it("mission avec propertyId → référence le bien (résolution live, pas de copie)", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValue({
+      id: "tpl-1",
+      label: "Recette Mission",
+      source: "auto_template",
+      isArchived: false,
+      captionPresetId: null,
+      descriptionPromptId: null,
+      needsCaptions: false,
+      needsDescription: "none",
+      coverMode: "none",
+      coverConfig: null,
+      fieldSchema: "[]",
+    });
+
+    const slot = await createSlot(
+      { patternTemplateId: "tpl-1", propertyId: "prop-1" },
+      makeAdminCtx(),
+    );
+
+    expect(slot.propertyId).toBe("prop-1");
+    // Pas de copie des valeurs du bien dans slot.fields (résolues live à la génération).
+    expect(slot.fields).toEqual({});
+  });
 });
 
 // ─── Invariant 3 : pattern cross-account ────────────────────────────────────
