@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { FormField } from "@/components/ui/FormField";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { toast } from "@/components/ui/Toast";
 import { FlexFieldsEditor } from "@/components/calendar/FlexFieldsEditor";
 
@@ -72,12 +73,18 @@ export function MissionForm({
   );
 
   function onRecipeChange(next: string) {
+    // Au changement de recette, on remplace SEULEMENT les champs hérités de
+    // l'ancienne recette par ceux de la nouvelle — les champs ajoutés à la main
+    // par l'utilisateur (et toutes les valeurs déjà saisies) sont conservés.
+    const prevInherited = recipes.find((r) => r.id === recipeId)?.fieldSchema ?? [];
+    const nextInherited = recipes.find((r) => r.id === next)?.fieldSchema ?? [];
+    const adHoc = schema.filter((k) => !prevInherited.includes(k));
+    const nextSchema = Array.from(new Set([...nextInherited, ...adHoc]));
+    const nextValues: Record<string, string> = {};
+    for (const k of nextSchema) nextValues[k] = values[k] ?? "";
     setRecipeId(next);
-    const recipe = recipes.find((r) => r.id === next);
-    const nextSchema = recipe?.fieldSchema ?? [];
     setSchema(nextSchema);
-    // Reset des valeurs sur les champs hérités (l'utilisateur pourra en ajouter).
-    setValues(Object.fromEntries(nextSchema.map((k) => [k, ""])));
+    setValues(nextValues);
   }
 
   async function handleSubmit() {
@@ -132,6 +139,12 @@ export function MissionForm({
 
   return (
     <div className="space-y-5">
+      <Breadcrumb
+        items={[
+          { href: "/outils", label: "Atelier" },
+          { label: "Nouvelle mission" },
+        ]}
+      />
       <div className="flex items-center gap-2">
         <Clapperboard size={18} className="text-muted-foreground" />
         <h1 className="text-lg font-semibold tracking-tight text-foreground">

@@ -50,6 +50,9 @@ type NavItem = {
   icon: ReactNode;
   disabled?: boolean;
   exact?: boolean;
+  /** Préfixes de chemin supplémentaires qui marquent cet item comme actif
+   *  (ex: "Atelier" (/outils) reste actif sur les pages d'un outil : /missions). */
+  matchPaths?: string[];
 };
 
 type NavSection = {
@@ -128,7 +131,7 @@ export function AppNav({
         title: "Production",
         items: [
           { href: "/templates", label: "Studio", icon: <Clapperboard size={14} /> },
-          { href: "/outils", label: "Atelier", icon: <Hammer size={14} /> },
+          { href: "/outils", label: "Atelier", icon: <Hammer size={14} />, matchPaths: ["/missions"] },
           { href: "/listings", label: "Mes générations", icon: <History size={14} /> },
         ],
       },
@@ -158,7 +161,7 @@ export function AppNav({
         items: [
           { href: "/home", label: "Accueil", icon: <Home size={14} /> },
           ...(hasAnyToolPerm
-            ? [{ href: "/outils", label: "Atelier", icon: <Hammer size={14} /> }]
+            ? [{ href: "/outils", label: "Atelier", icon: <Hammer size={14} />, matchPaths: ["/missions"] }]
             : []),
           { href: "/listings", label: "Mes générations", icon: <History size={14} /> },
         ],
@@ -424,7 +427,11 @@ function NavItemLink({
 }) {
   const active =
     !item.disabled &&
-    (pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`)));
+    (pathname === item.href ||
+      (!item.exact && pathname.startsWith(`${item.href}/`)) ||
+      (item.matchPaths ?? []).some(
+        (p) => pathname === p || pathname.startsWith(`${p}/`),
+      ));
 
   if (item.disabled) {
     return (
