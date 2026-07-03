@@ -66,6 +66,7 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
         accounts={accounts}
         initialRecipeId={recipeId ?? ""}
         initialAccountId={accountId ?? ""}
+        canCreateRecipe={isAdmin}
       />
     </PageShell>
   );

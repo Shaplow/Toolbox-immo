@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Clapperboard, Save } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -31,6 +32,9 @@ interface MissionFormProps {
   accounts: MissionAccount[];
   initialRecipeId?: string;
   initialAccountId?: string;
+  /** L'utilisateur peut-il créer une recette (admin) ? Pilote l'empty-state du
+   *  catalogue vide : lien vers /admin/patterns pour un admin, message d'attente sinon. */
+  canCreateRecipe?: boolean;
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -44,8 +48,10 @@ export function MissionForm({
   accounts,
   initialRecipeId = "",
   initialAccountId = "",
+  canCreateRecipe = false,
 }: MissionFormProps) {
   const router = useRouter();
+  const hasRecipes = recipes.length > 0;
 
   const validInitialRecipe = recipes.find((r) => r.id === initialRecipeId) ?? null;
 
@@ -139,12 +145,28 @@ export function MissionForm({
 
       <Card className="p-5 space-y-5">
         <FormField label="Recette" required help="Pilote la génération (template, cover, sous-titres, description).">
-          <Select
-            value={recipeId}
-            onChange={onRecipeChange}
-            options={recipeOptions}
-            placeholder={recipes.length ? "Choisir une recette…" : "Aucune recette disponible"}
-          />
+          {hasRecipes ? (
+            <Select
+              value={recipeId}
+              onChange={onRecipeChange}
+              options={recipeOptions}
+              placeholder="Choisir une recette…"
+            />
+          ) : (
+            <div className="rounded-md border border-input bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+              Aucune recette pour l&apos;instant — indispensable pour lancer une mission.{" "}
+              {canCreateRecipe ? (
+                <>
+                  <Link href="/admin/patterns" className="font-medium text-primary hover:underline">
+                    Créez-en une
+                  </Link>{" "}
+                  dans Configuration → Recettes, puis revenez ici.
+                </>
+              ) : (
+                "Demandez à un administrateur d'en créer une."
+              )}
+            </div>
+          )}
         </FormField>
 
         <FormField label="Compte Instagram" help="Optionnel. Laissez vide pour une production stock (archivable en médiathèque).">
