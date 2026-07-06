@@ -58,35 +58,6 @@ type SectionKey =
   | "activity";
 
 /**
- * Retourne true si la section est "primaire" pour ce rôle (déplié par défaut).
- *
- * - ADMIN : tout déplié (vision complète de la pipeline).
- * - MONTEUR : travail = Brief, Rushes, Versions, Commentaires — le reste est secondaire.
- * - CM : travail = Render (lecture), Cover, Captions, Légende IG (description), Publication.
- * - USER : tout replié par défaut (accès minimal, rôle legacy).
- */
-function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
-  if (role === "ADMIN") {
-    // P1 — Pour l'admin, on ne déplie plus toutes les sections par défaut :
-    // captions / description / cover sont des sections de finalisation
-    // qu'il consulte ponctuellement. Le state est persisté via localStorage
-    // (`pub-section:<slotId>:<key>`), donc l'admin garde la main.
-    return ADMIN_PRIMARY_SECTIONS.includes(section);
-  }
-  const list = PRIMARY_SECTIONS_BY_ROLE[role as Exclude<UserRole, "ADMIN">];
-  return list?.includes(section) ?? true;
-}
-
-const ADMIN_PRIMARY_SECTIONS: SectionKey[] = [
-  "brief",
-  "rushes",
-  "render",
-  "versions",
-  "clientValidation",
-  "publish",
-];
-
-/**
  * Sections RENDUES (vs simplement repliées) pour un rôle donné. Les
  * sections hors liste ne sont pas du tout montées dans le DOM — pas
  * de chevron à ignorer, pas de bruit visuel pour les rôles qui n'ont
@@ -116,14 +87,15 @@ const PRIMARY_SECTIONS_BY_ROLE: Record<Exclude<UserRole, "ADMIN">, SectionKey[]>
 
 /**
  * true = la section est MONTÉE dans le DOM pour ce rôle. false = ne
- * s'affiche pas du tout. ADMIN voit tout. Distinct de
- * isPrimaryForRole qui pilote uniquement l'état ouvert/fermé.
+ * s'affiche pas du tout. ADMIN voit tout. Le pliage ouvert/fermé est
+ * géré séparément par Section (defaultOpen + persistance localStorage).
  */
 function shouldRenderForRole(section: SectionKey, role: UserRole): boolean {
   if (role === "ADMIN") return true;
   const list = PRIMARY_SECTIONS_BY_ROLE[role as Exclude<UserRole, "ADMIN">];
-  // Activity reste accessible à tous les rôles connectés (informatif).
-  if (section === "activity") return role !== "EXTERNAL_GENERATOR";
+  // Activité = fil d'audit réservé aux ADMIN. Les ADMIN ont déjà renvoyé true
+  // ci-dessus ; tout autre rôle est explicitement exclu ici.
+  if (section === "activity") return false;
   return list?.includes(section) ?? false;
 }
 
@@ -455,8 +427,12 @@ export function PublicationFiche({
     }
     return cloneElement(node, {
       sectionId: key,
-      storageKey: `pub-section:${slot.id}:${key}`,
-      defaultOpen: isPrimaryForRole(key, currentUserRole),
+      // v2 : bump du préfixe pour invalider les états "closed" hérités des anciens
+      // défauts (repli auto), tout en conservant la mémoire des replis manuels futurs.
+      storageKey: `pub-section-v2:${slot.id}:${key}`,
+      // Toutes les sections montées sont dépliées par défaut. Un repli manuel reste
+      // mémorisé via storageKey (restauré au prochain chargement).
+      defaultOpen: true,
       collapsible: true,
     } as Record<string, unknown>);
   };
