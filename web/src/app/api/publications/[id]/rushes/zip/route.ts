@@ -6,21 +6,28 @@
  * de télécharger fichier par fichier.
  *
  * Garde permissions : seul un user ayant `canSeePublication` accède
- * (équivalent aux liens individuels). Limite taille totale 5 GB pour
- * éviter d'exploser la mémoire du serveur (JSZip in-memory).
+ * (équivalent aux liens individuels).
+ *
+ * L'archive est **streamée** : chaque rush est lu en flux depuis R2 et poussé
+ * directement dans l'archive (STORE, pas de compression — vidéos déjà compressées),
+ * l'archive étant elle-même streamée vers la réponse. La mémoire serveur reste
+ * ~constante quelle que soit la taille totale (vs l'ancienne construction JSZip
+ * in-memory qui bufferisait 2-3× le bundle en RAM → OOM/PM2 restart → 502).
  */
-
 import { NextRequest, NextResponse } from "next/server";
-import JSZip from "jszip";
+import { Readable } from "node:stream";
+import { finished } from "node:stream/promises";
+import { ZipArchive } from "archiver";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canSeePublication } from "@/lib/permissions/publications";
-import { getFromR2, r2Configured } from "@/lib/r2";
+import { getR2ObjectStream, r2Configured } from "@/lib/r2";
+
+// archiver + node:stream requièrent le runtime Node (pas edge).
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-// 5 GB cap — protège la mémoire serveur. Au-delà, on conseille DL unitaire.
-const MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024;
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   const userContext = await getUserContext();
@@ -64,80 +71,70 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
   const rushes = await prisma.publicationRush.findMany({
     where: { slotId, deletedAt: null },
     orderBy: { uploadedAt: "asc" },
-    select: { id: true, r2Key: true, fileName: true, sizeBytes: true },
+    select: { id: true, r2Key: true, fileName: true },
   });
 
   if (rushes.length === 0) {
     return NextResponse.json({ error: "Aucun rush à zipper." }, { status: 404 });
   }
 
-  // Si > 50% des rushes ont sizeBytes null (uploads legacy ou clients qui
-  // omettaient le champ), le guard MAX_TOTAL_BYTES devient inutilisable :
-  // chaque null contribue 0 et le cap est silencieusement contourné, ce qui
-  // permet d'exploser la mémoire du process Next en chargeant N rushes en
-  // RAM. On refuse plutôt que tenter — mieux vaut explicite que crash.
-  const nullSizeCount = rushes.filter((r) => r.sizeBytes == null).length;
-  if (nullSizeCount > rushes.length / 2) {
-    return NextResponse.json(
-      {
-        error:
-          "Impossible d'estimer la taille totale (trop de rushes sans sizeBytes). Téléchargez les rushes individuellement.",
-      },
-      { status: 409 },
-    );
-  }
+  // Archive streamée. STORE : les rushes vidéo sont déjà compressés, DEFLATE
+  // n'apporterait rien et coûterait du CPU.
+  const archive = new ZipArchive({ store: true });
+  archive.on("warning", (err) => console.warn("[rushes/zip] archive warning:", err));
+  archive.on("error", (err) => console.error("[rushes/zip] archive error:", err));
 
-  const totalBytes = rushes.reduce((acc, r) => acc + (r.sizeBytes ?? 0), 0);
-  if (totalBytes > MAX_TOTAL_BYTES) {
-    return NextResponse.json(
-      {
-        error: `Bundle trop volumineux (${Math.round(totalBytes / (1024 * 1024 * 1024))} GB > 5 GB). Télécharger les rushes individuellement.`,
-      },
-      { status: 413 },
-    );
-  }
-
-  // Build zip in-memory. Pour rester simple — pour très gros bundles, on
-  // envisagera archiver streaming. Ici on dépasse rarement 1 GB.
-  const zip = new JSZip();
-  for (const rush of rushes) {
-    try {
-      const buf = await getFromR2(rush.r2Key);
-      // Dédoublonner les noms si conflit (rare mais possible si re-upload)
-      const safeName = ensureUniqueName(zip, rush.fileName);
-      zip.file(safeName, buf, { binary: true });
-    } catch (err) {
-      console.warn(`[rushes/zip] skip rush ${rush.id} (r2Key=${rush.r2Key}): ${String(err)}`);
+  // Producteur : append séquentiel (on attend la fin de lecture de chaque flux R2
+  // avant d'ouvrir le suivant) → un seul flux R2 ouvert à la fois, mémoire bornée.
+  const used = new Set<string>();
+  void (async () => {
+    for (const rush of rushes) {
+      try {
+        const body = await getR2ObjectStream(rush.r2Key);
+        archive.append(body, { name: ensureUniqueName(used, rush.fileName) });
+        await finished(body);
+      } catch (err) {
+        console.warn(`[rushes/zip] skip rush ${rush.id} (r2Key=${rush.r2Key}): ${String(err)}`);
+      }
     }
-  }
-
-  const zipBuffer = await zip.generateAsync({
-    type: "nodebuffer",
-    compression: "STORE", // les rushes vidéo sont déjà compressés — pas de gain à DEFLATE
+    await archive.finalize();
+  })().catch((err) => {
+    console.error("[rushes/zip] producer failed:", err);
+    archive.destroy(err instanceof Error ? err : new Error(String(err)));
   });
 
   const archiveName = slugifyForFilename(
     `${slot.account?.handle ?? "sans-compte"}-${slot.title ?? slotId}-rushes`,
   );
 
-  return new NextResponse(new Uint8Array(zipBuffer), {
+  const webStream = Readable.toWeb(archive) as ReadableStream<Uint8Array>;
+  return new Response(webStream, {
     status: 200,
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="${archiveName}.zip"`,
-      "Content-Length": zipBuffer.length.toString(),
+      // Désactive le proxy_buffering Nginx pour cette réponse : le zip streame
+      // vers le client sans re-bufferisation (sinon time-to-first-byte long +
+      // fichiers temporaires disque côté Nginx).
+      "X-Accel-Buffering": "no",
     },
   });
 }
 
-function ensureUniqueName(zip: JSZip, name: string): string {
-  if (!zip.file(name)) return name;
+/** Dédoublonne les noms de fichiers en cas de conflit (re-upload du même nom). */
+function ensureUniqueName(used: Set<string>, name: string): string {
+  if (!used.has(name)) {
+    used.add(name);
+    return name;
+  }
   const dot = name.lastIndexOf(".");
   const base = dot > 0 ? name.slice(0, dot) : name;
   const ext = dot > 0 ? name.slice(dot) : "";
   let i = 2;
-  while (zip.file(`${base}-${i}${ext}`)) i++;
-  return `${base}-${i}${ext}`;
+  while (used.has(`${base}-${i}${ext}`)) i++;
+  const unique = `${base}-${i}${ext}`;
+  used.add(unique);
+  return unique;
 }
 
 function slugifyForFilename(input: string): string {
