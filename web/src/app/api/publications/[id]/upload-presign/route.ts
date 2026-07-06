@@ -24,6 +24,7 @@ import { toUserRole } from "@/lib/permissions/role";
 import { r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { createMultipartUpload, createPresignedUploadPartUrl } from "@/lib/r2Multipart";
 import { rushKey, versionKey, briefAttachmentKey } from "@/lib/r2Keys";
+import { BRIEF_ATTACHMENT_MIME_TYPES } from "@/lib/briefAttachmentTypes";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ const ALLOWED_CONTENT_TYPES: Record<string, string[]> = {
     "image/webp",
   ],
   version: ["video/mp4", "video/quicktime", "video/x-m4v"],
-  "brief-attachment": ["application/pdf", "image/jpeg", "image/png", "image/webp"],
+  "brief-attachment": BRIEF_ATTACHMENT_MIME_TYPES,
 };
 
 const MAX_SIZE: Record<string, number> = {

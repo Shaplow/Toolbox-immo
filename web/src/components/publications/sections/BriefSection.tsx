@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { MediaDropzone } from "@/components/ui/MediaDropzone";
 import type { UploadResult } from "@/components/ui/MediaDropzone";
+import { BRIEF_ATTACHMENT_MIME_TYPES } from "@/lib/briefAttachmentTypes";
 import { toast } from "@/components/ui/Toast";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -265,10 +266,10 @@ export function BriefSection({
             <MediaDropzone
               slotId={slotId}
               kind="brief-attachment"
-              accept={["application/pdf", "image/jpeg", "image/png", "image/webp"]}
+              accept={BRIEF_ATTACHMENT_MIME_TYPES}
               maxSizeBytes={50 * 1024 * 1024} // 50 MB
               multiple
-              label="Ajouter des pièces jointes (PDF, images)"
+              label="Ajouter des pièces jointes (PDF, images, audio, doc…)"
               onUploaded={handleAttachmentUploaded}
               onError={handleAttachmentError}
             />
