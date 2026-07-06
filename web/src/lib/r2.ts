@@ -14,6 +14,8 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
+  type ListObjectsV2CommandOutput,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
@@ -219,6 +221,55 @@ export async function deleteFromR2(key: string): Promise<void> {
   await withRetry(`delete:${key}`, () => client.send(new DeleteObjectCommand({ Bucket: bucket!, Key: key })));
 }
 
+/**
+ * Supprime TOUS les objets sous un préfixe R2 (best-effort, objet par objet).
+ *
+ * Utilisé pour reclaim tout le stockage d'un slot en une passe via son préfixe
+ * `publications/<slotId>/` (rushes + versions + brief + cover-monteur + résidus
+ * d'uploads avortés). Pagine ListObjectsV2 ; chaque suppression passe par
+ * `deleteFromR2` (retry). Un échec sur une clé est loggué mais n'interrompt pas
+ * le reste — l'appelant gère la résilience.
+ *
+ * @returns { deleted, failed } — compteurs d'objets supprimés / en échec.
+ */
+export async function deleteR2Prefix(
+  prefix: string,
+): Promise<{ deleted: number; failed: number }> {
+  requireR2();
+  const { bucket } = getR2Config();
+  const client = createClient();
+
+  let deleted = 0;
+  let failed = 0;
+  let continuationToken: string | undefined = undefined;
+
+  do {
+    const response: ListObjectsV2CommandOutput = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket!,
+        Prefix: prefix,
+        MaxKeys: 1000,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    for (const obj of response.Contents ?? []) {
+      if (!obj.Key) continue;
+      try {
+        await deleteFromR2(obj.Key);
+        deleted++;
+      } catch (err) {
+        failed++;
+        console.error(`[deleteR2Prefix] échec suppression key=${obj.Key}:`, err);
+      }
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return { deleted, failed };
+}
+
 // ─── Public URL ───────────────────────────────────────────────────────────────
 
 /** Construit l'URL publique pour une clé R2 (sans vérifier qu'elle existe). */
@@ -272,4 +323,22 @@ export async function getFromR2(key: string): Promise<Buffer> {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+
+/**
+ * Retourne un objet R2 sous forme de flux Node lisible (sans le charger en RAM).
+ *
+ * Utilisé pour streamer directement vers une archive (cf. rushes/zip) : contrairement
+ * à getFromR2 qui bufferise tout l'objet, ici on renvoie le `Body` du GetObject tel
+ * quel. Le handler node-http du SDK v3 renvoie un `Readable` Node en runtime Node.
+ */
+export async function getR2ObjectStream(key: string): Promise<Readable> {
+  requireR2();
+  const { bucket } = getR2Config();
+  const client = createClient();
+  const response = await withRetry(`getStream:${key}`, () =>
+    client.send(new GetObjectCommand({ Bucket: bucket!, Key: key }))
+  );
+  if (!response.Body) throw new Error(`R2 object empty: ${key}`);
+  return response.Body as Readable;
 }
