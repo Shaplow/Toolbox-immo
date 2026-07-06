@@ -54,6 +54,7 @@ export interface RecipeItem {
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsBrief: boolean;
+  requiresProperty: boolean;
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   templateNotes: string | null;
@@ -125,6 +126,7 @@ function defaultRecipeFormInitial(): RecipeFormInitial {
     needsClientValidation: false,
     allowsClientRevision: false,
     needsBrief: false,
+    requiresProperty: false,
     captionPresetId: null,
     descriptionPromptId: null,
     templateNotes: null,
@@ -155,6 +157,7 @@ function recipeItemToFormInitial(r: RecipeItem): RecipeFormInitial {
     needsClientValidation: r.needsClientValidation,
     allowsClientRevision: r.allowsClientRevision,
     needsBrief: r.needsBrief,
+    requiresProperty: r.requiresProperty,
     captionPresetId: r.captionPresetId,
     descriptionPromptId: r.descriptionPromptId,
     templateNotes: r.templateNotes,

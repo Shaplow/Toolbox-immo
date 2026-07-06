@@ -72,6 +72,7 @@ export interface RecipeFormInitial {
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsBrief: boolean;
+  requiresProperty: boolean;
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   templateNotes: string | null;
@@ -102,6 +103,7 @@ export interface RecipeFormValues {
     needsClientValidation: boolean;
     allowsClientRevision: boolean;
     needsBrief: boolean;
+    requiresProperty: boolean;
     captionPresetId: string | null;
     descriptionPromptId: string | null;
     notes: string | null;
@@ -170,6 +172,7 @@ export function RecipeForm({
   const [needsClientValidation, setNeedsClientValidation] = useState(initial.needsClientValidation);
   const [allowsClientRevision, setAllowsClientRevision] = useState(initial.allowsClientRevision);
   const [needsBrief, setNeedsBrief] = useState(initial.needsBrief);
+  const [requiresProperty, setRequiresProperty] = useState(initial.requiresProperty ?? false);
   const [captionPresetId, setCaptionPresetId] = useState(initial.captionPresetId ?? "");
   const [descriptionPromptId, setDescriptionPromptId] = useState(initial.descriptionPromptId ?? "");
   const [templateNotes, setTemplateNotes] = useState(initial.templateNotes ?? "");
@@ -227,6 +230,7 @@ export function RecipeForm({
         needsClientValidation,
         allowsClientRevision,
         needsBrief,
+        requiresProperty,
         captionPresetId: captionPresetId || null,
         descriptionPromptId: descriptionPromptId || null,
         notes: templateNotes.trim() || null,
@@ -317,6 +321,8 @@ export function RecipeForm({
             setAllowsClientRevision={setAllowsClientRevision}
             needsBrief={needsBrief}
             setNeedsBrief={setNeedsBrief}
+            requiresProperty={requiresProperty}
+            setRequiresProperty={setRequiresProperty}
             captionPresetId={captionPresetId}
             setCaptionPresetId={setCaptionPresetId}
             descriptionPromptId={descriptionPromptId}
@@ -423,6 +429,8 @@ interface ContentTabProps {
   setAllowsClientRevision: (v: boolean) => void;
   needsBrief: boolean;
   setNeedsBrief: (v: boolean) => void;
+  requiresProperty: boolean;
+  setRequiresProperty: (v: boolean) => void;
   captionPresetId: string;
   setCaptionPresetId: (v: string) => void;
   descriptionPromptId: string;
@@ -556,6 +564,11 @@ function ContentTab(p: ContentTabProps) {
             checked={p.needsBrief}
             onChange={p.setNeedsBrief}
             label="Brief obligatoire avant production"
+          />
+          <FlagCheckbox
+            checked={p.requiresProperty}
+            onChange={p.setRequiresProperty}
+            label="Nécessite un bien"
           />
           <FlagCheckbox
             checked={p.needsAdminValidation}

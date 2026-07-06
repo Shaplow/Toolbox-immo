@@ -31,6 +31,7 @@ interface TemplatePatch {
   needsClientValidation?: boolean;
   allowsClientRevision?: boolean;
   needsBrief?: boolean;
+  requiresProperty?: boolean;
   notes?: string | null;
 }
 
@@ -158,6 +159,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ...(tpl.needsClientValidation !== undefined && { needsClientValidation: tpl.needsClientValidation }),
           ...(tpl.allowsClientRevision !== undefined && { allowsClientRevision: tpl.allowsClientRevision }),
           ...(tpl.needsBrief !== undefined && { needsBrief: tpl.needsBrief }),
+          ...(tpl.requiresProperty !== undefined && { requiresProperty: tpl.requiresProperty }),
           ...(tpl.notes !== undefined && { notes: tpl.notes }),
           updatedByUserId: ctx.actualUser.id,
         },

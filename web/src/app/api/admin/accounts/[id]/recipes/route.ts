@@ -36,6 +36,7 @@ interface TemplatePayload {
   needsClientValidation?: boolean;
   allowsClientRevision?: boolean;
   needsBrief?: boolean;
+  requiresProperty?: boolean;
   notes?: string | null;
 }
 
@@ -177,6 +178,7 @@ export async function POST(
               needsClientValidation: tpl.needsClientValidation ?? false,
               allowsClientRevision: tpl.allowsClientRevision ?? false,
               needsBrief: tpl.needsBrief ?? false,
+              requiresProperty: tpl.requiresProperty ?? false,
               notes: tpl.notes ?? null,
               updatedByUserId: ctx.actualUser.id,
             },
