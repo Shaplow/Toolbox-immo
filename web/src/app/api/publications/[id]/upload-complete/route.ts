@@ -27,6 +27,7 @@ import { applyAutoTransition } from "@/lib/services/slot/transitions";
 import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
 import { triggerAutoTranscriptionForVersion } from "@/lib/triggerAutoTranscriptionForVersion";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
+import { BRIEF_ATTACHMENT_MIME_TYPES } from "@/lib/briefAttachmentTypes";
 
 type UploadKind = "rush" | "version" | "brief-attachment";
 
@@ -49,7 +50,7 @@ const ALLOWED_MIME_TYPES_BY_KIND: Record<UploadKind, readonly string[]> = {
     "image/webp",
   ],
   version: ["video/mp4", "video/quicktime", "video/x-m4v"],
-  "brief-attachment": ["application/pdf", "image/jpeg", "image/png", "image/webp"],
+  "brief-attachment": BRIEF_ATTACHMENT_MIME_TYPES,
 };
 
 // ─── Handler ──────────────────────────────────────────────────────────────────

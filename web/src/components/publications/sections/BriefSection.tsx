@@ -237,6 +237,14 @@ export function BriefSection({
             {brief!.body!}
           </ReactMarkdown>
         </div>
+      ) : attachments.length > 0 ? (
+        // Pas de brief rédigé mais des pièces jointes servent de brief : on
+        // évite le "Pas de brief" contradictoire avec la/les PJ affichées dessous.
+        <p className="text-sm text-muted-foreground">
+          {canEditBrief
+            ? "Aucun brief rédigé — le brief est fourni via les pièces jointes ci-dessous. Cliquez sur Modifier pour ajouter un texte."
+            : "Aucun brief rédigé — le brief est fourni via les pièces jointes ci-dessous."}
+        </p>
       ) : (
         <EmptyState
           icon={FileText}

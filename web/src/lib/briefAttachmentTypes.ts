@@ -17,12 +17,16 @@ export const BRIEF_ATTACHMENT_MIME_TYPES: string[] = [
   "image/gif",
   // Audio
   "audio/mpeg",
+  "audio/mp3",
   "audio/wav",
   "audio/x-wav",
   "audio/mp4",
   "audio/x-m4a",
+  "audio/m4a",
   "audio/ogg",
   "audio/aac",
+  "audio/flac",
+  "audio/x-flac",
   // Vidéo légère
   "video/mp4",
   "video/quicktime",
