@@ -4,8 +4,9 @@
  * Usage typique (grands fichiers > 100 MB) :
  * 1. createMultipartUpload(key, contentType) → { uploadId }
  * 2. Pour chaque partie : createPresignedUploadPartUrl(key, uploadId, partNumber) → url
- * 3. Le navigateur PUT chaque partie et collecte les ETags.
- * 4. completeMultipartUpload(key, uploadId, parts) pour finaliser.
+ * 3. Le navigateur PUT chaque partie (l'ETag n'a pas besoin d'être relu côté client).
+ * 4. completeMultipartUpload(key, uploadId, parts) : les ETags sont récupérés
+ *    côté serveur via ListParts (source de vérité), pas fournis par le client.
  * 5. En cas d'erreur : abortMultipartUpload(key, uploadId).
  *
  * Dépendances : même S3Client que r2.ts (singleton via createClient importé).
@@ -19,6 +20,7 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   ListPartsCommand,
+  type ListPartsCommandOutput,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -151,17 +153,38 @@ export async function createPresignedUploadPartUrl(
 /**
  * Finalise un upload multipart.
  *
- * @param parts Liste ordonnée des parties avec leur partNumber et ETag (retournés
- *              par R2 dans le header ETag de la réponse PUT de chaque partie).
+ * Les ETags ne sont PAS fournis par le client : ils sont récupérés côté serveur
+ * via ListParts (source de vérité R2). En cross-origin, le header ETag de la
+ * réponse PUT d'une partie n'est lisible par le navigateur que si la CORS du
+ * bucket expose `ETag` — s'appuyer dessus rendait la finalisation dépendante
+ * d'une config CORS hors repo (ETag vide → CompleteMultipartUpload rejeté).
+ *
+ * @param expectedParts Parties attendues (numéros) telles qu'uploadées par le
+ *                       client — sert uniquement de garde anti-troncature
+ *                       (comparaison de comptage avec ce que R2 a réellement).
  */
 export async function completeMultipartUpload(
   key: string,
   uploadId: string,
-  parts: { partNumber: number; etag: string }[]
+  expectedParts: { partNumber: number }[]
 ): Promise<void> {
   requireR2();
   const { bucket } = getR2Config();
   const client = createClient();
+
+  // ETags canoniques côté serveur (robuste quelle que soit la CORS du bucket).
+  const listed = await withRetry(`listParts:${key}`, () =>
+    listInProgressParts(key, uploadId)
+  );
+
+  // Garde anti-troncature : si R2 a moins (ou plus) de parties que ce que le
+  // client déclare avoir uploadé, on refuse d'assembler un fichier incomplet.
+  if (listed.length !== expectedParts.length) {
+    throw new Error(
+      `R2 CompleteMultipartUpload: ${listed.length} parties trouvées, ` +
+        `${expectedParts.length} attendues (key=${key}, uploadId=${uploadId})`
+    );
+  }
 
   await withRetry(`completeMultipartUpload:${key}`, () =>
     client.send(
@@ -170,7 +193,7 @@ export async function completeMultipartUpload(
         Key: key,
         UploadId: uploadId,
         MultipartUpload: {
-          Parts: parts
+          Parts: listed
             .sort((a, b) => a.partNumber - b.partNumber)
             .map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
         },
@@ -204,11 +227,15 @@ export async function abortMultipartUpload(
   );
 }
 
-// ─── Liste des parties (debug) ────────────────────────────────────────────────
+// ─── Liste des parties ────────────────────────────────────────────────────────
 
 /**
- * Liste les parties déjà uploadées pour un upload multipart en cours.
- * Utile pour le debug ou pour reprendre un upload interrompu.
+ * Liste toutes les parties déjà uploadées pour un upload multipart en cours.
+ *
+ * Source de vérité des ETags pour la finalisation (voir completeMultipartUpload).
+ * Pagine via IsTruncated / PartNumberMarker : R2 renvoie jusqu'à 1000 parties par
+ * page. Le cap réel ici est ~200 (10 Go / 50 Mo), mais la pagination reste
+ * défensive au cas où PART_SIZE baisserait.
  */
 export async function listInProgressParts(
   key: string,
@@ -218,17 +245,29 @@ export async function listInProgressParts(
   const { bucket } = getR2Config();
   const client = createClient();
 
-  const result = await client.send(
-    new ListPartsCommand({
-      Bucket: bucket!,
-      Key: key,
-      UploadId: uploadId,
-    })
-  );
+  const parts: { partNumber: number; size: number; etag: string }[] = [];
+  let partNumberMarker: string | undefined = undefined;
 
-  return (result.Parts ?? []).map((p) => ({
-    partNumber: p.PartNumber ?? 0,
-    size: p.Size ?? 0,
-    etag: p.ETag ?? "",
-  }));
+  do {
+    const result: ListPartsCommandOutput = await client.send(
+      new ListPartsCommand({
+        Bucket: bucket!,
+        Key: key,
+        UploadId: uploadId,
+        PartNumberMarker: partNumberMarker,
+      })
+    );
+
+    for (const p of result.Parts ?? []) {
+      parts.push({
+        partNumber: p.PartNumber ?? 0,
+        size: p.Size ?? 0,
+        etag: p.ETag ?? "",
+      });
+    }
+
+    partNumberMarker = result.IsTruncated ? result.NextPartNumberMarker : undefined;
+  } while (partNumberMarker !== undefined);
+
+  return parts;
 }

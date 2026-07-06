@@ -91,7 +91,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     kind?: string;
     r2Key?: string;
     uploadId?: string;
-    parts?: { partNumber: number; etag: string }[];
+    parts?: { partNumber: number }[];
     fileName?: string;
     mimeType?: string;
     sizeBytes?: number;

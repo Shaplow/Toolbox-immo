@@ -84,13 +84,19 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Upload une part via PUT avec retries et retourne l'ETag. */
+/**
+ * Upload une part via PUT avec retries.
+ *
+ * On ne lit PAS l'ETag de la réponse : en cross-origin il n'est lisible que si
+ * la CORS du bucket expose `ETag`, ce qui n'est pas garanti. Les ETags sont
+ * récupérés côté serveur via ListParts à la finalisation (cf. r2Multipart.ts).
+ */
 async function uploadPartWithRetry(
   url: string,
   chunk: Blob,
   signal: AbortSignal,
   attempt = 0
-): Promise<string> {
+): Promise<void> {
   try {
     const res = await fetch(url, {
       method: "PUT",
@@ -99,8 +105,6 @@ async function uploadPartWithRetry(
       headers: { "Content-Type": "application/octet-stream" },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const etag = res.headers.get("etag") ?? res.headers.get("ETag") ?? "";
-    return etag;
   } catch (err) {
     if (attempt >= MAX_RETRIES - 1) throw err;
     if (signal.aborted) throw err;
@@ -166,6 +170,11 @@ export function MediaDropzone({
 
     updateItem(id, { status: "uploading", progress: 0 });
 
+    // Capturées ici (hors du state `items`, périmé par closure dans le catch)
+    // pour un abort multipart fiable en cas d'échec.
+    let capturedR2Key: string | undefined;
+    let capturedUploadId: string | undefined;
+
     try {
       // Mesurer la durée vidéo
       const durationSec = await measureVideoDuration(file);
@@ -194,6 +203,7 @@ export function MediaDropzone({
       };
 
       const { r2Key } = presignData;
+      capturedR2Key = r2Key;
 
       // Stocker r2Key pour abort éventuel
       updateItem(id, { r2Key });
@@ -203,18 +213,19 @@ export function MediaDropzone({
         prev.map((it) => (it.id === id ? { ...it, abortController, r2Key } : it))
       );
 
-      let parts: { partNumber: number; etag: string }[] | undefined;
+      let parts: { partNumber: number }[] | undefined;
       let uploadId: string | undefined;
 
       if (presignData.multipart) {
         // ── Multipart upload ──────────────────────────────────────────────────
         const { uploadId: uid, partSize, partUrls } = presignData.multipart;
         uploadId = uid;
+        capturedUploadId = uid;
 
         updateItem(id, { uploadId });
 
         // Découper le fichier en chunks et uploader avec concurrence max 4
-        const partResults: { partNumber: number; etag: string }[] = [];
+        const partResults: { partNumber: number }[] = [];
         let completedParts = 0;
         const total = partUrls.length;
 
@@ -227,13 +238,13 @@ export function MediaDropzone({
             const end = Math.min(start + partSize, file.size);
             const chunk = file.slice(start, end);
 
-            const etag = await uploadPartWithRetry(
+            await uploadPartWithRetry(
               part.url,
               chunk,
               abortController.signal
             );
 
-            partResults.push({ partNumber: part.partNumber, etag });
+            partResults.push({ partNumber: part.partNumber });
             completedParts++;
             updateItem(id, { progress: Math.round((completedParts / total) * 90) });
           }
@@ -312,13 +323,14 @@ export function MediaDropzone({
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur inconnue";
 
-      // Tenter un abort multipart si on a les infos
-      const currentItem = items.find((it) => it.id === id);
-      if (currentItem?.uploadId && currentItem?.r2Key) {
+      // Tenter un abort multipart si on a les infos. On lit les valeurs capturées
+      // localement (et non le state `items`, périmé par closure) — sinon l'abort
+      // ne partait quasi jamais et laissait des uploads multipart orphelins dans R2.
+      if (capturedUploadId && capturedR2Key) {
         fetch(`/api/publications/${slotId}/upload-abort`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ r2Key: currentItem.r2Key, uploadId: currentItem.uploadId }),
+          body: JSON.stringify({ r2Key: capturedR2Key, uploadId: capturedUploadId }),
         }).catch(() => {});
       }
 
