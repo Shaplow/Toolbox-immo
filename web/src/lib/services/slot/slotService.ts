@@ -31,7 +31,7 @@ import {
   syncSlotsPipelineStatuses,
 } from "@/lib/services/slot/transitions";
 import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
-import { deleteFromR2 } from "@/lib/r2";
+import { deleteR2Prefix, r2Configured } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
 import { normalizeCustomFields } from "@/lib/customFields";
 
@@ -1856,19 +1856,21 @@ async function cancelPendingJobsForSlot(slotId: string): Promise<void> {
  * Renvoie 404 (pas 403) pour les non-ADMIN, par cohérence avec GET/PATCH :
  * un non-admin ne doit pas savoir si le slot existe.
  *
- * Cleanup R2 : avant Prisma cascade (qui supprime les rows PublicationVersion,
- * PublicationRush, PublicationBriefAttachment en DB), on récupère les R2 keys
- * pour les supprimer du bucket. Sans ce cleanup, chaque slot supprimé
- * laissait derrière lui ses fichiers vidéo/image dans R2 — fuite de
- * stockage permanente.
+ * Cleanup R2 : après le delete DB (cascade sur PublicationVersion,
+ * PublicationRush, PublicationBriefAttachment…), on balaie TOUT le préfixe
+ * `publications/<slotId>/` du bucket. Ce préfixe contient l'intégralité du
+ * stockage du slot : rushes, versions, pièces jointes brief ET cover-monteur
+ * (`publications/<slotId>/cover-monteur/`), plus tout résidu d'upload avorté.
+ * Un balayage par préfixe est plus robuste qu'une collecte clé-par-clé — rien
+ * n'échappe, et CoverFramePack n'a pas de slotId direct exploitable ici.
  *
- * Best-effort : on log les échecs R2 mais on continue la suppression DB.
- * Un échec partiel R2 vaut mieux que de laisser le slot indéfiniment.
+ * Best-effort : les échecs R2 sont loggués mais ne bloquent pas la suppression
+ * DB (déjà commit). Ordre DB-avant-R2 : si le sweep échoue, le slot a quand
+ * même disparu et le cron r2-cleanup rattrapera le résidu.
  *
- * Render et CaptionJob ont `onDelete: SetNull` côté FK donc le lien slot
- * devient null mais les jobs restent en DB avec leurs propres R2 keys.
- * Ils ne sont PAS nettoyés ici — c'est de la dette assumée car ces jobs
- * peuvent être ré-utilisés (re-render sur un autre slot, etc.).
+ * Render / CaptionJob / TranscriptionJob ont `onDelete: SetNull` : leurs lignes
+ * (et leurs objets R2 hors préfixe slot, ex. `renders/…`) survivent — dette
+ * assumée car ces jobs peuvent être ré-utilisés.
  */
 export async function deleteSlot(id: string, ctx: UserContext) {
   const role = toUserRole(ctx.effectiveUser.role);
@@ -1877,51 +1879,35 @@ export async function deleteSlot(id: string, ctx: UserContext) {
     throw new NotFoundError("Slot");
   }
 
-  // Charge le slot + tous les enfants qui détiennent des R2 keys avant
-  // que Prisma cascade ne les supprime de la DB. La lecture et le delete
-  // doivent vivre dans la même transaction — sans ça, un upload-complete
-  // concurrent peut insérer un PublicationRush ou une PublicationVersion
-  // entre la lecture et le delete. La cascade les supprime mais leurs
-  // r2Key n'ont pas été collectés → fuite R2 silencieuse.
-  const r2KeysToDelete: string[] = await prisma.$transaction(async (tx) => {
+  // Vérif existence + delete dans la même transaction (la cascade Prisma
+  // supprime les lignes enfants : versions, rushes, brief, comments, etc.).
+  await prisma.$transaction(async (tx) => {
     const slot = await tx.publicationSlot.findUnique({
       where: { id },
-      include: {
-        versions: { select: { r2Key: true } },
-        rushes: { select: { r2Key: true } },
-        brief: { include: { attachments: { select: { r2Key: true } } } },
-      },
+      select: { id: true },
     });
     if (!slot) {
       throw new NotFoundError("Slot");
     }
-
-    const keys: string[] = [
-      ...slot.versions.map((v) => v.r2Key),
-      ...slot.rushes.map((r) => r.r2Key),
-      ...(slot.brief?.attachments.map((a) => a.r2Key) ?? []),
-    ];
-
-    // Delete dans la même tx : cascade supprime les rows enfants.
     await tx.publicationSlot.delete({ where: { id } });
-
-    return keys;
   });
 
-  // Cleanup R2 — best-effort. On itère séquentiellement pour ne pas
-  // saturer le bucket en cas de slot avec beaucoup de versions/rushes.
-  // Chaque échec est loggué avec le key pour permettre un cleanup
-  // manuel (script ou réessai opérationnel).
-  for (const key of r2KeysToDelete) {
+  // Reclaim R2 — best-effort, après le commit DB. On supprime tout le préfixe
+  // du slot en une passe (rushes + versions + brief + cover-monteur + résidus).
+  let r2ObjectsDeleted = 0;
+  if (r2Configured()) {
     try {
-      await deleteFromR2(key);
+      const result = await deleteR2Prefix(`publications/${id}/`);
+      r2ObjectsDeleted = result.deleted;
+      if (result.failed > 0) {
+        console.error(
+          `[deleteSlot] R2 cleanup partiel pour slotId=${id}: ${result.failed} objet(s) en échec`,
+        );
+      }
     } catch (err) {
-      console.error(
-        `[deleteSlot] R2 cleanup failed for slotId=${id} key=${key}:`,
-        err,
-      );
+      console.error(`[deleteSlot] R2 prefix cleanup failed for slotId=${id}:`, err);
     }
   }
 
-  return { ok: true, r2KeysDeleted: r2KeysToDelete.length };
+  return { ok: true, r2ObjectsDeleted };
 }

@@ -5,7 +5,8 @@
  * - Il se trouve sous l'un des SCAN_PREFIXES ("publications/" ou "content-library/")
  * - Il a été créé (LastModified) il y a plus de 24h
  * - Son r2Key n'apparaît dans aucune des tables PublicationRush,
- *   PublicationVersion, PublicationBriefAttachment ni MediaAsset
+ *   PublicationVersion, PublicationBriefAttachment, MediaAsset ni
+ *   CoverFramePack (finalCoverKey — cover monteur sous publications/)
  *
  * Pagination : ListObjectsV2 (1000 objets max par page, toutes pages parcourues).
  * Cross-check DB : collecte les r2Keys existants une seule fois (pas de N requêtes).
@@ -69,11 +70,11 @@ function getBucket(): string | null {
 // ─── Helper DB ────────────────────────────────────────────────────────────────
 
 /**
- * Récupère l'ensemble des r2Keys référencés en DB (les 3 tables).
+ * Récupère l'ensemble des r2Keys référencés en DB (5 sources).
  * Chargement en une seule passe pour éviter les N requêtes par objet.
  */
 async function loadReferencedKeys(): Promise<Set<string>> {
-  const [rushKeys, versionKeys, attachmentKeys, mediaAssetKeys] = await Promise.all([
+  const [rushKeys, versionKeys, attachmentKeys, mediaAssetKeys, coverKeys] = await Promise.all([
     prisma.publicationRush.findMany({ select: { r2Key: true } }),
     prisma.publicationVersion.findMany({ select: { r2Key: true } }),
     prisma.publicationBriefAttachment.findMany({ select: { r2Key: true } }),
@@ -81,6 +82,14 @@ async function loadReferencedKeys(): Promise<Set<string>> {
     // Sans cette source, le sweep supprimerait des assets actifs au prochain
     // run (faux positif catastrophique pour la rotation).
     prisma.mediaAsset.findMany({ select: { r2Key: true } }),
+    // CoverFramePack.finalCoverKey : les covers monteur sont stockées sous
+    // "publications/<slotId>/cover-monteur/..." (préfixe scanné). Sans cette
+    // source, le sweep supprimait des covers valides de +24h (faux positif,
+    // perte de données même sur des slots actifs).
+    prisma.coverFramePack.findMany({
+      where: { finalCoverKey: { not: null } },
+      select: { finalCoverKey: true },
+    }),
   ]);
 
   const set = new Set<string>();
@@ -88,6 +97,7 @@ async function loadReferencedKeys(): Promise<Set<string>> {
   for (const v of versionKeys) set.add(v.r2Key);
   for (const a of attachmentKeys) set.add(a.r2Key);
   for (const m of mediaAssetKeys) set.add(m.r2Key);
+  for (const c of coverKeys) if (c.finalCoverKey) set.add(c.finalCoverKey);
   return set;
 }
 

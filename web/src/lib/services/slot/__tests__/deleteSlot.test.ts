@@ -3,16 +3,18 @@
  *
  *  1. ADMIN only (non-admin → NotFoundError, pas Forbidden)
  *  2. NotFoundError si slot inexistant
- *  3. Cleanup R2 best-effort sur versions / rushes / brief attachments
- *  4. DB delete continue même si R2 cleanup échoue
- *  5. Retourne le nombre de R2 keys nettoyées
+ *  3. Cleanup R2 best-effort : balayage du préfixe publications/<slotId>/
+ *  4. DB delete continue même si le cleanup R2 échoue
+ *  5. DB delete AVANT R2 (le slot disparaît même si R2 échoue)
+ *  6. Skip R2 si R2 non configuré (dev disque local)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockSlotFindUnique = vi.fn();
 const mockSlotDelete = vi.fn();
-const mockDeleteFromR2 = vi.fn();
+const mockDeleteR2Prefix = vi.fn();
+const mockR2Configured = vi.fn();
 const mockTransaction = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
@@ -26,7 +28,8 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/lib/r2", () => ({
-  deleteFromR2: (...args: unknown[]) => mockDeleteFromR2(...args),
+  deleteR2Prefix: (...args: unknown[]) => mockDeleteR2Prefix(...args),
+  r2Configured: (...args: unknown[]) => mockR2Configured(...args),
 }));
 
 import { deleteSlot } from "@/lib/services/slot/slotService";
@@ -56,27 +59,20 @@ function makeNonAdminCtx(role: "MONTEUR" | "CM" | "VIDEASTE" = "MONTEUR") {
   } as Parameters<typeof deleteSlot>[1];
 }
 
-function makeSlot(overrides: Partial<{ versions: Array<{ r2Key: string }>; rushes: Array<{ r2Key: string }>; brief: { attachments: Array<{ r2Key: string }> } | null }> = {}) {
-  return {
-    id: "slot-1",
-    versions: [],
-    rushes: [],
-    brief: null,
-    ...overrides,
-  };
-}
-
 beforeEach(() => {
   mockSlotFindUnique.mockReset();
   mockSlotDelete.mockReset();
-  mockDeleteFromR2.mockReset();
+  mockDeleteR2Prefix.mockReset();
+  mockR2Configured.mockReset();
   mockTransaction.mockReset();
+
+  mockSlotFindUnique.mockResolvedValue({ id: "slot-1" });
   mockSlotDelete.mockResolvedValue({ id: "slot-1" });
-  mockDeleteFromR2.mockResolvedValue(undefined);
+  mockR2Configured.mockReturnValue(true);
+  mockDeleteR2Prefix.mockResolvedValue({ deleted: 0, failed: 0 });
 
   // $transaction default : proxie le callback avec un tx qui appelle les
-  // mêmes mocks que prisma. Sans ça, les nouvelles écritures wrappées dans
-  // $transaction (cf. W2.1) retournent undefined et cassent les assertions.
+  // mêmes mocks que prisma.
   mockTransaction.mockImplementation((cb: unknown) => {
     if (typeof cb !== "function") return Promise.resolve(undefined);
     const tx = {
@@ -96,6 +92,7 @@ describe("deleteSlot — auth", () => {
     await expect(deleteSlot("slot-1", makeNonAdminCtx("MONTEUR"))).rejects.toBeInstanceOf(NotFoundError);
     // Le slot n'a même pas été cherché — abort immédiat
     expect(mockSlotFindUnique).not.toHaveBeenCalled();
+    expect(mockDeleteR2Prefix).not.toHaveBeenCalled();
   });
 
   it("CM → NotFoundError", async () => {
@@ -110,122 +107,78 @@ describe("deleteSlot — auth", () => {
 // ─── Invariant 2 : NotFoundError si slot inexistant ────────────────────────
 
 describe("deleteSlot — slot inexistant", () => {
-  it("findUnique=null → NotFoundError", async () => {
+  it("findUnique=null → NotFoundError, ni delete ni cleanup R2", async () => {
     mockSlotFindUnique.mockResolvedValueOnce(null);
     await expect(deleteSlot("ghost", makeAdminCtx())).rejects.toBeInstanceOf(NotFoundError);
     expect(mockSlotDelete).not.toHaveBeenCalled();
+    expect(mockDeleteR2Prefix).not.toHaveBeenCalled();
   });
 });
 
-// ─── Invariant 3 : Cleanup R2 sur versions / rushes / attachments ──────────
+// ─── Invariant 3 : Cleanup R2 par balayage du préfixe du slot ──────────────
 
-describe("deleteSlot — cleanup R2 best-effort", () => {
-  it("supprime les R2 keys des versions", async () => {
-    mockSlotFindUnique.mockResolvedValueOnce(
-      makeSlot({
-        versions: [
-          { r2Key: "publications/slot-1/versions/1.mp4" },
-          { r2Key: "publications/slot-1/versions/2.mp4" },
-        ],
-      }),
-    );
+describe("deleteSlot — cleanup R2 par préfixe", () => {
+  it("balaie le préfixe publications/<slotId>/ et remonte le compteur", async () => {
+    mockDeleteR2Prefix.mockResolvedValueOnce({ deleted: 5, failed: 0 });
     const result = await deleteSlot("slot-1", makeAdminCtx());
-    expect(mockDeleteFromR2).toHaveBeenCalledTimes(2);
-    expect(mockDeleteFromR2).toHaveBeenCalledWith("publications/slot-1/versions/1.mp4");
-    expect(mockDeleteFromR2).toHaveBeenCalledWith("publications/slot-1/versions/2.mp4");
-    expect(result).toEqual({ ok: true, r2KeysDeleted: 2 });
+    expect(mockDeleteR2Prefix).toHaveBeenCalledTimes(1);
+    expect(mockDeleteR2Prefix).toHaveBeenCalledWith("publications/slot-1/");
+    expect(result).toEqual({ ok: true, r2ObjectsDeleted: 5 });
   });
 
-  it("supprime les R2 keys des rushes", async () => {
-    mockSlotFindUnique.mockResolvedValueOnce(
-      makeSlot({
-        rushes: [{ r2Key: "publications/slot-1/rushes/abc.mov" }],
-      }),
-    );
-    await deleteSlot("slot-1", makeAdminCtx());
-    expect(mockDeleteFromR2).toHaveBeenCalledWith("publications/slot-1/rushes/abc.mov");
-  });
-
-  it("supprime les R2 keys des brief attachments", async () => {
-    mockSlotFindUnique.mockResolvedValueOnce(
-      makeSlot({
-        brief: { attachments: [{ r2Key: "publications/slot-1/brief/note.pdf" }] },
-      }),
-    );
-    await deleteSlot("slot-1", makeAdminCtx());
-    expect(mockDeleteFromR2).toHaveBeenCalledWith("publications/slot-1/brief/note.pdf");
-  });
-
-  it("agrège versions + rushes + attachments dans le compteur", async () => {
-    mockSlotFindUnique.mockResolvedValueOnce(
-      makeSlot({
-        versions: [{ r2Key: "k1" }, { r2Key: "k2" }],
-        rushes: [{ r2Key: "k3" }],
-        brief: { attachments: [{ r2Key: "k4" }, { r2Key: "k5" }] },
-      }),
-    );
+  it("slot sans objet R2 → r2ObjectsDeleted=0", async () => {
+    mockDeleteR2Prefix.mockResolvedValueOnce({ deleted: 0, failed: 0 });
     const result = await deleteSlot("slot-1", makeAdminCtx());
-    expect(result.r2KeysDeleted).toBe(5);
-    expect(mockDeleteFromR2).toHaveBeenCalledTimes(5);
-  });
-
-  it("slot sans enfants R2 → r2KeysDeleted=0", async () => {
-    mockSlotFindUnique.mockResolvedValueOnce(makeSlot());
-    const result = await deleteSlot("slot-1", makeAdminCtx());
-    expect(result.r2KeysDeleted).toBe(0);
-    expect(mockDeleteFromR2).not.toHaveBeenCalled();
+    expect(result.r2ObjectsDeleted).toBe(0);
   });
 });
 
 // ─── Invariant 4 : DB delete continue même si R2 échoue ────────────────────
 
 describe("deleteSlot — résilience aux erreurs R2", () => {
-  it("échec R2 sur une key ne bloque pas le delete DB", async () => {
-    mockSlotFindUnique.mockResolvedValueOnce(
-      makeSlot({
-        versions: [{ r2Key: "k1" }, { r2Key: "k2" }],
-      }),
-    );
-    mockDeleteFromR2
-      .mockRejectedValueOnce(new Error("R2 unavailable"))
-      .mockResolvedValueOnce(undefined);
-
-    // Pas de throw — la fonction retourne success
+  it("échec du sweep R2 ne bloque pas le delete DB", async () => {
+    mockDeleteR2Prefix.mockRejectedValueOnce(new Error("R2 unavailable"));
     const result = await deleteSlot("slot-1", makeAdminCtx());
     expect(result.ok).toBe(true);
+    expect(result.r2ObjectsDeleted).toBe(0);
     expect(mockSlotDelete).toHaveBeenCalled();
   });
 
-  it("toutes les R2 keys en erreur → succès quand même (DB déjà delete)", async () => {
-    mockSlotFindUnique.mockResolvedValueOnce(
-      makeSlot({ rushes: [{ r2Key: "k1" }, { r2Key: "k2" }] }),
-    );
-    mockDeleteFromR2.mockRejectedValue(new Error("R2 down"));
-
+  it("cleanup partiel (failed>0) → succès quand même", async () => {
+    mockDeleteR2Prefix.mockResolvedValueOnce({ deleted: 3, failed: 2 });
     const result = await deleteSlot("slot-1", makeAdminCtx());
     expect(result.ok).toBe(true);
-    expect(mockSlotDelete).toHaveBeenCalled();
+    expect(result.r2ObjectsDeleted).toBe(3);
   });
 });
 
 // ─── Invariant 5 : DB delete avant R2 (order matters) ──────────────────────
 
 describe("deleteSlot — ordre d'opérations", () => {
-  it("Prisma delete appelé AVANT les deleteFromR2 (en cas de fail R2, le slot disparaît quand même)", async () => {
-    mockSlotFindUnique.mockResolvedValueOnce(
-      makeSlot({ versions: [{ r2Key: "k1" }] }),
-    );
+  it("Prisma delete appelé AVANT le sweep R2 (si R2 échoue, le slot disparaît quand même)", async () => {
     const callOrder: string[] = [];
     mockSlotDelete.mockImplementationOnce(() => {
       callOrder.push("db");
       return Promise.resolve({ id: "slot-1" });
     });
-    mockDeleteFromR2.mockImplementationOnce(() => {
+    mockDeleteR2Prefix.mockImplementationOnce(() => {
       callOrder.push("r2");
-      return Promise.resolve();
+      return Promise.resolve({ deleted: 1, failed: 0 });
     });
 
     await deleteSlot("slot-1", makeAdminCtx());
     expect(callOrder).toEqual(["db", "r2"]);
+  });
+});
+
+// ─── Invariant 6 : skip R2 si non configuré (dev disque local) ─────────────
+
+describe("deleteSlot — R2 non configuré", () => {
+  it("r2Configured=false → pas de sweep R2, delete DB quand même", async () => {
+    mockR2Configured.mockReturnValue(false);
+    const result = await deleteSlot("slot-1", makeAdminCtx());
+    expect(mockSlotDelete).toHaveBeenCalled();
+    expect(mockDeleteR2Prefix).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, r2ObjectsDeleted: 0 });
   });
 });
