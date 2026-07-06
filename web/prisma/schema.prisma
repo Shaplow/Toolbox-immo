@@ -1040,15 +1040,19 @@ model PatternTemplate {
   needsClientValidation Boolean @default(false)
   allowsClientRevision  Boolean @default(false)
   needsBrief            Boolean @default(false)
+  /// Biens — la création d'un slot/mission depuis cette recette EXIGE un bien
+  /// (propertyId). Validé dans createSlot ; bloque le submit côté UI.
+  requiresProperty      Boolean @default(false)
 
   captionPresetId     String?
   captionPreset       CaptionPreset?     @relation("PatternTemplateCaptionPreset", fields: [captionPresetId], references: [id], onDelete: SetNull)
   descriptionPromptId String?
   descriptionPrompt   DescriptionPrompt? @relation("PatternTemplateDescriptionPrompt", fields: [descriptionPromptId], references: [id], onDelete: SetNull)
 
-  /// Missions — Noms des champs personnalisés hérités par une mission créée
-  /// depuis cette recette (JSON string[], même shape que PublicationSlot.fieldSchema).
-  /// L'utilisateur peut compléter avec des champs ad-hoc au niveau de la mission.
+  /// DEPRECATED — les champs personnalisés vivent désormais uniquement sur le
+  /// Bien (Property), plus sur la recette. Colonne conservée pour rétro-compat
+  /// (données historiques) mais n'est plus ni lue ni écrite. À droper dans une
+  /// future migration une fois les données historiques confirmées inutiles.
   fieldSchema String @default("[]")
 
   /// Missions — Bibliothèque de média cible pour l'auto-save de la sortie de

@@ -8,12 +8,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import {
-  normalizeCustomFields,
-  validateCustomFields,
-  serializeCustomFields,
-} from "@/lib/customFields";
-
 type CreateBody = {
   label?: string;
   source?: string;
@@ -28,8 +22,8 @@ type CreateBody = {
   needsClientValidation?: boolean;
   allowsClientRevision?: boolean;
   needsBrief?: boolean;
+  requiresProperty?: boolean;
   notes?: string | null;
-  fieldSchema?: unknown;
   autoSaveToLibraryId?: string | null;
 };
 
@@ -54,12 +48,6 @@ function validateBody(body: CreateBody, requireAll: boolean): string | null {
   }
   if (body.coverMode !== undefined && !VALID_COVER_MODES.includes(body.coverMode)) {
     return `coverMode invalide`;
-  }
-  if (body.fieldSchema !== undefined) {
-    if (!Array.isArray(body.fieldSchema)) return "fieldSchema doit être un tableau";
-    const fields = normalizeCustomFields(body.fieldSchema);
-    const fieldErr = validateCustomFields(fields);
-    if (fieldErr) return `fieldSchema : ${fieldErr}`;
   }
   return null;
 }
@@ -107,10 +95,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const cleanedFieldSchema = body.fieldSchema
-    ? normalizeCustomFields(body.fieldSchema)
-    : [];
-
   const created = await prisma.patternTemplate.create({
     data: {
       label: body.label!.trim(),
@@ -130,8 +114,8 @@ export async function POST(req: NextRequest) {
       needsClientValidation: body.needsClientValidation ?? false,
       allowsClientRevision: body.allowsClientRevision ?? false,
       needsBrief: body.needsBrief ?? false,
+      requiresProperty: body.requiresProperty ?? false,
       notes: body.notes ?? null,
-      fieldSchema: serializeCustomFields(cleanedFieldSchema),
       autoSaveToLibraryId: body.autoSaveToLibraryId ?? null,
       // Sprint D — audit log light : trace l'auteur de la création.
       updatedByUserId: ctx.actualUser.id,

@@ -18,8 +18,6 @@ import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { useAutoSave } from "@/hooks/useAutoSave";
-import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
-import { normalizeCustomFields, type CustomField } from "@/lib/customFields";
 import { DeployTemplateModal } from "./DeployTemplateModal";
 
 const SOURCE_OPTIONS = [
@@ -59,10 +57,9 @@ export interface PatternTemplateInitial {
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsBrief: boolean;
+  requiresProperty?: boolean;
   notes: string | null;
   bindingCount?: number;
-  /** Champs personnalisés hérités par les missions créées depuis cette recette. */
-  fieldSchema?: CustomField[];
   /** Bibliothèque vidéo cible pour l'auto-save de la sortie. null = désactivé. */
   autoSaveToLibraryId?: string | null;
 }
@@ -80,8 +77,8 @@ export interface PatternTemplateFormValues {
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsBrief: boolean;
+  requiresProperty: boolean;
   notes: string | null;
-  fieldSchema: CustomField[];
   autoSaveToLibraryId: string | null;
 }
 
@@ -156,9 +153,8 @@ export function PatternTemplateForm({
     initial?.allowsClientRevision ?? false,
   );
   const [needsBrief, setNeedsBrief] = useState(initial?.needsBrief ?? false);
+  const [requiresProperty, setRequiresProperty] = useState(initial?.requiresProperty ?? false);
   const [notes, setNotes] = useState<string>(initial?.notes ?? "");
-  // Missions — champs personnalisés hérités par les missions créées depuis cette recette.
-  const [fieldSchema, setFieldSchema] = useState<CustomField[]>(initial?.fieldSchema ?? []);
   // Missions — bibliothèque vidéo cible pour l'auto-save. "" = null (désactivé).
   const [autoSaveLibraryId, setAutoSaveLibraryId] = useState<string>(
     initial?.autoSaveToLibraryId ?? "",
@@ -192,6 +188,7 @@ export function PatternTemplateForm({
     label?: string;
     notes?: string | null;
     needsBrief?: boolean;
+    requiresProperty?: boolean;
     needsAdminValidation?: boolean;
     needsClientValidation?: boolean;
     allowsClientRevision?: boolean;
@@ -228,6 +225,10 @@ export function PatternTemplateForm({
   function setNeedsBriefWithAutoSave(v: boolean) {
     setNeedsBrief(v);
     if (templateId) autoSave.enqueue({ needsBrief: v });
+  }
+  function setRequiresPropertyWithAutoSave(v: boolean) {
+    setRequiresProperty(v);
+    if (templateId) autoSave.enqueue({ requiresProperty: v });
   }
   function setNeedsAdminValidationWithAutoSave(v: boolean) {
     setNeedsAdminValidation(v);
@@ -269,7 +270,6 @@ export function PatternTemplateForm({
           templateId?: string | null;
           captionPresetId?: string | null;
           descriptionPromptId?: string | null;
-          fieldSchema?: string | null;
           autoSaveToLibraryId?: string | null;
           bindings?: LinkedBinding[];
           updatedBy?: { name: string | null } | null;
@@ -284,10 +284,6 @@ export function PatternTemplateForm({
           setCaptionPresetId(d.captionPresetId ?? "");
         if (d.descriptionPromptId !== undefined)
           setDescriptionPromptId(d.descriptionPromptId ?? "");
-        // Missions — normalise le fieldSchema (gère legacy string[] ET CustomField[]).
-        if (d.fieldSchema !== undefined && d.fieldSchema !== null) {
-          setFieldSchema(normalizeCustomFields(d.fieldSchema));
-        }
         if (d.autoSaveToLibraryId !== undefined)
           setAutoSaveLibraryId(d.autoSaveToLibraryId ?? "");
         setLinkedBindings(d.bindings ?? []);
@@ -345,8 +341,8 @@ export function PatternTemplateForm({
       needsClientValidation,
       allowsClientRevision: needsClientValidation && allowsClientRevision,
       needsBrief,
+      requiresProperty,
       notes: notes.trim() || null,
-      fieldSchema,
       autoSaveToLibraryId: autoSaveLibraryId || null,
     };
 
@@ -365,7 +361,6 @@ export function PatternTemplateForm({
         initial.coverMode !== values.coverMode ||
         initial.needsCaptionsMode !== values.needsCaptionsMode ||
         initial.needsDescription !== values.needsDescription ||
-        JSON.stringify(initial.fieldSchema ?? []) !== JSON.stringify(values.fieldSchema) ||
         (initial.autoSaveToLibraryId ?? null) !== values.autoSaveToLibraryId);
     if (bindingCount > 0 && isStructuralChange) {
       setPendingValues(values);
@@ -553,6 +548,12 @@ export function PatternTemplateForm({
             onChange={setNeedsBriefWithAutoSave}
           />
           <WorkflowToggle
+            label="Nécessite un bien"
+            description="Un bien doit être rattaché pour créer un slot ou une mission depuis cette recette."
+            checked={requiresProperty}
+            onChange={setRequiresPropertyWithAutoSave}
+          />
+          <WorkflowToggle
             label="Validation admin du montage"
             description="Le montage passe par « À valider » avant publication."
             checked={needsAdminValidation}
@@ -581,15 +582,6 @@ export function PatternTemplateForm({
           <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
             Missions
           </h3>
-          <FormField
-            label="Champs personnalisés"
-            help="Définitions des champs hérités par les missions créées depuis cette recette."
-          >
-            <CustomFieldsSchemaEditor
-              fields={fieldSchema}
-              onChange={setFieldSchema}
-            />
-          </FormField>
           <FormField
             label="Auto-save sortie vers bibliothèque"
             help="La sortie de génération est copiée automatiquement en tant que média vidéo."

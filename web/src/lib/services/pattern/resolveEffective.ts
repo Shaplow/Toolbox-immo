@@ -49,6 +49,8 @@ export interface EffectivePattern {
   needsBrief: boolean;
   /** Dérivé de source (manual_rushes ⇒ true). Conservé pour compat. */
   needsRushes: boolean;
+  /** Recette nécessite un bien rattaché pour créer un slot/mission. */
+  requiresProperty: boolean;
 
   // Planning + assignations (toujours portés par le binding)
   dayOfWeek: number[];
@@ -94,6 +96,7 @@ export function resolveEffectivePattern(
     allowsClientRevision: t.allowsClientRevision,
     needsBrief: t.needsBrief,
     needsRushes: t.source === "manual_rushes",
+    requiresProperty: t.requiresProperty,
     dayOfWeek: binding.dayOfWeek,
     publishTime: binding.publishTime,
     isActive: binding.isActive,

@@ -18,7 +18,6 @@ import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { createSlot, type CreateSlotInput } from "@/lib/services/slot/slotService";
 import { mapServiceError } from "@/lib/services/_runtime/mapServiceError";
-import { normalizeCustomFields } from "@/lib/customFields";
 
 export async function POST(req: NextRequest) {
   const userContext = await getUserContext();
@@ -53,7 +52,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Input restreint : la recette pilote la config, on n'accepte que les champs
-  // sûrs saisis par l'utilisateur (compte optionnel + champs personnalisés).
+  // sûrs saisis par l'utilisateur (compte optionnel, bien optionnel).
   const input: CreateSlotInput = {
     patternTemplateId: body.patternTemplateId,
     accountId: typeof body.accountId === "string" && body.accountId ? body.accountId : null,
@@ -66,9 +65,6 @@ export async function POST(req: NextRequest) {
       body.fields && typeof body.fields === "object"
         ? (body.fields as Record<string, string>)
         : undefined,
-    fieldSchema: Array.isArray(body.fieldSchema)
-      ? normalizeCustomFields(body.fieldSchema)
-      : undefined,
   };
 
   try {

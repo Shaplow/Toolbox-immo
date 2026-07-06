@@ -48,9 +48,15 @@ interface PatternOption {
   publishTime: string;
   isActive: boolean;
   source?: string;
+  requiresProperty?: boolean;
   defaultAssigneeMonteur: { id: string; name: string } | null;
   defaultAssigneeCm: { id: string; name: string } | null;
   defaultAssigneeVideaste?: { id: string; name: string } | null;
+}
+
+interface PropertyOption {
+  id: string;
+  label: string;
 }
 
 interface UserOption {
@@ -130,6 +136,9 @@ export function AddSlotModal({
   const [descriptionPrompts, setDescriptionPrompts] = useState<Array<{ id: string; name: string }>>([]);
   const [coverPresets, setCoverPresets] = useState<Array<{ id: string; name: string }>>([]);
 
+  const [propertyId, setPropertyId] = useState<string>("");
+  const [properties, setProperties] = useState<PropertyOption[]>([]);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -138,10 +147,11 @@ export function AddSlotModal({
     let cancelled = false;
     async function load() {
       try {
-        const [usersRes, presetsRes, promptsRes] = await Promise.all([
+        const [usersRes, presetsRes, promptsRes, propertiesRes] = await Promise.all([
           fetch("/api/admin/users"),
           fetch("/api/caption-presets"),
           fetch("/api/description/prompts"),
+          fetch("/api/properties"),
         ]);
         if (cancelled) return;
         if (usersRes.ok) {
@@ -157,6 +167,10 @@ export function AddSlotModal({
             isActive: boolean;
           }>;
           setDescriptionPrompts(prompts.filter((p) => p.isActive));
+        }
+        if (propertiesRes.ok) {
+          const props = (await propertiesRes.json()) as Array<{ id: string; label: string }>;
+          setProperties(props);
         }
       } catch {
         // silencieux
@@ -198,6 +212,7 @@ export function AddSlotModal({
         label: string;
         source: string;
         templateId: string | null;
+        requiresProperty: boolean;
       };
     };
     // Au changement de compte, re-lock l'heure : on charge un nouveau pattern
@@ -217,6 +232,7 @@ export function AddSlotModal({
             publishTime: b.publishTime,
             isActive: b.isActive,
             source: b.patternTemplate.source,
+            requiresProperty: b.patternTemplate.requiresProperty,
             defaultAssigneeMonteur: b.defaultAssigneeMonteur,
             defaultAssigneeCm: b.defaultAssigneeCm,
             defaultAssigneeVideaste: b.defaultAssigneeVideaste,
@@ -241,7 +257,6 @@ export function AddSlotModal({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId]);
 
   // ─── Cover presets ──────────────────────────────────────────────────────
@@ -300,7 +315,13 @@ export function AddSlotModal({
 
   const canSubmit = useCallback(() => {
     if (!accountId) return false;
-    if (isPatternMode) return !!selectedPatternId;
+    if (isPatternMode) {
+      if (!selectedPatternId) return false;
+      // Recette qui exige un bien : bloquer si aucun bien sélectionné.
+      const pattern = patterns.find((p) => p.id === selectedPatternId);
+      if (pattern?.requiresProperty && !propertyId) return false;
+      return true;
+    }
     if (!title.trim()) return false;
     if (oneOffCoverMode === "autoPack" && coverPresets.length === 0) return false;
     if (oneOffNeedsCaptions === true && !oneOffCaptionPresetId) return false;
@@ -310,6 +331,8 @@ export function AddSlotModal({
     accountId,
     isPatternMode,
     selectedPatternId,
+    patterns,
+    propertyId,
     title,
     oneOffCoverMode,
     coverPresets.length,
@@ -338,6 +361,7 @@ export function AddSlotModal({
         accountId,
         scheduledAt,
         title: title || null,
+        propertyId: propertyId || null,
         assigneeMonteurId: assigneeMonteurId || null,
         assigneeCmId: assigneeCmId || null,
         assigneeVideasteId: assigneeVideasteId || null,
@@ -538,6 +562,35 @@ export function AddSlotModal({
                 </div>
               )}
             </FormField>
+          )}
+
+          {/* Bien — requis si la recette l'exige, optionnel sinon */}
+          {isPatternMode && selectedPattern && (
+            <FormField
+              label="Bien"
+              required={selectedPattern.requiresProperty}
+              help={selectedPattern.requiresProperty
+                ? "Cette recette nécessite un bien rattaché."
+                : "Optionnel — fiche partagée réutilisée par plusieurs slots."}
+            >
+              <Combobox
+                value={propertyId}
+                onChange={setPropertyId}
+                options={[
+                  { value: "", label: "Aucun bien" },
+                  ...properties.map((p) => ({ value: p.id, label: p.label })),
+                ]}
+                placeholder="Aucun bien"
+              />
+            </FormField>
+          )}
+
+          {/* requiresProperty sans bien → avertissement */}
+          {isPatternMode && selectedPattern?.requiresProperty && !propertyId && (
+            <div className="flex items-start gap-2 text-[11px] text-warning-700 bg-warning-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
+              <AlertCircle size={12} className="mt-0.5 shrink-0" />
+              Cette recette nécessite un bien. Sélectionnez-en un pour continuer.
+            </div>
           )}
 
           {/* Info pas de pattern */}

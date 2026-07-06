@@ -8,12 +8,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import {
-  normalizeCustomFields,
-  validateCustomFields,
-  serializeCustomFields,
-} from "@/lib/customFields";
-
 type PatchBody = {
   label?: string;
   source?: string;
@@ -28,9 +22,9 @@ type PatchBody = {
   needsClientValidation?: boolean;
   allowsClientRevision?: boolean;
   needsBrief?: boolean;
+  requiresProperty?: boolean;
   notes?: string | null;
   isArchived?: boolean;
-  fieldSchema?: unknown;
   autoSaveToLibraryId?: string | null;
 };
 
@@ -92,16 +86,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.coverMode !== undefined && !VALID_COVER_MODES.includes(body.coverMode)) {
     return NextResponse.json({ error: "coverMode invalide" }, { status: 400 });
   }
-  if (body.fieldSchema !== undefined) {
-    if (!Array.isArray(body.fieldSchema)) {
-      return NextResponse.json({ error: "fieldSchema doit être un tableau" }, { status: 400 });
-    }
-    const fields = normalizeCustomFields(body.fieldSchema);
-    const fieldErr = validateCustomFields(fields);
-    if (fieldErr) {
-      return NextResponse.json({ error: `fieldSchema : ${fieldErr}` }, { status: 400 });
-    }
-  }
   // Valide autoSaveToLibraryId si fourni (non null).
   if (body.autoSaveToLibraryId) {
     const lib = await prisma.mediaLibrary.findUnique({
@@ -142,11 +126,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.needsClientValidation !== undefined ? { needsClientValidation: body.needsClientValidation } : {}),
       ...(body.allowsClientRevision !== undefined ? { allowsClientRevision: body.allowsClientRevision } : {}),
       ...(body.needsBrief !== undefined ? { needsBrief: body.needsBrief } : {}),
+      ...(body.requiresProperty !== undefined ? { requiresProperty: body.requiresProperty } : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
       ...(body.isArchived !== undefined ? { isArchived: body.isArchived } : {}),
-      ...(body.fieldSchema !== undefined
-        ? { fieldSchema: serializeCustomFields(normalizeCustomFields(body.fieldSchema as unknown[])) }
-        : {}),
       ...(body.autoSaveToLibraryId !== undefined
         ? { autoSaveToLibraryId: body.autoSaveToLibraryId }
         : {}),

@@ -83,7 +83,6 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       select: {
         accountId: true,
         fields: true,
-        fieldSchema: true,
         title: true,
         account: { select: { handle: true } },
         // Biens — fiche partagée : ses valeurs servent de base, résolues LIVE.
@@ -101,11 +100,8 @@ export default async function GeneratePage({ params, searchParams }: Props) {
         const slotFields = JSON.parse(slot.fields) as Record<string, string>;
         initialValues = { ...propertyFields, ...slotFields, ...initialValues };
       } catch { /* ignore malformed JSON */ }
-      // Schéma : bien puis mission (la mission surcharge par clé).
-      const byKey = new Map<string, CustomField>();
-      for (const f of normalizeCustomFields(slot.property?.fieldSchema)) byKey.set(f.key, f);
-      for (const f of normalizeCustomFields(slot.fieldSchema)) byKey.set(f.key, f);
-      customFormFields = [...byKey.values()];
+      // Schéma des champs perso : source unique = le bien rattaché au slot.
+      customFormFields = normalizeCustomFields(slot.property?.fieldSchema);
     }
   }
 

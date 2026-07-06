@@ -29,6 +29,8 @@ const mockBindingFindUnique = vi.fn().mockResolvedValue(null);
 const mockBindingFindFirst = vi.fn().mockResolvedValue(null);
 // Missions — résolution recette GLOBALE directe (patternTemplateId).
 const mockPatternTemplateFindUnique = vi.fn().mockResolvedValue(null);
+// Bien (Property) — validation existence/archivage du propertyId.
+const mockPropertyFindUnique = vi.fn().mockResolvedValue({ id: "prop-1", isArchived: false });
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -50,6 +52,9 @@ vi.mock("@/lib/prisma", () => ({
     },
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
+    },
+    property: {
+      findUnique: (...args: unknown[]) => mockPropertyFindUnique(...args),
     },
   },
 }));
@@ -93,6 +98,7 @@ beforeEach(() => {
   mockBindingFindUnique.mockReset().mockResolvedValue(null);
   mockBindingFindFirst.mockReset().mockResolvedValue(null);
   mockPatternTemplateFindUnique.mockReset().mockResolvedValue(null);
+  mockPropertyFindUnique.mockReset().mockResolvedValue({ id: "prop-1", isArchived: false });
 
   // Mock par défaut : create renvoie un objet stub plausible
   mockSlotCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
@@ -189,12 +195,8 @@ describe("createSlot — champs requis", () => {
     // Compte non résolu (mission stock) + aucun findUnique compte déclenché.
     expect(slot.accountId).toBeNull();
     expect(mockAccountFindUnique).not.toHaveBeenCalled();
-    // Champs personnalisés hérités de la recette — normalisés en CustomField[].
-    // Le mock legacy string[] est upgradé via normalizeCustomFields.
-    expect(slot.fieldSchema).toEqual([
-      { key: "adresse", label: "adresse", type: "text" },
-      { key: "prix", label: "prix", type: "text" },
-    ]);
+    // fieldSchema est toujours [] : les champs perso viennent du bien, pas de la recette.
+    expect(slot.fieldSchema).toEqual([]);
     // Titre par défaut = label de la recette.
     expect(slot.title).toBe("Recette Mission");
   });
@@ -689,6 +691,114 @@ describe("createSlot — compte inexistant", () => {
 });
 
 // ─── Invariant 8 : isAuto=false ────────────────────────────────────────────
+
+describe("createSlot — requiresProperty", () => {
+  const tplRequiresProperty = {
+    id: "tpl-req-prop",
+    label: "Recette avec bien",
+    source: "auto_template",
+    isArchived: false,
+    captionPresetId: null,
+    descriptionPromptId: null,
+    needsCaptions: false,
+    needsDescription: "none",
+    coverMode: "none",
+    coverConfig: null,
+    fieldSchema: "[]",
+    requiresProperty: true,
+  };
+
+  it("recette requiresProperty=true SANS propertyId → ValidationError", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce(tplRequiresProperty);
+    await expect(
+      createSlot({ patternTemplateId: "tpl-req-prop" }, makeAdminCtx()),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("recette requiresProperty=true AVEC propertyId → créé sans erreur", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce(tplRequiresProperty);
+    const slot = await createSlot(
+      { patternTemplateId: "tpl-req-prop", propertyId: "prop-1" },
+      makeAdminCtx(),
+    );
+    expect(slot.propertyId).toBe("prop-1");
+  });
+
+  it("binding (calendrier/AddSlotModal) requiresProperty=true SANS propertyId → ValidationError", async () => {
+    // Le guard doit aussi couvrir la branche binding (slot classique du calendrier),
+    // pas seulement la recette globale directe (mission).
+    mockBindingFindUnique.mockResolvedValueOnce({
+      id: "binding-req",
+      accountId: "account-A",
+      captionPresetIdOverride: null,
+      descriptionPromptIdOverride: null,
+      coverModeOverride: null,
+      defaultAssigneeMonteurId: null,
+      defaultAssigneeCmId: null,
+      defaultAssigneeVideasteId: null,
+      patternTemplate: {
+        label: "Recette Compte avec bien",
+        source: "auto_template",
+        captionPresetId: null,
+        descriptionPromptId: null,
+        needsCaptions: false,
+        needsDescription: "none",
+        coverMode: "none",
+        coverConfig: null,
+        requiresProperty: true,
+      },
+    });
+    await expect(
+      createSlot(
+        { patternBindingId: "binding-req", accountId: "account-A" },
+        makeAdminCtx(),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("binding requiresProperty=true AVEC propertyId → créé (chemin AddSlotModal)", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce({
+      id: "binding-req",
+      accountId: "account-A",
+      captionPresetIdOverride: null,
+      descriptionPromptIdOverride: null,
+      coverModeOverride: null,
+      defaultAssigneeMonteurId: null,
+      defaultAssigneeCmId: null,
+      defaultAssigneeVideasteId: null,
+      patternTemplate: {
+        label: "Recette Compte avec bien",
+        source: "auto_template",
+        captionPresetId: null,
+        descriptionPromptId: null,
+        needsCaptions: false,
+        needsDescription: "none",
+        coverMode: "none",
+        coverConfig: null,
+        requiresProperty: true,
+      },
+    });
+    const slot = await createSlot(
+      { patternBindingId: "binding-req", accountId: "account-A", propertyId: "prop-1" },
+      makeAdminCtx(),
+    );
+    expect(slot.propertyId).toBe("prop-1");
+  });
+
+  it("propertyId d'un bien inexistant → NotFoundError", async () => {
+    mockPropertyFindUnique.mockResolvedValueOnce(null);
+    await expect(
+      createSlot({ accountId: "account-A", propertyId: "ghost" }, makeAdminCtx()),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("propertyId d'un bien archivé → ValidationError", async () => {
+    mockPropertyFindUnique.mockResolvedValueOnce({ id: "prop-arch", isArchived: true });
+    await expect(
+      createSlot({ accountId: "account-A", propertyId: "prop-arch" }, makeAdminCtx()),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+});
 
 describe("createSlot — isAuto=false (slot manuel)", () => {
   it("Création manuelle pose isAuto=false (distinction avec generateCalendarSlots)", async () => {

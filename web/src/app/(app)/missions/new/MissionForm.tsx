@@ -11,16 +11,12 @@ import { Select } from "@/components/ui/Select";
 import { FormField } from "@/components/ui/FormField";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { toast } from "@/components/ui/Toast";
-import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
-import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
-import { type CustomField } from "@/lib/customFields";
-
 export interface MissionRecipe {
   id: string;
   label: string;
   source: string;
   templateId: string | null;
-  fieldSchema: CustomField[];
+  requiresProperty: boolean;
   autoSaveLibraryName: string | null;
 }
 
@@ -77,10 +73,6 @@ export function MissionForm({
   const [propertyId, setPropertyId] = useState(
     properties.some((p) => p.id === initialPropertyId) ? initialPropertyId : "",
   );
-  const [schema, setSchema] = useState<CustomField[]>(validInitialRecipe?.fieldSchema ?? []);
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries((validInitialRecipe?.fieldSchema ?? []).map((f) => [f.key, ""])),
-  );
   const [submitting, setSubmitting] = useState(false);
 
   const selectedRecipe = useMemo(
@@ -95,31 +87,13 @@ export function MissionForm({
     ? Object.entries(selectedProperty.fields).filter(([, v]) => v !== "")
     : [];
 
-  function onRecipeChange(next: string) {
-    // Au changement de recette, on remplace SEULEMENT les champs hérités de
-    // l'ancienne recette par ceux de la nouvelle — les champs ajoutés à la main
-    // par l'utilisateur (et toutes les valeurs déjà saisies) sont conservés.
-    const prevInherited = recipes.find((r) => r.id === recipeId)?.fieldSchema ?? [];
-    const nextInherited = recipes.find((r) => r.id === next)?.fieldSchema ?? [];
-    const prevInheritedKeys = new Set(prevInherited.map((f) => f.key));
-    const nextInheritedKeys = new Set(nextInherited.map((f) => f.key));
-    // Champs ad-hoc = dans le schema courant mais pas dans l'héritage de l'ancienne recette.
-    const adHoc = schema.filter((f) => !prevInheritedKeys.has(f.key));
-    // Nouveau schema : inherited de la nouvelle recette + ad-hoc non déjà présents.
-    const merged: CustomField[] = [
-      ...nextInherited,
-      ...adHoc.filter((f) => !nextInheritedKeys.has(f.key)),
-    ];
-    const nextValues: Record<string, string> = {};
-    for (const f of merged) nextValues[f.key] = values[f.key] ?? "";
-    setRecipeId(next);
-    setSchema(merged);
-    setValues(nextValues);
-  }
-
   async function handleSubmit() {
     if (!recipeId) {
       toast.error("Choisissez une recette pour la mission.");
+      return;
+    }
+    if (selectedRecipe?.requiresProperty && !propertyId) {
+      toast.error("Cette recette nécessite un bien. Sélectionnez un bien pour continuer.");
       return;
     }
     setSubmitting(true);
@@ -132,8 +106,6 @@ export function MissionForm({
           accountId: accountId || null,
           propertyId: propertyId || null,
           title: title.trim() || null,
-          fields: values,
-          fieldSchema: schema,
         }),
       });
       if (!res.ok) {
@@ -197,7 +169,7 @@ export function MissionForm({
           {hasRecipes ? (
             <Select
               value={recipeId}
-              onChange={onRecipeChange}
+              onChange={setRecipeId}
               options={recipeOptions}
               placeholder="Choisir une recette…"
             />
@@ -281,48 +253,6 @@ export function MissionForm({
           />
         </FormField>
 
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            {selectedProperty ? "Champs spécifiques à cette mission" : "Champs personnalisés"}
-          </span>
-          <p className="text-xs text-muted-foreground">
-            {selectedProperty
-              ? "S'ajoutent aux champs partagés du bien et les surchargent si même nom. Laissez vide pour tout hériter du bien."
-              : "Hérités de la recette. Ajoutez-en d'autres au besoin — ils préremplissent le formulaire de génération."}
-          </p>
-          {/* Saisie des valeurs — une par champ du schema. */}
-          {schema.length > 0 && (
-            <div className="mt-1 space-y-3">
-              {schema.map((field) => (
-                <CustomFieldValueInput
-                  key={field.key}
-                  field={field}
-                  value={values[field.key] ?? ""}
-                  onChange={(v) => setValues((prev) => ({ ...prev, [field.key]: v }))}
-                  showLabel
-                />
-              ))}
-            </div>
-          )}
-          {/* Éditeur de définitions (ajout/suppression/renommage de champs). */}
-          <details className="mt-2 group">
-            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground select-none">
-              Modifier les champs (nom, type…)
-            </summary>
-            <div className="mt-2 pt-2 border-t border-border">
-              <CustomFieldsSchemaEditor
-                fields={schema}
-                onChange={(nextSchema) => {
-                  const nextValues: Record<string, string> = {};
-                  for (const f of nextSchema) nextValues[f.key] = values[f.key] ?? "";
-                  setSchema(nextSchema);
-                  setValues(nextValues);
-                }}
-              />
-            </div>
-          </details>
-        </div>
-
         {selectedRecipe?.autoSaveLibraryName && (
           <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
             <Save size={13} className="shrink-0" />
@@ -334,11 +264,20 @@ export function MissionForm({
         )}
       </Card>
 
+      {selectedRecipe?.requiresProperty && !propertyId && (
+        <p className="text-[12px] text-warning-700 bg-warning-50/80 rounded-md px-3 py-2">
+          Cette recette nécessite un bien — sélectionnez-en un ci-dessus pour continuer.
+        </p>
+      )}
+
       <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" onClick={() => router.back()} disabled={submitting}>
           Annuler
         </Button>
-        <Button onClick={handleSubmit} disabled={submitting || !recipeId}>
+        <Button
+          onClick={handleSubmit}
+          disabled={submitting || !recipeId || (selectedRecipe?.requiresProperty && !propertyId)}
+        >
           {submitting ? "Création…" : "Créer la mission"}
         </Button>
       </div>

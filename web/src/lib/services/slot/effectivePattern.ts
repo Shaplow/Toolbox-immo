@@ -41,6 +41,7 @@ export interface SlotEffectivePattern {
   allowsClientRevision: boolean;
   needsBrief: boolean;
   needsRushes: boolean;
+  requiresProperty: boolean;
 }
 
 /** Champs legacy AccountPattern chargés (alignés sur SlotEffectivePattern). */
@@ -80,6 +81,7 @@ const TEMPLATE_PATTERN_SELECT = {
   needsClientValidation: true,
   allowsClientRevision: true,
   needsBrief: true,
+  requiresProperty: true,
 } satisfies Prisma.PatternTemplateSelect;
 
 /**
@@ -116,7 +118,8 @@ export function resolveSlotEffectivePattern(
   slot: SlotWithEffectivePattern,
 ): SlotEffectivePattern | null {
   if (slot.pattern) {
-    return slot.pattern;
+    // AccountPattern n'a pas de champ requiresProperty → false par défaut.
+    return { ...slot.pattern, requiresProperty: false };
   }
   if (slot.patternBinding) {
     const e = resolveEffectivePattern(slot.patternBinding);
@@ -135,6 +138,7 @@ export function resolveSlotEffectivePattern(
       allowsClientRevision: e.allowsClientRevision,
       needsBrief: e.needsBrief,
       needsRushes: e.needsRushes,
+      requiresProperty: e.requiresProperty,
     };
   }
   if (slot.patternTemplate) {
@@ -154,6 +158,7 @@ export function resolveSlotEffectivePattern(
       allowsClientRevision: t.allowsClientRevision,
       needsBrief: t.needsBrief,
       needsRushes: t.source === "manual_rushes",
+      requiresProperty: t.requiresProperty,
     };
   }
   return null;

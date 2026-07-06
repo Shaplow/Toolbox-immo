@@ -33,11 +33,7 @@ import {
 import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
 import { deleteFromR2 } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
-import {
-  normalizeCustomFields,
-  serializeCustomFields,
-  type CustomField,
-} from "@/lib/customFields";
+import { normalizeCustomFields } from "@/lib/customFields";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
 
@@ -54,7 +50,6 @@ export interface CreateSlotInput {
   notes?: string | null;
   templateId?: string | null;
   fields?: Record<string, string>;
-  fieldSchema?: CustomField[];
   /**
    * Missions — Recette GLOBALE (PatternTemplate) appliquée directement au slot,
    * sans binding ni compte. Requis quand accountId est absent. La config
@@ -164,6 +159,19 @@ export async function createSlot(
     );
   }
 
+  // Bien (Property) : si fourni, il doit exister et ne pas être archivé. Validé
+  // en amont pour renvoyer une erreur propre (404/400) plutôt qu'une contrainte
+  // FK Prisma (500), et pour que le guard requiresProperty repose sur un bien
+  // réel (un id de bien archivé ne doit pas satisfaire l'exigence).
+  if (input.propertyId) {
+    const property = await prisma.property.findUnique({
+      where: { id: input.propertyId },
+      select: { id: true, isArchived: true },
+    });
+    if (!property) throw new NotFoundError("Bien");
+    if (property.isArchived) throw new ValidationError("Ce bien est archivé");
+  }
+
   // Résolution pattern → préfill des assignees (l'override admin du body prime).
   let resolvedAssigneeMonteurId: string | null = input.assigneeMonteurId ?? null;
   let resolvedAssigneeCmId: string | null = input.assigneeCmId ?? null;
@@ -175,10 +183,6 @@ export async function createSlot(
 
   // Titre par défaut = label de la recette quand l'admin n'en saisit pas.
   let patternLabel: string | null = null;
-
-  // Missions — champs personnalisés hérités de la recette (Phase 2). Fallback du
-  // fieldSchema du slot quand l'input n'en fournit pas.
-  let resolvedFieldSchema: CustomField[] | null = null;
 
   let resolvedPattern: {
     accountId: string;
@@ -233,6 +237,11 @@ export async function createSlot(
       );
     }
     const t = binding.patternTemplate;
+    // Guard : si la recette exige un bien, bloquer la création sans propertyId
+    // (couvre le calendrier / AddSlotModal qui passe par un binding).
+    if (t.requiresProperty && !input.propertyId) {
+      throw new ValidationError("Cette recette nécessite un bien");
+    }
     patternLabel = t.label;
     resolvedPattern = {
       accountId: binding.accountId,
@@ -331,9 +340,10 @@ export async function createSlot(
       defaultAssigneeVideasteId: null,
     };
     initialStatus = mapSourceToInitialStatus(template.source);
-    // Héritage des champs personnalisés définis sur la recette (Phase 2).
-    // normalizeCustomFields gère le legacy string[] ET le nouveau CustomField[].
-    resolvedFieldSchema = normalizeCustomFields(template.fieldSchema);
+    // Guard : si la recette exige un bien, bloquer la création sans propertyId.
+    if (template.requiresProperty && !input.propertyId) {
+      throw new ValidationError("Cette recette nécessite un bien");
+    }
   }
 
   // Compte cible (optionnel pour une mission). Validé seulement si fourni.
@@ -413,12 +423,9 @@ export async function createSlot(
       status: initialStatus,
       templateId: input.templateId ?? null,
       fields: input.fields ? JSON.stringify(input.fields) : "{}",
-      // fieldSchema : input explicite > hérité de la recette (mission) > vide.
-      fieldSchema: input.fieldSchema
-        ? serializeCustomFields(input.fieldSchema)
-        : resolvedFieldSchema
-          ? serializeCustomFields(resolvedFieldSchema)
-          : "[]",
+      // fieldSchema : le bien porte désormais la seule source de champs perso.
+      // Le slot stocke toujours "[]" ; la résolution live se fait via property.fieldSchema.
+      fieldSchema: "[]",
       isAuto: false,
       patternId: input.patternId ?? null,
       patternBindingId: resolvedBindingId,
@@ -569,6 +576,13 @@ export async function bulkStockSlots(input: BulkStockSlotsInput, ctx: UserContex
   if (resolvedBinding.patternTemplate.source !== "manual_rushes") {
     throw new ValidationError(
       "La banque n'accepte que les patterns de type « Montage rushes » (manual_rushes).",
+    );
+  }
+  // Une recette qui exige un bien ne peut pas alimenter la banque : les slots
+  // banque sont homogènes et sans bien rattachable en lot (cf. guard createSlot).
+  if (resolvedBinding.patternTemplate.requiresProperty) {
+    throw new ValidationError(
+      "Cette recette nécessite un bien : impossible de créer des slots en banque (aucun bien rattachable en lot).",
     );
   }
 

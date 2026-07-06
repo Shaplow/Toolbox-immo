@@ -98,18 +98,36 @@ export async function generateCalendarSlots(
   // Les valeurs sont déjà résolues (binding override > template). On laisse
   // les champs avec les mêmes noms qu'AccountPattern pour ne pas casser la
   // suite — le bloc "targets" reste agnostique du nouveau modèle.
-  const patterns = bindings.map((b) => ({
-    id: b.id,
-    accountId: b.accountId,
-    label: b.customLabel ?? b.patternTemplate.label,
-    source: b.patternTemplate.source,
-    dayOfWeek: b.dayOfWeek,
-    publishTime: b.publishTime,
-    templateId: b.templateIdOverride ?? b.patternTemplate.templateId,
-    defaultAssigneeMonteurId: b.defaultAssigneeMonteurId,
-    defaultAssigneeCmId: b.defaultAssigneeCmId,
-    defaultAssigneeVideasteId: b.defaultAssigneeVideasteId,
-  }));
+  const patterns = bindings
+    .filter((b) => {
+      // Une recette qui EXIGE un bien (requiresProperty) ne peut pas être
+      // auto-matérialisée en masse : un slot généré n'a aucun bien rattachable.
+      // On l'exclut de l'auto-gen hebdo (cohérent avec le guard de createSlot),
+      // ces recettes passent par la création unitaire (mission / AddSlotModal).
+      if (b.patternTemplate.requiresProperty) {
+        console.warn(
+          `[calendarEngine] binding ${b.id} → recette « ${b.patternTemplate.label} » requiresProperty — skip auto-gen (bien obligatoire, non rattachable en lot)`,
+        );
+        return false;
+      }
+      return true;
+    })
+    .map((b) => ({
+      id: b.id,
+      accountId: b.accountId,
+      label: b.customLabel ?? b.patternTemplate.label,
+      source: b.patternTemplate.source,
+      dayOfWeek: b.dayOfWeek,
+      publishTime: b.publishTime,
+      templateId: b.templateIdOverride ?? b.patternTemplate.templateId,
+      defaultAssigneeMonteurId: b.defaultAssigneeMonteurId,
+      defaultAssigneeCmId: b.defaultAssigneeCmId,
+      defaultAssigneeVideasteId: b.defaultAssigneeVideasteId,
+    }));
+
+  if (patterns.length === 0) {
+    return { created: 0, skipped: 0 };
+  }
 
   // 2. Calculer toutes les dates cibles sur l'ensemble des semaines de la plage
   type TargetSlot = {

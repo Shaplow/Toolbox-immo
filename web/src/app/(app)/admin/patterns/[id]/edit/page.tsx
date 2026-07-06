@@ -2,7 +2,6 @@ import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { normalizeCustomFields } from "@/lib/customFields";
 import { PatternEditClient } from "./PatternEditClient";
 
 export const dynamic = "force-dynamic";
@@ -85,9 +84,9 @@ export default async function PatternEditPage({ params }: PageProps) {
         needsClientValidation: tpl.needsClientValidation,
         allowsClientRevision: tpl.allowsClientRevision,
         needsBrief: tpl.needsBrief,
+        requiresProperty: tpl.requiresProperty,
         notes: tpl.notes,
         bindingCount: tpl._count.bindings,
-        fieldSchema: normalizeCustomFields(tpl.fieldSchema),
         autoSaveToLibraryId: tpl.autoSaveToLibraryId ?? null,
       }}
       builderTemplates={builderTemplates}

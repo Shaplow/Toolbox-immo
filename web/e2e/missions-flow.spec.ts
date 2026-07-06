@@ -31,6 +31,8 @@ const prismaTest = new PrismaClient({
 
 const RECIPE_ID = "e2e-mission-recipe";
 const RECIPE_FIELDS = ["adresse", "prix"];
+// Recette qui EXIGE un bien (requiresProperty) — bloque la création sans propertyId.
+const REQ_PROP_RECIPE_ID = "e2e-mission-recipe-reqprop";
 const createdSlotIds: string[] = [];
 
 // Fixtures pour le cas « mission avec compte hérite du binding ».
@@ -82,6 +84,29 @@ test.beforeAll(async () => {
     },
   });
 
+  // Recette exigeant un bien (requiresProperty=true).
+  await prismaTest.patternTemplate.upsert({
+    where: { id: REQ_PROP_RECIPE_ID },
+    update: { isArchived: false, requiresProperty: true },
+    create: {
+      id: REQ_PROP_RECIPE_ID,
+      label: "E2E Recette avec bien requis",
+      source: "auto_template",
+      templateId: null,
+      coverMode: "none",
+      coverConfig: undefined,
+      needsCaptions: false,
+      needsCaptionsMode: "none",
+      needsDescription: "none",
+      needsAdminValidation: false,
+      needsClientValidation: false,
+      allowsClientRevision: false,
+      needsBrief: false,
+      requiresProperty: true,
+      isArchived: false,
+    },
+  });
+
   // Binding (recette appliquée à un compte) avec un monteur par défaut — pour
   // vérifier qu'une mission avec compte en hérite.
   const [monteur, account] = await Promise.all([
@@ -126,7 +151,11 @@ test.afterAll(async () => {
   await prismaTest.publicationSlot
     .deleteMany({ where: { propertyId: PROPERTY_ID } })
     .catch(() => {});
+  await prismaTest.publicationSlot
+    .deleteMany({ where: { patternTemplateId: REQ_PROP_RECIPE_ID } })
+    .catch(() => {});
   await prismaTest.patternTemplate.delete({ where: { id: RECIPE_ID } }).catch(() => {});
+  await prismaTest.patternTemplate.delete({ where: { id: REQ_PROP_RECIPE_ID } }).catch(() => {});
   await prismaTest.property.delete({ where: { id: PROPERTY_ID } }).catch(() => {});
   await prismaTest.$disconnect();
 });
@@ -152,11 +181,9 @@ test.describe("Missions — création API", () => {
     expect(slot.patternTemplateId).toBe(RECIPE_ID);
     // Titre par défaut = label de la recette.
     expect(slot.title).toBe("E2E Mission Recipe");
-    // fieldSchema hérité de la recette (legacy string[] → normalisé en CustomField[]).
-    expect(slot.fieldSchema).toEqual([
-      { key: "adresse", label: "adresse", type: "text" },
-      { key: "prix", label: "prix", type: "text" },
-    ]);
+    // fieldSchema est toujours [] : les champs perso viennent du bien, pas de la recette.
+    // La recette garde son fieldSchema en DB (fixture non modifiée) mais il est ignoré.
+    expect(slot.fieldSchema).toEqual([]);
 
     // Vérification DB : le slot existe bien sans compte.
     const dbSlot = await prismaTest.publicationSlot.findUnique({
@@ -323,6 +350,31 @@ test.describe("Missions — bien partagé", () => {
       select: { propertyId: true },
     });
     expect(dbSlot2?.propertyId).toBeNull();
+  });
+
+  test("recette requiresProperty : POST /api/missions sans bien → 400, avec bien → OK", async ({
+    page,
+    request,
+  }) => {
+    await loginAs(page, "admin");
+    const Cookie = await getCookieHeader(page);
+
+    // Sans bien → refusé (la recette exige un bien).
+    const resNoProp = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { patternTemplateId: REQ_PROP_RECIPE_ID },
+    });
+    expect(resNoProp.status()).toBe(400);
+
+    // Avec bien → créé.
+    const resWithProp = await request.post("/api/missions", {
+      headers: { "Content-Type": "application/json", Cookie },
+      data: { patternTemplateId: REQ_PROP_RECIPE_ID, propertyId: PROPERTY_ID },
+    });
+    expect(resWithProp.ok()).toBeTruthy();
+    const slot = await resWithProp.json();
+    createdSlotIds.push(slot.id);
+    expect(slot.propertyId).toBe(PROPERTY_ID);
   });
 });
 
