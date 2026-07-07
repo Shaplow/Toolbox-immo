@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 /**
  * Miniature vidéo économe.
@@ -12,7 +12,10 @@ import { useEffect, useRef, useState } from "react";
  * - Sinon (asset sans poster, ou poster en erreur) : ancien comportement —
  *   <video> chargé en lazy via IntersectionObserver (rootMargin 200px).
  */
-export function LazyVideoThumb({
+// memo : la vignette (img/video) est le poids visuel. Ses props sont des strings
+// stables → le mémo évite de re-render / re-décoder l'élément média quand la card
+// parente se re-render (filtre/tri/scroll).
+export const LazyVideoThumb = memo(function LazyVideoThumb({
   url,
   posterUrl,
   className,
@@ -75,4 +78,4 @@ export function LazyVideoThumb({
       )}
     </div>
   );
-}
+});

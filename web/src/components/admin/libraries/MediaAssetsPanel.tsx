@@ -634,7 +634,7 @@ export function MediaAssetsPanel({ library }: Props) {
         inline={inline}
         isAdvanced={isAdvanced}
         isManualMode={isManualMode}
-        onOpenDetail={(a) => setDetailAsset(a)}
+        onOpenDetail={setDetailAsset}
       />
     );
   }
@@ -874,7 +874,7 @@ export function MediaAssetsPanel({ library }: Props) {
               selectedIds={selectedIds}
               toggleSelect={toggleSelect}
               setSelectedIds={bulk.setSelectedIds}
-              onOpenDetail={(a) => setDetailAsset(a)}
+              onOpenDetail={setDetailAsset}
               sort={sort}
               setSort={setSort}
               sentinelRef={gridSentinelRef}

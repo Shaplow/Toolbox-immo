@@ -526,6 +526,12 @@ model MediaAsset {
   /// Suivi d'utilisation par compte
   usages         MediaAssetUsage[]
   autocutJobs    MediaAutocutJob[]
+
+  /// Toutes les requêtes de la bibliothèque filtrent `where libraryId` (liste
+  /// assets, taxonomies, active-jobs, metadata-values). Sans index → Seq Scan
+  /// de toute la table. L'ordre (libraryId, createdAt) couvre aussi le
+  /// `orderBy createdAt desc` de la route /assets.
+  @@index([libraryId, createdAt])
 }
 
 /// Job d'édition d'un rush (trim, audio fix). Traitement RunPod, destructif (écrase l'original).
@@ -752,6 +758,9 @@ model MediaAssetUsage {
   account    InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([assetId, accountId])
+  /// L'aperçu rotation per-compte filtre `where accountId` — non couvert par le
+  /// préfixe (assetId) du @@unique ci-dessus.
+  @@index([accountId])
 }
 
 /// Curseur de position dans la séquence de thèmes d'une bibliothèque, par compte Instagram.
