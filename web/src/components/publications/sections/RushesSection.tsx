@@ -99,33 +99,20 @@ export function RushesSection({
   const router = useRouter();
   const [rushes, setRushes] = useState<Rush[]>(initialRushes);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [downloadingZip, setDownloadingZip] = useState(false);
 
-  async function downloadAllZip() {
-    setDownloadingZip(true);
-    try {
-      const res = await fetch(`/api/publications/${slotId}/rushes/zip`);
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? `Erreur ${res.status}`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      // Extract filename from Content-Disposition
-      const disposition = res.headers.get("content-disposition") ?? "";
-      const match = disposition.match(/filename="([^"]+)"/);
-      a.download = match?.[1] ?? `rushes-${slotId}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur téléchargement zip");
-    } finally {
-      setDownloadingZip(false);
-    }
+  function downloadAllZip() {
+    // Download natif : iframe caché → le navigateur gère le téléchargement
+    // (progression native, streaming disque) dès l'arrivée du Content-Disposition,
+    // sans buffer complet en RAM (res.blob) ni navigation de page. Le nom de
+    // fichier vient du header serveur ({handle}-{title}-rushes.zip).
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.src = `/api/publications/${slotId}/rushes/zip`;
+    document.body.appendChild(iframe);
+    toast.success("Téléchargement lancé");
+    // La prise en charge par le gestionnaire de téléchargement du navigateur est
+    // indépendante de la vie de l'iframe → on le retire après un court délai.
+    setTimeout(() => iframe.remove(), 10_000);
   }
 
   // ─── Upload réussi ─────────────────────────────────────────────────────────
@@ -201,14 +188,13 @@ export function RushesSection({
           {hasRushes && (
             <button
               type="button"
-              onClick={() => void downloadAllZip()}
-              disabled={downloadingZip}
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-gray-900 disabled:opacity-40 transition-colors"
+              onClick={downloadAllZip}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-gray-900 transition-colors"
               title="Télécharger tous les rushes en .zip"
               aria-label="Télécharger tous les rushes en .zip"
             >
               <Archive size={12} />
-              {downloadingZip ? "Préparation…" : ".zip"}
+              .zip
             </button>
           )}
         </div>
