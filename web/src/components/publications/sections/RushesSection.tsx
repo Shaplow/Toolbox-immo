@@ -114,23 +114,24 @@ export function RushesSection({
         rushes: { id: string; fileName: string; url: string }[];
       };
 
-      // L'attribut `download` force le chemin « download » : sans lui, un clic sur
-      // une URL cross-origin (R2) NAVIGUE au lieu de télécharger, et N navigations
-      // rapides sur le même onglet se court-circuitent → un seul fichier. En
-      // cross-origin la valeur de `download` est ignorée : le nom réel vient du
-      // Content-Disposition: attachment de l'URL presignée. Le léger décalage
-      // espace les déclenchements (autorisation « téléchargements multiples »
-      // une seule fois côté navigateur au lieu d'un blocage en rafale).
+      // Un iframe caché par fichier = un contexte de navigation SÉPARÉ. Un <a>
+      // vers une URL cross-origin (R2) déclenche une navigation top-level (Chrome
+      // ignore `download` en cross-origin), et le navigateur n'autorise qu'UNE
+      // navigation top-level à la fois → les N clics se court-circuitent, un seul
+      // fichier survit. Les iframes évitent ça : chacun télécharge indépendamment,
+      // piloté par le Content-Disposition: attachment de l'URL presignée. Le léger
+      // décalage espace les déclenchements (autorisation « téléchargements
+      // multiples » demandée une seule fois au lieu d'un blocage en rafale).
       urls.forEach((r, i) => {
         setTimeout(() => {
-          const a = document.createElement("a");
-          a.href = r.url;
-          a.download = r.fileName;
-          a.rel = "noopener";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        }, i * 300);
+          const iframe = document.createElement("iframe");
+          iframe.style.display = "none";
+          iframe.src = r.url;
+          document.body.appendChild(iframe);
+          // Le gestionnaire de téléchargement du navigateur prend le relais ;
+          // on retire l'iframe après un délai large (indépendant du download).
+          setTimeout(() => iframe.remove(), 60_000);
+        }, i * 400);
       });
 
       toast.success(`${urls.length} téléchargement${urls.length > 1 ? "s" : ""} lancé${urls.length > 1 ? "s" : ""}`);
