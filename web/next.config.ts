@@ -8,9 +8,7 @@ const nextConfig: NextConfig = {
   // Phase 1.x Vague 2 — exceljs (parsing xlsx) est consommé UNIQUEMENT par l'API
   // route d'import data côté serveur. On le sort du bundle Turbopack pour éviter
   // les soucis de résolution Node-only.
-  // archiver (zip streaming des rushes) : idem — lib Node-only ESM consommée
-  // uniquement par /api/publications/[id]/rushes/zip, externalisée du bundle.
-  serverExternalPackages: ["exceljs", "archiver"],
+  serverExternalPackages: ["exceljs"],
   experimental: {
     // Augmente le plafond de body pour les uploads vidéo via /api/upload
     proxyClientMaxBodySize: 2 * 1024 * 1024 * 1024, // 2 GB

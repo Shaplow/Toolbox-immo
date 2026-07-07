@@ -10,7 +10,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clapperboard, Download, Archive } from "lucide-react";
+import { Clapperboard, Download } from "lucide-react";
 import { MediaDropzone } from "@/components/ui/MediaDropzone";
 import { Section } from "@/components/ui/molecules/Section";
 import type { UploadResult } from "@/components/ui/MediaDropzone";
@@ -100,19 +100,39 @@ export function RushesSection({
   const [rushes, setRushes] = useState<Rush[]>(initialRushes);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  function downloadAllZip() {
-    // Download natif : iframe caché → le navigateur gère le téléchargement
-    // (progression native, streaming disque) dès l'arrivée du Content-Disposition,
-    // sans buffer complet en RAM (res.blob) ni navigation de page. Le nom de
-    // fichier vient du header serveur ({handle}-{title}-rushes.zip).
-    const iframe = document.createElement("iframe");
-    iframe.style.display = "none";
-    iframe.src = `/api/publications/${slotId}/rushes/zip`;
-    document.body.appendChild(iframe);
-    toast.success("Téléchargement lancé");
-    // La prise en charge par le gestionnaire de téléchargement du navigateur est
-    // indépendante de la vie de l'iframe → on le retire après un court délai.
-    setTimeout(() => iframe.remove(), 10_000);
+  async function downloadAllRushes() {
+    // On récupère les URLs presignées (1 requête JSON → erreurs gérées par toast),
+    // puis on déclenche N téléchargements DIRECTS depuis R2, en parallèle. Aucun
+    // octet ne transite par le serveur → le plus rapide pour les gros bundles.
+    try {
+      const res = await fetch(`/api/publications/${slotId}/rushes/download-urls`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `Erreur ${res.status}`);
+      }
+      const { rushes: urls } = (await res.json()) as {
+        rushes: { id: string; fileName: string; url: string }[];
+      };
+
+      // Un léger décalage entre les clics évite le blocage « téléchargements
+      // multiples » du navigateur. Chaque URL presignée R2 renvoie un
+      // Content-Disposition: attachment → download direct, sans navigation ni
+      // onglet (donc pas de download attr ni target="_blank").
+      urls.forEach((r, i) => {
+        setTimeout(() => {
+          const a = document.createElement("a");
+          a.href = r.url;
+          a.rel = "noopener";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }, i * 300);
+      });
+
+      toast.success(`${urls.length} téléchargement${urls.length > 1 ? "s" : ""} lancé${urls.length > 1 ? "s" : ""}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur téléchargement");
+    }
   }
 
   // ─── Upload réussi ─────────────────────────────────────────────────────────
@@ -188,13 +208,13 @@ export function RushesSection({
           {hasRushes && (
             <button
               type="button"
-              onClick={downloadAllZip}
+              onClick={() => void downloadAllRushes()}
               className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-gray-900 transition-colors"
-              title="Télécharger tous les rushes en .zip"
-              aria-label="Télécharger tous les rushes en .zip"
+              title="Télécharger tous les rushes"
+              aria-label="Télécharger tous les rushes"
             >
-              <Archive size={12} />
-              .zip
+              <Download size={12} />
+              Tout télécharger
             </button>
           )}
         </div>

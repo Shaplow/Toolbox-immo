@@ -324,21 +324,3 @@ export async function getFromR2(key: string): Promise<Buffer> {
   }
   return Buffer.concat(chunks);
 }
-
-/**
- * Retourne un objet R2 sous forme de flux Node lisible (sans le charger en RAM).
- *
- * Utilisé pour streamer directement vers une archive (cf. rushes/zip) : contrairement
- * à getFromR2 qui bufferise tout l'objet, ici on renvoie le `Body` du GetObject tel
- * quel. Le handler node-http du SDK v3 renvoie un `Readable` Node en runtime Node.
- */
-export async function getR2ObjectStream(key: string): Promise<Readable> {
-  requireR2();
-  const { bucket } = getR2Config();
-  const client = createClient();
-  const response = await withRetry(`getStream:${key}`, () =>
-    client.send(new GetObjectCommand({ Bucket: bucket!, Key: key }))
-  );
-  if (!response.Body) throw new Error(`R2 object empty: ${key}`);
-  return response.Body as Readable;
-}
