@@ -84,8 +84,9 @@ interface Props {
   onUploaded: () => void | Promise<void>;
   /**
    * Fichiers pré-fournis (typiquement via drop-zone page-level).
-   * Quand non-vide, le upload démarre automatiquement à l'ouverture de la modal.
-   * Le parent doit le reset à null après consommation pour éviter une re-upload.
+   * Quand non-vide, ils sont ajoutés à la QUEUE à l'ouverture de la modal (pas
+   * d'upload auto) : l'admin configure puis clique « Lancer l'upload ».
+   * Le parent doit le reset à null après consommation pour éviter un ré-ajout.
    */
   initialFiles?: File[] | null;
   onInitialFilesConsumed?: () => void;
@@ -206,8 +207,10 @@ export function MediaAssetsUploadModal({
       isVideo ? f.type.startsWith("video/") : f.type.startsWith("audio/"),
     );
     if (filtered.length > 0) {
-      setPendingFiles(filtered);
-      setRecentFilenames(filtered.map((f) => f.name));
+      // append (pas replace) → accumulation cohérente si la modale est déjà
+      // ouverte avec des fichiers en queue.
+      setPendingFiles((prev) => [...prev, ...filtered]);
+      setRecentFilenames((prev) => [...prev, ...filtered.map((f) => f.name)]);
     }
     onInitialFilesConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -385,13 +388,24 @@ export function MediaAssetsUploadModal({
     await onUploaded();
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []).filter((f) =>
+  // Met des fichiers en QUEUE (pas d'upload immédiat) : filtre par type puis
+  // append à pendingFiles + recentFilenames (ce dernier alimente les suggestions
+  // catégorie/Groupe). L'upload ne part qu'au clic « Lancer l'upload ». Toutes
+  // les entrées (parcourir, drop modale, drop page-level) passent par ici pour
+  // une UX cohérente « sélection → config → upload ».
+  function addToQueue(rawFiles: File[]) {
+    const filtered = rawFiles.filter((f) =>
       isVideo ? f.type.startsWith("video/") : f.type.startsWith("audio/"),
     );
+    if (filtered.length === 0) return;
+    setPendingFiles((prev) => [...prev, ...filtered]);
+    setRecentFilenames((prev) => [...prev, ...filtered.map((f) => f.name)]);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (files.length === 0) return;
-    void uploadFiles(files);
+    addToQueue(files);
   }
 
   if (!open) return null;
@@ -415,10 +429,7 @@ export function MediaAssetsUploadModal({
         onDrop={(e) => {
           e.preventDefault();
           setModalDragOver(false);
-          const files = Array.from(e.dataTransfer.files).filter((f) =>
-            isVideo ? f.type.startsWith("video/") : f.type.startsWith("audio/"),
-          );
-          void uploadFiles(files);
+          addToQueue(Array.from(e.dataTransfer.files));
         }}
       >
         {/* Header */}
