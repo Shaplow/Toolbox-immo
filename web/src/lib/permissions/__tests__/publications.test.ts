@@ -353,6 +353,14 @@ describe("canEditBrief", () => {
     expect(canEditBrief({ id: USER_ID, role: "CM" }, { assigneeCmId: OTHER_ID })).toBe(false);
   });
 
+  it("VIDEASTE assigné peut éditer le brief", () => {
+    expect(canEditBrief({ id: USER_ID, role: "VIDEASTE" }, { assigneeCmId: null, assigneeVideasteId: USER_ID })).toBe(true);
+  });
+
+  it("VIDEASTE non assigné ne peut pas éditer le brief", () => {
+    expect(canEditBrief({ id: USER_ID, role: "VIDEASTE" }, { assigneeCmId: null, assigneeVideasteId: OTHER_ID })).toBe(false);
+  });
+
   it("MONTEUR ne peut pas éditer le brief", () => {
     expect(canEditBrief({ id: USER_ID, role: "MONTEUR" }, { assigneeCmId: USER_ID })).toBe(false);
   });

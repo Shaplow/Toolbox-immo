@@ -378,15 +378,18 @@ export function canRestoreVersion(user: { role: UserRole }): boolean {
 /**
  * Permission d'éditer le brief d'un slot (description + pièces jointes).
  *
- * - ADMIN → toujours true.
- * - CM    → true si le slot lui est assigné (le CM rédige le brief).
+ * - ADMIN    → toujours true.
+ * - CM       → true si le slot lui est assigné (le CM rédige le brief).
+ * - VIDEASTE → true si le slot lui est assigné (il documente le shoot :
+ *              même capacité que sur ses rushes, cf. canUploadRushes).
  * - MONTEUR / USER → false.
  */
 export function canEditBrief(
   user: { id: string; role: UserRole },
-  slot: { assigneeCmId: string | null }
+  slot: { assigneeCmId: string | null; assigneeVideasteId?: string | null }
 ): boolean {
   if (user.role === "ADMIN") return true;
   if (user.role === "CM") return slot.assigneeCmId === user.id;
+  if (user.role === "VIDEASTE") return slot.assigneeVideasteId === user.id;
   return false;
 }
