@@ -114,14 +114,18 @@ export function RushesSection({
         rushes: { id: string; fileName: string; url: string }[];
       };
 
-      // Un léger décalage entre les clics évite le blocage « téléchargements
-      // multiples » du navigateur. Chaque URL presignée R2 renvoie un
-      // Content-Disposition: attachment → download direct, sans navigation ni
-      // onglet (donc pas de download attr ni target="_blank").
+      // L'attribut `download` force le chemin « download » : sans lui, un clic sur
+      // une URL cross-origin (R2) NAVIGUE au lieu de télécharger, et N navigations
+      // rapides sur le même onglet se court-circuitent → un seul fichier. En
+      // cross-origin la valeur de `download` est ignorée : le nom réel vient du
+      // Content-Disposition: attachment de l'URL presignée. Le léger décalage
+      // espace les déclenchements (autorisation « téléchargements multiples »
+      // une seule fois côté navigateur au lieu d'un blocage en rafale).
       urls.forEach((r, i) => {
         setTimeout(() => {
           const a = document.createElement("a");
           a.href = r.url;
+          a.download = r.fileName;
           a.rel = "noopener";
           document.body.appendChild(a);
           a.click();
