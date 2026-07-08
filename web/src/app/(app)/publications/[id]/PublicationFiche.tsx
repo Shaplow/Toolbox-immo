@@ -66,8 +66,9 @@ type SectionKey =
  * ADMIN : tout (pas d'entrée dans le record, voir wrap()).
  * VIDÉASTE : brief + rushes + comments. Le reste lui est inutile.
  * MONTEUR : brief + rushes + versions + render (lecture seule pour
- *   référencer le rendu final) + comments. Cover/captions/description
- *   ne le concernent pas.
+ *   référencer le rendu final) + cover + captions + comments. Il gère les
+ *   sous-titres (mode manuel : il les saisit ; mode auto : il voit le statut
+ *   du pipeline). Description ne le concerne pas.
  * CM : tout sauf brief (qui appartient au pipeline amont). Activity
  *   reste repliée par défaut.
  */
@@ -77,7 +78,7 @@ const PRIMARY_SECTIONS_BY_ROLE: Record<Exclude<UserRole, "ADMIN">, SectionKey[]>
   // uploade la cover avec sa version). CoverSection se masque elle-même
   // si le mode n'est pas monteurUpload, donc pas de bruit pour les autres
   // patterns.
-  MONTEUR: ["brief", "rushes", "versions", "render", "cover", "comments"],
+  MONTEUR: ["brief", "rushes", "versions", "render", "cover", "captions", "comments"],
   // Ordre du process (2026-05-30) : render → captions → clientValidation
   // → description → cover → publish (les versions/rushes restent en amont,
   // comments à la fin de la fiche).
