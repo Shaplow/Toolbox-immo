@@ -138,7 +138,6 @@ export function CaptionsSection({
   const captionsMode = resolveCaptionsMode({ pattern });
   if (captionsMode === "none") return null;
   const isManualMode = captionsMode === "manual";
-  const manualHref = `/publications/${slot.id}/captions/manual`;
 
   // renderId n'est pas consommé par /captions ni /descriptions (audit nav
   // 2026-05-28) — on l'omet pour ne pas laisser un param fantôme dans l'URL.
@@ -185,9 +184,11 @@ export function CaptionsSection({
     </span>
   ) : null;
 
-  // V8.2.6 — Branche dédiée mode "manual" : pas de pipeline auto, pas de
-  // preset, pas de verdict canTriggerCaptions. Juste un bouton vers
-  // l'éditeur SRT manuel et l'état du dernier job COMPLETED écrit à la main.
+  // Mode "manual" : même flux interactif que le standalone (transcription de la
+  // vidéo montée validée → éditeur trim/highlight → burn-in), seedé par le slot.
+  // On réutilise captionsHref (galerie preset → /captions/[presetId]/generate
+  // ?slotId=…), comme l'auto — l'ancien éditeur SRT sidecar sans incrustation a
+  // été retiré.
   if (isManualMode) {
     return (
       <Section
@@ -204,22 +205,24 @@ export function CaptionsSection({
         }
       >
         <div className="space-y-3">
-          {latestCaptionJob?.status === "COMPLETED" ? (
+          {isDone ? (
             <Alert variant="success" icon={CheckCircle}>
-              Sous-titres saisis à la main.
+              Sous-titres incrustés sur la vidéo.
+            </Alert>
+          ) : isInProgress ? (
+            <Alert variant="info" icon={Subtitles}>
+              Incrustation des sous-titres en cours…
             </Alert>
           ) : (
             <Alert variant="info" icon={Subtitles}>
-              Mode manuel : rédige les sous-titres à la main, ils seront stockés
-              sur la publication (pas de burn-in vidéo).
+              Mode manuel : choisis un style, ajuste le découpage et le surlignage
+              à la main sur le montage validé, puis lance l&apos;incrustation.
             </Alert>
           )}
           {canEdit && (
-            <Link href={manualHref}>
+            <Link href={captionsHref}>
               <Button variant="secondary" size="sm" icon={ExternalLink}>
-                {latestCaptionJob?.status === "COMPLETED"
-                  ? "Modifier les sous-titres"
-                  : "Écrire les sous-titres"}
+                {isDone ? "Modifier les sous-titres" : "Écrire les sous-titres"}
               </Button>
             </Link>
           )}

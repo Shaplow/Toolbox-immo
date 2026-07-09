@@ -25,6 +25,7 @@ import { runpodConfigured, submitRunpodJob } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { r2Configured, uploadToR2 } from "@/lib/r2";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
+import { resolveCaptionsMode } from "@/lib/publications/captionsMode";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -200,6 +201,7 @@ export async function triggerAutoTranscriptionForVersion(
         slot: {
           select: {
             needsCaptionsOverride: true,
+            needsCaptionsModeOverride: true,
             needsDescriptionOverride: true,
             ...slotEffectivePatternSelect,
           },
@@ -216,8 +218,18 @@ export async function triggerAutoTranscriptionForVersion(
     }
     // Même garde que le pipeline RunPod : on ne lance que si quelqu'un consomme.
     const eff = resolveSlotEffectivePattern(version.slot);
+    // Mode-aware : la transcription est consommée dès que les captions sont
+    // "auto" OU "manual" (le mode manuel réutilise le même flux d'édition +
+    // burn-in, seedé par la transcription). resolveCaptionsMode gère les
+    // overrides slot + fallback booléen legacy.
     const effectiveNeedsCaptions =
-      version.slot.needsCaptionsOverride ?? eff?.needsCaptions ?? false;
+      resolveCaptionsMode({
+        slot: {
+          needsCaptionsModeOverride: version.slot.needsCaptionsModeOverride,
+          needsCaptionsOverride: version.slot.needsCaptionsOverride,
+        },
+        pattern: eff,
+      }) !== "none";
     const effectiveNeedsDescription =
       version.slot.needsDescriptionOverride ?? eff?.needsDescription ?? "none";
     if (!effectiveNeedsCaptions && effectiveNeedsDescription !== "autoGenerate") {
@@ -260,6 +272,7 @@ export async function triggerAutoTranscriptionForVersion(
       slot: {
         select: {
           needsCaptionsOverride: true,
+          needsCaptionsModeOverride: true,
           needsDescriptionOverride: true,
           ...slotEffectivePatternSelect,
         },
@@ -279,8 +292,18 @@ export async function triggerAutoTranscriptionForVersion(
   // On déclenche la transcription uniquement si quelque chose la consommera :
   // soit captions (sous-titres vidéo), soit description (légende IG auto).
   const eff = resolveSlotEffectivePattern(version.slot);
+  // Mode-aware : la transcription est consommée dès que les captions sont
+  // "auto" OU "manual" (le mode manuel réutilise le même flux d'édition +
+  // burn-in, seedé par la transcription). resolveCaptionsMode gère les
+  // overrides slot + fallback booléen legacy.
   const effectiveNeedsCaptions =
-    version.slot.needsCaptionsOverride ?? eff?.needsCaptions ?? false;
+    resolveCaptionsMode({
+      slot: {
+        needsCaptionsModeOverride: version.slot.needsCaptionsModeOverride,
+        needsCaptionsOverride: version.slot.needsCaptionsOverride,
+      },
+      pattern: eff,
+    }) !== "none";
   const effectiveNeedsDescription =
     version.slot.needsDescriptionOverride ?? eff?.needsDescription ?? "none";
   if (!effectiveNeedsCaptions && effectiveNeedsDescription !== "autoGenerate") {

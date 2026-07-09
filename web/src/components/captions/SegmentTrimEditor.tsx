@@ -15,6 +15,9 @@ type SegmentState = {
 type Props = {
   segments: Segment[];
   videoFile: File | null;
+  /** URL vidéo directe (ex : montage validé déjà en R2) — alternative à
+   *  videoFile quand aucun fichier n'est uploadé côté navigateur. */
+  videoSrcUrl?: string | null;
   onConfirm: (srt: string, segments: Segment[]) => void;
   onCancel: () => void;
 };
@@ -98,7 +101,7 @@ function buildFinalSegments(segments: Segment[], states: SegmentState[]): Segmen
   return result;
 }
 
-export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: Props) {
+export function SegmentTrimEditor({ segments, videoFile, videoSrcUrl = null, onConfirm, onCancel }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoUrl = useRef<string | null>(null);
   const [activeSegmentIdx, setActiveSegmentIdx] = useState<number | null>(null);
@@ -117,14 +120,20 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
     setStates(initStates());
   }, [initStates]);
 
-  // Create video object URL
+  // Source vidéo du player : object URL depuis un File uploadé, ou URL directe
+  // (montage validé déjà en R2) quand aucun fichier n'est fourni.
   useEffect(() => {
-    if (!videoFile) return;
-    const url = URL.createObjectURL(videoFile);
-    videoUrl.current = url;
-    if (videoRef.current) videoRef.current.src = url;
-    return () => URL.revokeObjectURL(url);
-  }, [videoFile]);
+    if (videoFile) {
+      const url = URL.createObjectURL(videoFile);
+      videoUrl.current = url;
+      if (videoRef.current) videoRef.current.src = url;
+      return () => URL.revokeObjectURL(url);
+    }
+    if (videoSrcUrl) {
+      videoUrl.current = videoSrcUrl;
+      if (videoRef.current) videoRef.current.src = videoSrcUrl;
+    }
+  }, [videoFile, videoSrcUrl]);
 
   // Sync active segment from video timeupdate
   useEffect(() => {
@@ -211,8 +220,8 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
         </div>
       </div>
 
-      {/* Video player */}
-      {videoFile && (
+      {/* Video player — monté aussi en mode URL directe (montage validé R2). */}
+      {(videoFile || videoSrcUrl) && (
         <div className="px-5 pt-4">
           <div className="relative aspect-video rounded-xl overflow-hidden bg-gray-900">
             <video

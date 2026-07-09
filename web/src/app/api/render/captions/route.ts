@@ -64,6 +64,54 @@ async function resolveSlotIdOrNull(
   return { ok: true, slotId: slot.id };
 }
 
+/**
+ * Extrait la clé R2 depuis une URL publique R2 (convention `<publicUrl>/<key>`).
+ * Retourne null si l'URL n'est pas parseable. Utilisé pour le fallback
+ * auto_template (le slot n'a pas de currentVersion, juste un Render).
+ */
+function extractR2KeyFromVideoUrl(videoUrl: string): string | null {
+  try {
+    const u = new URL(videoUrl);
+    return u.pathname.replace(/^\//, "") || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Résout la vidéo source d'un slot déjà stockée en R2 (montage validé
+ * `currentVersion`, sinon `render` fallback auto_template), pour y incruster
+ * les sous-titres sans re-upload navigateur (mode `useSlotVideo`). Retourne la
+ * clé R2 + un nom/ext dérivés, ou null si aucune vidéo source n'est disponible.
+ */
+async function resolveSlotSourceVideo(
+  slotId: string,
+): Promise<{ key: string; filename: string; ext: string } | null> {
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id: slotId },
+    select: {
+      currentVersion: { select: { r2Key: true, fileName: true } },
+      render: { select: { videoUrl: true } },
+    },
+  });
+  if (!slot) return null;
+
+  const fromKey = (key: string, name?: string | null) => {
+    const filename = name ?? key.split("/").pop() ?? "video.mp4";
+    const ext = (key.split(".").pop() ?? "mp4").toLowerCase();
+    return { key, filename, ext };
+  };
+
+  if (slot.currentVersion?.r2Key) {
+    return fromKey(slot.currentVersion.r2Key, slot.currentVersion.fileName);
+  }
+  if (slot.render?.videoUrl) {
+    const key = extractR2KeyFromVideoUrl(slot.render.videoUrl);
+    if (key) return fromKey(key);
+  }
+  return null;
+}
+
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
 const USE_RUNPOD        = process.env.USE_RUNPOD !== "false";
@@ -168,6 +216,7 @@ export async function POST(req: NextRequest) {
       previewMode?: unknown;
       presetId?: unknown;
       slotId?: unknown;
+      useSlotVideo?: unknown;
     };
     try {
       body = await req.json();
@@ -189,7 +238,29 @@ export async function POST(req: NextRequest) {
     }
     const slotId = slotCheck.slotId;
 
-    if (!filename || !VIDEO_EXTENSIONS.has(ext)) {
+    // Source « vidéo du slot » : incrustation sur la vidéo montée validée déjà
+    // stockée en R2 (currentVersion / render), sans re-upload navigateur. Le
+    // client saute alors le PUT presigned et appelle directement /submit.
+    const useSlotVideo = body.useSlotVideo === true;
+    let slotSource: { key: string; filename: string; ext: string } | null = null;
+    if (useSlotVideo) {
+      if (!slotId) {
+        return NextResponse.json(
+          { error: "slotId requis pour incruster sur la vidéo du slot." },
+          { status: 400 },
+        );
+      }
+      slotSource = await resolveSlotSourceVideo(slotId);
+      if (!slotSource) {
+        return NextResponse.json(
+          { error: "Aucune vidéo source disponible pour ce slot — promeus une version d'abord." },
+          { status: 400 },
+        );
+      }
+    }
+
+    // filename/ext ne sont requis que pour l'upload navigateur (pas useSlotVideo).
+    if (!slotSource && (!filename || !VIDEO_EXTENSIONS.has(ext))) {
       return NextResponse.json(
         { error: `Extension vidéo non supportée : .${ext}. Formats acceptés : ${[...VIDEO_EXTENSIONS].join(", ")}` },
         { status: 400 }
@@ -227,27 +298,39 @@ export async function POST(req: NextRequest) {
     configData = normalizeCaptionConfig(configData);
 
     const jobTimestamp = Date.now();
-    const inputKey     = `inputs/captions/${userContext.effectiveUser.id}/${jobTimestamp}/video.${ext}`;
     const outputSuffix = previewMode ? "preview" : "full";
     const outputKey    = `outputs/captions/${userContext.effectiveUser.id}/${jobTimestamp}/${outputSuffix}.mp4`;
 
-    const mimeByExt: Record<string, string> = {
-      mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska",
-      webm: "video/webm", avi: "video/x-msvideo", m4v: "video/mp4",
-    };
-    let uploadUrl: string;
-    try {
-      uploadUrl = await createPresignedUploadUrl(inputKey, mimeByExt[ext] ?? "video/mp4", 3600);
-    } catch (err) {
-      console.error("[render/captions/prepare] Presigned URL failed:", err);
-      return NextResponse.json({ error: "Impossible de générer l'URL d'upload" }, { status: 500 });
+    // useSlotVideo : la vidéo est déjà en R2 (clé slotSource.key) → pas de
+    // presigned upload, on renvoie juste captionJobId et le client appelle
+    // /submit (qui lit job.inputKey et vérifie objectExistsInR2). Sinon :
+    // upload navigateur classique via URL présignée.
+    let inputKey: string;
+    let uploadUrl: string | null = null;
+    let inputUrlLabel: string;
+    if (slotSource) {
+      inputKey      = slotSource.key;
+      inputUrlLabel = slotSource.filename;
+    } else {
+      inputKey      = `inputs/captions/${userContext.effectiveUser.id}/${jobTimestamp}/video.${ext}`;
+      inputUrlLabel = filename;
+      const mimeByExt: Record<string, string> = {
+        mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska",
+        webm: "video/webm", avi: "video/x-msvideo", m4v: "video/mp4",
+      };
+      try {
+        uploadUrl = await createPresignedUploadUrl(inputKey, mimeByExt[ext] ?? "video/mp4", 3600);
+      } catch (err) {
+        console.error("[render/captions/prepare] Presigned URL failed:", err);
+        return NextResponse.json({ error: "Impossible de générer l'URL d'upload" }, { status: 500 });
+      }
     }
 
     const captionJob = await prisma.captionJob.create({
       data: {
         userId:      userContext.effectiveUser.id,
         status:      "QUEUED",
-        inputUrl:    filename,
+        inputUrl:    inputUrlLabel,
         inputKey,
         outputKey,
         config:      JSON.stringify(configData),
@@ -259,7 +342,10 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ captionJobId: captionJob.id, uploadUrl }, { status: 202 });
+    return NextResponse.json(
+      { captionJobId: captionJob.id, ...(uploadUrl ? { uploadUrl } : {}) },
+      { status: 202 },
+    );
   }
 
   // ── Mode multipart ────────────────────────────────────────────────────────

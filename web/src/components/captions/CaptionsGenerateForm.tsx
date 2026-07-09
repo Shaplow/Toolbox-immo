@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import { toast } from "@/components/ui/Toast";
-import { X, Languages, Loader2 } from "lucide-react";
+import { X, Languages, Loader2, Film } from "lucide-react";
 import {
   Caption,
   applyHighlightMarkersToCaptions,
@@ -127,6 +127,7 @@ export default function CaptionsGenerateForm({
   promptStorageMessage = null,
   aiConfig = { hasClaude: true, hasGpt: true },
   slotId = null,
+  slotVideoSource = null,
   returnTo = null,
   pendingTranscription = null,
   transcriptionBlocker = null,
@@ -142,6 +143,10 @@ export default function CaptionsGenerateForm({
   aiConfig?: { hasClaude: boolean; hasGpt: boolean };
   /** Slot de publication lié (Phase 1.9 A2) — passé au POST pour câbler la FK */
   slotId?: string | null;
+  /** Vidéo montée validée du slot, déjà en R2. Si présente, l'incrustation se
+   *  fait dessus sans re-upload navigateur (useSlotVideo) et le player de trim
+   *  la lit via videoUrl. */
+  slotVideoSource?: { available: boolean; label: string | null; videoUrl: string | null } | null;
   /** URL de retour anti-open-redirect (Phase 1.9 A2) */
   returnTo?: string | null;
   /** V8.3 — Job transcription auto-lancé/déjà en cours pour le slot. Le form
@@ -697,10 +702,15 @@ export default function CaptionsGenerateForm({
     setTranscriptionLoadError(null);
   };
 
-  const canGenerate = !!videoFile && (!!subsFile || captions.length > 0) && !showTrimEditor;
+  // Incrustation sur la vidéo montée validée du slot (déjà en R2), sans
+  // re-upload navigateur. Le serveur résout la clé R2 depuis le slotId.
+  const usingSlotVideo = Boolean(slotVideoSource?.available);
+  const hasSourceVideo = !!videoFile || usingSlotVideo;
+
+  const canGenerate = hasSourceVideo && (!!subsFile || captions.length > 0) && !showTrimEditor;
 
   const handleGenerate = async () => {
-    if (!videoFile) { setMessage("Ajoutez une vidéo"); return; }
+    if (!hasSourceVideo) { setMessage("Ajoutez une vidéo"); return; }
     if (!subsFile && captions.length === 0) { setMessage("Ajoutez les sous-titres"); return; }
 
     setBusy(true);
@@ -744,8 +754,14 @@ export default function CaptionsGenerateForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          filename:    videoFile.name,
-          ext:         videoFile.name.split(".").pop()?.toLowerCase() ?? "mp4",
+          // useSlotVideo : incrustation sur la vidéo montée validée déjà en R2
+          // (le serveur résout la clé depuis slotId). Sinon : upload navigateur.
+          ...(usingSlotVideo
+            ? { useSlotVideo: true }
+            : {
+                filename: videoFile!.name,
+                ext:      videoFile!.name.split(".").pop()?.toLowerCase() ?? "mp4",
+              }),
           srtContent:  subsContent,
           srtFilename: srtFileName,
           config:      configWithProfile,
@@ -759,20 +775,24 @@ export default function CaptionsGenerateForm({
       let immediateVideoUrl: string | undefined;
 
       if (prepRes.ok) {
-        const { captionJobId: jobId, uploadUrl } = await prepRes.json() as { captionJobId: string; uploadUrl: string };
+        const { captionJobId: jobId, uploadUrl } = await prepRes.json() as { captionJobId: string; uploadUrl?: string };
         captionJobId = jobId;
 
-        // Upload direct vers R2 — contourne le serveur Next.js
-        setMessage("Upload vidéo…");
-        setRenderProgress(0.25);
-        const r2Res = await fetch(uploadUrl, {
-          method: "PUT",
-          body: videoFile,
-          headers: { "Content-Type": videoFile.type || "video/mp4" },
-        });
-        if (!r2Res.ok) throw new Error(`Upload R2 échoué : ${r2Res.status}`);
+        // Upload direct vers R2 — sauté en useSlotVideo (pas d'uploadUrl : la
+        // vidéo est déjà en R2, le serveur a mis job.inputKey dessus).
+        if (uploadUrl) {
+          if (!videoFile) throw new Error("Vidéo manquante pour l'upload");
+          setMessage("Upload vidéo…");
+          setRenderProgress(0.25);
+          const r2Res = await fetch(uploadUrl, {
+            method: "PUT",
+            body: videoFile,
+            headers: { "Content-Type": videoFile.type || "video/mp4" },
+          });
+          if (!r2Res.ok) throw new Error(`Upload R2 échoué : ${r2Res.status}`);
+        }
 
-        // Soumettre à RunPod
+        // Soumettre à RunPod (les deux chemins : upload ou vidéo du slot)
         setMessage("Envoi en cours…");
         setRenderProgress(0.45);
         const submitRes = await fetch(`/api/render/captions/${captionJobId}/submit`, { method: "POST" });
@@ -780,7 +800,7 @@ export default function CaptionsGenerateForm({
           const err = await submitRes.json().catch(() => ({ error: submitRes.statusText })) as { error?: string };
           throw new Error(err.error ?? submitRes.statusText);
         }
-      } else if (prepRes.status === 503) {
+      } else if (prepRes.status === 503 && videoFile) {
         // ── Mode local (USE_RUNPOD=false) : fallback multipart ──────────────
         const form = new FormData();
         form.append("video", videoFile);
@@ -808,7 +828,7 @@ export default function CaptionsGenerateForm({
             id: captionJobId!,
             status: "DONE",
             videoUrl: immediateVideoUrl,
-            videoName: videoFile?.name ?? "vidéo",
+            videoName: videoFile?.name ?? slotVideoSource?.label ?? "vidéo",
             createdAt: new Date(),
           },
           ...prev,
@@ -820,7 +840,7 @@ export default function CaptionsGenerateForm({
 
       if (captionJobId) {
         setJobs((prev) => [
-          { id: captionJobId!, status: "QUEUED", videoName: videoFile?.name ?? "vidéo", createdAt: new Date() },
+          { id: captionJobId!, status: "QUEUED", videoName: videoFile?.name ?? slotVideoSource?.label ?? "vidéo", createdAt: new Date() },
           ...prev,
         ]);
       }
@@ -915,8 +935,24 @@ export default function CaptionsGenerateForm({
           </div>
         )}
 
-        {/* F3-step6 — video upload extrait dans CaptionsVideoUploadBar */}
-        <CaptionsVideoUploadBar videoFile={videoFile} setVideoFile={setVideoFile} />
+        {/* F3-step6 — video upload extrait dans CaptionsVideoUploadBar.
+            En mode slot, la vidéo montée validée (déjà en R2) est utilisée
+            directement : on affiche un rappel au lieu du dropzone. */}
+        {usingSlotVideo ? (
+          <div className="mb-3 rounded-2xl bg-card border border-border px-4 py-3 flex items-center gap-2">
+            <Film className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">
+                {slotVideoSource?.label ?? "Montage validé"}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Vidéo source du slot — incrustation directe, pas d&apos;upload.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <CaptionsVideoUploadBar videoFile={videoFile} setVideoFile={setVideoFile} />
+        )}
 
         {/* Source card — Sous-titres */}
         <div className="bg-card border border-border border border-white/50 rounded-2xl  overflow-hidden mb-3">
@@ -1036,6 +1072,7 @@ export default function CaptionsGenerateForm({
           <SegmentTrimEditor
             segments={pendingSegments}
             videoFile={videoFile}
+            videoSrcUrl={usingSlotVideo ? slotVideoSource?.videoUrl ?? null : null}
             onConfirm={(_srt, segs) => {
               const nextTimedSegments = buildTimedSegmentsFromSegments(segs);
               const hasOriginalWordData = segs.some((segment) => Array.isArray(segment.words) && segment.words.length > 0);
@@ -1159,7 +1196,7 @@ export default function CaptionsGenerateForm({
             busy={busy}
             message={message}
             renderProgress={renderProgress}
-            hasVideoFile={Boolean(videoFile)}
+            hasVideoFile={hasSourceVideo}
             onGenerate={() => void handleGenerate()}
           />
 

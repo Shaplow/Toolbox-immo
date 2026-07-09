@@ -81,6 +81,11 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     | { jobId: string; status: string }
     | null = null;
   let transcriptionBlocker: string | null = null;
+  // Vidéo montée validée du slot (déjà en R2) — permet l'incrustation sans
+  // re-upload navigateur (mode useSlotVideo côté form + /api/render/captions).
+  let slotVideoSource:
+    | { available: boolean; label: string | null; videoUrl: string | null }
+    | null = null;
   if (slotId) {
     const slot = await prisma.publicationSlot.findUnique({
       where: { id: slotId },
@@ -90,7 +95,7 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
         assigneeCmId: true,
         assigneeVideasteId: true,
         currentVersionId: true,
-        currentVersion: { select: { id: true, fileUrl: true, r2Key: true } },
+        currentVersion: { select: { id: true, fileUrl: true, r2Key: true, versionNumber: true } },
         // Pour le fallback auto_template (pas de version, juste un render).
         render: {
           select: { id: true, templateId: true, videoUrl: true },
@@ -109,6 +114,20 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     if (!slot || !canUserAccessSlot(slot, role, effectiveUserId)) {
       notFound();
     }
+
+    // Résout la vidéo source du slot (montage validé prioritaire, sinon render
+    // auto_template). `available` reflète la capacité du serveur à retrouver la
+    // clé R2 ; `videoUrl` alimente le player de l'éditeur de trim.
+    const sourceVideoUrl = slot.currentVersion?.fileUrl ?? slot.render?.videoUrl ?? null;
+    slotVideoSource = {
+      available: Boolean(slot.currentVersion?.r2Key || slot.render?.videoUrl),
+      label: slot.currentVersion?.r2Key
+        ? `Montage validé${slot.currentVersion.versionNumber != null ? ` V${slot.currentVersion.versionNumber}` : ""}`
+        : slot.render?.videoUrl
+          ? "Vidéo générée"
+          : null,
+      videoUrl: sourceVideoUrl,
+    };
 
     // Seulement auto-lookup/launch si l'admin n'a pas déjà fourni un
     // ?transcriptionId=Y (cas où il choisit manuellement une transcription
@@ -280,6 +299,7 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
                 hasGpt: !!process.env.OPENAI_API_KEY,
               }}
               slotId={slotId ?? null}
+              slotVideoSource={slotVideoSource}
               returnTo={safeReturnTo ?? null}
               pendingTranscription={pendingTranscription}
               transcriptionBlocker={transcriptionBlocker}
