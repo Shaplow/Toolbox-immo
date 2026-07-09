@@ -86,6 +86,9 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
   let slotVideoSource:
     | { available: boolean; label: string | null; videoUrl: string | null }
     | null = null;
+  // Transcription résolue mais inexploitable (segments R2 illisibles / périmés /
+  // outputJsonKey absent) → état "relancer" au lieu d'un picker muet.
+  let transcriptionUnavailable = false;
   if (slotId) {
     const slot = await prisma.publicationSlot.findUnique({
       where: { id: slotId },
@@ -250,6 +253,12 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     }
   }
 
+  // Résolu (via slot) mais aucun segment exploitable → propose de relancer une
+  // transcription fraîche plutôt que de laisser l'utilisateur sur le picker muet.
+  if (slotId && resolvedTranscriptionId && !initialSegments) {
+    transcriptionUnavailable = true;
+  }
+
   let promptStorageAvailable = true;
   let promptStorageMessage: string | null = null;
   let prompts = [] as Awaited<ReturnType<typeof listCaptionPromptRows>>;
@@ -300,6 +309,7 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
               }}
               slotId={slotId ?? null}
               slotVideoSource={slotVideoSource}
+              transcriptionUnavailable={transcriptionUnavailable}
               returnTo={safeReturnTo ?? null}
               pendingTranscription={pendingTranscription}
               transcriptionBlocker={transcriptionBlocker}

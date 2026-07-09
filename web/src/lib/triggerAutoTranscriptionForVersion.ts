@@ -59,12 +59,13 @@ async function runLocalTranscription(
     uploadedByUserId: string;
     slotId: string;
   },
+  force: boolean,
 ): Promise<void> {
   // Cherche un job existant pour éviter les doublons.
   const existing = await prisma.transcriptionJob.findUnique({
     where: { publicationVersionId },
   });
-  if (existing && existing.status !== "FAILED") {
+  if (existing && existing.status !== "FAILED" && !force) {
     // Self-heal : un job créé avant le fix (branche RunPod sans slotId) est
     // orphelin du slot → invisible dans slot.transcriptionJobs → la page reste
     // bloquée sur "en cours". On repose le slotId pour le rendre visible.
@@ -83,7 +84,7 @@ async function runLocalTranscription(
   }
 
   const job =
-    existing && existing.status === "FAILED"
+    existing && (existing.status === "FAILED" || force)
       ? (await prisma.transcriptionJob.update({
           where: { id: existing.id },
           data: {
@@ -194,7 +195,11 @@ async function runLocalTranscription(
 
 export async function triggerAutoTranscriptionForVersion(
   publicationVersionId: string,
+  opts: { force?: boolean } = {},
 ): Promise<void> {
+  // force = re-transcrire même si un job COMPLETED/stale existe (déblocage
+  // manuel : segments illisibles/périmés). Reset le job existant + resubmit.
+  const force = opts.force === true;
   // ── Mode local (USE_RUNPOD=false) : pipeline synchrone via render-engine
   // local sur CAPTIONS_API_URL. Pas besoin de RunPod ni R2 — le SRT est
   // stocké inline dans TranscriptionJob.segmentsJson si R2 indispo.
@@ -255,7 +260,7 @@ export async function triggerAutoTranscriptionForVersion(
       fileName: version.fileName,
       uploadedByUserId: version.uploadedByUserId,
       slotId: version.slotId,
-    });
+    }, force);
     return;
   }
 
@@ -333,7 +338,7 @@ export async function triggerAutoTranscriptionForVersion(
   const existing = await prisma.transcriptionJob.findUnique({
     where: { publicationVersionId },
   });
-  if (existing && existing.status !== "FAILED") {
+  if (existing && existing.status !== "FAILED" && !force) {
     // Self-heal : un job créé avant le fix (branche RunPod sans slotId) est
     // orphelin du slot → invisible dans slot.transcriptionJobs → la page reste
     // bloquée sur "en cours". On repose le slotId pour le rendre visible.
@@ -357,7 +362,7 @@ export async function triggerAutoTranscriptionForVersion(
   // V6.3.2 — Si existing FAILED, reset + réutiliser l'ID (préserve FK aval
   // DescriptionJob.transcriptionId). Sinon create un nouveau job.
   let job: { id: string };
-  if (existing && existing.status === "FAILED") {
+  if (existing && (existing.status === "FAILED" || force)) {
     await prisma.transcriptionJob.update({
       where: { id: existing.id },
       data: {

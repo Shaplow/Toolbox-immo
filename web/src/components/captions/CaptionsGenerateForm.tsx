@@ -128,6 +128,7 @@ export default function CaptionsGenerateForm({
   aiConfig = { hasClaude: true, hasGpt: true },
   slotId = null,
   slotVideoSource = null,
+  transcriptionUnavailable = false,
   returnTo = null,
   pendingTranscription = null,
   transcriptionBlocker = null,
@@ -147,6 +148,9 @@ export default function CaptionsGenerateForm({
    *  fait dessus sans re-upload navigateur (useSlotVideo) et le player de trim
    *  la lit via videoUrl. */
   slotVideoSource?: { available: boolean; label: string | null; videoUrl: string | null } | null;
+  /** Transcription résolue mais inexploitable (segments R2 illisibles/périmés) —
+   *  affiche une bannière + bouton "Relancer la transcription". */
+  transcriptionUnavailable?: boolean;
   /** URL de retour anti-open-redirect (Phase 1.9 A2) */
   returnTo?: string | null;
   /** V8.3 — Job transcription auto-lancé/déjà en cours pour le slot. Le form
@@ -177,6 +181,7 @@ export default function CaptionsGenerateForm({
   const [loadingTranscriptions, setLoadingTranscriptions] = useState(false);
   const [loadingSource, setLoadingSource] = useState(false);
   const [transcriptionLoadError, setTranscriptionLoadError] = useState<string | null>(null);
+  const [retriggering, setRetriggering] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -324,6 +329,30 @@ export default function CaptionsGenerateForm({
       toast.error("La transcription a échoué. Réessaie depuis /transcriptions.");
     }
   });
+
+  // Relance une transcription fraîche du montage validé (force) quand la
+  // précédente est inexploitable (segments illisibles/périmés).
+  const handleRetriggerTranscription = async () => {
+    if (!slotId) return;
+    setRetriggering(true);
+    try {
+      const res = await fetch(
+        `/api/publications/${slotId}/retrigger-transcription?force=true`,
+        { method: "POST" },
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? "Échec du relancement de la transcription.");
+        return;
+      }
+      toast.success("Transcription relancée — chargement en cours.");
+      router.refresh();
+    } catch (err) {
+      toast.error(`Erreur : ${String(err)}`);
+    } finally {
+      setRetriggering(false);
+    }
+  };
 
   // SSE fast path — caption jobs updated immediately when webhook fires
   useAllJobEvents((event) => {
@@ -924,6 +953,26 @@ export default function CaptionsGenerateForm({
               Le sous-titrage démarre dès que la transcription est prête. La
               page se rafraîchira automatiquement.
             </p>
+          </div>
+        )}
+        {transcriptionUnavailable && slotId && !pendingTranscription && (
+          <div className="mb-3 rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3">
+            <p className="text-[13px] font-semibold text-warning-700">
+              Transcription indisponible
+            </p>
+            <p className="text-[11px] text-warning-700/80 mt-0.5">
+              La transcription précédente est périmée ou illisible. Relance-la
+              pour repartir du montage validé.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleRetriggerTranscription()}
+              disabled={retriggering}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-warning-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-warning-700 disabled:opacity-60"
+            >
+              {retriggering && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {retriggering ? "Relancement…" : "Relancer la transcription"}
+            </button>
           </div>
         )}
         {transcriptionBlocker && (
