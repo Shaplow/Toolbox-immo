@@ -65,6 +65,15 @@ async function runLocalTranscription(
     where: { publicationVersionId },
   });
   if (existing && existing.status !== "FAILED") {
+    // Self-heal : un job créé avant le fix (branche RunPod sans slotId) est
+    // orphelin du slot → invisible dans slot.transcriptionJobs → la page reste
+    // bloquée sur "en cours". On repose le slotId pour le rendre visible.
+    if (existing.slotId !== version.slotId) {
+      await prisma.transcriptionJob.update({
+        where: { id: existing.id },
+        data: { slotId: version.slotId },
+      });
+    }
     logSkip(publicationVersionId, "already_has_transcription", {
       slotId: version.slotId,
       transcriptionJobId: existing.id,
@@ -325,6 +334,15 @@ export async function triggerAutoTranscriptionForVersion(
     where: { publicationVersionId },
   });
   if (existing && existing.status !== "FAILED") {
+    // Self-heal : un job créé avant le fix (branche RunPod sans slotId) est
+    // orphelin du slot → invisible dans slot.transcriptionJobs → la page reste
+    // bloquée sur "en cours". On repose le slotId pour le rendre visible.
+    if (existing.slotId !== version.slotId) {
+      await prisma.transcriptionJob.update({
+        where: { id: existing.id },
+        data: { slotId: version.slotId },
+      });
+    }
     logSkip(publicationVersionId, "already_has_transcription", {
       slotId: version.slotId,
       transcriptionJobId: existing.id,
@@ -354,6 +372,7 @@ export async function triggerAutoTranscriptionForVersion(
         staleReason: null,
         inputKey: version.r2Key,
         inputFilename: version.fileName,
+        slotId: version.slotId,
       },
     });
     job = { id: existing.id };
@@ -373,6 +392,10 @@ export async function triggerAutoTranscriptionForVersion(
           enableDiarization: false,
           outputJsonKey,
           publicationVersionId: version.id,
+          // Sans slotId, le job est orphelin du slot → invisible dans
+          // slot.transcriptionJobs → resolveActiveTranscription renvoie null →
+          // la page generate boucle sur "en cours". Aligné sur la branche locale.
+          slotId: version.slotId,
         },
       });
     } catch (err) {
