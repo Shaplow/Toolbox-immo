@@ -55,6 +55,10 @@ interface Props {
   currentVersion?: { versionNumber: number; fileName: string } | null;
   /** Dernier job captions lié à ce slot (Phase 1.9 A2). */
   latestCaptionJob?: CaptionJobInfo | null;
+  /** Statut de la transcription du montage (QUEUED/PROCESSING/COMPLETED/FAILED).
+   *  Si en cours, on indique "Transcription en cours…" et on neutralise le bouton
+   *  sous-titres (les segments ne sont pas encore prêts). */
+  transcriptionJobStatus?: string | null;
   /** Preset captions effectif (override slot ou pattern). Si défini, le
    *  lien "Avancé" pointe direct vers /captions/[presetId]/generate, sinon
    *  vers la gallery /captions où l'user doit choisir. */
@@ -74,6 +78,7 @@ export function CaptionsSection({
   isAdmin = false,
   currentVersion,
   latestCaptionJob,
+  transcriptionJobStatus,
   effectiveCaptionPresetId,
   sectionId = "captions",
   storageKey,
@@ -151,6 +156,12 @@ export function CaptionsSection({
   const isDone = latestCaptionJob?.status === "COMPLETED";
   const isError = latestCaptionJob?.status === "FAILED";
 
+  // La transcription du montage alimente l'éditeur de sous-titres. Tant qu'elle
+  // tourne, les segments ne sont pas prêts : on l'indique et on neutralise le
+  // bouton (sinon on tombe sur un éditeur "en cours" côté /captions/generate).
+  const transcriptionInProgress =
+    transcriptionJobStatus === "QUEUED" || transcriptionJobStatus === "PROCESSING";
+
   // Verdict centralisé : visible / enabled / intent + reason.
   // Voir lib/publications/actions.ts pour la logique métier (auto pipeline,
   // prérequis cible, job déjà en vol).
@@ -213,13 +224,18 @@ export function CaptionsSection({
             <Alert variant="info" icon={Subtitles}>
               Incrustation des sous-titres en cours…
             </Alert>
+          ) : transcriptionInProgress ? (
+            <Alert variant="info" icon={Loader2}>
+              Transcription du montage en cours… les sous-titres seront
+              disponibles juste après.
+            </Alert>
           ) : (
             <Alert variant="info" icon={Subtitles}>
               Mode manuel : choisis un style, ajuste le découpage et le surlignage
               à la main sur le montage validé, puis lance l&apos;incrustation.
             </Alert>
           )}
-          {canEdit && (
+          {canEdit && (isDone || !transcriptionInProgress) && (
             <Link href={captionsHref}>
               <Button variant="secondary" size="sm" icon={ExternalLink}>
                 {isDone ? "Modifier les sous-titres" : "Écrire les sous-titres"}
@@ -288,9 +304,18 @@ export function CaptionsSection({
           </Alert>
         )}
 
+        {/* Transcription du montage en cours — les segments qui alimentent
+            l'éditeur ne sont pas encore prêts. Prioritaire sur l'empty state. */}
+        {!latestCaptionJob && transcriptionInProgress && (
+          <Alert variant="info" icon={Loader2}>
+            Transcription du montage en cours… les sous-titres seront disponibles
+            juste après.
+          </Alert>
+        )}
+
         {/* Empty state — affiché tant qu'aucun job n'a été lancé et que le
             verdict en explique la raison (auto, waiting, etc.). */}
-        {!latestCaptionJob && verdict.visible && verdict.enabled === false && (
+        {!latestCaptionJob && !transcriptionInProgress && verdict.visible && verdict.enabled === false && (
           <Alert
             variant={verdict.intent === "auto" ? "glass" : "info"}
             icon={verdict.intent === "auto" ? Sparkles : undefined}
@@ -298,7 +323,7 @@ export function CaptionsSection({
             {verdict.reason}
           </Alert>
         )}
-        {!latestCaptionJob && verdict.visible && verdict.enabled === true && (
+        {!latestCaptionJob && !transcriptionInProgress && verdict.visible && verdict.enabled === true && (
           <Alert variant="info" icon={Subtitles}>
             Aucun job de sous-titres encore lancé pour cette publication.
           </Alert>
@@ -344,7 +369,7 @@ export function CaptionsSection({
         {/* CTA actif uniquement si le verdict l'autorise — ET on garde le
             cas "Regénérer" (DONE/FAILED) qui ne dépend pas du verdict
             (l'user veut explicitement re-tenter sur la même cible). */}
-        {canEdit && ((verdict.visible && verdict.enabled) || canRegenerate) && (
+        {canEdit && (((verdict.visible && verdict.enabled) && !transcriptionInProgress) || canRegenerate) && (
           <Link href={captionsHref}>
             <Button variant="secondary" size="sm" icon={canRegenerate ? Play : ExternalLink}>
               {canRegenerate

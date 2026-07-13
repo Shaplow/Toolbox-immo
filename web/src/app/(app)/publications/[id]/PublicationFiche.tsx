@@ -647,6 +647,7 @@ export function PublicationFiche({
                   isAdmin={currentUserRole === "ADMIN"}
                   currentVersion={currentVersion}
                   latestCaptionJob={latestCaptionJob}
+                  transcriptionJobStatus={transcriptionJobStatus}
                   effectiveCaptionPresetId={
                     slot.captionPresetIdOverride ??
                     pattern?.captionPresetId ??
