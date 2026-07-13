@@ -24,6 +24,7 @@ import { objectExists, deleteObject, getPublicUrl, isLocalStorage } from "@/lib/
 import { completeMultipartUpload, abortMultipartUpload } from "@/lib/r2Multipart";
 import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransition } from "@/lib/services/slot/transitions";
+import { markJobsStaleForSlot } from "@/lib/publications/jobLifecycle";
 import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
 import { triggerAutoTranscriptionForVersion } from "@/lib/triggerAutoTranscriptionForVersion";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
@@ -393,6 +394,11 @@ async function handleVersionComplete(args: {
         await applyAutoTransition(tx as typeof args.prisma, slotId, freshStatus, "VERSION_PROMOTED", actorId);
       }
       // versionNumber > 1 : pas de transition. Le slot reste où il est.
+      // Symétrie avec le promote manuel (promote/route.ts) : invalider les jobs
+      // (transcription/captions/description/cover) de l'ancienne version pour
+      // qu'ils ne s'affichent plus comme "courants" sur la fiche. Idempotent
+      // (ne touche que staleSince=null) → no-op pour la V1, invalide V(n-1).
+      await markJobsStaleForSlot(tx, slotId, "version_promoted");
     } else {
       const trigger = version.versionNumber === 1 ? "VERSION_UPLOADED_FIRST" : "VERSION_UPLOADED_AGAIN";
       await applyAutoTransition(tx as typeof args.prisma, slotId, freshStatus, trigger, actorId);
