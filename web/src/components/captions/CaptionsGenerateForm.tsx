@@ -129,6 +129,7 @@ export default function CaptionsGenerateForm({
   slotId = null,
   slotVideoSource = null,
   transcriptionUnavailable = false,
+  transcriptionEmpty = false,
   returnTo = null,
   pendingTranscription = null,
   transcriptionBlocker = null,
@@ -151,6 +152,9 @@ export default function CaptionsGenerateForm({
   /** Transcription résolue mais inexploitable (segments R2 illisibles/périmés) —
    *  affiche une bannière + bouton "Relancer la transcription". */
   transcriptionUnavailable?: boolean;
+  /** Transcription COMPLETED mais 0 segment (montage sans parole) — affiche un
+   *  état clair "Aucune parole détectée" + relance / saisie manuelle. */
+  transcriptionEmpty?: boolean;
   /** URL de retour anti-open-redirect (Phase 1.9 A2) */
   returnTo?: string | null;
   /** V8.3 — Job transcription auto-lancé/déjà en cours pour le slot. Le form
@@ -448,7 +452,16 @@ export default function CaptionsGenerateForm({
         return r.json() as Promise<Segment[]>;
       })
       .then((segs) => {
-        if (!Array.isArray(segs) || segs.length === 0) throw new Error("Données invalides");
+        if (!Array.isArray(segs)) throw new Error("Données invalides");
+        if (segs.length === 0) {
+          // Transcription vide (montage sans parole) — message clair plutôt que
+          // le générique "Impossible de charger" (réservé aux vrais échecs).
+          setTranscriptionLoadError(
+            "Aucune parole détectée dans cette transcription — utilise « Uploader un fichier » pour saisir les sous-titres.",
+          );
+          setSelectedTranscriptionId(null);
+          return;
+        }
         if (isBilingualSegments(segs)) {
           // Mode bilingue : on bypass le TrimEditor (le texte affiché c'est
           // la traduction, pas l'original — pas de découpage word-level FR).
@@ -955,7 +968,28 @@ export default function CaptionsGenerateForm({
             </p>
           </div>
         )}
-        {transcriptionUnavailable && slotId && !pendingTranscription && (
+        {transcriptionEmpty && slotId && !pendingTranscription && (
+          <div className="mb-3 rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3">
+            <p className="text-[13px] font-semibold text-warning-700">
+              Aucune parole détectée dans le montage
+            </p>
+            <p className="text-[11px] text-warning-700/80 mt-0.5">
+              Le montage ne contient pas de voix à transcrire. Relance la
+              transcription si tu viens d&apos;ajouter l&apos;audio, ou saisis les
+              sous-titres à la main via l&apos;onglet « Uploader un fichier ».
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleRetriggerTranscription()}
+              disabled={retriggering}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-warning-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-warning-700 disabled:opacity-60"
+            >
+              {retriggering && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {retriggering ? "Relancement…" : "Relancer la transcription"}
+            </button>
+          </div>
+        )}
+        {transcriptionUnavailable && !transcriptionEmpty && slotId && !pendingTranscription && (
           <div className="mb-3 rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3">
             <p className="text-[13px] font-semibold text-warning-700">
               Transcription indisponible

@@ -89,6 +89,9 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
   // Transcription résolue mais inexploitable (segments R2 illisibles / périmés /
   // outputJsonKey absent) → état "relancer" au lieu d'un picker muet.
   let transcriptionUnavailable = false;
+  // Transcription COMPLETED mais 0 segment (montage sans parole détectée) →
+  // état clair "aucune parole" au lieu d'un message d'erreur trompeur.
+  let transcriptionEmpty = false;
   if (slotId) {
     const slot = await prisma.publicationSlot.findUnique({
       where: { id: slotId },
@@ -253,10 +256,17 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     }
   }
 
-  // Résolu (via slot) mais aucun segment exploitable → propose de relancer une
-  // transcription fraîche plutôt que de laisser l'utilisateur sur le picker muet.
-  if (slotId && resolvedTranscriptionId && !initialSegments) {
-    transcriptionUnavailable = true;
+  // Résolu (via slot) mais pas de segments exploitables : distinguer
+  //  - COMPLETED avec 0 segment (montage sans parole) → transcriptionEmpty
+  //  - segments illisibles / non chargés (R2/null) → transcriptionUnavailable
+  // Dans les deux cas, on évite le picker muet.
+  if (slotId && resolvedTranscriptionId) {
+    if (initialSegments && initialSegments.length === 0) {
+      transcriptionEmpty = true;
+      initialSegments = null; // ne pas seed un éditeur vide
+    } else if (!initialSegments) {
+      transcriptionUnavailable = true;
+    }
   }
 
   let promptStorageAvailable = true;
@@ -310,6 +320,7 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
               slotId={slotId ?? null}
               slotVideoSource={slotVideoSource}
               transcriptionUnavailable={transcriptionUnavailable}
+              transcriptionEmpty={transcriptionEmpty}
               returnTo={safeReturnTo ?? null}
               pendingTranscription={pendingTranscription}
               transcriptionBlocker={transcriptionBlocker}
