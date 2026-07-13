@@ -234,7 +234,7 @@ export async function abortMultipartUpload(
  *
  * Source de vérité des ETags pour la finalisation (voir completeMultipartUpload).
  * Pagine via IsTruncated / PartNumberMarker : R2 renvoie jusqu'à 1000 parties par
- * page. Le cap réel ici est ~200 (10 Go / 50 Mo), mais la pagination reste
+ * page. Le cap réel ici est ~400 (20 Go / 50 Mo), mais la pagination reste
  * défensive au cas où PART_SIZE baisserait.
  */
 export async function listInProgressParts(

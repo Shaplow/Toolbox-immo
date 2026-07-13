@@ -286,7 +286,7 @@ export function RushesSection({
                 "image/png",
                 "image/webp",
               ]}
-              maxSizeBytes={10 * 1024 * 1024 * 1024}
+              maxSizeBytes={20 * 1024 * 1024 * 1024}
               multiple
               label={hasRushes ? "+ Ajouter" : "Déposer les rushes"}
               onUploaded={handleUploaded}

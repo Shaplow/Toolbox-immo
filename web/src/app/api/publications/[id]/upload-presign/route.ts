@@ -43,13 +43,16 @@ const ALLOWED_CONTENT_TYPES: Record<string, string[]> = {
 };
 
 const MAX_SIZE: Record<string, number> = {
-  rush: 10 * 1024 * 1024 * 1024,           // 10 GB
-  version: 10 * 1024 * 1024 * 1024,        // 10 GB
+  rush: 20 * 1024 * 1024 * 1024,           // 20 GB
+  version: 20 * 1024 * 1024 * 1024,        // 20 GB
   "brief-attachment": 50 * 1024 * 1024,    // 50 MB
 };
 
 const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100 MB
 const PART_SIZE = 50 * 1024 * 1024;            // 50 MB par partie
+// Toutes les URLs de parties sont signées à t=0 : un 20 Go (~400 parties) sur
+// connexion lente peut dépasser 1h. 6h couvre ce cas (R2/SigV4 tolère jusqu'à 7j).
+const PART_URL_EXPIRY_SECONDS = 6 * 60 * 60;   // 6h
 
 type UploadKind = "rush" | "version" | "brief-attachment";
 
@@ -183,7 +186,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const partUrls: { partNumber: number; url: string }[] = [];
 
     for (let i = 1; i <= partCount; i++) {
-      const url = await createPresignedUploadPartUrl(r2Key, uploadId, i);
+      const url = await createPresignedUploadPartUrl(r2Key, uploadId, i, PART_URL_EXPIRY_SECONDS);
       partUrls.push({ partNumber: i, url });
     }
 

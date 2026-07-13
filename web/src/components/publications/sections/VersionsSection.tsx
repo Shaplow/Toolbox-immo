@@ -548,7 +548,7 @@ export function VersionsSection({
               slotId={slotId}
               kind="version"
               accept={["video/mp4", "video/quicktime", "video/x-m4v"]}
-              maxSizeBytes={10 * 1024 * 1024 * 1024}
+              maxSizeBytes={20 * 1024 * 1024 * 1024}
               multiple={false}
               label={hasVersions ? "+ Nouvelle version" : "Déposer la version montée"}
               onUploaded={handleUploaded}

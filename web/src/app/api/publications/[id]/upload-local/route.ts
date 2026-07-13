@@ -34,8 +34,8 @@ type Params = { params: Promise<{ id: string }> };
 // Mêmes seuils que upload-presign — répétés pour ne pas créer de dépendance
 // cyclique (presign importerait storage qui importerait presign).
 const MAX_SIZE_BY_KIND: Record<string, number> = {
-  rush: 10 * 1024 * 1024 * 1024,           // 10 GB
-  version: 10 * 1024 * 1024 * 1024,        // 10 GB
+  rush: 20 * 1024 * 1024 * 1024,           // 20 GB
+  version: 20 * 1024 * 1024 * 1024,        // 20 GB
   "brief-attachment": 50 * 1024 * 1024,    // 50 MB
 };
 
