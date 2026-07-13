@@ -27,6 +27,7 @@ import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
+import { createMultipartUpload, createPresignedUploadPartUrl } from "@/lib/r2Multipart";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
@@ -44,6 +45,14 @@ const HF_TOKEN          = process.env.HF_TOKEN;
 const AUDIO_EXTENSIONS = new Set([
   "mp3", "wav", "m4a", "flac", "ogg", "aac", "mp4", "mov", "mkv", "webm",
 ]);
+
+// Upload direct navigateur → R2. Au-delà de 100 Mo on passe en multipart :
+// R2 refuse tout objet en PUT unique > 5 Go (400 EntityTooLarge). Constantes
+// alignées sur le flux publications (upload-presign).
+const MULTIPART_THRESHOLD = 100 * 1024 * 1024;   // 100 Mo
+const PART_SIZE = 50 * 1024 * 1024;              // 50 Mo par partie
+const PART_URL_EXPIRY_SECONDS = 6 * 60 * 60;     // 6h — un 20 Go (~400 parties) sur connexion lente
+const MAX_UPLOAD_SIZE = 20 * 1024 * 1024 * 1024; // 20 Go
 
 const ALLOWED_MODELS = new Set([
   "turbo", "large-v3", "large-v3-turbo", "medium", "small", "base", "tiny",
@@ -76,7 +85,7 @@ export async function POST(req: NextRequest) {
   // ─── Mode RunPod via JSON (presigned URL — pas de fichier dans Next.js) ──
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    let body: { filename?: unknown; ext?: unknown; model?: unknown; language?: unknown; languages?: unknown; enable_diarization?: unknown; slotId?: unknown };
+    let body: { filename?: unknown; ext?: unknown; size?: unknown; model?: unknown; language?: unknown; languages?: unknown; enable_diarization?: unknown; slotId?: unknown };
     try {
       body = await req.json();
     } catch {
@@ -90,6 +99,14 @@ export async function POST(req: NextRequest) {
         { error: `Extension non supportée : .${ext}. Formats acceptés : ${[...AUDIO_EXTENSIONS].join(", ")}` },
         { status: 400 }
       );
+    }
+
+    const size = Number(body.size);
+    if (!Number.isFinite(size) || size <= 0) {
+      return NextResponse.json({ error: "Le champ 'size' (octets) est requis" }, { status: 400 });
+    }
+    if (size > MAX_UPLOAD_SIZE) {
+      return NextResponse.json({ error: "Fichier trop volumineux (max 20 Go)" }, { status: 400 });
     }
 
     const model            = sanitizeModel(body.model);
@@ -158,16 +175,33 @@ export async function POST(req: NextRequest) {
     const inputKey     = `transcription/${userId}/${jobTimestamp}/source.${ext}`;
     const outputJsonKey = `transcription/${userId}/${jobTimestamp}/segments.json`;
 
-    // Générer une URL PUT pré-signée — le browser uploadera directement vers R2
-    let uploadUrl: string;
+    const mimeByExt: Record<string, string> = {
+      mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska",
+      webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav",
+      m4a: "audio/mp4", flac: "audio/flac", ogg: "audio/ogg", aac: "audio/aac",
+    };
+    const contentTypeForUpload = mimeByExt[ext] ?? "application/octet-stream";
+
+    // Single PUT (<= 100 Mo) vs multipart (> 100 Mo). Le multipart est
+    // obligatoire au-delà de 5 Go — limite dure R2 sur un PUT unique. Le client
+    // finalise via /upload-complete après avoir uploadé toutes les parties.
+    let uploadResponse:
+      | { uploadUrl: string }
+      | { multipart: { uploadId: string; partSize: number; partUrls: { partNumber: number; url: string }[] } };
     try {
-      const mimeByExt: Record<string, string> = {
-        mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska",
-        webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav",
-        m4a: "audio/mp4", flac: "audio/flac", ogg: "audio/ogg", aac: "audio/aac",
-      };
-      const contentTypeForUpload = mimeByExt[ext] ?? "application/octet-stream";
-      uploadUrl = await createPresignedUploadUrl(inputKey, contentTypeForUpload, 3600);
+      if (size > MULTIPART_THRESHOLD) {
+        const { uploadId } = await createMultipartUpload(inputKey, contentTypeForUpload);
+        const partCount = Math.ceil(size / PART_SIZE);
+        const partUrls: { partNumber: number; url: string }[] = [];
+        for (let i = 1; i <= partCount; i++) {
+          const url = await createPresignedUploadPartUrl(inputKey, uploadId, i, PART_URL_EXPIRY_SECONDS);
+          partUrls.push({ partNumber: i, url });
+        }
+        uploadResponse = { multipart: { uploadId, partSize: PART_SIZE, partUrls } };
+      } else {
+        const uploadUrl = await createPresignedUploadUrl(inputKey, contentTypeForUpload, 3600);
+        uploadResponse = { uploadUrl };
+      }
     } catch (err) {
       console.error("[transcription/prepare] Presigned URL failed:", err);
       return NextResponse.json({ error: "Impossible de générer l'URL d'upload" }, { status: 500 });
@@ -188,7 +222,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ jobId: job.id, uploadUrl }, { status: 202 });
+    return NextResponse.json({ jobId: job.id, ...uploadResponse }, { status: 202 });
   }
 
   // ─── Parse form (mode local / compatibilité) ──────────────────────────────

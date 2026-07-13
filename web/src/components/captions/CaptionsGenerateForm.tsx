@@ -36,6 +36,9 @@ import { CaptionsVideoUploadBar } from "@/components/captions/CaptionsVideoUploa
 import { CaptionsHeader } from "@/components/captions/CaptionsHeader";
 import { CaptionsGenerateButton } from "@/components/captions/CaptionsGenerateButton";
 import { CaptionsSourceStatus } from "@/components/captions/CaptionsSourceStatus";
+import { uploadFileInParts } from "@/lib/upload/multipartClient";
+
+const MAX_UPLOAD_SIZE = 20 * 1024 * 1024 * 1024; // 20 Go — aligné serveur
 
 type TextTransform = "none" | "upper" | "lower" | "title";
 type AIModel = "claude" | "gpt";
@@ -790,6 +793,9 @@ export default function CaptionsGenerateForm({
     }, 800);
 
     try {
+      if (!usingSlotVideo && videoFile && videoFile.size > MAX_UPLOAD_SIZE) {
+        throw new Error("Vidéo trop volumineuse (max 20 Go).");
+      }
       // ── Mode RunPod : URL présignée (upload direct browser → R2) ──────────
       // Essayer le mode presigned d'abord ; 503 = fallback multipart (local)
       const prepRes = await fetch("/api/render/captions", {
@@ -803,6 +809,7 @@ export default function CaptionsGenerateForm({
             : {
                 filename: videoFile!.name,
                 ext:      videoFile!.name.split(".").pop()?.toLowerCase() ?? "mp4",
+                size:     videoFile!.size,
               }),
           srtContent:  subsContent,
           srtFilename: srtFileName,
@@ -817,12 +824,46 @@ export default function CaptionsGenerateForm({
       let immediateVideoUrl: string | undefined;
 
       if (prepRes.ok) {
-        const { captionJobId: jobId, uploadUrl } = await prepRes.json() as { captionJobId: string; uploadUrl?: string };
+        const { captionJobId: jobId, uploadUrl, multipart } = await prepRes.json() as {
+          captionJobId: string;
+          uploadUrl?: string;
+          multipart?: { uploadId: string; partSize: number; partUrls: { partNumber: number; url: string }[] };
+        };
         captionJobId = jobId;
 
-        // Upload direct vers R2 — sauté en useSlotVideo (pas d'uploadUrl : la
-        // vidéo est déjà en R2, le serveur a mis job.inputKey dessus).
-        if (uploadUrl) {
+        // Upload direct vers R2 — sauté en useSlotVideo (ni uploadUrl ni
+        // multipart : la vidéo est déjà en R2, le serveur a mis job.inputKey
+        // dessus).
+        if (multipart) {
+          // Multipart (> 100 Mo, obligatoire > 5 Go). Finalisé via
+          // /upload-complete ; annulé (/upload-abort) en cas d'échec.
+          if (!videoFile) throw new Error("Vidéo manquante pour l'upload");
+          setMessage("Upload vidéo…");
+          setRenderProgress(0.25);
+          const abortController = new AbortController();
+          try {
+            const parts = await uploadFileInParts(videoFile, multipart.partUrls, multipart.partSize, {
+              signal: abortController.signal,
+              onProgress: (fraction) => setRenderProgress(0.25 + fraction * 0.15),
+            });
+            const completeRes = await fetch(`/api/render/captions/${jobId}/upload-complete`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ uploadId: multipart.uploadId, parts }),
+            });
+            if (!completeRes.ok) {
+              const data = await completeRes.json().catch(() => ({ error: completeRes.statusText })) as { error?: string };
+              throw new Error(data.error ?? `Erreur finalisation (${completeRes.status})`);
+            }
+          } catch (uploadErr) {
+            void fetch(`/api/render/captions/${jobId}/upload-abort`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ uploadId: multipart.uploadId }),
+            }).catch(() => {});
+            throw uploadErr;
+          }
+        } else if (uploadUrl) {
           if (!videoFile) throw new Error("Vidéo manquante pour l'upload");
           setMessage("Upload vidéo…");
           setRenderProgress(0.25);

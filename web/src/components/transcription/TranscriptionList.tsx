@@ -22,8 +22,10 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
 import { toast } from "@/components/ui/Toast";
 import { fmtDate, fmtDuration } from "@/lib/jobUtils";
+import { uploadFileInParts } from "@/lib/upload/multipartClient";
 
 const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.flac,.ogg,.aac,.mp4,.mov,.mkv,.webm";
+const MAX_UPLOAD_SIZE = 20 * 1024 * 1024 * 1024; // 20 Go — aligné serveur
 
 type Job = {
   id: string;
@@ -330,6 +332,10 @@ export function TranscriptionList({
       try {
         const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
 
+        if (file.size > MAX_UPLOAD_SIZE) {
+          throw new Error("Fichier trop volumineux (max 20 Go).");
+        }
+
         setUploadState({
           total: files.length,
           currentIndex: index + 1,
@@ -344,6 +350,7 @@ export function TranscriptionList({
           body: JSON.stringify({
             filename: file.name,
             ext,
+            size: file.size,
             model: "turbo",
             // 1 langue cochée = mode mono, on envoie `language`.
             // 2+ langues = mode multi auto, on envoie `languages` qui déclenche
@@ -358,20 +365,58 @@ export function TranscriptionList({
             ...(slotContext ? { slotId: slotContext.id } : {}),
           }),
         });
-        const preparePayload = await readJson<{ jobId?: string; uploadUrl?: string; error?: string }>(prepareResponse);
+        const preparePayload = await readJson<{
+          jobId?: string;
+          uploadUrl?: string;
+          multipart?: { uploadId: string; partSize: number; partUrls: { partNumber: number; url: string }[] };
+          error?: string;
+        }>(prepareResponse);
         if (!prepareResponse.ok) {
           throw new Error(preparePayload?.error ?? `Erreur ${prepareResponse.status}`);
         }
-        if (!preparePayload?.jobId || !preparePayload.uploadUrl) {
+        const jobId = preparePayload?.jobId;
+        if (!jobId || (!preparePayload.uploadUrl && !preparePayload.multipart)) {
           throw new Error("Le serveur n'a pas renvoyé de job en attente exploitable.");
         }
 
-        await uploadToPresignedUrl(file, preparePayload.uploadUrl, (progress) => {
+        const onProgress = (progress: number) => {
           setUploadState((currentState) => {
             if (!currentState) return currentState;
             return { ...currentState, progress };
           });
-        });
+        };
+
+        if (preparePayload.multipart) {
+          // Upload multipart (fichier > 100 Mo) — obligatoire au-delà de 5 Go
+          // (R2 refuse un PUT unique > 5 Go). Finalisé via /upload-complete ;
+          // le multipart partiel est annulé (/upload-abort) en cas d'échec.
+          const { uploadId, partSize, partUrls } = preparePayload.multipart;
+          const abortController = new AbortController();
+          try {
+            const parts = await uploadFileInParts(file, partUrls, partSize, {
+              signal: abortController.signal,
+              onProgress: (fraction) => onProgress(Math.round(fraction * 100)),
+            });
+            const completeRes = await fetch(`/api/transcription/${jobId}/upload-complete`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ uploadId, parts }),
+            });
+            if (!completeRes.ok) {
+              const data = await readJson<{ error?: string }>(completeRes);
+              throw new Error(data?.error ?? `Erreur finalisation (${completeRes.status})`);
+            }
+          } catch (uploadErr) {
+            void fetch(`/api/transcription/${jobId}/upload-abort`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ uploadId }),
+            }).catch(() => {});
+            throw uploadErr;
+          }
+        } else {
+          await uploadToPresignedUrl(file, preparePayload.uploadUrl!, onProgress);
+        }
 
         successCount += 1;
         setUploadState((currentState) => {

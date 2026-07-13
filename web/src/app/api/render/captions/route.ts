@@ -30,6 +30,7 @@ import { isCaptionCompatibleFontAsset, listFontAssetsByFamilies } from "@/lib/fo
 import { normalizeCaptionConfig } from "@/lib/captionsEngine";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
+import { createMultipartUpload, createPresignedUploadPartUrl } from "@/lib/r2Multipart";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { onCaptionsCompleted } from "@/lib/services/slot/pipelineHooks";
@@ -125,6 +126,13 @@ const VIDEO_EXTENSIONS = new Set([
 /** Max SRT/subtitle content size stored in DB and sent to the worker. */
 const MAX_SRT_BYTES = 512_000; // 512 KB
 
+// Upload vidéo direct navigateur → R2. Au-delà de 100 Mo on passe en multipart :
+// R2 refuse tout objet en PUT unique > 5 Go. Constantes alignées publications.
+const MULTIPART_THRESHOLD = 100 * 1024 * 1024;   // 100 Mo
+const PART_SIZE = 50 * 1024 * 1024;              // 50 Mo par partie
+const PART_URL_EXPIRY_SECONDS = 6 * 60 * 60;     // 6h
+const MAX_UPLOAD_SIZE = 20 * 1024 * 1024 * 1024; // 20 Go
+
 function extractCaptionFontFamilies(configData: Record<string, unknown>): string[] {
   const baseFont = (configData.base as { font?: string } | undefined)?.font;
   const highlightFont = (configData.highlight as { font?: string } | undefined)?.font;
@@ -210,6 +218,7 @@ export async function POST(req: NextRequest) {
     let body: {
       filename?: unknown;
       ext?: unknown;
+      size?: unknown;
       srtContent?: unknown;
       srtFilename?: unknown;
       config?: unknown;
@@ -307,6 +316,7 @@ export async function POST(req: NextRequest) {
     // upload navigateur classique via URL présignée.
     let inputKey: string;
     let uploadUrl: string | null = null;
+    let multipart: { uploadId: string; partSize: number; partUrls: { partNumber: number; url: string }[] } | null = null;
     let inputUrlLabel: string;
     if (slotSource) {
       inputKey      = slotSource.key;
@@ -314,12 +324,36 @@ export async function POST(req: NextRequest) {
     } else {
       inputKey      = `inputs/captions/${userContext.effectiveUser.id}/${jobTimestamp}/video.${ext}`;
       inputUrlLabel = filename;
+
+      const size = Number(body.size);
+      if (!Number.isFinite(size) || size <= 0) {
+        return NextResponse.json({ error: "Le champ 'size' (octets) est requis" }, { status: 400 });
+      }
+      if (size > MAX_UPLOAD_SIZE) {
+        return NextResponse.json({ error: "Fichier trop volumineux (max 20 Go)" }, { status: 400 });
+      }
+
       const mimeByExt: Record<string, string> = {
         mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska",
         webm: "video/webm", avi: "video/x-msvideo", m4v: "video/mp4",
       };
+      const contentTypeForUpload = mimeByExt[ext] ?? "video/mp4";
+
+      // Single PUT (<= 100 Mo) vs multipart (> 100 Mo, obligatoire > 5 Go).
+      // Le client finalise via /upload-complete après avoir uploadé les parties.
       try {
-        uploadUrl = await createPresignedUploadUrl(inputKey, mimeByExt[ext] ?? "video/mp4", 3600);
+        if (size > MULTIPART_THRESHOLD) {
+          const { uploadId } = await createMultipartUpload(inputKey, contentTypeForUpload);
+          const partCount = Math.ceil(size / PART_SIZE);
+          const partUrls: { partNumber: number; url: string }[] = [];
+          for (let i = 1; i <= partCount; i++) {
+            const url = await createPresignedUploadPartUrl(inputKey, uploadId, i, PART_URL_EXPIRY_SECONDS);
+            partUrls.push({ partNumber: i, url });
+          }
+          multipart = { uploadId, partSize: PART_SIZE, partUrls };
+        } else {
+          uploadUrl = await createPresignedUploadUrl(inputKey, contentTypeForUpload, 3600);
+        }
       } catch (err) {
         console.error("[render/captions/prepare] Presigned URL failed:", err);
         return NextResponse.json({ error: "Impossible de générer l'URL d'upload" }, { status: 500 });
@@ -343,7 +377,11 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(
-      { captionJobId: captionJob.id, ...(uploadUrl ? { uploadUrl } : {}) },
+      {
+        captionJobId: captionJob.id,
+        ...(uploadUrl ? { uploadUrl } : {}),
+        ...(multipart ? { multipart } : {}),
+      },
       { status: 202 },
     );
   }

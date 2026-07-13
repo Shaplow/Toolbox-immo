@@ -15,8 +15,10 @@ import CaptionEditor from '@/components/captions/CaptionEditor'
 import { getNextHighlightGroup } from '@/lib/captionHighlightCycle'
 import { DEFAULT_CAPTION_CONFIG, mergeCaptionConfig, type CaptionConfigState } from '@/lib/captionPresetConfig'
 import { Caption, parseSRT, serializeSRT } from '@/lib/srt'
+import { uploadFileInParts } from '@/lib/upload/multipartClient'
 
 const API_BASE = '/api/captions'
+const MAX_UPLOAD_SIZE = 20 * 1024 * 1024 * 1024 // 20 Go — aligné serveur
 
 type ConfigState = CaptionConfigState
 
@@ -278,6 +280,9 @@ export default function CaptionsApp({
     // Set to true when we hand off to SSE/polling — finally block must NOT reset busy
     let submittedToRunPod = false
     try {
+      if (videoFile.size > MAX_UPLOAD_SIZE) {
+        throw new Error('Vidéo trop volumineuse (max 20 Go).')
+      }
       // ── Mode RunPod : URL présignée (upload direct browser → R2) ─────────
       // Essayer le mode presigned d'abord ; 503 = fallback multipart (local)
       const prepRes = await fetch('/api/render/captions', {
@@ -286,6 +291,7 @@ export default function CaptionsApp({
         body: JSON.stringify({
           filename:    videoFile.name,
           ext:         videoFile.name.split('.').pop()?.toLowerCase() ?? 'mp4',
+          size:        videoFile.size,
           srtContent,
           srtFilename: srtFileName,
           config,
@@ -297,18 +303,50 @@ export default function CaptionsApp({
       let immediateVideoUrl: string | undefined
 
       if (prepRes.ok) {
-        const { captionJobId: jobId, uploadUrl } = await prepRes.json() as { captionJobId: string; uploadUrl: string }
+        const { captionJobId: jobId, uploadUrl, multipart } = await prepRes.json() as {
+          captionJobId: string
+          uploadUrl?: string
+          multipart?: { uploadId: string; partSize: number; partUrls: { partNumber: number; url: string }[] }
+        }
         captionJobId = jobId
 
         // Upload direct vers R2 — contourne le serveur Next.js
         setMessage('Upload vidéo…')
         setRenderProgress(0.25)
-        const r2Res = await fetch(uploadUrl, {
-          method: 'PUT',
-          body: videoFile,
-          headers: { 'Content-Type': videoFile.type || 'video/mp4' },
-        })
-        if (!r2Res.ok) throw new Error(`Upload R2 échoué : ${r2Res.status}`)
+        if (multipart) {
+          // Multipart (> 100 Mo, obligatoire > 5 Go). Finalisé via
+          // /upload-complete ; annulé (/upload-abort) en cas d'échec.
+          const abortController = new AbortController()
+          try {
+            const parts = await uploadFileInParts(videoFile, multipart.partUrls, multipart.partSize, {
+              signal: abortController.signal,
+              onProgress: (fraction) => setRenderProgress(0.25 + fraction * 0.15),
+            })
+            const completeRes = await fetch(`/api/render/captions/${jobId}/upload-complete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ uploadId: multipart.uploadId, parts }),
+            })
+            if (!completeRes.ok) {
+              const data = await completeRes.json().catch(() => ({ error: completeRes.statusText })) as { error?: string }
+              throw new Error(data.error ?? `Erreur finalisation (${completeRes.status})`)
+            }
+          } catch (uploadErr) {
+            void fetch(`/api/render/captions/${jobId}/upload-abort`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ uploadId: multipart.uploadId }),
+            }).catch(() => {})
+            throw uploadErr
+          }
+        } else if (uploadUrl) {
+          const r2Res = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: videoFile,
+            headers: { 'Content-Type': videoFile.type || 'video/mp4' },
+          })
+          if (!r2Res.ok) throw new Error(`Upload R2 échoué : ${r2Res.status}`)
+        }
 
         // Soumettre à RunPod
         setMessage('Soumission RunPod…')
