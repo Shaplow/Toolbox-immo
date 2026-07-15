@@ -15,7 +15,7 @@
  * monté dans le panel parent).
  */
 
-import type { RefObject } from "react";
+import type { Ref } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -38,7 +38,7 @@ interface Props {
   seqState: string[];
   accountFilter: string | null;
   visibleGroupCount: number;
-  groupSentinelRef: RefObject<HTMLDivElement | null>;
+  groupSentinelRef: Ref<HTMLDivElement>;
   saveSequence: (newSeq: string[]) => Promise<void>;
   moveSetTag: (tag: string, direction: -1 | 1) => void;
   addToSequence: (tag: string) => void;

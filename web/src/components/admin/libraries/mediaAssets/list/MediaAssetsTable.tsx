@@ -34,7 +34,7 @@ export function MediaAssetsTable({
   onOpenDetail: (asset: MediaAsset) => void;
   sort: SortKey;
   setSort: (s: SortKey) => void;
-  sentinelRef: React.RefObject<HTMLDivElement | null>;
+  sentinelRef: React.Ref<HTMLDivElement>;
 }) {
   const allSelected =
     allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));

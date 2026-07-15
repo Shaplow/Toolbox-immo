@@ -101,8 +101,13 @@ export function MediaAssetsPanel({ library }: Props) {
   // ── Infinite scroll ──
   const [visibleCount, setVisibleCount] = useState(48);
   const [visibleGroupCount, setVisibleGroupCount] = useState(20);
-  const gridSentinelRef = useRef<HTMLDivElement>(null);
-  const groupSentinelRef = useRef<HTMLDivElement>(null);
+  // Sentinels d'infinite-scroll stockés en state via callback ref : l'effet
+  // observer se (re)lance quand le nœud se monte réellement — le sentinel est
+  // rendu derrière le gate `loading`, donc un observer posé sur `[viewMode]`
+  // au montage ratait le nœud (encore null) et ne se rattachait jamais → scroll
+  // bloqué à 48. Le callback ref (setter useState, stable) corrige ça.
+  const [gridSentinel, setGridSentinel] = useState<HTMLDivElement | null>(null);
+  const [groupSentinel, setGroupSentinel] = useState<HTMLDivElement | null>(null);
   // Refs stables pour les sentinels (mise à jour inline pendant le rendu — pas des hooks)
   const hasPendingRef = useRef(false);
   const visibleCountRef = useRef(0);
@@ -340,10 +345,11 @@ export function MediaAssetsPanel({ library }: Props) {
     setVisibleGroupCount(20);
   }, [search, sort, tagFilter, accountFilter, library.id]);
 
-  // Sentinel grille — recréé seulement quand viewMode change (le sentinel peut être démonté/remonnté)
+  // Sentinel grille/liste — se (re)lance dès que le nœud sentinel est monté
+  // (dep = le nœud lui-même, posé par callback ref). Robuste à la fin du
+  // `loading`, au switch de vue et au passage « 0 résultat » → N.
   useEffect(() => {
-    const el = gridSentinelRef.current;
-    if (!el) return;
+    if (!gridSentinel) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && visibleCountRef.current < filteredLengthRef.current) {
@@ -352,14 +358,13 @@ export function MediaAssetsPanel({ library }: Props) {
       },
       { rootMargin: "300px" }
     );
-    observer.observe(el);
+    observer.observe(gridSentinel);
     return () => observer.disconnect();
-  }, [viewMode]);
+  }, [gridSentinel]);
 
   // Sentinel groupes (vue rotation) — même logique
   useEffect(() => {
-    const el = groupSentinelRef.current;
-    if (!el) return;
+    if (!groupSentinel) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && visibleGroupCountRef.current < groupedLengthRef.current) {
@@ -368,9 +373,9 @@ export function MediaAssetsPanel({ library }: Props) {
       },
       { rootMargin: "400px" }
     );
-    observer.observe(el);
+    observer.observe(groupSentinel);
     return () => observer.disconnect();
-  }, [viewMode]);
+  }, [groupSentinel]);
 
   // Composite key helpers
   const toGroupKey = (category: string | null, setTag: string | null) =>
@@ -884,7 +889,7 @@ export function MediaAssetsPanel({ library }: Props) {
                 onOpenDetail={setDetailAsset}
                 sort={sort}
                 setSort={setSort}
-                sentinelRef={gridSentinelRef}
+                sentinelRef={setGridSentinel}
               />
               {visibleFiltered.length < filtered.length && (
                 <p className="mt-2 text-[11px] text-muted-foreground text-center tabular-nums">
@@ -898,7 +903,7 @@ export function MediaAssetsPanel({ library }: Props) {
               seqState={seqState}
               accountFilter={accountFilter}
               visibleGroupCount={visibleGroupCount}
-              groupSentinelRef={groupSentinelRef}
+              groupSentinelRef={setGroupSentinel}
               saveSequence={saveSequence}
               moveSetTag={moveSetTag}
               addToSequence={addToSequence}
@@ -934,7 +939,7 @@ export function MediaAssetsPanel({ library }: Props) {
               <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
                 {visibleFiltered.map((asset) => renderVideoCard(asset))}
               </div>
-              <div ref={gridSentinelRef} />
+              <div ref={setGridSentinel} />
             </>
           )}
         </>
