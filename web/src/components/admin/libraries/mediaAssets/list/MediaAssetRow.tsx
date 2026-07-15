@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { CheckSquare, Square, FolderOpen, Layers } from "lucide-react";
 import { MediaThumb } from "./MediaThumb";
 import type { MediaAsset } from "../types";
@@ -17,7 +18,7 @@ function shortDate(iso: string | null): string {
  * MediaAssetRow — une ligne de la vue liste dense (mode noob).
  * Clic sur la ligne → ouvre le détail ; clic sur la checkbox → multi-select.
  */
-export function MediaAssetRow({
+export const MediaAssetRow = memo(function MediaAssetRow({
   asset,
   selected,
   onToggleSelect,
@@ -128,4 +129,4 @@ export function MediaAssetRow({
       </td>
     </tr>
   );
-}
+});

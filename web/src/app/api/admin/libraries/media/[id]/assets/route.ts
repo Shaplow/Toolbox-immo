@@ -30,7 +30,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
       prisma.mediaAsset.findMany({
         where: { libraryId: id },
         orderBy: { createdAt: "desc" },
-        include: {
+        // select explicite : on ne renvoie que les champs consommés par le
+        // panel (liste/grille/rotation/compteurs). On drope r2Key, source,
+        // sourceRenderId, updatedAt, libraryId (absents du type MediaAsset
+        // client) pour alléger le payload.
+        select: {
+          id: true,
+          filename: true,
+          url: true,
+          posterUrl: true,
+          mimeType: true,
+          duration: true,
+          tags: true,
+          setTag: true,
+          category: true,
+          usageCount: true,
+          lastUsedAt: true,
+          createdAt: true,
+          disabled: true,
+          metadata: true,
           accesses: { select: { accountId: true } },
           editJobs: {
             where: { status: { in: ["pending", "processing"] } },
@@ -61,7 +79,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
       };
     });
 
-    return NextResponse.json(result);
+    // Le cache perçu vient du SWR client (useMediaAssetsLoader) ; côté HTTP on
+    // reste sur une revalidation systématique pour ne jamais servir une liste
+    // périmée après un edit/upload.
+    return NextResponse.json(result, {
+      headers: { "Cache-Control": "private, max-age=0, must-revalidate" },
+    });
   } catch (err) {
     console.error(`[admin/libraries/media/${id}/assets] findMany error:`, err);
     return NextResponse.json({ error: "Erreur serveur lors du chargement des assets" }, { status: 500 });
