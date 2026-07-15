@@ -72,7 +72,10 @@ export const LazyVideoThumb = memo(function LazyVideoThumb({
         <video
           src={videoSrc}
           muted
-          preload="metadata"
+          // Hors survol on ne veut PAS télécharger les headers de chaque vidéo
+          // (coûteux en scroll sur les assets sans poster) — on ne précharge les
+          // metadata qu'au hover, quand on va réellement montrer un aperçu animé.
+          preload={hovered ? "metadata" : "none"}
           className="w-full h-full object-cover"
         />
       )}

@@ -16,6 +16,7 @@
 
 import { useCallback, useMemo, useState, useEffect } from "react";
 import { Drawer } from "@/components/ui/Drawer";
+import { BackfillPostersButton } from "./BackfillPostersButton";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
@@ -43,6 +44,7 @@ import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchema
 
 interface LibrarySettings {
   id: string;
+  type?: "video" | "audio";
   name: string;
   description: string | null;
   tags: string;            // JSON string[]
@@ -483,6 +485,18 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
                 items={taxonomies.tags}
                 onDetach={(value, count) => void handleDetach("tag", value, count)}
               />
+            </div>
+          )}
+          {library?.type === "video" && (
+            <div className="pt-3 mt-1 border-t border-border space-y-2">
+              <h4 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
+                Vignettes
+              </h4>
+              <p className="text-[10.5px] text-muted-foreground leading-relaxed">
+                Les vidéos sans vignette chargent leur fichier entier pour l&apos;aperçu (lent).
+                Génère les posters manquants pour accélérer l&apos;affichage.
+              </p>
+              <BackfillPostersButton libraryId={library.id} />
             </div>
           )}
         </section>

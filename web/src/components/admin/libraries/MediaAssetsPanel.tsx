@@ -1017,6 +1017,7 @@ export function MediaAssetsPanel({ library }: Props) {
         onClose={() => setSettingsOpen(false)}
         library={{
           id: library.id,
+          type: library.type,
           name: library.name,
           description: null,
           tags: "[]",

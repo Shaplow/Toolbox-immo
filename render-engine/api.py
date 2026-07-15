@@ -14,7 +14,7 @@ from urllib.parse import unquote, urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
@@ -263,6 +263,73 @@ async def api_probe_duration(request: Request):
     local_path = _local_outputs_path_from_url(url)
     duration = probe_duration(str(local_path)) if local_path and local_path.exists() else probe_duration(url)
     return {"duration": duration}
+
+
+@app.post("/api/generate-poster")
+async def api_generate_poster(request: Request):
+    """Extract one lightweight JPEG poster frame from a video.
+
+    Sert de fallback au backfill des posters manquants côté web (quand ffmpeg
+    n'est pas installé dans le container web). Passe l'URL directement à ffmpeg
+    (seek keyframe rapide via -ss avant -i), retente à 0s si le clip est plus
+    court que le timestamp demandé.
+
+    Body JSON : { "url": "<http(s) ou chemin local>", "at": 0.5, "width": 240 }
+    Réponse   : image/jpeg (200) ou 422 si l'extraction échoue.
+    """
+    body = await request.json()
+    url = body.get("url", "")
+    if not url:
+        raise HTTPException(status_code=400, detail="url required")
+    at = float(body.get("at", 0.5))
+    width = int(body.get("width", 240))
+
+    local_path = _local_outputs_path_from_url(url)
+    source = str(local_path) if local_path and local_path.exists() else url
+
+    out_dir = OUTPUTS_DIR / "temp" / "posters"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    frame_path = out_dir / f"poster_{int(time.time() * 1000)}.jpg"
+
+    async def _extract(ss: float) -> bool:
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(max(0.0, ss)),
+            "-i", source,
+            "-frames:v", "1",
+            "-vf", f"scale={width}:-2",
+            "-q:v", "6", "-an",
+            str(frame_path),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=90)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            logger.warning("[poster] FFmpeg timeout for %s", url)
+            return False
+        if proc.returncode != 0 or not frame_path.exists() or frame_path.stat().st_size == 0:
+            logger.warning("[poster] FFmpeg failed for %s — %s", url, stderr.decode(errors="replace")[-300:])
+            return False
+        return True
+
+    ok = await _extract(at)
+    if not ok:
+        ok = await _extract(0.0)
+    if not ok:
+        raise HTTPException(status_code=422, detail="poster extraction failed")
+
+    data = frame_path.read_bytes()
+    try:
+        frame_path.unlink()
+    except OSError:
+        pass
+    return Response(content=data, media_type="image/jpeg")
 
 
 @app.get("/api/render-progress/{job_id}")

@@ -11,8 +11,10 @@ export async function captureVideoPoster(
   opts?: { atSeconds?: number; maxWidth?: number; quality?: number },
 ): Promise<Blob | null> {
   const atSeconds = opts?.atSeconds ?? 0.5;
-  const maxWidth = opts?.maxWidth ?? 320;
-  const quality = opts?.quality ?? 0.6;
+  // Vignette : 240px de large / qualité 0.5 suffisent largement (la card grille
+  // fait ~200px, la ligne liste ~36px). Poster léger = grille rapide à charger.
+  const maxWidth = opts?.maxWidth ?? 240;
+  const quality = opts?.quality ?? 0.5;
 
   return new Promise((resolve) => {
     let settled = false;
