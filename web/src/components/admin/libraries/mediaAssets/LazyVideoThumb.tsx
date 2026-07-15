@@ -72,10 +72,11 @@ export const LazyVideoThumb = memo(function LazyVideoThumb({
         <video
           src={videoSrc}
           muted
-          // Hors survol on ne veut PAS télécharger les headers de chaque vidéo
-          // (coûteux en scroll sur les assets sans poster) — on ne précharge les
-          // metadata qu'au hover, quand on va réellement montrer un aperçu animé.
-          preload={hovered ? "metadata" : "none"}
+          // `src` est déjà gaté par l'IntersectionObserver (lazySrc posé seulement
+          // à l'entrée dans le viewport) → `preload="metadata"` ne charge la 1re
+          // frame que pour les vignettes SANS poster VISIBLES. Sans ça (preload
+          // "none"), ces vignettes restaient grises au lieu d'afficher le rush.
+          preload="metadata"
           className="w-full h-full object-cover"
         />
       )}
