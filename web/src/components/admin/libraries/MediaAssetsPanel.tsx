@@ -317,6 +317,11 @@ export function MediaAssetsPanel({ library }: Props) {
   }, [filteredPreTag, sort, tagFilter, accountFilter]);
 
   const visibleFiltered = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  // Ids de TOUT l'ensemble filtré (indépendant de la fenêtre d'infinite-scroll)
+  // — le select-all de la vue liste doit porter sur ces ids, pas sur les 48
+  // rendus, pour rester cohérent avec le compteur du header et éviter un bulk
+  // delete silencieusement partiel.
+  const allFilteredIds = useMemo(() => filtered.map((a) => a.id), [filtered]);
 
   // Mise à jour des refs stables après render via useEffect (React 19
   // strict mode interdit `ref.current = ...` dans le corps du composant).
@@ -869,16 +874,24 @@ export function MediaAssetsPanel({ library }: Props) {
             {allSetTags.map((t) => <option key={t} value={t} />)}
           </datalist>
           {useListView ? (
-            <MediaAssetsTable
-              assets={visibleFiltered}
-              selectedIds={selectedIds}
-              toggleSelect={toggleSelect}
-              setSelectedIds={bulk.setSelectedIds}
-              onOpenDetail={setDetailAsset}
-              sort={sort}
-              setSort={setSort}
-              sentinelRef={gridSentinelRef}
-            />
+            <>
+              <MediaAssetsTable
+                assets={visibleFiltered}
+                allFilteredIds={allFilteredIds}
+                selectedIds={selectedIds}
+                toggleSelect={toggleSelect}
+                setSelectedIds={bulk.setSelectedIds}
+                onOpenDetail={setDetailAsset}
+                sort={sort}
+                setSort={setSort}
+                sentinelRef={gridSentinelRef}
+              />
+              {visibleFiltered.length < filtered.length && (
+                <p className="mt-2 text-[11px] text-muted-foreground text-center tabular-nums">
+                  {visibleFiltered.length} affichés sur {filtered.length} · fais défiler pour charger la suite
+                </p>
+              )}
+            </>
           ) : effectiveViewMode === "rotation" ? (
             <MediaAssetsRotationView
               groupedBySetTag={groupedBySetTag}

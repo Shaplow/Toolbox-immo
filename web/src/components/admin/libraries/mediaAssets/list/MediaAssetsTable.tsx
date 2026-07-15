@@ -11,6 +11,7 @@ import type { MediaAsset, SortKey } from "../types";
  */
 export function MediaAssetsTable({
   assets,
+  allFilteredIds,
   selectedIds,
   toggleSelect,
   setSelectedIds,
@@ -20,6 +21,13 @@ export function MediaAssetsTable({
   sentinelRef,
 }: {
   assets: MediaAsset[];
+  /**
+   * Ids de TOUS les assets filtrés (pas seulement la fenêtre rendue `assets`).
+   * Le select-all d'en-tête doit porter sur l'ensemble filtré, sinon une action
+   * groupée (suppression, édition) ne toucherait que les lignes visibles —
+   * incohérent avec le compteur du header et dangereux pour un bulk delete.
+   */
+  allFilteredIds: string[];
   selectedIds: Set<string>;
   toggleSelect: (id: string) => void;
   setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -28,17 +36,17 @@ export function MediaAssetsTable({
   setSort: (s: SortKey) => void;
   sentinelRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const visibleIds = assets.map((a) => a.id);
-  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const allSelected =
+    allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id));
 
   function toggleAll() {
     setSelectedIds((prev) => {
       if (allSelected) {
         const next = new Set(prev);
-        visibleIds.forEach((id) => next.delete(id));
+        allFilteredIds.forEach((id) => next.delete(id));
         return next;
       }
-      return new Set([...prev, ...visibleIds]);
+      return new Set([...prev, ...allFilteredIds]);
     });
   }
 
