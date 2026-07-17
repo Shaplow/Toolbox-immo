@@ -73,13 +73,28 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
   }
 
   // Le slot doit être dans un statut compatible avec un envoi pour validation.
-  // Cas usuel : READY_FOR_CM (premier envoi) ou CLIENT_REVISION (renvoi après corrections).
-  // ADMIN peut aussi envoyer depuis AWAITING_CLIENT (régénération du lien).
-  const ALLOWED_STATUSES = ["READY_FOR_CM", "CLIENT_REVISION", "AWAITING_CLIENT"];
+  // - READY_FOR_CM      : premier envoi (flux auto_template : le pipeline y mène).
+  // - EDIT_APPROVED     : flux à montage humain (manual_rushes / external_upload) —
+  //   la promotion de version pose EDIT_APPROVED et aucune transition auto ne le
+  //   fait avancer (computeAutoTransitionTargetPure est auto_template-only). Sans
+  //   ce statut, le CM/ADMIN restait bloqué alors que le montage était validé.
+  // - CAPTIONS_PENDING  : post-montage, sous-titres en attente — cohérence.
+  // - CLIENT_REVISION   : renvoi après corrections.
+  // - AWAITING_CLIENT   : régénération du lien.
+  // La garde captions ci-dessous protège l'invariant « le client voit la vidéo
+  // finale sous-titrée » quel que soit le statut d'entrée. La route bascule
+  // ensuite le slot en AWAITING_CLIENT (update direct, cf. plus bas).
+  const ALLOWED_STATUSES = [
+    "READY_FOR_CM",
+    "EDIT_APPROVED",
+    "CAPTIONS_PENDING",
+    "CLIENT_REVISION",
+    "AWAITING_CLIENT",
+  ];
   if (!ALLOWED_STATUSES.includes(slot.status)) {
     return NextResponse.json(
       {
-        error: `Le slot doit être en READY_FOR_CM, CLIENT_REVISION ou AWAITING_CLIENT (actuellement ${slot.status})`,
+        error: `Le slot doit avoir un montage validé avant l'envoi en validation client (statut actuel : ${slot.status})`,
       },
       { status: 400 },
     );

@@ -13,7 +13,8 @@
  *  - approve → SCHEDULED (sans triggers post-validation)
  *  - cancel  → CANCELLED
  *
- * Slot doit être en AWAITING_CLIENT, CLIENT_REVISION ou READY_FOR_CM.
+ * Slot doit être en AWAITING_CLIENT, CLIENT_REVISION, READY_FOR_CM ou
+ * EDIT_APPROVED (flux à montage humain qui s'arrête en EDIT_APPROVED).
  * Révoque le token magic link actif (le client ne peut plus l'utiliser).
  */
 
@@ -28,7 +29,15 @@ type RouteContext = { params: Promise<{ id: string }> };
 const VALID_ACTIONS = ["approve", "cancel"] as const;
 type Action = (typeof VALID_ACTIONS)[number];
 
-const ALLOWED_FROM_STATUSES = ["AWAITING_CLIENT", "CLIENT_REVISION", "READY_FOR_CM"];
+// EDIT_APPROVED inclus : les flux à montage humain (manual_rushes /
+// external_upload) s'y arrêtent sans transition auto vers READY_FOR_CM.
+// Sans lui, l'admin ne pouvait pas non plus valider hors-flux depuis ce statut.
+const ALLOWED_FROM_STATUSES = [
+  "AWAITING_CLIENT",
+  "CLIENT_REVISION",
+  "READY_FOR_CM",
+  "EDIT_APPROVED",
+];
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
   const userContext = await getUserContext();

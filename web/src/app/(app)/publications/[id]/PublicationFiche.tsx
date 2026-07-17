@@ -668,12 +668,26 @@ export function PublicationFiche({
               const captionsReady =
                 !captionsRequired ||
                 (latestCaptionJob?.status === "COMPLETED" && !latestCaptionJob?.staleSince);
-              const canSendValidation = captionsReady;
+              // Aligné sur la whitelist backend (validation-token/route.ts) : le
+              // montage doit être validé avant l'envoi. Sans ce gating, le bouton
+              // restait actif dans les statuts amont (IN_EDIT, EDIT_REVIEW…) puis
+              // échouait en 400 côté route — bouton actif trompeur.
+              const SENDABLE_STATUSES = [
+                "READY_FOR_CM",
+                "EDIT_APPROVED",
+                "CAPTIONS_PENDING",
+                "CLIENT_REVISION",
+                "AWAITING_CLIENT",
+              ];
+              const statusAllowsSend = SENDABLE_STATUSES.includes(slot.status);
+              const canSendValidation = captionsReady && statusAllowsSend;
               const cannotSendReason = !captionsReady
                 ? latestCaptionJob?.staleSince
                   ? "Les sous-titres en place sont obsolètes (lien à l'ancienne version). Relance la chaîne avant de valider."
                   : "Les sous-titres ne sont pas encore générés. Le client doit voir la vidéo finale avec sous-titres avant validation."
-                : null;
+                : !statusAllowsSend
+                  ? "Le montage doit être validé avant d'envoyer la vidéo en validation client."
+                  : null;
               return wrap(
                 "clientValidation",
                 <ClientValidationSection

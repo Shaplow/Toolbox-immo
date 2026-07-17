@@ -38,6 +38,12 @@ export const STATUS_TRANSITIONS: Record<SlotStatus, SlotStatus[]> = {
   RUSHES_RECEIVED: ["IN_EDIT", "CANCELLED"],
   IN_EDIT: ["EDIT_REVIEW", "BLOCKED", "CANCELLED"],
   EDIT_REVIEW: ["EDIT_APPROVED", "IN_EDIT", "CANCELLED"],
+  // NB : AWAITING_CLIENT n'est volontairement PAS listé ici. L'envoi en
+  // validation client (validation-token) bascule EDIT_APPROVED → AWAITING_CLIENT
+  // via un prisma.update DIRECT (hors canTransition) précédé de la garde captions.
+  // L'ajouter à la matrice ouvrirait cette transition au PATCH générique pour
+  // CM/MONTEUR (status patchable + canTransition enforced dans patchSlot),
+  // contournant la garde et la génération de token — non voulu.
   EDIT_APPROVED: ["CAPTIONS_PENDING", "READY_FOR_CM", "SCHEDULED", "CANCELLED"],
   CAPTIONS_PENDING: ["READY_FOR_CM", "EDIT_APPROVED", "CANCELLED"],
   // READY_FOR_CM → AWAITING_CLIENT seulement si needsClientValidation est actif.
