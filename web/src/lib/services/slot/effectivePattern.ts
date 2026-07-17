@@ -36,6 +36,8 @@ export interface SlotEffectivePattern {
   needsCaptions: boolean;
   needsCaptionsMode: string;
   needsDescription: string;
+  /** Mode preFilled : clé du champ du Bien qui pré-remplit la légende. null si inactif. */
+  descriptionSourceFieldKey: string | null;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
@@ -77,6 +79,7 @@ const TEMPLATE_PATTERN_SELECT = {
   needsCaptions: true,
   needsCaptionsMode: true,
   needsDescription: true,
+  descriptionSourceFieldKey: true,
   needsAdminValidation: true,
   needsClientValidation: true,
   allowsClientRevision: true,
@@ -118,8 +121,8 @@ export function resolveSlotEffectivePattern(
   slot: SlotWithEffectivePattern,
 ): SlotEffectivePattern | null {
   if (slot.pattern) {
-    // AccountPattern n'a pas de champ requiresProperty → false par défaut.
-    return { ...slot.pattern, requiresProperty: false };
+    // AccountPattern n'a ni requiresProperty ni descriptionSourceFieldKey → défauts.
+    return { ...slot.pattern, requiresProperty: false, descriptionSourceFieldKey: null };
   }
   if (slot.patternBinding) {
     const e = resolveEffectivePattern(slot.patternBinding);
@@ -133,6 +136,7 @@ export function resolveSlotEffectivePattern(
       needsCaptions: e.needsCaptions,
       needsCaptionsMode: e.needsCaptionsMode,
       needsDescription: e.needsDescription,
+      descriptionSourceFieldKey: e.descriptionSourceFieldKey,
       needsAdminValidation: e.needsAdminValidation,
       needsClientValidation: e.needsClientValidation,
       allowsClientRevision: e.allowsClientRevision,
@@ -153,6 +157,7 @@ export function resolveSlotEffectivePattern(
       needsCaptions: t.needsCaptions,
       needsCaptionsMode: t.needsCaptionsMode,
       needsDescription: t.needsDescription,
+      descriptionSourceFieldKey: t.descriptionSourceFieldKey,
       needsAdminValidation: t.needsAdminValidation,
       needsClientValidation: t.needsClientValidation,
       allowsClientRevision: t.allowsClientRevision,

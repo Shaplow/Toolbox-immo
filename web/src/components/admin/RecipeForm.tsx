@@ -19,7 +19,7 @@
  * partout.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Save, Trash2, AlertTriangle, Sparkles, CalendarDays, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
@@ -75,6 +75,7 @@ export interface RecipeFormInitial {
   requiresProperty: boolean;
   captionPresetId: string | null;
   descriptionPromptId: string | null;
+  descriptionSourceFieldKey: string | null;
   templateNotes: string | null;
   // Binding
   customLabel: string | null;
@@ -106,6 +107,7 @@ export interface RecipeFormValues {
     requiresProperty: boolean;
     captionPresetId: string | null;
     descriptionPromptId: string | null;
+    descriptionSourceFieldKey: string | null;
     notes: string | null;
   };
   binding: {
@@ -175,6 +177,29 @@ export function RecipeForm({
   const [requiresProperty, setRequiresProperty] = useState(initial.requiresProperty ?? false);
   const [captionPresetId, setCaptionPresetId] = useState(initial.captionPresetId ?? "");
   const [descriptionPromptId, setDescriptionPromptId] = useState(initial.descriptionPromptId ?? "");
+  const [descriptionSourceFieldKey, setDescriptionSourceFieldKey] = useState(
+    initial.descriptionSourceFieldKey ?? "",
+  );
+  // Clés de champs de bien suggérées (mode preFilled) — chargées à la volée,
+  // saisie libre autorisée (le bien peut ne pas exister encore).
+  const [propertyFieldKeys, setPropertyFieldKeys] = useState<{ key: string; label: string }[]>([]);
+  useEffect(() => {
+    if (needsDescription !== "preFilled" || propertyFieldKeys.length > 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch("/api/properties/field-keys");
+        if (!r.ok) return;
+        const data = (await r.json()) as { key: string; label: string }[];
+        if (!cancelled) setPropertyFieldKeys(data);
+      } catch {
+        /* suggestions indisponibles — saisie libre */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsDescription, propertyFieldKeys.length]);
   const [templateNotes, setTemplateNotes] = useState(initial.templateNotes ?? "");
 
   // Binding state
@@ -233,6 +258,8 @@ export function RecipeForm({
         requiresProperty,
         captionPresetId: captionPresetId || null,
         descriptionPromptId: descriptionPromptId || null,
+        descriptionSourceFieldKey:
+          needsDescription === "preFilled" ? descriptionSourceFieldKey.trim() || null : null,
         notes: templateNotes.trim() || null,
       },
       binding: {
@@ -327,6 +354,9 @@ export function RecipeForm({
             setCaptionPresetId={setCaptionPresetId}
             descriptionPromptId={descriptionPromptId}
             setDescriptionPromptId={setDescriptionPromptId}
+            descriptionSourceFieldKey={descriptionSourceFieldKey}
+            setDescriptionSourceFieldKey={setDescriptionSourceFieldKey}
+            propertyFieldKeys={propertyFieldKeys}
             templateNotes={templateNotes}
             setTemplateNotes={setTemplateNotes}
             builderTemplates={builderTemplates}
@@ -435,6 +465,9 @@ interface ContentTabProps {
   setCaptionPresetId: (v: string) => void;
   descriptionPromptId: string;
   setDescriptionPromptId: (v: string) => void;
+  descriptionSourceFieldKey: string;
+  setDescriptionSourceFieldKey: (v: string) => void;
+  propertyFieldKeys: { key: string; label: string }[];
   templateNotes: string;
   setTemplateNotes: (v: string) => void;
   builderTemplates: { id: string; name: string }[];
@@ -545,7 +578,7 @@ function ContentTab(p: ContentTabProps) {
         />
       </FormField>
 
-      {(p.needsDescription === "preFilled" || p.needsDescription === "autoGenerate") && (
+      {p.needsDescription === "autoGenerate" && (
         <FormField label="Prompt description">
           <Combobox
             value={p.descriptionPromptId}
@@ -554,6 +587,24 @@ function ContentTab(p: ContentTabProps) {
               { value: "", label: "— Prompt par défaut —" },
               ...p.descriptionPrompts.map((dp) => ({ value: dp.id, label: dp.name })),
             ]}
+          />
+        </FormField>
+      )}
+
+      {p.needsDescription === "preFilled" && (
+        <FormField
+          label="Champ du bien qui pré-remplit la légende"
+          help="La légende démarre avec la valeur de ce champ du bien rattaché. Réécrite à chaque changement de bien."
+        >
+          <Combobox
+            value={p.descriptionSourceFieldKey}
+            onChange={p.setDescriptionSourceFieldKey}
+            allowCustom
+            placeholder="ex : description"
+            options={p.propertyFieldKeys.map((f) => ({
+              value: f.key,
+              label: f.label === f.key ? f.key : `${f.label} · ${f.key}`,
+            }))}
           />
         </FormField>
       )}

@@ -1041,6 +1041,10 @@ model PatternTemplate {
   coverConfig Json?
 
   needsDescription      String  @default("none")
+  /// Mode "preFilled" uniquement : clé du champ personnalisé du Bien (Property.fields[key])
+  /// dont la valeur pré-remplit la légende Instagram (slot.description) au rattachement
+  /// d'un bien. null = feature inactive (fallback textarea vide, aucune régression).
+  descriptionSourceFieldKey String?
   /// @deprecated V8 — utiliser needsCaptionsMode.
   needsCaptions         Boolean @default(false)
   /// "none" | "auto" | "manual"

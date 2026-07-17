@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { normalizeSourceFieldKey } from "@/lib/publications/preFilledDescription";
 
 interface TemplatePatch {
   label?: string;
@@ -23,6 +24,7 @@ interface TemplatePatch {
   templateId?: string | null;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
+  descriptionSourceFieldKey?: string | null;
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
@@ -146,6 +148,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ...(tpl.templateId !== undefined && { templateId: tpl.templateId }),
           ...(tpl.captionPresetId !== undefined && { captionPresetId: tpl.captionPresetId }),
           ...(tpl.descriptionPromptId !== undefined && { descriptionPromptId: tpl.descriptionPromptId }),
+          ...(tpl.descriptionSourceFieldKey !== undefined && {
+            descriptionSourceFieldKey: normalizeSourceFieldKey(tpl.descriptionSourceFieldKey),
+          }),
           ...(tpl.coverMode !== undefined && { coverMode: tpl.coverMode }),
           ...(tpl.coverConfig !== undefined && {
             coverConfig: tpl.coverConfig === null ? undefined : (tpl.coverConfig as object),

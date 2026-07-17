@@ -50,6 +50,7 @@ export interface PatternTemplateInitial {
   templateId: string | null;
   captionPresetId: string | null;
   descriptionPromptId: string | null;
+  descriptionSourceFieldKey?: string | null;
   coverMode: string;
   needsDescription: string;
   needsCaptionsMode: string;
@@ -70,6 +71,7 @@ export interface PatternTemplateFormValues {
   templateId: string | null;
   captionPresetId: string | null;
   descriptionPromptId: string | null;
+  descriptionSourceFieldKey: string | null;
   coverMode: string;
   needsDescription: string;
   needsCaptionsMode: string;
@@ -143,6 +145,29 @@ export function PatternTemplateForm({
   const [descriptionPromptId, setDescriptionPromptId] = useState<string>(
     initial?.descriptionPromptId ?? "",
   );
+  const [descriptionSourceFieldKey, setDescriptionSourceFieldKey] = useState<string>(
+    initial?.descriptionSourceFieldKey ?? "",
+  );
+  // Clés de champs de bien suggérées (mode preFilled). Chargées à la volée ;
+  // saisie libre autorisée via allowCustom (un bien peut ne pas exister encore).
+  const [propertyFieldKeys, setPropertyFieldKeys] = useState<{ key: string; label: string }[]>([]);
+  useEffect(() => {
+    if (needsDescription !== "preFilled" || propertyFieldKeys.length > 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch("/api/properties/field-keys");
+        if (!r.ok) return;
+        const data = (await r.json()) as { key: string; label: string }[];
+        if (!cancelled) setPropertyFieldKeys(data);
+      } catch {
+        /* suggestions indisponibles — la saisie libre reste possible */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsDescription, propertyFieldKeys.length]);
   const [needsAdminValidation, setNeedsAdminValidation] = useState(
     initial?.needsAdminValidation ?? false,
   );
@@ -270,6 +295,7 @@ export function PatternTemplateForm({
           templateId?: string | null;
           captionPresetId?: string | null;
           descriptionPromptId?: string | null;
+          descriptionSourceFieldKey?: string | null;
           autoSaveToLibraryId?: string | null;
           bindings?: LinkedBinding[];
           updatedBy?: { name: string | null } | null;
@@ -284,6 +310,8 @@ export function PatternTemplateForm({
           setCaptionPresetId(d.captionPresetId ?? "");
         if (d.descriptionPromptId !== undefined)
           setDescriptionPromptId(d.descriptionPromptId ?? "");
+        if (d.descriptionSourceFieldKey !== undefined)
+          setDescriptionSourceFieldKey(d.descriptionSourceFieldKey ?? "");
         if (d.autoSaveToLibraryId !== undefined)
           setAutoSaveLibraryId(d.autoSaveToLibraryId ?? "");
         setLinkedBindings(d.bindings ?? []);
@@ -334,6 +362,8 @@ export function PatternTemplateForm({
       captionPresetId: needsCaptionsMode === "auto" ? captionPresetId || null : null,
       descriptionPromptId:
         needsDescription === "autoGenerate" ? descriptionPromptId || null : null,
+      descriptionSourceFieldKey:
+        needsDescription === "preFilled" ? descriptionSourceFieldKey.trim() || null : null,
       coverMode,
       needsDescription,
       needsCaptionsMode,
@@ -361,6 +391,7 @@ export function PatternTemplateForm({
         initial.coverMode !== values.coverMode ||
         initial.needsCaptionsMode !== values.needsCaptionsMode ||
         initial.needsDescription !== values.needsDescription ||
+        (initial.descriptionSourceFieldKey ?? null) !== values.descriptionSourceFieldKey ||
         (initial.autoSaveToLibraryId ?? null) !== values.autoSaveToLibraryId);
     if (bindingCount > 0 && isStructuralChange) {
       setPendingValues(values);
@@ -534,6 +565,23 @@ export function PatternTemplateForm({
               ]}
             />
           </FormField>
+          {needsDescription === "preFilled" && (
+            <FormField
+              label="Champ du bien qui pré-remplit la légende"
+              help="La légende démarre avec la valeur de ce champ du bien rattaché. Écrasée à chaque changement de bien."
+            >
+              <Combobox
+                value={descriptionSourceFieldKey}
+                onChange={setDescriptionSourceFieldKey}
+                allowCustom
+                placeholder="ex : description"
+                options={propertyFieldKeys.map((f) => ({
+                  value: f.key,
+                  label: f.label === f.key ? f.key : `${f.label} · ${f.key}`,
+                }))}
+              />
+            </FormField>
+          )}
         </section>
 
         {/* Workflow */}

@@ -48,7 +48,9 @@ export type ActivityType =
   /** Slot créé en lot dans la banque (sans date programmée). */
   | "BANK_SLOT_CREATED"
   /** Slot banque promu en publication datée (transition scheduledAt null → date). */
-  | "BANK_SLOT_SCHEDULED";
+  | "BANK_SLOT_SCHEDULED"
+  /** Légende pré-remplie depuis le bien rattaché (mode description "preFilled"). */
+  | "DESCRIPTION_PREFILLED";
 
 export interface LogActivityInput {
   slotId: string;

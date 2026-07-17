@@ -43,6 +43,8 @@ export interface EffectivePattern {
   needsCaptions: boolean;
   needsCaptionsMode: string;
   needsDescription: string;
+  /** Mode preFilled : clé du champ du Bien qui pré-remplit la légende. null si inactif. */
+  descriptionSourceFieldKey: string | null;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
@@ -91,6 +93,7 @@ export function resolveEffectivePattern(
     needsCaptions: t.needsCaptions,
     needsCaptionsMode: t.needsCaptionsMode,
     needsDescription: t.needsDescription,
+    descriptionSourceFieldKey: t.descriptionSourceFieldKey,
     needsAdminValidation: t.needsAdminValidation,
     needsClientValidation: t.needsClientValidation,
     allowsClientRevision: t.allowsClientRevision,

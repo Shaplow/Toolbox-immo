@@ -8,12 +8,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { normalizeSourceFieldKey } from "@/lib/publications/preFilledDescription";
 type CreateBody = {
   label?: string;
   source?: string;
   templateId?: string | null;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
+  descriptionSourceFieldKey?: string | null;
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
@@ -102,6 +104,7 @@ export async function POST(req: NextRequest) {
       templateId: body.templateId ?? null,
       captionPresetId: body.captionPresetId ?? null,
       descriptionPromptId: body.descriptionPromptId ?? null,
+      descriptionSourceFieldKey: normalizeSourceFieldKey(body.descriptionSourceFieldKey),
       coverMode: body.coverMode ?? "none",
       coverConfig:
         body.coverConfig === undefined || body.coverConfig === null

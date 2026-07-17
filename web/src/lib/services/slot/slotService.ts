@@ -30,6 +30,11 @@ import {
   canTransition,
   syncSlotsPipelineStatuses,
 } from "@/lib/services/slot/transitions";
+import {
+  resolveSlotEffectivePattern,
+  slotEffectivePatternSelect,
+} from "@/lib/services/slot/effectivePattern";
+import { resolvePreFilledDescription } from "@/lib/publications/preFilledDescription";
 import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
 import { deleteR2Prefix, r2Configured } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
@@ -163,13 +168,17 @@ export async function createSlot(
   // en amont pour renvoyer une erreur propre (404/400) plutôt qu'une contrainte
   // FK Prisma (500), et pour que le guard requiresProperty repose sur un bien
   // réel (un id de bien archivé ne doit pas satisfaire l'exigence).
+  // Champs du bien capturés ici pour un éventuel pré-remplissage de la légende
+  // (mode preFilled) sans re-query plus bas.
+  let propertyFields: string | null = null;
   if (input.propertyId) {
     const property = await prisma.property.findUnique({
       where: { id: input.propertyId },
-      select: { id: true, isArchived: true },
+      select: { id: true, isArchived: true, fields: true },
     });
     if (!property) throw new NotFoundError("Bien");
     if (property.isArchived) throw new ValidationError("Ce bien est archivé");
+    propertyFields = property.fields;
   }
 
   // Résolution pattern → préfill des assignees (l'override admin du body prime).
@@ -191,6 +200,7 @@ export async function createSlot(
     descriptionPromptId: string | null;
     needsCaptions: boolean;
     needsDescription: string;
+    descriptionSourceFieldKey: string | null;
     coverMode: string;
     coverConfig: unknown;
     defaultAssigneeMonteurId: string | null;
@@ -251,6 +261,7 @@ export async function createSlot(
         binding.descriptionPromptIdOverride ?? t.descriptionPromptId,
       needsCaptions: t.needsCaptions,
       needsDescription: t.needsDescription,
+      descriptionSourceFieldKey: t.descriptionSourceFieldKey,
       coverMode: binding.coverModeOverride ?? t.coverMode,
       coverConfig: t.coverConfig,
       defaultAssigneeMonteurId: binding.defaultAssigneeMonteurId,
@@ -282,7 +293,8 @@ export async function createSlot(
         "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
       );
     }
-    resolvedPattern = pattern;
+    // AccountPattern legacy n'a pas descriptionSourceFieldKey (feature recette).
+    resolvedPattern = { ...pattern, descriptionSourceFieldKey: null };
     patternLabel = pattern.label;
     initialStatus = mapSourceToInitialStatus(pattern.source);
     if (!resolvedAssigneeMonteurId && pattern.defaultAssigneeMonteurId) {
@@ -333,6 +345,7 @@ export async function createSlot(
       descriptionPromptId: template.descriptionPromptId,
       needsCaptions: template.needsCaptions,
       needsDescription: template.needsDescription,
+      descriptionSourceFieldKey: template.descriptionSourceFieldKey,
       coverMode: template.coverMode,
       coverConfig: template.coverConfig,
       defaultAssigneeMonteurId: null,
@@ -399,6 +412,22 @@ export async function createSlot(
       "Description auto activée mais aucun prompt IA défini (ni au slot, ni au pattern)",
     );
   }
+
+  // Pré-remplissage de la légende (mode "preFilled") : si un bien est rattaché
+  // et que la recette désigne un champ source, on démarre la légende avec la
+  // valeur du champ du bien. L'input.description explicite (rare à la création)
+  // reste prioritaire.
+  let prefilledDescription: string | null = null;
+  if (input.propertyId && !input.description && resolvedNeedsDescription === "preFilled") {
+    prefilledDescription = resolvePreFilledDescription(
+      {
+        needsDescription: "preFilled",
+        descriptionSourceFieldKey: resolvedPattern?.descriptionSourceFieldKey ?? null,
+      },
+      propertyFields,
+    );
+  }
+
   // Guard cover-mode retiré (fix regression post-QW1) : le runtime
   // (lib/coverAuto.ts:761-767) a un fallback gracieux qui prend le preset
   // par défaut du template (sortOrder min) quand coverConfig n'a ni
@@ -415,7 +444,7 @@ export async function createSlot(
       scheduledAt: parsedScheduledAt,
       // Fallback titre = nom de la recette si l'admin ne saisit rien.
       title: (input.title?.trim() || patternLabel) ?? null,
-      description: input.description ?? null,
+      description: input.description ?? prefilledDescription ?? null,
       notes: input.notes ?? null,
       // Status initial dérivé du pattern.source (cohérence calendarEngine
       // — sinon le défaut DB "TO_DO" laisse les slots manuels invisibles
@@ -1400,6 +1429,48 @@ export async function patchSlot(
     );
   }
 
+  // ── Pré-remplissage de la légende « Pré-remplie » depuis le bien ───────────
+  // Au (re)rattachement d'un bien (propertyId non-null dans le body), on écrase
+  // slot.description avec Property.fields[key] si la description effective =
+  // "preFilled" (décision produit : bien = source de vérité, écrasement
+  // systématique au changement de bien). On ne touche à rien si l'appelant fixe
+  // déjà `description` explicitement (édition manuelle simultanée) ou détache le
+  // bien (propertyId null).
+  //
+  // IMPORTANT : on ne se base PAS sur `resolvedNeedsDescription` ci-dessus car
+  // son `effectivePattern` inline n'a que 2 branches (pattern legacy + binding)
+  // et ignore la branche `patternTemplate` (missions account-less créées depuis
+  // une recette globale). On résout donc le pattern effectif via le helper
+  // partagé `resolveSlotEffectivePattern` (3 branches) — sans lui, le prefill ne
+  // se déclenchait jamais pour une mission, qui est pourtant le cas d'usage
+  // central « choisir un bien lié sur une mission ».
+  let prefilledDescription: string | undefined;
+  if (typeof propertyId === "string" && propertyId && description === undefined) {
+    const [patternSlot, property] = await Promise.all([
+      prisma.publicationSlot.findUnique({
+        where: { id },
+        select: slotEffectivePatternSelect,
+      }),
+      prisma.property.findUnique({
+        where: { id: propertyId },
+        select: { fields: true },
+      }),
+    ]);
+    const eff = patternSlot ? resolveSlotEffectivePattern(patternSlot) : null;
+    // Override per-slot (body ou existant) prime sur le pattern effectif.
+    const effNeedsDescription = postUpdateNeedsDescription ?? eff?.needsDescription ?? "none";
+    if (effNeedsDescription === "preFilled") {
+      const value = resolvePreFilledDescription(
+        {
+          needsDescription: "preFilled",
+          descriptionSourceFieldKey: eff?.descriptionSourceFieldKey ?? null,
+        },
+        property?.fields ?? null,
+      );
+      if (value != null) prefilledDescription = value;
+    }
+  }
+
   // Guard cover-mode retiré (idem createSlot ci-dessus) : le runtime
   // coverAuto.ts a un fallback gracieux preset par défaut du template
   // (sortOrder min). Pas besoin de bloquer le PATCH si le pattern a
@@ -1470,7 +1541,7 @@ export async function patchSlot(
       };
 
       const FIELD_VALUES: Record<string, unknown> = {
-        status, title, description, notes, templateId, propertyId, scheduledAt,
+        status, title, description: prefilledDescription ?? description, notes, templateId, propertyId, scheduledAt,
         fields, fieldSchema,
         assigneeMonteurId, assigneeCmId, assigneeVideasteId,
         patternId, currentVersionId, isAuto,
@@ -1531,6 +1602,15 @@ export async function patchSlot(
           actorId,
           type: "BANK_SLOT_SCHEDULED",
           payload: { scheduledAt: scheduledAt as string },
+        });
+      }
+
+      if (prefilledDescription !== undefined) {
+        await logActivity(tx as typeof prisma, {
+          slotId: id,
+          actorId,
+          type: "DESCRIPTION_PREFILLED",
+          payload: { propertyId: propertyId as string, length: prefilledDescription.length },
         });
       }
 

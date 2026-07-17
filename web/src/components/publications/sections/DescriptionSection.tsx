@@ -133,6 +133,7 @@ function DescriptionSectionInner({
 }: Props) {
   const router = useRouter();
   const isAutoMode = pattern?.needsDescription === "autoGenerate";
+  const isPreFilled = pattern?.needsDescription === "preFilled";
   const hasContent = initialDescription.trim().length > 0;
   // En mode auto + contenu déjà généré : on ouvre en preview (non-éditable).
   // Sinon (manuel / pas de contenu) : edit direct.
@@ -639,6 +640,12 @@ function DescriptionSectionInner({
         ) : (
           /* ── Mode manuel OU édition après preview ─────────────────────────── */
           <>
+            {isPreFilled && (
+              <p className="text-[11px] text-muted-foreground">
+                Légende pré-remplie depuis le bien rattaché — réécrite à chaque
+                changement de bien. Tu peux l&apos;ajuster librement ici.
+              </p>
+            )}
             <Textarea
               value={value}
               onChange={(v) => {

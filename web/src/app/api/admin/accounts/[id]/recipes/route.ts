@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { normalizeSourceFieldKey } from "@/lib/publications/preFilledDescription";
 
 interface TemplatePayload {
   id?: string; // si fourni : réutilise (skip création template)
@@ -28,6 +29,7 @@ interface TemplatePayload {
   templateId?: string | null;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
+  descriptionSourceFieldKey?: string | null;
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
@@ -166,6 +168,7 @@ export async function POST(
               templateId: tpl.templateId ?? null,
               captionPresetId: tpl.captionPresetId ?? null,
               descriptionPromptId: tpl.descriptionPromptId ?? null,
+              descriptionSourceFieldKey: normalizeSourceFieldKey(tpl.descriptionSourceFieldKey),
               coverMode: tpl.coverMode ?? "none",
               coverConfig:
                 tpl.coverConfig === undefined || tpl.coverConfig === null

@@ -8,12 +8,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { normalizeSourceFieldKey } from "@/lib/publications/preFilledDescription";
 type PatchBody = {
   label?: string;
   source?: string;
   templateId?: string | null;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
+  descriptionSourceFieldKey?: string | null;
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
@@ -111,6 +113,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.templateId !== undefined ? { templateId: body.templateId } : {}),
       ...(body.captionPresetId !== undefined ? { captionPresetId: body.captionPresetId } : {}),
       ...(body.descriptionPromptId !== undefined ? { descriptionPromptId: body.descriptionPromptId } : {}),
+      ...(body.descriptionSourceFieldKey !== undefined
+        ? { descriptionSourceFieldKey: normalizeSourceFieldKey(body.descriptionSourceFieldKey) }
+        : {}),
       ...(body.coverMode !== undefined ? { coverMode: body.coverMode } : {}),
       ...(body.coverConfig !== undefined
         ? { coverConfig: body.coverConfig === null ? undefined : (body.coverConfig as object) }
