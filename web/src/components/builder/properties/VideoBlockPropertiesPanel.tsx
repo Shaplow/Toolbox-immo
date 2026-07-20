@@ -13,7 +13,13 @@ export function VideoBlockPropertiesPanel({
   onChange: (c: Partial<VideoBlock>) => void;
 }) {
   const selectSlot = useBuilderStore((s) => s.selectSlot);
-  const slots = useBuilderStore((s) => s.template.videoSequence ?? []);
+  // Zustand v5 : useStore n'applique pas d'égalité shallow, donc un selector
+  // ne doit JAMAIS retourner une référence fraîche. Le `?? []` fabriquerait un
+  // tableau neuf à chaque snapshot quand videoSequence est undefined (cas
+  // template neuve non normalisée) → boucle de re-render infinie = React #185.
+  // On sélectionne la valeur brute (réf stable) et on applique le default ici.
+  const videoSequence = useBuilderStore((s) => s.template.videoSequence);
+  const slots = videoSequence ?? [];
 
   // Recherche du slot associé à ce VideoBlock : soit par videoBlockId
   // explicite, soit par binding partagé (slot.binding === block.binding).
