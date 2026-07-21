@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
+import { canAccessMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
@@ -21,7 +22,7 @@ const PACK_SIZE = 20;
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
+  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

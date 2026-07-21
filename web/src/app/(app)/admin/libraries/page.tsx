@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
+import {
+  canAccessMediaLibrary,
+  canManageMediaLibraries,
+} from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { Video, Music2, Database, Type, Sparkles, ArrowRight } from "lucide-react";
 import { Hub, type HubItem } from "@/components/ui/molecules/Hub";
@@ -8,9 +12,11 @@ import { PageShell } from "@/components/ui/PageShell";
 
 export default async function LibrariesHubPage() {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
+  if (!userContext?.actualUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
     redirect("/templates");
   }
+  // VIDEASTE gère les assets média + audio, pas les données / polices / prompts.
+  const canManage = canManageMediaLibraries(userContext.effectiveUser.role);
 
   // Compteurs côté serveur — split médias vidéo / audio (Phase β médiathèque).
   const [videoLibCount, audioLibCount, videoAssetCount, audioAssetCount, dataLibCount, dataEntryCount, fontCount, promptCount] =
@@ -49,13 +55,18 @@ export default async function LibrariesHubPage() {
       tint: "sage",
       meta: `${audioLibCount} ${audioLibCount === 1 ? "bibliothèque" : "bibliothèques"} · ${audioAssetCount} ${audioAssetCount === 1 ? "piste" : "pistes"}`,
     },
-    {
-      href: "/admin/libraries/data",
-      label: "Données",
-      icon: Database,
-      tint: "sage",
-      meta: `${dataLibCount} ${dataLibCount === 1 ? "bibliothèque" : "bibliothèques"} · ${dataEntryCount} ${dataEntryCount === 1 ? "fiche" : "fiches"}`,
-    },
+    // Données : réservé ADMIN (hors périmètre médiathèque du vidéaste).
+    ...(canManage
+      ? [
+          {
+            href: "/admin/libraries/data",
+            label: "Données",
+            icon: Database,
+            tint: "sage" as const,
+            meta: `${dataLibCount} ${dataLibCount === 1 ? "bibliothèque" : "bibliothèques"} · ${dataEntryCount} ${dataEntryCount === 1 ? "fiche" : "fiches"}`,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -66,38 +77,41 @@ export default async function LibrariesHubPage() {
         items={items}
         cols={3}
       />
-      {/* V8 Phase 9 — Ressources avancées en lien discret (rare usage). */}
-      <div className="mt-6 mx-auto max-w-3xl px-6 sm:px-8 pb-12">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-2">
-          Plus de ressources
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Link
-            href="/admin/libraries/fonts"
-            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-card border border-border  hover:bg-white/85 transition-colors text-[12.5px] text-foreground group"
-          >
-            <Type size={14} className="text-danger-700 shrink-0" />
-            <span className="flex-1">Typographies</span>
-            <span className="text-[11px] text-muted-foreground">{fontCount}</span>
-            <ArrowRight
-              size={12}
-              className="text-muted-foreground group-hover:translate-x-0.5 transition-transform"
-            />
-          </Link>
-          <Link
-            href="/admin/prompts"
-            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-card border border-border  hover:bg-white/85 transition-colors text-[12.5px] text-foreground group"
-          >
-            <Sparkles size={14} className="text-warning-700 shrink-0" />
-            <span className="flex-1">Prompts IA</span>
-            <span className="text-[11px] text-muted-foreground">{promptCount}</span>
-            <ArrowRight
-              size={12}
-              className="text-muted-foreground group-hover:translate-x-0.5 transition-transform"
-            />
-          </Link>
+      {/* V8 Phase 9 — Ressources avancées en lien discret (rare usage).
+          Réservé ADMIN : polices + prompts IA hors périmètre médiathèque du vidéaste. */}
+      {canManage && (
+        <div className="mt-6 mx-auto max-w-3xl px-6 sm:px-8 pb-12">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-2">
+            Plus de ressources
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Link
+              href="/admin/libraries/fonts"
+              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-card border border-border  hover:bg-white/85 transition-colors text-[12.5px] text-foreground group"
+            >
+              <Type size={14} className="text-danger-700 shrink-0" />
+              <span className="flex-1">Typographies</span>
+              <span className="text-[11px] text-muted-foreground">{fontCount}</span>
+              <ArrowRight
+                size={12}
+                className="text-muted-foreground group-hover:translate-x-0.5 transition-transform"
+              />
+            </Link>
+            <Link
+              href="/admin/prompts"
+              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-card border border-border  hover:bg-white/85 transition-colors text-[12.5px] text-foreground group"
+            >
+              <Sparkles size={14} className="text-warning-700 shrink-0" />
+              <span className="flex-1">Prompts IA</span>
+              <span className="text-[11px] text-muted-foreground">{promptCount}</span>
+              <ArrowRight
+                size={12}
+                className="text-muted-foreground group-hover:translate-x-0.5 transition-transform"
+              />
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
     </PageShell>
   );
 }

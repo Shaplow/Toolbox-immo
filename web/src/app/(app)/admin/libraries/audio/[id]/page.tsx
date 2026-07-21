@@ -1,5 +1,9 @@
 import { redirect, notFound } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
+import {
+  canAccessMediaLibrary,
+  canManageMediaLibraries,
+} from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { MediaAssetsPanel } from "@/components/admin/libraries/MediaAssetsPanel";
 
@@ -13,9 +17,10 @@ type Props = { params: Promise<{ id: string }> };
  */
 export default async function AudioLibraryDetailPage({ params }: Props) {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
+  if (!userContext?.actualUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
     redirect("/templates");
   }
+  const canManage = canManageMediaLibraries(userContext.effectiveUser.role);
 
   const { id } = await params;
   const library = await prisma.mediaLibrary.findUnique({
@@ -37,6 +42,7 @@ export default async function AudioLibraryDetailPage({ params }: Props) {
         rotationScope: library.rotationScope,
         maxUsageCount: library.maxUsageCount,
       }}
+      canManageLibraries={canManage}
     />
   );
 }

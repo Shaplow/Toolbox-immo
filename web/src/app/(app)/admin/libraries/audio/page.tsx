@@ -2,14 +2,19 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
+import {
+  canAccessMediaLibrary,
+  canManageMediaLibraries,
+} from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { MediaLibrariesPanel } from "@/components/admin/libraries/MediaLibrariesPanel";
 
 export default async function AudioLibrariesPage() {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
+  if (!userContext?.actualUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
     redirect("/templates");
   }
+  const canManage = canManageMediaLibraries(userContext.effectiveUser.role);
 
   const [libCount, assetCount] = await Promise.all([
     prisma.mediaLibrary.count({ where: { type: "audio" } }),
@@ -55,7 +60,7 @@ export default async function AudioLibrariesPage() {
 
         <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
           <div className="max-w-6xl mx-auto">
-            <MediaLibrariesPanel typeFilter="audio" />
+            <MediaLibrariesPanel typeFilter="audio" canManageLibraries={canManage} />
           </div>
         </div>
       </div>

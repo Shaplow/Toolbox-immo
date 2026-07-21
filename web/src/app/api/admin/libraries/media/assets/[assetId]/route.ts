@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
+import { canAccessMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, createPresignedDownloadUrl, r2Configured } from "@/lib/r2";
 
@@ -10,7 +11,7 @@ type Params = { params: Promise<{ assetId: string }> };
 // En dev (R2 non configuré), redirige directement vers l'URL publique.
 export async function GET(_req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
+  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -43,7 +44,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // DELETE /api/admin/libraries/media/assets/[assetId] — supprime un asset (+ R2)
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
+  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -96,7 +97,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 // Champs acceptés : duration, tags, setTag, category, incrementUsage, usageCount, resetUsage, lastUsedAt, disabled
 export async function PATCH(req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
+  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

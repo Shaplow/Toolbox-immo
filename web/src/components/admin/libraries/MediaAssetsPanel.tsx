@@ -34,9 +34,15 @@ import { useAdvancedMode } from "@/hooks/useAdvancedMode";
 
 interface Props {
   library: MediaLibrary;
+  /**
+   * Gestion library-level (réglages de la bibliothèque). Réservé ADMIN : un
+   * VIDEASTE gère les assets mais pas les réglages/rotation de la librairie.
+   * Défaut false = least-privilege.
+   */
+  canManageLibraries?: boolean;
 }
 
-export function MediaAssetsPanel({ library }: Props) {
+export function MediaAssetsPanel({ library, canManageLibraries = false }: Props) {
   // P1.1 — confirmation asynchrone partagée par useBulkEdit + useAssetInlineEdits.
   const { confirm, dialog: confirmDialog } = useConfirm();
   // ── État global de la liste ──
@@ -749,16 +755,18 @@ export function MediaAssetsPanel({ library }: Props) {
             {isVideo ? <Film size={13} className="text-muted-foreground" /> : <Headphones size={13} className="text-muted-foreground" />}
             {library.name}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={Settings2}
-            onClick={() => setSettingsOpen(true)}
-            title="Réglages de la bibliothèque"
-            className="ml-auto"
-          >
-            <span className="hidden sm:inline">Réglages</span>
-          </Button>
+          {canManageLibraries && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={Settings2}
+              onClick={() => setSettingsOpen(true)}
+              title="Réglages de la bibliothèque"
+              className="ml-auto"
+            >
+              <span className="hidden sm:inline">Réglages</span>
+            </Button>
+          )}
         </div>
         <div className="px-4 sm:px-6 pb-1.5 flex items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
           <span>{stripCounts.total} {isVideo ? "vidéo" : "asset"}{stripCounts.total !== 1 ? "s" : ""}</span>

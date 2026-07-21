@@ -25,6 +25,7 @@ import { promisify } from "util";
 import path from "path";
 import { existsSync } from "fs";
 import { getUserContext } from "@/lib/userContext";
+import { canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 
 const execFileAsync = promisify(execFile);
@@ -97,7 +98,7 @@ async function probeDuration(url: string): Promise<number | null> {
 
 export async function POST(req: NextRequest) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
+  if (!userContext?.effectiveUser.id || !canManageMediaLibraries(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 

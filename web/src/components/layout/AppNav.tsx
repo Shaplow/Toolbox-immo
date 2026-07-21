@@ -30,6 +30,7 @@ import {
 import { KbdChord } from "@/components/ui/Kbd";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { canAccessTool } from "@/lib/permissions/tools";
+import { canAccessMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
@@ -162,6 +163,11 @@ export function AppNav({
       {
         items: [
           { href: "/home", label: "Accueil", icon: <Home size={14} /> },
+          // Médiathèque : ouverte au VIDEASTE (gestion des assets média + audio).
+          // canAccessMediaLibrary = false pour MONTEUR/CM → l'item leur reste caché.
+          ...(canAccessMediaLibrary(navUser.role)
+            ? [{ href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> }]
+            : []),
           ...(hasAnyToolPerm
             ? [{ href: "/outils", label: "Atelier", icon: <Hammer size={14} />, matchPaths: ["/missions"] }]
             : []),

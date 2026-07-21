@@ -56,7 +56,12 @@ interface MediaLibrary {
   previewAssets?: PreviewAsset[];
 }
 
-export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "video" | "audio" } = {}) {
+export function MediaLibrariesPanel({
+  typeFilter: forcedType,
+  // Gestion library-level (créer / réglages / supprimer). Réservé ADMIN ;
+  // un VIDEASTE gère les assets mais pas les librairies. Défaut false = least-privilege.
+  canManageLibraries = false,
+}: { typeFilter?: "video" | "audio"; canManageLibraries?: boolean } = {}) {
   const router = useRouter();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const detailBasePath = forcedType === "audio" ? "/admin/libraries/audio" : "/admin/libraries/media";
@@ -240,9 +245,11 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
             <span className="text-[10.5px] text-muted-foreground tabular-nums">
               {filtered.length}/{libraries.length}
             </span>
-            <Button variant="primary" size="sm" icon={Plus} onClick={() => setCreating(true)}>
-              Nouvelle bibliothèque
-            </Button>
+            {canManageLibraries && (
+              <Button variant="primary" size="sm" icon={Plus} onClick={() => setCreating(true)}>
+                Nouvelle bibliothèque
+              </Button>
+            )}
           </div>
         </div>
 
@@ -292,8 +299,16 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
           <EmptyState
             icon={Video}
             title="Aucune bibliothèque média"
-            description="Créez-en une pour commencer à organiser vos vidéos et musiques."
-            cta={{ label: "Nouvelle bibliothèque", onClick: () => setCreating(true) }}
+            description={
+              canManageLibraries
+                ? "Créez-en une pour commencer à organiser vos vidéos et musiques."
+                : "Aucune bibliothèque n'est encore disponible."
+            }
+            cta={
+              canManageLibraries
+                ? { label: "Nouvelle bibliothèque", onClick: () => setCreating(true) }
+                : undefined
+            }
           />
         </div>
       ) : filtered.length === 0 ? (
@@ -307,6 +322,7 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
               key={lib.id}
               lib={lib}
               detailHref={`${detailBasePath}/${lib.id}`}
+              canManage={canManageLibraries}
               onDelete={() => void handleDelete(lib.id, lib.name)}
               onFilesDropped={(files) => setDropTarget({ lib, files })}
               onOpenSettings={() => setSettingsLib(lib)}
@@ -417,6 +433,7 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
 function MediaLibraryCard({
   lib,
   detailHref,
+  canManage = false,
   onDelete,
   onFilesDropped,
   onOpenSettings,
@@ -424,6 +441,8 @@ function MediaLibraryCard({
   lib: MediaLibrary;
   /** Phase β — href dynamique selon type (/admin/libraries/media/[id] ou /admin/libraries/audio/[id]). */
   detailHref: string;
+  /** Actions library-level (réglages / suppression). Masquées si false (ex: VIDEASTE). */
+  canManage?: boolean;
   onDelete: () => void;
   /** Phase 2 — callback drag-drop fichiers sur la card. */
   onFilesDropped?: (files: File[]) => void;
@@ -529,27 +548,29 @@ function MediaLibraryCard({
         <span className="tabular-nums">{lib._count.assets}</span>
       </div>
 
-      {/* Actions au hover top-right — glass icons. */}
-      <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
-        {onOpenSettings && (
+      {/* Actions au hover top-right — glass icons. Library-level → ADMIN uniquement. */}
+      {canManage && (
+        <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenSettings(); }}
+              title="Réglages"
+              className="h-7 w-7 inline-flex items-center justify-center rounded-md bg-card border border-border text-foreground hover:text-foreground hover:bg-white "
+            >
+              <Settings2 size={12} />
+            </button>
+          )}
           <button
             type="button"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenSettings(); }}
-            title="Réglages"
-            className="h-7 w-7 inline-flex items-center justify-center rounded-md bg-card border border-border text-foreground hover:text-foreground hover:bg-white "
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
+            title="Supprimer"
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-danger-600 hover:bg-white "
           >
-            <Settings2 size={12} />
+            <Trash2 size={12} />
           </button>
-        )}
-        <button
-          type="button"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
-          title="Supprimer"
-          className="h-7 w-7 inline-flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-danger-600 hover:bg-white "
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
+        </div>
+      )}
 
       {/* Titre + meta en bas — par-dessus le voile. */}
       <div className="absolute inset-x-0 bottom-0 p-3 z-[5] flex flex-col gap-1.5">

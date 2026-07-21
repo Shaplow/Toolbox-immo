@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { getUserContext } from "@/lib/userContext";
+import { canAccessMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { objectExistsInR2, r2Configured } from "@/lib/r2";
 
@@ -24,7 +25,7 @@ type Params = { params: Promise<{ assetId: string }> };
 
 export async function PATCH(_req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
+  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

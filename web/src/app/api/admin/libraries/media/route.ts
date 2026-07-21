@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
+import { canAccessMediaLibrary, canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/admin/libraries/media — liste les MediaLibrary (+ asset count)
 // Supporte ?type=video|audio pour filtrer. Accessible aux admins seulement.
 export async function GET(req: NextRequest) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
+  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
 // POST /api/admin/libraries/media — crée une MediaLibrary
 export async function POST(req: NextRequest) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
+  if (!userContext?.effectiveUser.id || !canManageMediaLibraries(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
