@@ -603,7 +603,7 @@ export function ListingsClient({
       await Promise.all(
         pendingRenders.map(async (r) => {
           try {
-            const res = await fetch(`/api/renders/${r.id}`);
+            const res = await fetch(`/api/renders/${r.id}`, { signal: AbortSignal.timeout(10_000) });
             if (!res.ok) return;
             const data = (await res.json()) as Partial<RenderRow> & { status: string };
             if (data.status !== renderStatesRef.current[r.id]?.status) {

@@ -70,7 +70,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
 
   // ─── Periodic poll ───────────────────────────────────────────────────────
   const { data: polled } = useJobPolling<RenderData>({
-    fetchFn: useCallback(() => fetch(`/api/renders/${renderId}`).then((r) => r.json()), [renderId]),
+    fetchFn: useCallback(() => fetch(`/api/renders/${renderId}`, { signal: AbortSignal.timeout(10_000) }).then((r) => r.json()), [renderId]),
     isTerminal: useCallback((d: RenderData) => d.status === "DONE" || d.status === "ERROR", []),
     intervalMs: 2000,
     enabled: status === "PENDING" || status === "PROCESSING",

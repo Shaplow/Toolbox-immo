@@ -245,27 +245,27 @@ export async function POST(
     ...(webhookUrl ? { webhook: webhookUrl } : {}),
   };
 
-  let runpodJobId: string;
-  try {
-    const data = await submitRunpodJob<{ id: string }>(
-      RUNPOD_ENDPOINT_ID,
-      RUNPOD_API_KEY,
-      payload,
-    );
-    runpodJobId = data.id;
-  } catch (err) {
-    await prisma.transcriptionJob.update({
-      where: { id: job.id },
-      data: { status: "FAILED", errorMsg: String(err) },
-    });
-    console.error("[transcription/submit] RunPod submit failed:", err);
-    return NextResponse.json({ error: `Échec soumission RunPod : ${String(err)}` }, { status: 502 });
-  }
+  // Dispatch RunPod EN FOND — ne bloque pas la requête sur un éventuel cold-start
+  // pod (jusqu'à ~10 min via ensurePodReady). Le job est déjà PROCESSING ; le
+  // webhook remonte la suite. Sur échec de soumission, on bascule en FAILED (le
+  // polling client le voit). Le process Node est persistant (PM2), donc le travail
+  // de fond survit à la réponse — même pattern que startRenderGeneration.
+  const endpointId = RUNPOD_ENDPOINT_ID;
+  const apiKey = RUNPOD_API_KEY;
+  void (async () => {
+    try {
+      const data = await submitRunpodJob<{ id: string }>(endpointId, apiKey, payload);
+      await prisma.transcriptionJob.update({
+        where: { id: job.id },
+        data: { runpodJobId: data.id, outputJsonKey: outputKey },
+      });
+    } catch (err) {
+      console.error("[transcription/submit] RunPod submit failed (async):", err);
+      await prisma.transcriptionJob
+        .update({ where: { id: job.id }, data: { status: "FAILED", errorMsg: String(err) } })
+        .catch((e) => console.error("[transcription/submit] mark FAILED failed:", e));
+    }
+  })();
 
-  await prisma.transcriptionJob.update({
-    where: { id: job.id },
-    data: { runpodJobId, outputJsonKey: outputKey },
-  });
-
-  return NextResponse.json({ jobId: job.id });
+  return NextResponse.json({ jobId: job.id }, { status: 202 });
 }

@@ -574,34 +574,33 @@ export async function POST(req: NextRequest) {
     ...(webhookUrl ? { webhook: webhookUrl } : {}),
   };
 
-  let runpodJobId: string;
-  try {
-    const runpodData = await submitRunpodJob<RunpodSubmitResponse>(
-      RUNPOD_ENDPOINT_ID!,
-      RUNPOD_API_KEY!,
-      runpodPayload
-    );
-    runpodJobId = runpodData.id;
-  } catch (err) {
-    await prisma.captionJob.update({
-      where: { id: captionJob.id },
-      data:  { status: "FAILED", errorMsg: String(err) },
-    });
-    try { await deleteFromR2(inputVideoKey); } catch { /* ignore */ }
-    console.error("[render/captions] RunPod submit failed:", err);
-    return NextResponse.json(
-      { error: `Échec soumission RunPod : ${String(err)}` },
-      { status: 502 }
-    );
-  }
-
+  // Marque PROCESSING avant de répondre, puis dispatch RunPod EN FOND — ne bloque
+  // pas la requête sur un éventuel cold-start pod. Sur échec de soumission : FAILED
+  // + nettoyage de la vidéo uploadée.
   await prisma.captionJob.update({
     where: { id: captionJob.id },
-    data:  { status: "PROCESSING", runpodJobId },
+    data:  { status: "PROCESSING" },
   });
+  const endpointId = RUNPOD_ENDPOINT_ID!;
+  const apiKey = RUNPOD_API_KEY!;
+  void (async () => {
+    try {
+      const runpodData = await submitRunpodJob<RunpodSubmitResponse>(endpointId, apiKey, runpodPayload);
+      await prisma.captionJob.update({
+        where: { id: captionJob.id },
+        data:  { runpodJobId: runpodData.id },
+      });
+    } catch (err) {
+      console.error("[render/captions] RunPod submit failed (async):", err);
+      await prisma.captionJob
+        .update({ where: { id: captionJob.id }, data: { status: "FAILED", errorMsg: String(err) } })
+        .catch((e) => console.error("[render/captions] mark FAILED failed:", e));
+      try { await deleteFromR2(inputVideoKey); } catch { /* ignore */ }
+    }
+  })();
 
   return NextResponse.json(
-    { captionJobId: captionJob.id, runpodJobId, message: "Job soumis à RunPod" },
+    { captionJobId: captionJob.id, message: "Job soumis à RunPod" },
     { status: 202 }
   );
 }

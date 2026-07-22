@@ -449,29 +449,30 @@ export async function POST(req: NextRequest) {
     ...(webhookUrl ? { webhook: webhookUrl } : {}),
   };
 
-  let runpodJobId: string;
-  try {
-    const runpodData = await submitRunpodJob<{ id: string }>(
-      RUNPOD_ENDPOINT_ID!,
-      RUNPOD_API_KEY!,
-      runpodPayload,
-    );
-    runpodJobId = runpodData.id;
-  } catch (err) {
-    await prisma.transcriptionJob.update({
-      where: { id: job.id },
-      data: { status: "FAILED", errorMsg: String(err) },
-    });
-    // Nettoyer l'audio uploadé — plus d'intérêt si le job n'a pas démarré
-    try { await deleteFromR2(inputKey); } catch { /* ignore */ }
-    console.error("[transcription] RunPod submit failed:", err);
-    return NextResponse.json({ error: `Échec soumission RunPod : ${String(err)}` }, { status: 502 });
-  }
-
+  // Marque PROCESSING avant de répondre, puis dispatch RunPod EN FOND — ne bloque
+  // pas la requête sur un éventuel cold-start pod. Sur échec de soumission : FAILED
+  // + nettoyage de l'audio uploadé (plus d'intérêt si le job n'a pas démarré).
   await prisma.transcriptionJob.update({
     where: { id: job.id },
-    data: { status: "PROCESSING", runpodJobId, outputJsonKey },
+    data: { status: "PROCESSING", outputJsonKey },
   });
+  const endpointId = RUNPOD_ENDPOINT_ID!;
+  const apiKey = RUNPOD_API_KEY!;
+  void (async () => {
+    try {
+      const runpodData = await submitRunpodJob<{ id: string }>(endpointId, apiKey, runpodPayload);
+      await prisma.transcriptionJob.update({
+        where: { id: job.id },
+        data: { runpodJobId: runpodData.id },
+      });
+    } catch (err) {
+      console.error("[transcription] RunPod submit failed (async):", err);
+      await prisma.transcriptionJob
+        .update({ where: { id: job.id }, data: { status: "FAILED", errorMsg: String(err) } })
+        .catch((e) => console.error("[transcription] mark FAILED failed:", e));
+      try { await deleteFromR2(inputKey); } catch { /* ignore */ }
+    }
+  })();
 
   return NextResponse.json({ jobId: job.id }, { status: 202 });
 }

@@ -1,6 +1,7 @@
 import path from "path";
 import { mkdir, writeFile } from "fs/promises";
 import { prisma } from "@/lib/prisma";
+import { createLimiter, mapWithConcurrency } from "@/lib/concurrency";
 import { deleteFromR2, r2Configured, uploadToR2 } from "@/lib/r2";
 import { buildHTML } from "@/lib/renderer/buildHTML";
 import { renderPNG } from "@/lib/renderer/renderPNG";
@@ -17,6 +18,23 @@ const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 const WEB_MEDIA_BASE = (process.env.FONT_BASE_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const DEFAULT_FRAME_COUNT = 36;
 const MIN_FRAME_GAP_S = 1 / 30;
+
+// Concurrence bornée sur le process unique (cf. lib/concurrency.ts).
+// - Persistance des frames : chaque frame = fetch + upload R2 avec un buffer en
+//   RAM. Sans borne, ~36 buffers/pack × M packs résident simultanément → pic RAM
+//   → OOM-restart. On plafonne le nombre de frames traitées en parallèle.
+const FRAME_PERSIST_CONCURRENCY = Math.max(
+  1,
+  Number.parseInt(process.env.COVER_FRAME_PERSIST_CONCURRENCY ?? "", 10) || 6,
+);
+// - Préparation des packs : chaque prep déclenche une extraction (render-engine)
+//   + le fan-out de frames ci-dessus. Sans borne, M packs lancés d'un coup =
+//   M preps concurrentes qui saturent le render-engine et la RAM. On limite le
+//   nombre de packs préparés simultanément ; les autres restent QUEUED (le poll
+//   UI continue) et démarrent au fur et à mesure.
+const coverPrepLimiter = createLimiter(
+  Math.max(1, Number.parseInt(process.env.COVER_PREP_CONCURRENCY ?? "", 10) || 2),
+);
 
 type ExtractedFrame = { timestamp: number; url: string };
 type TaggedExtractedFrame = ExtractedFrame & { _pick?: CoverFramePick };
@@ -571,13 +589,15 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     }
     if (extractedFrames.length === 0) throw new Error("Le render-engine n'a extrait aucune frame");
 
-    const persisted = await Promise.all(
-      extractedFrames.map(async (frame, index) => ({
+    const persisted = await mapWithConcurrency(
+      extractedFrames,
+      FRAME_PERSIST_CONCURRENCY,
+      async (frame, index) => ({
         timestamp: frame.timestamp,
         slotId: frame._pick?.slotId ?? null,
         sequenceIndex: frame._pick?.sequenceIndex ?? null,
         ...(await persistFrame(pack.id, pack.userId, frame, index)),
-      })),
+      }),
     );
 
     await prisma.coverFrameCandidate.createMany({
@@ -633,7 +653,9 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
 }
 
 export function queueCoverFramePackPreparation(packId: string): void {
-  void prepareCoverFramePack(packId).catch((err) => {
+  // Passe par le limiteur global : au plus COVER_PREP_CONCURRENCY packs préparés
+  // en parallèle. Les autres attendent en file (restent QUEUED côté DB/UI).
+  void coverPrepLimiter(() => prepareCoverFramePack(packId)).catch((err) => {
     console.error(`[coverAuto] Préparation pack=${packId} échouée : ${String(err)}`);
   });
 }

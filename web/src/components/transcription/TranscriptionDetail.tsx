@@ -64,7 +64,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
 
   // Polling fallback (5 s interval, stops automatically on terminal state)
   const { data: pollData } = useJobPolling<JobDetail>({
-    fetchFn: () => fetch(`/api/transcription/${job.id}`).then((r) => r.json()),
+    fetchFn: () => fetch(`/api/transcription/${job.id}`, { signal: AbortSignal.timeout(10_000) }).then((r) => r.json()),
     isTerminal: (d) => d.status === "COMPLETED" || d.status === "FAILED",
     intervalMs: 5000,
     enabled: job.status !== "COMPLETED" && job.status !== "FAILED",

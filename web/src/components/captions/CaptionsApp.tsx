@@ -196,7 +196,7 @@ export default function CaptionsApp({
 
   // ── Polling fallback (10 s) — actif uniquement si SSE indisponible ─────────
   const { data: pollData } = useJobPolling<{ status: string; videoUrl?: string; outputUrl?: string; error?: string }>({
-    fetchFn: () => fetch(`/api/render/captions/${renderingJobId}`).then(r => r.json()),
+    fetchFn: () => fetch(`/api/render/captions/${renderingJobId}`, { signal: AbortSignal.timeout(10_000) }).then(r => r.json()),
     isTerminal: (d) => d.status === 'COMPLETED' || d.status === 'DONE' || d.status === 'FAILED',
     intervalMs: 10000,
     enabled: renderingJobId !== null,

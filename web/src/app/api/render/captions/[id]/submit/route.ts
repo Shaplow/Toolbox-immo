@@ -104,27 +104,25 @@ export async function POST(
     ...(webhookUrl ? { webhook: webhookUrl } : {}),
   };
 
-  let runpodJobId: string;
-  try {
-    const data = await submitRunpodJob<{ id: string }>(
-      RUNPOD_ENDPOINT_ID,
-      RUNPOD_API_KEY,
-      payload
-    );
-    runpodJobId = data.id;
-  } catch (err) {
-    await prisma.captionJob.update({
-      where: { id: job.id },
-      data:  { status: "FAILED", errorMsg: String(err) },
-    });
-    console.error("[render/captions/submit] RunPod submit failed:", err);
-    return NextResponse.json({ error: `Échec soumission RunPod : ${String(err)}` }, { status: 502 });
-  }
+  // Dispatch RunPod EN FOND — ne bloque pas la requête sur un éventuel cold-start
+  // pod (jusqu'à ~10 min). Le job est déjà PROCESSING ; le webhook remonte la
+  // suite. Sur échec de soumission, on bascule en FAILED (le polling client le voit).
+  const endpointId = RUNPOD_ENDPOINT_ID;
+  const apiKey = RUNPOD_API_KEY;
+  void (async () => {
+    try {
+      const data = await submitRunpodJob<{ id: string }>(endpointId, apiKey, payload);
+      await prisma.captionJob.update({
+        where: { id: job.id },
+        data:  { runpodJobId: data.id },
+      });
+    } catch (err) {
+      console.error("[render/captions/submit] RunPod submit failed (async):", err);
+      await prisma.captionJob
+        .update({ where: { id: job.id }, data: { status: "FAILED", errorMsg: String(err) } })
+        .catch((e) => console.error("[render/captions/submit] mark FAILED failed:", e));
+    }
+  })();
 
-  await prisma.captionJob.update({
-    where: { id: job.id },
-    data:  { runpodJobId },
-  });
-
-  return NextResponse.json({ captionJobId: job.id, runpodJobId });
+  return NextResponse.json({ captionJobId: job.id }, { status: 202 });
 }

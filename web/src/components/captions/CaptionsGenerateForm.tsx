@@ -395,7 +395,7 @@ export default function CaptionsGenerateForm({
       await Promise.all(
         pending.map(async (job) => {
           try {
-            const res = await fetch(`/api/render/captions/${job.id}`);
+            const res = await fetch(`/api/render/captions/${job.id}`, { signal: AbortSignal.timeout(10_000) });
             if (!res.ok) return;
             const data = await res.json() as { status: string; videoUrl?: string };
             const mapped =

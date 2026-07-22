@@ -198,12 +198,28 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
     void loadPacks();
   }, [loadPacks]);
 
+  // Ref vers les packs courants : le poll détecte les transitions → READY sans
+  // avoir `packs` en dépendance (sinon l'interval serait détruit/recréé à chaque
+  // tick de 3s — churn inutile).
+  const packsRef = useRef(packs);
   useEffect(() => {
-    const hasPendingPack = packs.some((pack) => pack.status === "QUEUED" || pack.status === "PROCESSING");
+    packsRef.current = packs;
+  }, [packs]);
+
+  // Vrai tant qu'au moins un pack est en cours. Booléen stable : l'effet ne se
+  // relance qu'au passage pending↔idle, pas à chaque mise à jour de `packs`.
+  const hasPendingPack = packs.some((pack) => pack.status === "QUEUED" || pack.status === "PROCESSING");
+
+  useEffect(() => {
     if (!hasPendingPack) return;
     const intervalId = window.setInterval(async () => {
-      const prevPacks = packs;
-      const res = await fetch("/api/cover-packs").catch(() => null);
+      const prevPacks = packsRef.current;
+      // Poll filtré par slotId (mêmes données que loadPacks) — évite de re-pull
+      // le payload global de tous les packs de l'utilisateur toutes les 3s.
+      const url = slotId
+        ? `/api/cover-packs?slotId=${encodeURIComponent(slotId)}`
+        : "/api/cover-packs";
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
       if (!res?.ok) return;
       const nextPacks = await res.json() as CoverPack[];
       // Detect QUEUED/PROCESSING → READY transitions
@@ -237,7 +253,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
       });
     }, 3000);
     return () => window.clearInterval(intervalId);
-  }, [loadPacks, packs]);
+  }, [hasPendingPack, slotId]);
 
   useEffect(() => {
     if (!dragState) return;
@@ -639,6 +655,8 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                             src={`/api/cover-packs/${pack.id}/overlay?v=${overlayKey}`}
                             alt=""
                             aria-hidden
+                            loading="lazy"
+                            decoding="async"
                             className="absolute inset-0 w-full h-full object-contain pointer-events-none"
                             style={{
                               transform: `translate(${Math.round(offset.x * (previewScaleByPack[pack.id]?.x ?? 1))}px, ${Math.round(offset.y * (previewScaleByPack[pack.id]?.y ?? 1))}px)`,

@@ -4,6 +4,7 @@ import { canAccessMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
+import { mapWithConcurrency } from "@/lib/concurrency";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -89,13 +90,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
   }
 
-  // ── Découper en packs et soumettre ───────────────────────────────────────
+  // ── Découper en packs, créer les batches, puis dispatcher RunPod EN FOND ──
   const batches: Array<{ batchId: string; assetCount: number; status: string }> = [];
+  // Batches à soumettre à RunPod — dispatché en tâche de fond après la réponse.
+  const toDispatch: Array<{ batchId: string; assetUrls: string[]; jobIds: string[] }> = [];
 
   for (let i = 0; i < toProcess.length; i += PACK_SIZE) {
     const pack = toProcess.slice(i, i + PACK_SIZE);
 
-    // Créer le batch + les jobs dans une transaction
+    // Créer le batch + les jobs dans une transaction (rapide, synchrone)
     const { batch, jobs } = await prisma.$transaction(async (tx) => {
       const b = await tx.mediaAutocutBatch.create({
         data: {
@@ -120,64 +123,74 @@ export async function POST(req: NextRequest, { params }: Params) {
       return { batch: b, jobs: js };
     });
 
-    // Soumettre à RunPod
     if (!runpodConfigured()) {
       console.warn(`[autocut-packs] RunPod non configuré — batch ${batch.id} en pending`);
       batches.push({ batchId: batch.id, assetCount: pack.length, status: "pending" });
       continue;
     }
 
-    try {
-      const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/media-autocut");
-      if (!webhookUrl) {
-        console.error(
-          `[autocut-packs] NEXTAUTH_URL non défini — batch ${batch.id} soumis sans webhook. ` +
-          "Les jobs resteront bloqués en processing. Configurer NEXTAUTH_URL."
-        );
-      }
-      const runpodResp = await submitRunpodJob<{ id: string }>(
-        RUNPOD_ENDPOINT_ID,
-        RUNPOD_API_KEY,
-        {
-          input: {
-            job_type: "media_autocut_batch",
-            batch_id: batch.id,
-            language,
-            model_size: modelSize,
-            assets: pack.map((asset, idx) => ({
-              job_id: jobs[idx].id,
-              asset_url: asset.url,
-            })),
-          },
-          ...(webhookUrl ? { webhook: webhookUrl } : {}),
-        }
-      );
-
-      await prisma.$transaction(async (tx) => {
-        await tx.mediaAutocutBatch.update({
-          where: { id: batch.id },
-          data: { status: "processing", runpodId: runpodResp.id },
-        });
-        await tx.mediaAutocutJob.updateMany({
-          where: { batchId: batch.id },
-          data: { status: "processing" },
-        });
-      });
-
-      batches.push({ batchId: batch.id, assetCount: pack.length, status: "processing" });
-    } catch (err) {
-      console.error(`[autocut-packs] RunPod submit failed for batch ${batch.id}:`, err);
-      await prisma.mediaAutocutBatch.update({
-        where: { id: batch.id },
-        data: { status: "failed", errorMsg: String(err) },
-      });
-      await prisma.mediaAutocutJob.updateMany({
-        where: { batchId: batch.id },
-        data: { status: "failed", errorMsg: "Échec soumission RunPod" },
-      });
-      batches.push({ batchId: batch.id, assetCount: pack.length, status: "failed" });
-    }
+    toDispatch.push({
+      batchId: batch.id,
+      assetUrls: pack.map((asset) => asset.url),
+      jobIds: jobs.map((j) => j.id),
+    });
+    batches.push({ batchId: batch.id, assetCount: pack.length, status: "processing" });
   }
 
-  return NextResponse.json({ batches, skipped });
+  // Dispatch RunPod EN FOND — enchaîner N cold-starts pod en série dans la requête
+  // la ferait pendre plusieurs minutes. On répond 202 tout de suite et on soumet
+  // les batches en tâche de fond, bornés à 2 en parallèle. Chaque batch se met à
+  // jour (processing + runpodId) ou bascule failed selon le résultat de sa soumission.
+  if (toDispatch.length > 0) {
+    const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/media-autocut");
+    if (!webhookUrl) {
+      console.error(
+        "[autocut-packs] NEXTAUTH_URL non défini — batches soumis sans webhook. " +
+        "Les jobs resteront bloqués en processing. Configurer NEXTAUTH_URL."
+      );
+    }
+    void (async () => {
+      await mapWithConcurrency(toDispatch, 2, async ({ batchId, assetUrls, jobIds }) => {
+        try {
+          const runpodResp = await submitRunpodJob<{ id: string }>(
+            RUNPOD_ENDPOINT_ID,
+            RUNPOD_API_KEY,
+            {
+              input: {
+                job_type: "media_autocut_batch",
+                batch_id: batchId,
+                language,
+                model_size: modelSize,
+                assets: assetUrls.map((asset_url, idx) => ({
+                  job_id: jobIds[idx],
+                  asset_url,
+                })),
+              },
+              ...(webhookUrl ? { webhook: webhookUrl } : {}),
+            }
+          );
+          await prisma.$transaction(async (tx) => {
+            await tx.mediaAutocutBatch.update({
+              where: { id: batchId },
+              data: { status: "processing", runpodId: runpodResp.id },
+            });
+            await tx.mediaAutocutJob.updateMany({
+              where: { batchId },
+              data: { status: "processing" },
+            });
+          });
+        } catch (err) {
+          console.error(`[autocut-packs] RunPod submit failed for batch ${batchId} (async):`, err);
+          await prisma.mediaAutocutBatch
+            .update({ where: { id: batchId }, data: { status: "failed", errorMsg: String(err) } })
+            .catch(() => {});
+          await prisma.mediaAutocutJob
+            .updateMany({ where: { batchId }, data: { status: "failed", errorMsg: "Échec soumission RunPod" } })
+            .catch(() => {});
+        }
+      });
+    })();
+  }
+
+  return NextResponse.json({ batches, skipped }, { status: 202 });
 }
