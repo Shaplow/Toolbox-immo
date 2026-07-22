@@ -213,6 +213,11 @@ export interface BlockStyle {
   fauxBoldWidth?: number;
   color?: string;
   letterSpacing?: number;
+  /**
+   * Interligne, multiplicateur unitless (ex. 1.2). Absent = `line-height: normal`
+   * du navigateur (rétrocompat : les templates existants ne bougent pas au pixel).
+   */
+  lineHeight?: number;
   textShadowEnabled?: boolean;
   textShadowColor?: string;
   textShadowOpacity?: number;

@@ -6,7 +6,7 @@ import { resolveSystemTokens } from "@/lib/systemTokens";
 import { formatConfiguredNumber, toFlexibleNumber } from "@/lib/numberFormatting";
 import { getPerLineTextEffectiveRadius, getPerLineTextGooFilterId, getPerLineTextSideBridgeMetrics, shouldApplyPerLineTextGoo } from "@/lib/perLineTextBackground";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
-import { blockBaseStyle, buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getOpaqueTextBackgroundColor, getTextBackgroundFill } from "../styleUtils";
+import { blockBaseStyle, buildTextShadowValue, buildTextStrokeValue, composeTextLineHeight, getFauxThinErodeRadius, getFauxThinFilterId, getOpaqueTextBackgroundColor, getTextBackgroundFill } from "../styleUtils";
 
 export function renderTextBlock(
   block: TextBlock,
@@ -91,7 +91,7 @@ export function renderTextBlock(
     );
   }
   if (rules.uppercase) innerParts.push("text-transform:uppercase");
-  innerParts.push("line-height:normal");
+  innerParts.push(`line-height:${composeTextLineHeight(style.lineHeight)}`);
   innerParts.push("white-space:pre-wrap");
   innerParts.push("box-sizing:border-box");
   // Opacité du texte seul (glyphes + ombre) — appliquée à l'élément texte, pas au fond.
@@ -151,7 +151,7 @@ export function renderTextBlock(
     if (style.opacity !== undefined) spanParts.push(`opacity:${style.opacity}`);
 
     const vPad = backgroundPadding.top + backgroundPadding.bottom;
-    if (vPad > 0) spanParts.push(`line-height:calc(1em + ${vPad}px)`);
+    if (vPad > 0 || style.lineHeight != null) spanParts.push(`line-height:${composeTextLineHeight(style.lineHeight, vPad)}`);
     if (backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left) {
       if (backgroundPadding.top > 0) spanParts.push(`padding:${backgroundPadding.top}px`);
     } else {
@@ -181,7 +181,7 @@ export function renderTextBlock(
       if (style.textAlign) geom.push(`text-align:${style.textAlign}`);
       if (rules.uppercase) geom.push("text-transform:uppercase");
       geom.push("display:inline", "box-decoration-break:clone", "-webkit-box-decoration-break:clone", "white-space:pre-wrap", "box-sizing:border-box");
-      if (vPad > 0) geom.push(`line-height:calc(1em + ${vPad}px)`);
+      if (vPad > 0 || style.lineHeight != null) geom.push(`line-height:${composeTextLineHeight(style.lineHeight, vPad)}`);
       if (backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left) {
         if (backgroundPadding.top > 0) geom.push(`padding:${backgroundPadding.top}px`);
       } else {

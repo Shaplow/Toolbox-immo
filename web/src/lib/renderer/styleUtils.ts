@@ -35,6 +35,25 @@ export function blockStyleToCSS(style: BlockStyle): string {
   return parts.join(";");
 }
 
+/**
+ * line-height CSS d'un bloc texte. Compose l'interligne custom (multiplicateur
+ * unitless `style.lineHeight`) avec le padding vertical du fond « par ligne » (px).
+ *
+ * - `vPadPx > 0` (mode fond per-line) : hauteur de ligne = interligne·em + padding
+ *   vertical. Sans interligne défini on garde `1em` → strictement identique au
+ *   comportement historique.
+ * - Sinon : le multiplicateur brut, ou `"normal"` si non défini → rétrocompat au pixel.
+ *
+ * Source unique partagée par la preview builder (Canvas) et l'export HTML
+ * (renderTextBlock) : le CSS émis DOIT rester byte-identique des deux côtés, sinon
+ * la couche de mesure auto-layout dérive.
+ */
+export function composeTextLineHeight(lineHeight: number | undefined, vPadPx = 0): string {
+  if (vPadPx > 0) return `calc(${lineHeight ?? 1}em + ${vPadPx}px)`;
+  if (lineHeight != null) return String(lineHeight);
+  return "normal";
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const normalized = hex.replace("#", "").trim();
   const safeAlpha = Number.isFinite(alpha) ? Math.min(1, Math.max(0, alpha)) : 1;

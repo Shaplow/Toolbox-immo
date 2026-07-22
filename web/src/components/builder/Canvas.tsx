@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { buildDpeSvg } from "@/lib/dpeSvg";
 import { computeAutoLayoutPositionsForTree, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
-import { buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getOpaqueTextBackgroundColor, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
+import { buildTextShadowValue, buildTextStrokeValue, composeTextLineHeight, getFauxThinErodeRadius, getFauxThinFilterId, getOpaqueTextBackgroundColor, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
@@ -1637,7 +1637,7 @@ function BlockPreview({
         textShadow: buildTextShadowValue(block.style, styleScale),
         textAlign: block.style.textAlign,
         textTransform: block.rules.uppercase ? "uppercase" : undefined,
-        lineHeight: "normal",
+        lineHeight: composeTextLineHeight(block.style.lineHeight),
         whiteSpace: "pre-wrap",
         boxSizing: "border-box",
         opacity: block.style.textOpacity,
@@ -1706,7 +1706,7 @@ function BlockPreview({
           textShadow: buildTextShadowValue(block.style, styleScale),
           textTransform: block.rules.uppercase ? "uppercase" : undefined,
           textAlign: block.style.textAlign,
-          lineHeight: vPadPx > 0 ? `calc(1em + ${vPadPx}px)` : "normal",
+          lineHeight: composeTextLineHeight(block.style.lineHeight, vPadPx),
           whiteSpace: "pre-wrap",
           boxSizing: "border-box",
           backgroundColor: backgroundFill,
@@ -1772,7 +1772,7 @@ function BlockPreview({
             letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * styleScale}px` : undefined,
             textTransform: block.rules.uppercase ? "uppercase" : undefined,
             textAlign: block.style.textAlign,
-            lineHeight: vPadPx > 0 ? `calc(1em + ${vPadPx}px)` : "normal",
+            lineHeight: composeTextLineHeight(block.style.lineHeight, vPadPx),
             whiteSpace: "pre-wrap",
             boxSizing: "border-box",
             display: "inline",

@@ -175,6 +175,26 @@ export function StyleEditor({
         unit="px"
       />
 
+      <div className="flex flex-col gap-1">
+        <Slider
+          label="Interligne"
+          value={style.lineHeight ?? 1.2}
+          onChange={(v) => onChange({ lineHeight: v })}
+          min={0.8}
+          max={2.5}
+          step={0.05}
+        />
+        {style.lineHeight != null ? (
+          <button
+            type="button"
+            onClick={() => onChange({ lineHeight: undefined })}
+            className="self-start text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            Interligne automatique
+          </button>
+        ) : null}
+      </div>
+
       {/* Alignements */}
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1">
