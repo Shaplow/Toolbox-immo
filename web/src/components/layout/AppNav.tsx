@@ -11,6 +11,7 @@ import {
   Library,
   LogOut,
   CalendarDays,
+  CalendarClock,
   Building2,
   Clapperboard,
   Instagram,
@@ -125,6 +126,7 @@ export function AppNav({
         title: "Planification",
         items: [
           { href: "/calendar", label: "Calendrier", icon: <CalendarDays size={14} /> },
+          { href: "/events", label: "Événements", icon: <CalendarClock size={14} /> },
           { href: "/admin/accounts", label: "Comptes Instagram", icon: <Instagram size={14} /> },
           { href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> },
           { href: "/biens", label: "Biens", icon: <MapPin size={14} /> },
@@ -163,6 +165,9 @@ export function AppNav({
       {
         items: [
           { href: "/home", label: "Accueil", icon: <Home size={14} /> },
+          // Événements : le vidéaste y voit ses tournages ; le monteur/CM y
+          // accèdent pour ajouter des reels à un événement (scope serveur-side).
+          { href: "/events", label: "Événements", icon: <CalendarClock size={14} /> },
           // Médiathèque : ouverte au VIDEASTE (gestion des assets média + audio).
           // canAccessMediaLibrary = false pour MONTEUR/CM → l'item leur reste caché.
           ...(canAccessMediaLibrary(navUser.role)

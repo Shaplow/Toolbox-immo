@@ -2,14 +2,19 @@ import { CheckCircle2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { WorklistSection } from "./WorklistSection";
+import { TodoStrip, type TodoItem } from "./TodoStrip";
+import { MiniWeekCalendar, type MiniCalItem } from "./MiniWeekCalendar";
 import type { WorklistSlot } from "@/types/worklist";
 import type { SlotStatus } from "@/types/roles";
 import type { WorklistCmBadges } from "./WorklistSlotCard";
+import { getPublicationPhase, PHASE_DOT } from "@/lib/slots/phase";
 import {
   getCmSection,
   isSlotOverdue,
   getCurrentWeekMonday,
   getCurrentWeekSunday,
+  getStartOfToday,
+  getEndOfToday,
   TERMINAL_STATUSES,
 } from "@/types/worklist";
 
@@ -145,6 +150,50 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     toPrepare.map((s) => [s.id, cmBadgeForSlot(s.id, s.status)]),
   );
 
+  // ── Bandeau « à faire » + mini-calendrier ──────────────────────────────────
+  const startToday = getStartOfToday();
+  const endToday = getEndOfToday();
+  const timeLabel = (d: Date) =>
+    d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+  const dueToday = nonOverdue.filter(
+    (s) =>
+      getCmSection(s.status) === "to_publish" &&
+      s.scheduledAt != null &&
+      s.scheduledAt >= startToday &&
+      s.scheduledAt <= endToday,
+  );
+
+  const todoItems: TodoItem[] = [
+    ...overdue.map((s) => ({
+      id: s.id,
+      href: `/publications/${s.id}`,
+      title: s.pattern?.label ?? s.title ?? "Publication",
+      subtitle: s.account ? `@${s.account.handle}` : undefined,
+      urgencyLabel: "En retard",
+      tone: "danger" as const,
+    })),
+    ...dueToday.map((s) => ({
+      id: s.id,
+      href: `/publications/${s.id}`,
+      title: s.pattern?.label ?? s.title ?? "Publication",
+      subtitle: s.account ? `@${s.account.handle}` : undefined,
+      urgencyLabel: s.scheduledAt ? `Aujourd'hui ${timeLabel(s.scheduledAt)}` : "Aujourd'hui",
+      tone: "default" as const,
+    })),
+  ];
+
+  const calItems: MiniCalItem[] = slots
+    .filter((s) => s.scheduledAt != null && s.scheduledAt >= weekMonday && s.scheduledAt <= weekSunday)
+    .map((s) => ({
+      id: s.id,
+      href: `/publications/${s.id}`,
+      title: s.pattern?.label ?? s.title ?? "Publication",
+      dateIso: (s.scheduledAt as Date).toISOString(),
+      timeLabel: timeLabel(s.scheduledAt as Date),
+      dotClass: PHASE_DOT[getPublicationPhase(s.status)],
+    }));
+
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-5xl px-6 py-8 space-y-6">
@@ -175,6 +224,11 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
           />
         ) : (
           <div className="space-y-8">
+            <div className="space-y-4">
+              <TodoStrip items={todoItems} />
+              <MiniWeekCalendar items={calItems} weekStartIso={weekMonday.toISOString()} />
+            </div>
+
             {overdue.length > 0 && (
               <WorklistSection
                 title="En retard"

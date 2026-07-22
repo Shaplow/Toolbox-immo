@@ -57,6 +57,18 @@ export function rushKey(slotId: string, filename: string): string {
 }
 
 /**
+ * Clé R2 pour un rush d'ÉVÉNEMENT de tournage (lot partagé du shoot).
+ *
+ * Pattern : shoot-events/{eventId}/rushes/{ts}-{rand}.{ext}
+ * Préfixe distinct de `publications/…` : sert de garde anti cross-scope dans
+ * l'upload-complete (un rush event ne peut pas pointer vers une clé de slot).
+ */
+export function eventRushKey(eventId: string, filename: string): string {
+  const { ext } = sanitizeFilename(filename);
+  return `shoot-events/${eventId}/rushes/${timestamp()}-${randomToken()}.${ext}`;
+}
+
+/**
  * Clé R2 pour une version de montage.
  *
  * Pattern : publications/{slotId}/versions/v{versionNumber}-{ts}-{rand}.{ext}

@@ -228,3 +228,26 @@ export function getCurrentWeekSunday(): Date {
   sunday.setHours(23, 59, 59, 999);
   return sunday;
 }
+
+/** Retourne aujourd'hui à 00:00:00 locale (borne basse « to-do du jour »). */
+export function getStartOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Retourne aujourd'hui à 23:59:59 locale (borne haute « to-do du jour »). */
+export function getEndOfToday(): Date {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+/**
+ * Retourne true si un item daté tombe « aujourd'hui » (entre le début et la fin
+ * du jour courant). Un item sans date (banque / non planifié) renvoie false.
+ */
+export function isDueToday(scheduledAt: Date | null): boolean {
+  if (scheduledAt == null) return false;
+  return scheduledAt >= getStartOfToday() && scheduledAt <= getEndOfToday();
+}

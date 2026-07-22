@@ -2,34 +2,15 @@ import Link from "next/link";
 import { Video } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { WorklistSection } from "./WorklistSection";
-import type { WorklistSlot } from "@/types/worklist";
-import type { SlotStatus } from "@/types/roles";
-import { STATUS_LABELS } from "@/types/calendar";
+import { TodoStrip, type TodoItem } from "./TodoStrip";
+import { MiniWeekCalendar, type MiniCalItem } from "./MiniWeekCalendar";
 import {
-  getVideasteSection,
-  isSlotOverdue,
   getCurrentWeekMonday,
   getCurrentWeekSunday,
-  TERMINAL_STATUSES,
+  getStartOfToday,
+  getEndOfToday,
 } from "@/types/worklist";
-
-const VIDEASTE_STATUSES: SlotStatus[] = [
-  "DRAFT",
-  "PLANNED",
-  "RUSHES_EXPECTED",
-  "RUSHES_RECEIVED",
-  "IN_EDIT",
-  "EDIT_REVIEW",
-  "EDIT_APPROVED",
-  "CAPTIONS_PENDING",
-  "READY_FOR_CM",
-  "AWAITING_CLIENT",
-  "CLIENT_REVISION",
-  "SCHEDULED",
-  // Legacy
-  "TO_DO",
-];
+import { EVENT_STATUS_DOT, type ShootEventStatus } from "@/types/events";
 
 interface HomeVideasteProps {
   userId: string;
@@ -37,74 +18,71 @@ interface HomeVideasteProps {
 }
 
 export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
-  const now = new Date();
   const weekMonday = getCurrentWeekMonday();
   const weekSunday = getCurrentWeekSunday();
+  const startToday = getStartOfToday();
+  const endToday = getEndOfToday();
 
-  const rawSlots = await prisma.publicationSlot.findMany({
+  // Source vidéaste = ses ÉVÉNEMENTS de tournage (shoots).
+  const events = await prisma.shootEvent.findMany({
     where: {
       assigneeVideasteId: userId,
-      status: { in: VIDEASTE_STATUSES },
-    },
-    include: {
-      account: { select: { id: true, handle: true, name: true } },
-      pattern: { select: { label: true } },
+      status: { in: ["PLANNED", "SHOT"] },
     },
     orderBy: { scheduledAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      scheduledAt: true,
+      status: true,
+      account: { select: { handle: true } },
+      _count: { select: { rushes: { where: { deletedAt: null } } } },
+    },
   });
 
-  const slots: WorklistSlot[] = rawSlots.map((s) => ({
-    id: s.id,
-    title: s.title,
-    scheduledAt: s.scheduledAt,
-    status: s.status as SlotStatus,
-    notes: s.notes,
-    assigneeMonteurId: s.assigneeMonteurId,
-    assigneeCmId: s.assigneeCmId,
-    assigneeVideasteId: s.assigneeVideasteId,
-    patternId: s.patternId,
-    account: s.account,
-    pattern: s.pattern,
+  const timeLabel = (d: Date) =>
+    d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+  // Todo : shoots en retard (PLANNED non tourné, passé) + shoots du jour.
+  const overdue = events.filter((e) => e.status === "PLANNED" && e.scheduledAt < startToday);
+  const todayShoots = events.filter(
+    (e) => e.scheduledAt >= startToday && e.scheduledAt <= endToday,
+  );
+
+  const todoItems: TodoItem[] = [
+    ...overdue.map((e) => ({
+      id: e.id,
+      href: `/events/${e.id}`,
+      title: e.title,
+      subtitle: e.account ? `@${e.account.handle}` : undefined,
+      urgencyLabel: "En retard",
+      tone: "danger" as const,
+    })),
+    ...todayShoots.map((e) => ({
+      id: e.id,
+      href: `/events/${e.id}`,
+      title: e.title,
+      subtitle: e.account ? `@${e.account.handle}` : undefined,
+      urgencyLabel: `Aujourd'hui ${timeLabel(e.scheduledAt)}`,
+      tone: "default" as const,
+    })),
+  ];
+
+  // Mini-calendrier : les shoots de la semaine courante.
+  const weekEvents = events.filter(
+    (e) => e.scheduledAt >= weekMonday && e.scheduledAt <= weekSunday,
+  );
+  const calItems: MiniCalItem[] = weekEvents.map((e) => ({
+    id: e.id,
+    href: `/events/${e.id}`,
+    title: e.title,
+    dateIso: e.scheduledAt.toISOString(),
+    timeLabel: timeLabel(e.scheduledAt),
+    dotClass: EVENT_STATUS_DOT[e.status as ShootEventStatus],
+    subtitle: e.account ? `@${e.account.handle}` : undefined,
   }));
 
-  // ── Découpe en sections ────────────────────────────────────────────────
-  // Note : slots en banque (scheduledAt === null) ne concernent pas le
-  // vidéaste — le shooting est planifié, pas stocké.
-  const overdue = slots.filter(
-    (s) =>
-      !(TERMINAL_STATUSES as readonly string[]).includes(s.status) &&
-      getVideasteSection(s.status) === "to_shoot" &&
-      s.scheduledAt != null &&
-      s.scheduledAt < now,
-  );
-
-  const nonOverdue = slots.filter(
-    (s) => !isSlotOverdue(s) || getVideasteSection(s.status) !== "to_shoot",
-  );
-
-  const thisWeekShoots = nonOverdue.filter((s) => {
-    const section = getVideasteSection(s.status);
-    return (
-      section === "to_shoot" &&
-      s.scheduledAt != null &&
-      s.scheduledAt >= weekMonday &&
-      s.scheduledAt <= weekSunday
-    );
-  });
-
-  const upcomingShoots = nonOverdue.filter((s) => {
-    const section = getVideasteSection(s.status);
-    return (
-      section === "to_shoot" && s.scheduledAt != null && s.scheduledAt > weekSunday
-    );
-  });
-
-  const delivered = slots.filter((s) => getVideasteSection(s.status) === "shooting_done");
-  const inProduction = slots.filter((s) => getVideasteSection(s.status) === "in_edit");
-
-  const totalActive = overdue.length + thisWeekShoots.length + upcomingShoots.length;
-  const isFullyEmpty =
-    totalActive === 0 && delivered.length === 0 && inProduction.length === 0;
+  const upcoming = events.filter((e) => e.status === "PLANNED" && e.scheduledAt > weekSunday);
 
   return (
     <div className="min-h-screen">
@@ -114,134 +92,63 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
             Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
           </h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            {totalActive === 0
-              ? "Aucun shoot à venir."
-              : `${totalActive} shoot${totalActive > 1 ? "s" : ""} à faire`}
-            {overdue.length > 0 && (
-              <>
-                {" · "}
-                <span className="text-danger-700 tabular-nums">
-                  {overdue.length} en retard
-                </span>
-              </>
-            )}
+            {events.length === 0
+              ? "Aucun tournage à venir."
+              : `${events.length} tournage${events.length > 1 ? "s" : ""} en cours`}
           </p>
         </header>
 
-        <div className="space-y-8">
-            {isFullyEmpty ? (
-              <EmptyState
-                icon={<Video size={20} className="text-muted-foreground" />}
-                title="Rien à shooter"
-                description="Aucune mission de tournage assignée."
-              />
-            ) : (
-              <>
-                {overdue.length > 0 && (
-                  <WorklistSection
-                    title="En retard"
-                    slots={overdue}
-                    mode="admin"
-                    tone="danger"
-                  />
-                )}
+        {events.length === 0 ? (
+          <EmptyState
+            icon={<Video size={20} className="text-muted-foreground" />}
+            title="Rien à tourner"
+            description="Aucun événement de tournage ne vous est assigné pour l'instant."
+          />
+        ) : (
+          <>
+            <TodoStrip items={todoItems} />
 
-                <WorklistSection
-                  title="À shooter cette semaine"
-                  slots={thisWeekShoots}
-                  mode="admin"
-                  tone="default"
-                  emptyMessage="Aucun shoot prévu cette semaine."
-                />
+            <div>
+              <h2 className="text-[13px] font-semibold tracking-tight text-foreground mb-2">
+                Ma semaine
+              </h2>
+              <MiniWeekCalendar items={calItems} weekStartIso={weekMonday.toISOString()} />
+            </div>
 
-                <WorklistSection
-                  title="À venir"
-                  slots={upcomingShoots}
-                  mode="admin"
-                  tone="muted"
-                  collapsible
-                  defaultOpen={false}
-                />
-
-                {delivered.length > 0 && (
-                  <section>
-                    <div className="flex items-center gap-2 mb-3">
-                      <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
-                        Rushs livrés
-                      </h3>
-                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md text-[10.5px] font-medium tabular-nums bg-success-50 text-success-700 border border-success-200">
-                        {delivered.length}
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {delivered.map((slot) => (
-                        <Link
-                          key={slot.id}
-                          href={`/publications/${slot.id}`}
-                          className="block rounded-md bg-card border border-border px-4 py-2.5 hover:bg-muted transition-colors focus-ring"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-[12.5px] font-medium text-foreground truncate">
-                                {slot.pattern?.label ?? slot.title ?? "Publication"}
-                              </p>
-                              <p className="text-[11px] text-muted-foreground">
-                                {slot.account ? `@${slot.account.handle}` : "Sans compte"}
-                              </p>
-                            </div>
-                            <span className="text-[10.5px] text-success-700 shrink-0">
-                              Rushs livrés
-                            </span>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {inProduction.length > 0 && (
-                  <section>
-                    <div className="flex items-center gap-2 mb-3">
-                      <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
-                        En production
-                      </h3>
-                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md text-[10.5px] font-medium tabular-nums bg-muted text-muted-foreground border border-border">
-                        {inProduction.length}
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {inProduction.slice(0, 5).map((slot) => (
-                        <Link
-                          key={slot.id}
-                          href={`/publications/${slot.id}`}
-                          className="block rounded-md bg-card border border-border px-4 py-2.5 hover:bg-muted transition-colors focus-ring"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-[12.5px] font-medium text-foreground truncate">
-                                {slot.pattern?.label ?? slot.title ?? "Publication"}
-                              </p>
-                              <p className="text-[11px] text-muted-foreground">
-                                {slot.account ? `@${slot.account.handle}` : "Sans compte"}
-                              </p>
-                            </div>
-                            <span className="text-[10.5px] text-muted-foreground shrink-0">
-                              {STATUS_LABELS[slot.status] ?? slot.status}
-                            </span>
-                          </div>
-                        </Link>
-                      ))}
-                      {inProduction.length > 5 && (
-                        <p className="text-[11px] text-muted-foreground text-center">
-                          + {inProduction.length - 5} autres
-                        </p>
-                      )}
-                    </div>
-                  </section>
-                )}
-              </>
+            {upcoming.length > 0 && (
+              <section>
+                <h3 className="text-[13px] font-semibold tracking-tight text-foreground mb-2">
+                  Tournages à venir
+                </h3>
+                <ul className="space-y-2">
+                  {upcoming.map((e) => (
+                    <li key={e.id}>
+                      <Link
+                        href={`/events/${e.id}`}
+                        className="flex items-center justify-between gap-2 rounded-md bg-card border border-border px-4 py-2.5 hover:bg-muted transition-colors focus-ring"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[12.5px] font-medium text-foreground truncate">{e.title}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {e.account ? `@${e.account.handle}` : "Sans compte"}
+                          </p>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                          {e.scheduledAt.toLocaleDateString("fr-FR", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

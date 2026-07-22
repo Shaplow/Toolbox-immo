@@ -47,6 +47,11 @@ model User {
   defaultVideasteForPatterns    AccountPattern[]        @relation("PatternDefaultVideaste")
   patternTemplatesUpdated       PatternTemplate[]       @relation("PatternTemplateUpdatedBy")
   propertiesCreated             Property[]              @relation("PropertyCreatedBy")
+  assignedAsEventVideaste       ShootEvent[]            @relation("EventVideaste")
+  defaultMonteurForEvents       ShootEvent[]            @relation("EventDefaultMonteur")
+  defaultCmForEvents            ShootEvent[]            @relation("EventDefaultCm")
+  shootEventsCreated            ShootEvent[]            @relation("EventCreatedBy")
+  shootEventActivities          ShootEventActivity[]    @relation("ShootEventActivityActor")
 }
 
 // (Les inverses de PatternBinding pour User sont déclarées plus haut dans
@@ -708,6 +713,7 @@ model InstagramAccount {
   entryUsages      DataEntryUsage[]
   accountPatterns  AccountPattern[]
   patternBindings  PatternBinding[]
+  shootEvents      ShootEvent[]
 
   @@index([clientId])
 }
@@ -870,6 +876,12 @@ model PublicationSlot {
   /// propagé aux prochaines générations de toutes ses missions.
   propertyId         String?
   property           Property?         @relation("SlotProperty", fields: [propertyId], references: [id], onDelete: SetNull)
+  /// Événements — Reel rattaché à un événement de tournage (ShootEvent). Le shoot
+  /// et les rushs sont partagés au niveau de l'événement ; ce reel puise dans ce
+  /// lot (needsRushesOverride=false). Nullable : la majorité des slots (auto,
+  /// missions) n'ont pas d'événement.
+  eventId            String?
+  event              ShootEvent?       @relation("EventSlots", fields: [eventId], references: [id], onDelete: SetNull)
 
   /// Override per-slot de needsAdminValidation du pattern. null = hérite.
   /// Phase 2.3 : permet d'activer la validation admin du montage (status
@@ -945,6 +957,7 @@ model PublicationSlot {
   @@index([patternId])
   @@index([patternTemplateId])
   @@index([propertyId])
+  @@index([eventId])
 }
 
 /// Bien immobilier (UI = « Bien ») — fiche de données PARTAGÉE, référencée par
@@ -968,6 +981,8 @@ model Property {
   updatedAt       DateTime          @updatedAt
   /// Missions référençant ce bien.
   slots           PublicationSlot[] @relation("SlotProperty")
+  /// Événements de tournage se déroulant sur ce bien.
+  shootEvents     ShootEvent[]
 
   @@index([isArchived, label])
 }
@@ -997,6 +1012,76 @@ model PublicationActivity {
   actor     User?           @relation("PublicationActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([slotId, createdAt])
+}
+
+// ─── Événements de tournage (shoots) ─────────────────────────────────────────
+//
+// ShootEvent = un tournage planifié pour un compte Instagram. Il porte le shoot
+// (1 vidéaste assigné, rushs partagés uploadés une fois) et regroupe 0..N reels
+// (PublicationSlot avec eventId). Le nombre de reels n'est PAS connu à l'avance :
+// les reels sont attachés pendant ou après le tournage (par admin/monteur/vidéaste),
+// souvent au découpage des rushs par le monteur.
+//
+// Coexiste avec la génération auto par recette : un slot existe avec ou sans event.
+// Statuts : "PLANNED" → "SHOT" (premier rush uploadé) → "DONE" (+ "CANCELLED").
+
+model ShootEvent {
+  id                       String              @id @default(cuid())
+  title                    String
+  /// Compte Instagram cible (requis). Les reels attachés héritent de ce compte.
+  accountId                String
+  account                  InstagramAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// Bien immobilier optionnel où se déroule le tournage.
+  propertyId               String?
+  property                 Property?           @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  /// Date/heure planifiée du tournage (UTC).
+  scheduledAt              DateTime
+  /// Fin optionnelle (tournage sur une plage / multi-heures).
+  endAt                    DateTime?
+  /// "PLANNED" | "SHOT" | "DONE" | "CANCELLED"
+  status                   String              @default("PLANNED")
+  /// Timestamp de passage à SHOT (premier rush uploadé).
+  shotAt                   DateTime?
+  /// Vidéaste assigné au tournage (celui qui filme + upload les rushs partagés).
+  assigneeVideasteId       String?
+  assigneeVideaste         User?               @relation("EventVideaste", fields: [assigneeVideasteId], references: [id], onDelete: SetNull)
+  /// Monteur par défaut appliqué aux reels créés depuis cet événement.
+  defaultAssigneeMonteurId String?
+  defaultAssigneeMonteur   User?               @relation("EventDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
+  /// CM par défaut appliqué aux reels créés depuis cet événement.
+  defaultAssigneeCmId      String?
+  defaultAssigneeCm        User?               @relation("EventDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
+  notes                    String?
+  brief                    String?
+  createdByUserId          String?
+  createdBy                User?               @relation("EventCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  /// Reels rattachés à cet événement (0..N, créés au fil de l'eau).
+  slots                    PublicationSlot[]   @relation("EventSlots")
+  /// Lot de rushs partagé du tournage.
+  rushes                   PublicationRush[]   @relation("EventRushes")
+  activities               ShootEventActivity[]
+
+  @@index([accountId, scheduledAt])
+  @@index([status, scheduledAt])
+  @@index([assigneeVideasteId])
+  @@index([propertyId])
+}
+
+/// Journal d'activité d'un événement de tournage (table dédiée car
+/// PublicationActivity.slotId est NOT NULL et sur chemin chaud).
+model ShootEventActivity {
+  id        String     @id @default(cuid())
+  eventId   String
+  event     ShootEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?      @relation("ShootEventActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  type      String
+  payload   Json?
+  createdAt DateTime   @default(now())
+
+  @@index([eventId, createdAt])
 }
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
@@ -1322,22 +1407,27 @@ model PublicationBriefAttachment {
   @@index([briefId])
 }
 
-/// Rush vidéo uploadé pour un slot (soft-deletable).
+/// Rush vidéo uploadé pour un slot OU un événement de tournage (soft-deletable).
+/// XOR : exactement l'un de slotId / eventId est renseigné (contrainte côté code).
+/// Rushs event = lot partagé d'un shoot ; les reels attachés puisent dedans.
 model PublicationRush {
-  id               String          @id @default(cuid())
-  slotId           String
-  slot             PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
-  r2Key            String          @unique
+  id               String           @id @default(cuid())
+  slotId           String?
+  slot             PublicationSlot? @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  eventId          String?
+  event            ShootEvent?      @relation("EventRushes", fields: [eventId], references: [id], onDelete: Cascade)
+  r2Key            String           @unique
   fileName         String
   mimeType         String
   sizeBytes        Int?
   durationSec      Float?
   uploadedByUserId String
-  uploadedBy       User            @relation("RushUploadedBy", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
-  uploadedAt       DateTime        @default(now())
+  uploadedBy       User             @relation("RushUploadedBy", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  uploadedAt       DateTime         @default(now())
   deletedAt        DateTime?
 
   @@index([slotId, deletedAt])
+  @@index([eventId, deletedAt])
 }
 
 // ─── Pod On-Demand state ─────────────────────────────────────────────────────

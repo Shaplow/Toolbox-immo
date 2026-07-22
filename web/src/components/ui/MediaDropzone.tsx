@@ -31,6 +31,12 @@ export type UploadResult = {
 
 export type MediaDropzoneProps = {
   slotId: string;
+  /**
+   * Base des routes d'upload (presign / complete / abort). Défaut :
+   * `/api/publications/{slotId}`. Passer `/api/shoot-events/{eventId}` pour
+   * uploader des rushs au niveau d'un événement de tournage (lot partagé).
+   */
+  uploadBasePath?: string;
   kind: "rush" | "version" | "brief-attachment";
   /** Mime types acceptés (whitelist côté UI uniquement — le serveur re-vérifie). */
   accept: string[];
@@ -132,6 +138,7 @@ interface FileItem {
 
 export function MediaDropzone({
   slotId,
+  uploadBasePath,
   kind,
   accept,
   maxSizeBytes,
@@ -144,6 +151,9 @@ export function MediaDropzone({
   const [isDragOver, setIsDragOver] = useState(false);
   const [items, setItems] = useState<FileItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Base des routes d'upload (slot par défaut, ou événement si fournie).
+  const basePath = uploadBasePath ?? `/api/publications/${slotId}`;
 
   // ─── Validation côté client ────────────────────────────────────────────────
 
@@ -180,7 +190,7 @@ export function MediaDropzone({
       const durationSec = await measureVideoDuration(file);
 
       // 1. Presign
-      const presignRes = await fetch(`/api/publications/${slotId}/upload-presign`, {
+      const presignRes = await fetch(`${basePath}/upload-presign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -289,7 +299,7 @@ export function MediaDropzone({
       updateItem(id, { progress: 95 });
 
       // 2. Upload-complete
-      const completeRes = await fetch(`/api/publications/${slotId}/upload-complete`, {
+      const completeRes = await fetch(`${basePath}/upload-complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -327,7 +337,7 @@ export function MediaDropzone({
       // localement (et non le state `items`, périmé par closure) — sinon l'abort
       // ne partait quasi jamais et laissait des uploads multipart orphelins dans R2.
       if (capturedUploadId && capturedR2Key) {
-        fetch(`/api/publications/${slotId}/upload-abort`, {
+        fetch(`${basePath}/upload-abort`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ r2Key: capturedR2Key, uploadId: capturedUploadId }),
@@ -414,7 +424,7 @@ export function MediaDropzone({
 
     // Si multipart et r2Key connus, abort côté serveur
     if (item.uploadId && item.r2Key) {
-      fetch(`/api/publications/${slotId}/upload-abort`, {
+      fetch(`${basePath}/upload-abort`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ r2Key: item.r2Key, uploadId: item.uploadId }),

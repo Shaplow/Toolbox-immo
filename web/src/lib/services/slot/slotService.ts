@@ -91,6 +91,14 @@ export interface CreateSlotInput {
   coverPresetIdOverride?: string | null;
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
+  /**
+   * Événements — Reel rattaché à un ShootEvent (tournage). Quand fourni, le reel
+   * hérite du compte de l'événement (forcé), et par défaut de son bien + de ses
+   * assignés. Le shoot/rushs vivant au niveau de l'événement, le reel démarre à
+   * la phase montage (needsRushesOverride=false) et son statut initial dépend de
+   * l'état du tournage (SHOT → IN_EDIT, sinon PLANNED bumpé plus tard).
+   */
+  eventId?: string | null;
 }
 
 // ─── Helpers privés ───────────────────────────────────────────────────────────
@@ -155,6 +163,41 @@ export async function createSlot(
     throw new ForbiddenError("Réservé aux administrateurs");
   }
 
+  // Événements — reel rattaché à un ShootEvent. On charge l'événement en amont
+  // pour FORCER le compte du reel (= compte de l'événement) et dériver les
+  // défauts (bien + assignés + statut initial). Doit précéder le guard
+  // accountId/patternTemplateId ci-dessous pour que le compte soit résolu.
+  let shootEvent: {
+    id: string;
+    accountId: string;
+    propertyId: string | null;
+    status: string;
+    assigneeVideasteId: string | null;
+    defaultAssigneeMonteurId: string | null;
+    defaultAssigneeCmId: string | null;
+  } | null = null;
+  if (input.eventId) {
+    shootEvent = await prisma.shootEvent.findUnique({
+      where: { id: input.eventId },
+      select: {
+        id: true,
+        accountId: true,
+        propertyId: true,
+        status: true,
+        assigneeVideasteId: true,
+        defaultAssigneeMonteurId: true,
+        defaultAssigneeCmId: true,
+      },
+    });
+    if (!shootEvent) throw new NotFoundError("Événement");
+    // Le compte du reel est TOUJOURS celui de l'événement.
+    input.accountId = shootEvent.accountId;
+    // Bien : défaut = celui de l'événement (un input explicite prime).
+    if (!input.propertyId && shootEvent.propertyId) {
+      input.propertyId = shootEvent.propertyId;
+    }
+  }
+
   // Missions — le compte devient optionnel. Une mission sans compte est une
   // production « stock » : elle DOIT alors être pilotée par une recette globale
   // (patternTemplateId). La date reste optionnelle (mission en banque).
@@ -185,6 +228,15 @@ export async function createSlot(
   let resolvedAssigneeMonteurId: string | null = input.assigneeMonteurId ?? null;
   let resolvedAssigneeCmId: string | null = input.assigneeCmId ?? null;
   let resolvedAssigneeVideasteId: string | null = input.assigneeVideasteId ?? null;
+
+  // Événement : ses assignés par défaut priment sur les défauts de la recette
+  // (binding), mais pas sur un override explicite du body. Le vidéaste du reel
+  // = celui qui a shooté l'événement (traçabilité).
+  if (shootEvent) {
+    resolvedAssigneeMonteurId ??= shootEvent.defaultAssigneeMonteurId;
+    resolvedAssigneeCmId ??= shootEvent.defaultAssigneeCmId;
+    resolvedAssigneeVideasteId ??= shootEvent.assigneeVideasteId;
+  }
 
   // Status initial : si un pattern est fourni, dérive de pattern.source
   // (cohérence avec calendarEngine.generateCalendarSlots). Sinon DRAFT.
@@ -359,6 +411,15 @@ export async function createSlot(
     }
   }
 
+  // Événement : le statut initial du reel dépend de l'état du TOURNAGE, pas de
+  // pattern.source. Event SHOT (rushs déjà là) → montage démarre direct
+  // (IN_EDIT). Event PLANNED → PLANNED, bumpé vers IN_EDIT quand l'événement
+  // passe SHOT (markEventShot). Sans ce bump, un upload de version depuis
+  // PLANNED ne transitionnerait pas (cf. computeAutoTransition).
+  if (shootEvent) {
+    initialStatus = shootEvent.status === "SHOT" ? "IN_EDIT" : "PLANNED";
+  }
+
   // Compte cible (optionnel pour une mission). Validé seulement si fourni.
   if (input.accountId) {
     const account = await prisma.instagramAccount.findUnique({
@@ -438,9 +499,19 @@ export async function createSlot(
   // un message clair pointant vers le builder — pas besoin de doubler la
   // validation ici.
 
+  // Événement : le reel puise dans les rushs partagés du tournage → sa chaîne
+  // démarre à « Montage » (needsRushesOverride=false), sauf override explicite.
+  const effectiveNeedsRushesOverride =
+    input.needsRushesOverride !== undefined
+      ? input.needsRushesOverride
+      : shootEvent
+        ? false
+        : undefined;
+
   const slot = await prisma.publicationSlot.create({
     data: {
       accountId: input.accountId ?? null,
+      eventId: input.eventId ?? null,
       scheduledAt: parsedScheduledAt,
       // Fallback titre = nom de la recette si l'admin ne saisit rien.
       title: (input.title?.trim() || patternLabel) ?? null,
@@ -473,8 +544,8 @@ export async function createSlot(
       ...(input.needsDescriptionOverride !== undefined
         ? { needsDescriptionOverride: input.needsDescriptionOverride }
         : {}),
-      ...(input.needsRushesOverride !== undefined
-        ? { needsRushesOverride: input.needsRushesOverride }
+      ...(effectiveNeedsRushesOverride !== undefined
+        ? { needsRushesOverride: effectiveNeedsRushesOverride }
         : {}),
       ...(input.needsBriefOverride !== undefined
         ? { needsBriefOverride: input.needsBriefOverride }
