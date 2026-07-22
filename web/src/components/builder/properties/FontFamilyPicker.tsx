@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { BuilderFontEntry } from "@/lib/builderFonts";
+import { useBuilderFontStatus } from "@/components/builder/BuilderFontStatusContext";
 import { sourceLabel } from "./utils";
 
 export function FontFamilyPicker({
@@ -16,6 +17,7 @@ export function FontFamilyPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value ?? "");
   const rootRef = useRef<HTMLDivElement>(null);
+  const { failedFamilies } = useBuilderFontStatus();
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -61,6 +63,9 @@ export function FontFamilyPicker({
               <p className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
                 {selectedFont ? sourceLabel(selectedFont.source) : "Toutes les typographies disponibles"}
               </p>
+              {value && failedFamilies.has(value) ? (
+                <p className="truncate text-[10px] font-medium text-warning-700">⚠ Ne charge pas dans l&apos;aperçu</p>
+              ) : null}
             </div>
             <span className="shrink-0 text-xs text-muted-foreground">{open ? "▲" : "▼"}</span>
           </div>
@@ -127,9 +132,19 @@ export function FontFamilyPicker({
                             Apercu Aa Bb Cc 123
                           </p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                          {sourceLabel(font.source)}
-                        </span>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className="rounded-full bg-muted px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                            {sourceLabel(font.source)}
+                          </span>
+                          {failedFamilies.has(font.family) ? (
+                            <span
+                              className="rounded-full bg-warning-100 px-2 py-0.5 text-[10px] font-medium text-warning-700"
+                              title="Google ne fournit pas cette police (nom ou graisse inexistante)"
+                            >
+                              ⚠ ne charge pas
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </button>
                   );

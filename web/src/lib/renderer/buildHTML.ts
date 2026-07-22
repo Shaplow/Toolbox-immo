@@ -1,7 +1,7 @@
 ﻿import type { TemplateJSON } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 import { listFontAssetsByFamilies } from "@/lib/fontAssets";
-import { fontFormatFromUrl } from "@/lib/builderFonts";
+import { fontFormatFromUrl, googleFontWeights } from "@/lib/builderFonts";
 import { isAutoLayoutGroup, normalizeGroupLayout } from "@/lib/groupLayout";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
@@ -919,18 +919,34 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
  */
 async function buildFontHtml(template: TemplateJSON, publicBase?: string): Promise<string> {
   const requestedFamilies = new Set<string>();
+  // Poids réellement utilisés par famille → on ne demande à Google que ceux-là
+  // (+ 400 baseline via googleFontWeights). Même logique que la preview builder
+  // (BuilderClient) pour garder preview = export.
+  const familyWeights = new Map<string, Set<number>>();
+  const addWeight = (family: string, weight?: number) => {
+    if (weight == null) return;
+    const set = familyWeights.get(family) ?? new Set<number>();
+    set.add(weight);
+    familyWeights.set(family, set);
+  };
 
   for (const cf of template.theme.customFonts ?? []) {
     requestedFamilies.add(cf.family);
   }
   for (const block of template.blocks) {
-    const fam = (block as { style?: { fontFamily?: string } }).style?.fontFamily;
-    if (fam) requestedFamilies.add(fam);
+    const style = (block as { style?: { fontFamily?: string; fontWeight?: number } }).style;
+    const fam = style?.fontFamily;
+    if (fam) {
+      requestedFamilies.add(fam);
+      addWeight(fam, style?.fontWeight);
+    }
   }
   const hf = template.theme.fonts.heading;
   const bf = template.theme.fonts.body;
   requestedFamilies.add(hf.family);
   requestedFamilies.add(bf.family);
+  for (const w of hf.weights ?? []) addWeight(hf.family, w);
+  for (const w of bf.weights ?? []) addWeight(bf.family, w);
 
   const requestedFamilyMap = new Map(
     [...requestedFamilies].map((family) => [family.trim().toLowerCase(), family])
@@ -985,7 +1001,7 @@ async function buildFontHtml(template: TemplateJSON, publicBase?: string): Promi
     } else {
       // Google Font — fetch CSS then embed each woff2 as base64
       try {
-        const weights = "300;400;500;600;700";
+        const weights = googleFontWeights([...(familyWeights.get(family) ?? [])]).join(";");
         const apiUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weights}&display=swap`;
         const cssRes = await fetch(apiUrl, {
           headers: { "User-Agent": "Mozilla/5.0 (compatible; Puppeteer)" },

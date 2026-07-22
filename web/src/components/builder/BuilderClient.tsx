@@ -4,7 +4,8 @@ import { useEffect, useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Layers, AlignLeft, Film, Music, Settings, Undo2, Redo2, X, ChevronLeft, Camera, Captions, Database } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
-import { collectBuilderFontsFromSources, fontFormatFromUrl, type BuilderFontEntry } from "@/lib/builderFonts";
+import { collectBuilderFontsFromSources, fontFormatFromUrl, googleFontCssUrl, type BuilderFontEntry } from "@/lib/builderFonts";
+import { BuilderFontStatusProvider } from "./BuilderFontStatusContext";
 import { toast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { Button } from "@/components/ui/Button";
@@ -83,9 +84,13 @@ export function BuilderClient({
   const [videoLibraries, setVideoLibraries] = useState<{ id: string; name: string }[]>([]);
   const [layoutDebugSnapshot, setLayoutDebugSnapshot] = useState<LayoutDebugSnapshot | null>(null);
   const [showResolvedTextPreview, setShowResolvedTextPreview] = useState(false);
+  const [failedFontFamilies, setFailedFontFamilies] = useState<Set<string>>(new Set());
 
-  const blockFontFamilies = useMemo(
-    () => template.blocks.map((block) => (block as { style?: { fontFamily?: string } }).style?.fontFamily),
+  const blockFonts = useMemo(
+    () => template.blocks.map((block) => {
+      const style = (block as { style?: { fontFamily?: string; fontWeight?: number } }).style;
+      return { family: style?.fontFamily, weight: style?.fontWeight };
+    }),
     [template.blocks]
   );
   const builderFonts = useMemo(
@@ -93,14 +98,15 @@ export function BuilderClient({
       customFonts: template.theme.customFonts,
       headingFont: template.theme.fonts.heading,
       bodyFont: template.theme.fonts.body,
-      blockFontFamilies,
+      blockFonts,
     }, globalFonts),
-    [blockFontFamilies, globalFonts, template.theme.customFonts, template.theme.fonts.body, template.theme.fonts.heading]
+    [blockFonts, globalFonts, template.theme.customFonts, template.theme.fonts.body, template.theme.fonts.heading]
   );
   const fontRefreshKey = useMemo(
-    () => builderFonts.map((font) => `${font.family}:${font.url ?? ""}`).join("|"),
+    () => builderFonts.map((font) => `${font.family}:${font.url ?? ""}:${(font.weights ?? []).join(",")}`).join("|"),
     [builderFonts],
   );
+  const fontStatusValue = useMemo(() => ({ failedFamilies: failedFontFamilies }), [failedFontFamilies]);
 
   // Init
   useEffect(() => {
@@ -127,11 +133,12 @@ export function BuilderClient({
 
   // Inject custom fonts into document head for builder preview
   useEffect(() => {
-    const googleFamilies: string[] = [];
-    for (const { family, url } of builderFonts) {
-      if (url) {
-        const id = `font-face-${family.replace(/\s+/g, "-")}`;
-        const css = `@font-face{font-family:'${family}';src:url('${url}') format('${fontFormatFromUrl(url)}');font-display:swap;}`;
+    // 1. Polices uploadées (url) → un @font-face isolé chacune.
+    const googleFonts: BuilderFontEntry[] = [];
+    for (const font of builderFonts) {
+      if (font.url) {
+        const id = `font-face-${font.family.replace(/\s+/g, "-")}`;
+        const css = `@font-face{font-family:'${font.family}';src:url('${font.url}') format('${fontFormatFromUrl(font.url)}');font-display:swap;}`;
         let el = document.getElementById(id) as HTMLStyleElement | null;
         if (!el) {
           el = document.createElement("style");
@@ -140,7 +147,7 @@ export function BuilderClient({
         }
         el.textContent = css;
       } else {
-        googleFamilies.push(family);
+        googleFonts.push(font);
       }
     }
     const managedLocalStyleIds = new Set(
@@ -149,9 +156,21 @@ export function BuilderClient({
     Array.from(document.querySelectorAll('style[id^="font-face-"]')).forEach((node) => {
       if (!managedLocalStyleIds.has(node.id)) node.remove();
     });
-    if (googleFamilies.length > 0) {
-      const id = "google-fonts-builder";
-      const url = `https://fonts.googleapis.com/css2?${googleFamilies.map((f) => `family=${encodeURIComponent(f)}:wght@300;400;500;600;700`).join("&")}&display=swap`;
+
+    // 2. Polices Google → UN <link> css2 PAR famille (isolation : un 400 sur une
+    //    police n'entraîne plus l'échec de toutes les autres). onerror/onload
+    //    alimentent `failedFontFamilies` pour signaler les polices qui ne chargent pas.
+    const googleLinkId = (family: string) => `google-font-${family.replace(/\s+/g, "-")}`;
+    const managedGoogleIds = new Set(googleFonts.map((f) => googleLinkId(f.family)));
+    Array.from(document.querySelectorAll('link[id^="google-font-"]')).forEach((node) => {
+      if (!managedGoogleIds.has(node.id)) node.remove();
+    });
+    // Retire l'ancien lien batché tout-ou-rien s'il traîne (migration).
+    document.getElementById("google-fonts-builder")?.remove();
+
+    for (const font of googleFonts) {
+      const id = googleLinkId(font.family);
+      const href = googleFontCssUrl(font.family, font.weights);
       let el = document.getElementById(id) as HTMLLinkElement | null;
       if (!el) {
         el = document.createElement("link") as HTMLLinkElement;
@@ -159,10 +178,30 @@ export function BuilderClient({
         el.rel = "stylesheet";
         document.head.appendChild(el);
       }
-      el.href = url;
-    } else {
-      document.getElementById("google-fonts-builder")?.remove();
+      const family = font.family;
+      el.onload = () => setFailedFontFamilies((prev) => {
+        if (!prev.has(family)) return prev;
+        const next = new Set(prev);
+        next.delete(family);
+        return next;
+      });
+      el.onerror = () => setFailedFontFamilies((prev) => {
+        if (prev.has(family)) return prev;
+        const next = new Set(prev);
+        next.add(family);
+        return next;
+      });
+      if (el.getAttribute("data-href") !== href) {
+        el.setAttribute("data-href", href);
+        el.href = href;
+      }
     }
+
+    // Purge du statut : ne garder que les familles Google encore présentes.
+    setFailedFontFamilies((prev) => {
+      const next = new Set([...prev].filter((family) => managedGoogleIds.has(googleLinkId(family))));
+      return next.size === prev.size ? prev : next;
+    });
   }, [builderFonts]);
 
   // ── Save ──────────────────────────────────────────────────────────────────
@@ -498,11 +537,13 @@ export function BuilderClient({
         </div>
 
         {/* Right: Properties panel */}
-        <PropertiesPanel
-          globalFonts={globalFonts}
-          showResolvedTextPreview={showResolvedTextPreview}
-          onShowResolvedTextPreviewChange={setShowResolvedTextPreview}
-        />
+        <BuilderFontStatusProvider value={fontStatusValue}>
+          <PropertiesPanel
+            globalFonts={globalFonts}
+            showResolvedTextPreview={showResolvedTextPreview}
+            onShowResolvedTextPreviewChange={setShowResolvedTextPreview}
+          />
+        </BuilderFontStatusProvider>
       </div>
       {confirmDialog}
     </div>
