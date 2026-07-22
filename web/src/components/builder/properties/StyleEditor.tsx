@@ -180,7 +180,7 @@ export function StyleEditor({
           label="Interligne"
           value={style.lineHeight ?? 1.2}
           onChange={(v) => onChange({ lineHeight: v })}
-          min={0.8}
+          min={0.5}
           max={2.5}
           step={0.05}
         />
