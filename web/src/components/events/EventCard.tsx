@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Film, Clapperboard } from "lucide-react";
+import { timeFr } from "@/lib/date/formatFr";
 import {
   EVENT_STATUS_BADGE,
   EVENT_STATUS_DOT,
@@ -15,10 +16,7 @@ import {
  */
 export function EventCard({ event }: { event: ShootEventSummary }) {
   const router = useRouter();
-  const time = new Date(event.scheduledAt).toLocaleTimeString("fr-FR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const time = timeFr(event.scheduledAt);
 
   return (
     <button

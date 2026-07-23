@@ -8,6 +8,7 @@ import type { WorklistSlot } from "@/types/worklist";
 import type { SlotStatus } from "@/types/roles";
 import type { WorklistCmBadges } from "./WorklistSlotCard";
 import { getPublicationPhase, PHASE_DOT } from "@/lib/slots/phase";
+import { timeFr } from "@/lib/date/formatFr";
 import {
   getCmSection,
   isSlotOverdue,
@@ -153,8 +154,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
   // ── Bandeau « à faire » + mini-calendrier ──────────────────────────────────
   const startToday = getStartOfToday();
   const endToday = getEndOfToday();
-  const timeLabel = (d: Date) =>
-    d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const timeLabel = timeFr;
 
   const dueToday = nonOverdue.filter(
     (s) =>

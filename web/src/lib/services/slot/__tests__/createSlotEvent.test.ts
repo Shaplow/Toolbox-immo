@@ -80,7 +80,7 @@ beforeEach(() => {
   );
   mockAccountFindUnique.mockReset().mockResolvedValue({ id: "acc-ev", name: "X", handle: "x" });
   mockBindingFindFirst.mockReset().mockResolvedValue(null);
-  mockBindingFindUnique.mockReset().mockImplementation(({ where }: { where: { id: string } }) =>
+  mockBindingFindUnique.mockReset().mockImplementation(() =>
     Promise.resolve(makeBinding("acc-ev")),
   );
   mockPropertyFindUnique.mockReset().mockResolvedValue({ id: "prop-1", isArchived: false });
@@ -137,6 +137,21 @@ describe("createSlot — reel event-attached", () => {
     const data = mockSlotCreate.mock.calls[0][0].data;
     expect(data.status).toBe("PLANNED");
     expect(data.needsRushesOverride).toBe(false);
+  });
+
+  it("événement DONE → reel IN_EDIT (rushs déjà là, comme SHOT)", async () => {
+    mockShootEventFindUnique.mockResolvedValue({
+      id: "ev-3",
+      accountId: "acc-ev",
+      propertyId: null,
+      status: "DONE",
+      assigneeVideasteId: null,
+      defaultAssigneeMonteurId: null,
+      defaultAssigneeCmId: null,
+    });
+    await createSlot({ eventId: "ev-3", patternBindingId: "bind-1" }, adminCtx());
+    const data = mockSlotCreate.mock.calls[0][0].data;
+    expect(data.status).toBe("IN_EDIT");
   });
 
   it("événement introuvable → NotFoundError", async () => {

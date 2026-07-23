@@ -412,12 +412,13 @@ export async function createSlot(
   }
 
   // Événement : le statut initial du reel dépend de l'état du TOURNAGE, pas de
-  // pattern.source. Event SHOT (rushs déjà là) → montage démarre direct
+  // pattern.source. Event SHOT/DONE (rushs déjà là) → montage démarre direct
   // (IN_EDIT). Event PLANNED → PLANNED, bumpé vers IN_EDIT quand l'événement
   // passe SHOT (markEventShot). Sans ce bump, un upload de version depuis
   // PLANNED ne transitionnerait pas (cf. computeAutoTransition).
   if (shootEvent) {
-    initialStatus = shootEvent.status === "SHOT" ? "IN_EDIT" : "PLANNED";
+    initialStatus =
+      shootEvent.status === "SHOT" || shootEvent.status === "DONE" ? "IN_EDIT" : "PLANNED";
   }
 
   // Compte cible (optionnel pour une mission). Validé seulement si fourni.

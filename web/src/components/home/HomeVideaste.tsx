@@ -11,6 +11,7 @@ import {
   getEndOfToday,
 } from "@/types/worklist";
 import { EVENT_STATUS_DOT, type ShootEventStatus } from "@/types/events";
+import { timeFr, shortDateTimeFr } from "@/lib/date/formatFr";
 
 interface HomeVideasteProps {
   userId: string;
@@ -40,13 +41,12 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
     },
   });
 
-  const timeLabel = (d: Date) =>
-    d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-
-  // Todo : shoots en retard (PLANNED non tourné, passé) + shoots du jour.
+  // Todo : shoots en retard (PLANNED non tourné, passé) + shoots du jour ENCORE
+  // à tourner. On exclut les SHOT du bandeau « À faire » (déjà tournés) — ils
+  // restent visibles dans le mini-calendrier avec leur dot « Tourné ».
   const overdue = events.filter((e) => e.status === "PLANNED" && e.scheduledAt < startToday);
   const todayShoots = events.filter(
-    (e) => e.scheduledAt >= startToday && e.scheduledAt <= endToday,
+    (e) => e.status === "PLANNED" && e.scheduledAt >= startToday && e.scheduledAt <= endToday,
   );
 
   const todoItems: TodoItem[] = [
@@ -63,7 +63,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
       href: `/events/${e.id}`,
       title: e.title,
       subtitle: e.account ? `@${e.account.handle}` : undefined,
-      urgencyLabel: `Aujourd'hui ${timeLabel(e.scheduledAt)}`,
+      urgencyLabel: `Aujourd'hui ${timeFr(e.scheduledAt)}`,
       tone: "default" as const,
     })),
   ];
@@ -77,7 +77,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
     href: `/events/${e.id}`,
     title: e.title,
     dateIso: e.scheduledAt.toISOString(),
-    timeLabel: timeLabel(e.scheduledAt),
+    timeLabel: timeFr(e.scheduledAt),
     dotClass: EVENT_STATUS_DOT[e.status as ShootEventStatus],
     subtitle: e.account ? `@${e.account.handle}` : undefined,
   }));
@@ -134,12 +134,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                           </p>
                         </div>
                         <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
-                          {e.scheduledAt.toLocaleDateString("fr-FR", {
-                            day: "2-digit",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {shortDateTimeFr(e.scheduledAt)}
                         </span>
                       </Link>
                     </li>

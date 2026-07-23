@@ -9,6 +9,7 @@ import type { WorklistSlotBadges } from "./WorklistSlotCard";
 import type { WorklistSlot } from "@/types/worklist";
 import type { SlotStatus } from "@/types/roles";
 import { getPublicationPhase, PHASE_DOT } from "@/lib/slots/phase";
+import { timeFr } from "@/lib/date/formatFr";
 import {
   getMonteurSection,
   isSlotOverdue,
@@ -151,8 +152,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
   // ── Bandeau « à faire » + mini-calendrier ──────────────────────────────────
   const startToday = getStartOfToday();
   const endToday = getEndOfToday();
-  const timeLabel = (d: Date) =>
-    d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const timeLabel = timeFr;
 
   const dueToday = nonOverdue.filter((s) => {
     const section = getMonteurSection(s.status);

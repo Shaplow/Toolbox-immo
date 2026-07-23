@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaDropzone } from "@/components/ui/MediaDropzone";
 import { toast } from "@/components/ui/Toast";
+import { shortDateTimeFr } from "@/lib/date/formatFr";
 import { STATUS_LABELS } from "@/types/calendar";
 import {
   EVENT_STATUS_BADGE,
@@ -265,14 +266,7 @@ export function EventFiche({ event, recipes, canUploadRushes, canAttachReel }: E
                         {reel.title ?? "Reel"}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
-                        {reel.scheduledAt
-                          ? new Date(reel.scheduledAt).toLocaleDateString("fr-FR", {
-                              day: "2-digit",
-                              month: "short",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "En banque"}
+                        {reel.scheduledAt ? shortDateTimeFr(reel.scheduledAt) : "En banque"}
                       </p>
                     </div>
                     <span className="shrink-0 text-[11px] text-muted-foreground rounded-md bg-muted px-1.5 py-0.5 border border-border">
@@ -301,12 +295,7 @@ export function EventFiche({ event, recipes, canUploadRushes, canAttachReel }: E
                   {a.actorName ? `· ${a.actorName}` : ""}
                 </span>
                 <span className="ml-auto text-muted-foreground tabular-nums">
-                  {new Date(a.createdAt).toLocaleDateString("fr-FR", {
-                    day: "2-digit",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {shortDateTimeFr(a.createdAt)}
                 </span>
               </li>
             ))}

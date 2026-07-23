@@ -24,6 +24,7 @@ import {
 } from "@/lib/permissions/eventScope";
 import { logEventActivity } from "@/lib/services/event/eventActivity";
 import { assertAssigneeRole, createSlot, type CreateSlotInput } from "@/lib/services/slot/slotService";
+import { deleteR2Prefix } from "@/lib/r2";
 import type { ShootEventStatus, ShootEventSummary } from "@/types/events";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
@@ -69,6 +70,13 @@ export interface AttachReelInput {
 }
 
 const EVENT_STATUSES = ["PLANNED", "SHOT", "DONE", "CANCELLED"] as const;
+
+/**
+ * Sources de recette compatibles avec un reel d'événement : montage manuel des
+ * rushs partagés. `auto_template` est exclu — il déclencherait un step « Rendu
+ * vidéo » fantôme (aucun Render) et un CTA de rendu qui écraserait le montage.
+ */
+const REEL_ATTACHABLE_SOURCES = ["manual_rushes", "external_upload"] as const;
 
 // ─── Helpers de validation ──────────────────────────────────────────────────
 
@@ -319,6 +327,8 @@ export async function updateEvent(id: string, patch: UpdateEventInput, ctx: User
     select: {
       id: true,
       status: true,
+      scheduledAt: true,
+      endAt: true,
       assigneeVideasteId: true,
       defaultAssigneeMonteurId: true,
       defaultAssigneeCmId: true,
@@ -335,7 +345,15 @@ export async function updateEvent(id: string, patch: UpdateEventInput, ctx: User
   for (const key of Object.keys(patch)) {
     if (allowed.includes(key)) data[key] = patch[key];
   }
-  if (Object.keys(data).length === 0) {
+
+  // Passage manuel à SHOT : on NE l'écrit pas via l'update générique — il doit
+  // passer par markEventShot (pose shotAt + bump des reels PLANNED→IN_EDIT),
+  // sinon l'événement serait SHOT avec shotAt=null et des reels bloqués.
+  const wantsShot =
+    typeof data.status === "string" && data.status === "SHOT" && existing.status !== "SHOT";
+  if (wantsShot) delete data.status;
+
+  if (Object.keys(data).length === 0 && !wantsShot) {
     throw new ValidationError("Aucun champ modifiable pour votre rôle");
   }
 
@@ -345,6 +363,12 @@ export async function updateEvent(id: string, patch: UpdateEventInput, ctx: User
   }
   if (data.scheduledAt) data.scheduledAt = parseDateOrThrow(String(data.scheduledAt), "Date");
   if (data.endAt) data.endAt = parseDateOrThrow(String(data.endAt), "Date de fin");
+  // Cohérence date : la fin ne peut précéder le début (combine patch + existant).
+  const effScheduledAt = (data.scheduledAt as Date | undefined) ?? existing.scheduledAt;
+  const effEndAt = (data.endAt as Date | undefined) ?? existing.endAt;
+  if (effScheduledAt && effEndAt && effEndAt < effScheduledAt) {
+    throw new ValidationError("La fin ne peut pas précéder le début");
+  }
   if (typeof data.assigneeVideasteId === "string") {
     await assertAssigneeRole(data.assigneeVideasteId, ["VIDEASTE", "ADMIN"], "Vidéaste");
   }
@@ -358,17 +382,24 @@ export async function updateEvent(id: string, patch: UpdateEventInput, ctx: User
   const statusChanged = typeof data.status === "string" && data.status !== existing.status;
 
   const updated = await prisma.$transaction(async (tx) => {
-    const result = await tx.shootEvent.update({
-      where: { id },
-      data,
-      select: eventListSelect,
-    });
-    await logEventActivity(tx, {
-      eventId: id,
-      actorId: ctx.actualUser.id,
-      type: statusChanged ? "EVENT_STATUS_CHANGED" : "EVENT_UPDATED",
-      payload: statusChanged ? { from: existing.status, to: data.status } : { fields: Object.keys(data) },
-    });
+    let result: Prisma.ShootEventGetPayload<{ select: typeof eventListSelect }> | null = null;
+    const hasGenericFields = Object.keys(data).length > 0;
+    if (hasGenericFields) {
+      result = await tx.shootEvent.update({ where: { id }, data, select: eventListSelect });
+      await logEventActivity(tx, {
+        eventId: id,
+        actorId: ctx.actualUser.id,
+        type: statusChanged ? "EVENT_STATUS_CHANGED" : "EVENT_UPDATED",
+        payload: statusChanged ? { from: existing.status, to: data.status } : { fields: Object.keys(data) },
+      });
+    }
+    if (wantsShot) {
+      // Pose SHOT + shotAt + bump reels + log EVENT_SHOT, atomiquement.
+      await markEventShot(tx, id, ctx.actualUser.id);
+    }
+    if (!result) {
+      result = await tx.shootEvent.findUnique({ where: { id }, select: eventListSelect });
+    }
     return result;
   });
 
@@ -379,19 +410,25 @@ export async function updateEvent(id: string, patch: UpdateEventInput, ctx: User
 
 /**
  * Supprime un événement. Admin only. Soft-cancel (status CANCELLED) si des reels
- * sont attachés (sinon SetNull orphelinerait les reels de leurs rushs partagés) ;
- * hard-delete seulement si aucun reel.
+ * OU des rushs sont attachés (sinon le hard-delete cascade-supprimerait les
+ * PublicationRush et orphelinerait les objets R2 partagés / les reels de leurs
+ * rushs). Hard-delete seulement si aucun reel ni rush ; dans ce cas on nettoie
+ * quand même le préfixe R2 de l'événement (best-effort) — r2Cleanup ne scanne
+ * pas `shoot-events/`.
  */
 export async function deleteEvent(id: string, ctx: UserContext) {
   if (!ctx.canAdminBypass) throw new ForbiddenError("Réservé aux administrateurs");
 
   const existing = await prisma.shootEvent.findUnique({
     where: { id },
-    select: { id: true, _count: { select: { slots: true } } },
+    select: {
+      id: true,
+      _count: { select: { slots: true, rushes: { where: { deletedAt: null } } } },
+    },
   });
   if (!existing) throw new NotFoundError("Événement");
 
-  if (existing._count.slots > 0) {
+  if (existing._count.slots > 0 || existing._count.rushes > 0) {
     const cancelled = await prisma.$transaction(async (tx) => {
       const result = await tx.shootEvent.update({
         where: { id },
@@ -402,7 +439,7 @@ export async function deleteEvent(id: string, ctx: UserContext) {
         eventId: id,
         actorId: ctx.actualUser.id,
         type: "EVENT_CANCELLED",
-        payload: { attachedReels: existing._count.slots },
+        payload: { attachedReels: existing._count.slots, rushes: existing._count.rushes },
       });
       return result;
     });
@@ -410,6 +447,13 @@ export async function deleteEvent(id: string, ctx: UserContext) {
   }
 
   await prisma.shootEvent.delete({ where: { id } });
+  // Nettoyage best-effort des objets R2 résiduels du tournage (aucun rush actif
+  // mais des soft-deleted ont pu laisser des objets sous le préfixe).
+  try {
+    await deleteR2Prefix(`shoot-events/${id}/`);
+  } catch (err) {
+    console.warn(`[deleteEvent] cleanup R2 échoué pour shoot-events/${id}/ :`, err);
+  }
   return { softCancelled: false };
 }
 
@@ -439,41 +483,67 @@ export async function attachReelToEvent(
       slots: { select: { assigneeMonteurId: true, assigneeCmId: true } },
     },
   });
-  if (!event) throw new NotFoundError("Événement");
-
-  if (!canAttachReelToEvent(role) || !canUserAccessEvent(event, role, ctx.effectiveUser.id)) {
-    throw new ForbiddenError("Vous ne pouvez pas ajouter de reel à cet événement");
+  // 404 anti-énumération : introuvable OU hors scope → même réponse (cohérent
+  // avec getEvent / les routes rushes). Le 403 n'est renvoyé que si l'événement
+  // est accessible mais que le rôle ne peut pas attacher (pas de fuite d'existence).
+  if (!event || !canUserAccessEvent(event, role, ctx.effectiveUser.id)) {
+    throw new NotFoundError("Événement");
+  }
+  if (!canAttachReelToEvent(role)) {
+    throw new ForbiddenError("Votre rôle ne peut pas ajouter de reel");
   }
 
   // Un reel n'est JAMAIS patternless (resolveSlotEffectivePattern + triggers en
-  // dépendent). À défaut de recette explicite, on prend le binding actif par
-  // défaut du compte de l'événement.
+  // dépendent) et sa recette doit être compatible montage manuel (source
+  // manual_rushes/external_upload) — une recette auto_template casserait la
+  // chaîne de production du reel. À défaut de recette explicite, on prend le
+  // binding actif par défaut compatible du compte.
   let patternBindingId = input.patternBindingId ?? null;
-  if (!patternBindingId && !input.patternTemplateId) {
+  if (patternBindingId) {
+    const binding = await prisma.patternBinding.findUnique({
+      where: { id: patternBindingId },
+      select: { patternTemplate: { select: { source: true } } },
+    });
+    if (!binding) throw new ValidationError("Recette introuvable");
+    if (!(REEL_ATTACHABLE_SOURCES as readonly string[]).includes(binding.patternTemplate.source)) {
+      throw new ValidationError(
+        "Cette recette (contenu automatique) ne peut pas être utilisée pour un reel d'événement",
+      );
+    }
+  } else if (!input.patternTemplateId) {
     const binding = await prisma.patternBinding.findFirst({
-      where: { accountId: event.accountId, isActive: true },
+      where: {
+        accountId: event.accountId,
+        isActive: true,
+        patternTemplate: { source: { in: [...REEL_ATTACHABLE_SOURCES] } },
+      },
       orderBy: { createdAt: "asc" },
       select: { id: true },
     });
     if (!binding) {
       throw new ValidationError(
-        "Aucune recette disponible pour ce compte : choisissez une recette pour ce reel",
+        "Aucune recette de montage disponible pour ce compte : choisissez une recette pour ce reel",
       );
     }
     patternBindingId = binding.id;
   }
 
+  // Grammaire de champs par rôle : seul un ADMIN réel peut réassigner ou
+  // programmer un reel à l'attache (cohérent avec ALLOWED_PATCH_FIELDS_BY_ROLE).
+  // Un monteur/vidéaste attache un reel qui hérite des défauts événement+recette
+  // — sinon il pourrait assigner un CM arbitraire et lui ouvrir l'accès aux rushs.
+  const isAdmin = ctx.canAdminBypass;
   const slotInput: CreateSlotInput = {
     eventId,
     patternBindingId,
     patternTemplateId: input.patternTemplateId ?? null,
-    scheduledAt: input.scheduledAt ?? null,
     title: input.title ?? null,
     description: input.description ?? null,
-    propertyId: input.propertyId ?? null,
-    assigneeMonteurId: input.assigneeMonteurId ?? null,
-    assigneeCmId: input.assigneeCmId ?? null,
-    assigneeVideasteId: input.assigneeVideasteId ?? null,
+    scheduledAt: isAdmin ? input.scheduledAt ?? null : null,
+    propertyId: isAdmin ? input.propertyId ?? null : null,
+    assigneeMonteurId: isAdmin ? input.assigneeMonteurId ?? null : null,
+    assigneeCmId: isAdmin ? input.assigneeCmId ?? null : null,
+    assigneeVideasteId: isAdmin ? input.assigneeVideasteId ?? null : null,
   };
 
   const slot = await createSlot(slotInput, ctx, { requireAdmin: false });

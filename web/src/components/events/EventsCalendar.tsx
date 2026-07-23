@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { toast } from "@/components/ui/Toast";
 import { EventCard } from "./EventCard";
 import { CreateEventModal } from "./CreateEventModal";
 import type { ShootEventSummary } from "@/types/events";
@@ -60,8 +61,17 @@ export function EventsCalendar({
   // Les events de la semaine initiale viennent du SSR — on ne refetch qu'au
   // changement de semaine.
   const didMountRef = useRef(false);
+  // Séquencement : on annule le fetch précédent et on ignore toute réponse qui
+  // n'est pas celle de la dernière requête (évite d'afficher une semaine périmée
+  // sur double-clic / réponses hors-ordre).
+  const abortRef = useRef<AbortController | null>(null);
+  const reqSeqRef = useRef(0);
 
   const load = useCallback(async (monday: Date) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const seq = ++reqSeqRef.current;
     setLoading(true);
     try {
       const from = new Date(monday);
@@ -69,13 +79,16 @@ export function EventsCalendar({
       to.setHours(23, 59, 59, 999);
       const res = await fetch(
         `/api/shoot-events?dateFrom=${from.toISOString()}&dateTo=${to.toISOString()}`,
+        { signal: controller.signal },
       );
-      if (res.ok) {
-        const data = (await res.json()) as { events: ShootEventSummary[] };
-        setEvents(data.events);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { events: ShootEventSummary[] };
+      if (seq === reqSeqRef.current) setEvents(data.events);
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") return;
+      toast.error("Impossible de charger les événements de cette semaine.");
     } finally {
-      setLoading(false);
+      if (seq === reqSeqRef.current) setLoading(false);
     }
   }, []);
 

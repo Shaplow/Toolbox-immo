@@ -7,6 +7,7 @@ import { canAttachReelToEvent, canUploadEventRushes } from "@/lib/permissions/ev
 import { NotFoundError } from "@/lib/services/_runtime/errors";
 import { PageShell } from "@/components/ui/PageShell";
 import { EventFiche, type EventFicheData } from "@/components/events/EventFiche";
+import { longDateTimeFr } from "@/lib/date/formatFr";
 import type { ShootEventStatus } from "@/types/events";
 
 type Params = { params: Promise<{ id: string }> };
@@ -27,9 +28,15 @@ export default async function EventDetailPage({ params }: Params) {
     throw err;
   }
 
-  // Recettes actives du compte pour le modal d'attache.
+  // Recettes actives du compte pour le modal d'attache — uniquement les recettes
+  // de montage manuel (manual_rushes/external_upload) : une recette auto_template
+  // casserait la chaîne de production du reel (step Rendu fantôme).
   const bindings = await prisma.patternBinding.findMany({
-    where: { accountId: event.accountId, isActive: true },
+    where: {
+      accountId: event.accountId,
+      isActive: true,
+      patternTemplate: { source: { in: ["manual_rushes", "external_upload"] } },
+    },
     orderBy: { createdAt: "asc" },
     select: { id: true, customLabel: true, patternTemplate: { select: { label: true } } },
   });
@@ -51,13 +58,7 @@ export default async function EventDetailPage({ params }: Params) {
     status: event.status as ShootEventStatus,
     accountLabel: event.account?.handle ?? null,
     propertyLabel: event.property?.label ?? null,
-    scheduledAtLabel: event.scheduledAt.toLocaleDateString("fr-FR", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
+    scheduledAtLabel: longDateTimeFr(event.scheduledAt),
     videasteName: event.assigneeVideaste?.name ?? null,
     notes: event.notes,
     reels: event.slots.map((s) => ({
