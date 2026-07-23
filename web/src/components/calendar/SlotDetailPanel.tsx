@@ -101,7 +101,7 @@ interface UserOpt {
 // Phase mapping description override
 const DESCRIPTION_OPTIONS = [
   { value: "none", label: "Aucune" },
-  { value: "preFilled", label: "Pré-remplie" },
+  { value: "preFilled", label: "Pré-remplie par bien" },
   { value: "autoGenerate", label: "Auto-générée" },
   { value: "manualWrite", label: "Manuelle" },
 ];

@@ -137,7 +137,8 @@ export const COVER_MODE_HELP: Record<string, string> = {
 export const NEEDS_DESCRIPTION_LABELS_FR: Record<string, string> = {
   none: "Aucune",
   manualWrite: "Manuelle",
-  preFilled: "Pré-remplie",
+  preFilled: "Pré-remplie par bien",
+  fixed: "Texte fixe",
   autoGenerate: "Auto-générée",
 };
 
@@ -145,7 +146,9 @@ export const NEEDS_DESCRIPTION_HELP: Record<string, string> = {
   none: "Pas de description Instagram pour cette recette.",
   manualWrite: "Le CM rédige la description à la main, vide au départ.",
   preFilled:
-    "Le CM démarre depuis un modèle pré-rempli puis ajuste avant publication.",
+    "La légende démarre avec la valeur d'un champ du bien rattaché, puis le CM ajuste avant publication.",
+  fixed:
+    "La légende démarre avec un texte fixe défini sur la recette (indépendant du bien). Le CM peut ensuite l'ajuster.",
   autoGenerate:
     "Claude (IA) rédige automatiquement la description depuis la transcription. Le CM peut ensuite l'ajuster.",
 };

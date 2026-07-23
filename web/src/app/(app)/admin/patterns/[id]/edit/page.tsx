@@ -77,6 +77,7 @@ export default async function PatternEditPage({ params }: PageProps) {
         templateId: tpl.templateId,
         captionPresetId: tpl.captionPresetId,
         descriptionPromptId: tpl.descriptionPromptId,
+        descriptionFixedText: tpl.descriptionFixedText,
         coverMode: tpl.coverMode,
         needsDescription: tpl.needsDescription,
         needsCaptionsMode: tpl.needsCaptionsMode,

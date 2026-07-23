@@ -51,6 +51,7 @@ export interface PatternTemplateInitial {
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   descriptionSourceFieldKey?: string | null;
+  descriptionFixedText?: string | null;
   coverMode: string;
   needsDescription: string;
   needsCaptionsMode: string;
@@ -72,6 +73,7 @@ export interface PatternTemplateFormValues {
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
+  descriptionFixedText: string | null;
   coverMode: string;
   needsDescription: string;
   needsCaptionsMode: string;
@@ -147,6 +149,9 @@ export function PatternTemplateForm({
   );
   const [descriptionSourceFieldKey, setDescriptionSourceFieldKey] = useState<string>(
     initial?.descriptionSourceFieldKey ?? "",
+  );
+  const [descriptionFixedText, setDescriptionFixedText] = useState<string>(
+    initial?.descriptionFixedText ?? "",
   );
   // Clés de champs de bien suggérées (mode preFilled). Chargées à la volée ;
   // saisie libre autorisée via allowCustom (un bien peut ne pas exister encore).
@@ -296,6 +301,7 @@ export function PatternTemplateForm({
           captionPresetId?: string | null;
           descriptionPromptId?: string | null;
           descriptionSourceFieldKey?: string | null;
+          descriptionFixedText?: string | null;
           autoSaveToLibraryId?: string | null;
           bindings?: LinkedBinding[];
           updatedBy?: { name: string | null } | null;
@@ -312,6 +318,8 @@ export function PatternTemplateForm({
           setDescriptionPromptId(d.descriptionPromptId ?? "");
         if (d.descriptionSourceFieldKey !== undefined)
           setDescriptionSourceFieldKey(d.descriptionSourceFieldKey ?? "");
+        if (d.descriptionFixedText !== undefined)
+          setDescriptionFixedText(d.descriptionFixedText ?? "");
         if (d.autoSaveToLibraryId !== undefined)
           setAutoSaveLibraryId(d.autoSaveToLibraryId ?? "");
         setLinkedBindings(d.bindings ?? []);
@@ -364,6 +372,8 @@ export function PatternTemplateForm({
         needsDescription === "autoGenerate" ? descriptionPromptId || null : null,
       descriptionSourceFieldKey:
         needsDescription === "preFilled" ? descriptionSourceFieldKey.trim() || null : null,
+      descriptionFixedText:
+        needsDescription === "fixed" ? descriptionFixedText.trim() || null : null,
       coverMode,
       needsDescription,
       needsCaptionsMode,
@@ -392,6 +402,7 @@ export function PatternTemplateForm({
         initial.needsCaptionsMode !== values.needsCaptionsMode ||
         initial.needsDescription !== values.needsDescription ||
         (initial.descriptionSourceFieldKey ?? null) !== values.descriptionSourceFieldKey ||
+        (initial.descriptionFixedText ?? null) !== values.descriptionFixedText ||
         (initial.autoSaveToLibraryId ?? null) !== values.autoSaveToLibraryId);
     if (bindingCount > 0 && isStructuralChange) {
       setPendingValues(values);
@@ -556,7 +567,8 @@ export function PatternTemplateForm({
               }}
               options={[
                 { value: "none", label: "Aucune" },
-                { value: "preFilled", label: "Pré-remplie" },
+                { value: "preFilled", label: "Pré-remplie par bien" },
+                { value: "fixed", label: "Texte fixe" },
                 ...descriptionPrompts.map((p) => ({
                   value: `autoGenerate:${p.id}`,
                   label: `Auto IA · ${p.name}`,
@@ -579,6 +591,19 @@ export function PatternTemplateForm({
                   value: f.key,
                   label: f.label === f.key ? f.key : `${f.label} · ${f.key}`,
                 }))}
+              />
+            </FormField>
+          )}
+          {needsDescription === "fixed" && (
+            <FormField
+              label="Texte pré-rempli (fixe)"
+              help="Pré-remplit la légende à la création, indépendamment du bien. Le CM peut l'ajuster ensuite."
+            >
+              <Textarea
+                value={descriptionFixedText}
+                onChange={(v) => setDescriptionFixedText(v)}
+                rows={5}
+                placeholder="Texte de légende par défaut…"
               />
             </FormField>
           )}

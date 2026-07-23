@@ -34,7 +34,10 @@ import {
   resolveSlotEffectivePattern,
   slotEffectivePatternSelect,
 } from "@/lib/services/slot/effectivePattern";
-import { resolvePreFilledDescription } from "@/lib/publications/preFilledDescription";
+import {
+  resolvePreFilledDescription,
+  resolveFixedDescription,
+} from "@/lib/publications/preFilledDescription";
 import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
 import { deleteR2Prefix, r2Configured } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
@@ -253,6 +256,7 @@ export async function createSlot(
     needsCaptions: boolean;
     needsDescription: string;
     descriptionSourceFieldKey: string | null;
+    descriptionFixedText: string | null;
     coverMode: string;
     coverConfig: unknown;
     defaultAssigneeMonteurId: string | null;
@@ -314,6 +318,7 @@ export async function createSlot(
       needsCaptions: t.needsCaptions,
       needsDescription: t.needsDescription,
       descriptionSourceFieldKey: t.descriptionSourceFieldKey,
+      descriptionFixedText: t.descriptionFixedText,
       coverMode: binding.coverModeOverride ?? t.coverMode,
       coverConfig: t.coverConfig,
       defaultAssigneeMonteurId: binding.defaultAssigneeMonteurId,
@@ -345,8 +350,13 @@ export async function createSlot(
         "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
       );
     }
-    // AccountPattern legacy n'a pas descriptionSourceFieldKey (feature recette).
-    resolvedPattern = { ...pattern, descriptionSourceFieldKey: null };
+    // AccountPattern legacy n'a ni descriptionSourceFieldKey ni
+    // descriptionFixedText (features recette portées par PatternTemplate).
+    resolvedPattern = {
+      ...pattern,
+      descriptionSourceFieldKey: null,
+      descriptionFixedText: null,
+    };
     patternLabel = pattern.label;
     initialStatus = mapSourceToInitialStatus(pattern.source);
     if (!resolvedAssigneeMonteurId && pattern.defaultAssigneeMonteurId) {
@@ -398,6 +408,7 @@ export async function createSlot(
       needsCaptions: template.needsCaptions,
       needsDescription: template.needsDescription,
       descriptionSourceFieldKey: template.descriptionSourceFieldKey,
+      descriptionFixedText: template.descriptionFixedText,
       coverMode: template.coverMode,
       coverConfig: template.coverConfig,
       defaultAssigneeMonteurId: null,
@@ -475,10 +486,12 @@ export async function createSlot(
     );
   }
 
-  // Pré-remplissage de la légende (mode "preFilled") : si un bien est rattaché
-  // et que la recette désigne un champ source, on démarre la légende avec la
-  // valeur du champ du bien. L'input.description explicite (rare à la création)
-  // reste prioritaire.
+  // Pré-remplissage de la légende. Deux modes :
+  //  - "preFilled" : si un bien est rattaché et que la recette désigne un champ
+  //    source, on démarre la légende avec la valeur du champ du bien.
+  //  - "fixed" : texte fixe stocké sur la recette, indépendant du bien (aucune
+  //    garde propertyId) — copie one-shot à la création.
+  // L'input.description explicite (rare à la création) reste prioritaire.
   let prefilledDescription: string | null = null;
   if (input.propertyId && !input.description && resolvedNeedsDescription === "preFilled") {
     prefilledDescription = resolvePreFilledDescription(
@@ -488,6 +501,11 @@ export async function createSlot(
       },
       propertyFields,
     );
+  } else if (!input.description && resolvedNeedsDescription === "fixed") {
+    prefilledDescription = resolveFixedDescription({
+      needsDescription: "fixed",
+      descriptionFixedText: resolvedPattern?.descriptionFixedText ?? null,
+    });
   }
 
   // Guard cover-mode retiré (fix regression post-QW1) : le runtime

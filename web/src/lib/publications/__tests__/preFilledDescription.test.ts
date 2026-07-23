@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { resolvePreFilledDescription } from "../preFilledDescription";
+import {
+  resolvePreFilledDescription,
+  resolveFixedDescription,
+  normalizeFixedText,
+} from "../preFilledDescription";
 
 describe("resolvePreFilledDescription", () => {
   const fields = JSON.stringify({
@@ -90,5 +94,55 @@ describe("resolvePreFilledDescription", () => {
         null,
       ),
     ).toBeNull();
+  });
+});
+
+describe("resolveFixedDescription", () => {
+  it("retourne null si le mode n'est pas fixed", () => {
+    for (const mode of ["preFilled", "autoGenerate", "manualWrite", "none"]) {
+      expect(
+        resolveFixedDescription({
+          needsDescription: mode,
+          descriptionFixedText: "Texte fixe de la recette.",
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it("retourne null si le texte fixe est absent/vide/espaces", () => {
+    expect(
+      resolveFixedDescription({ needsDescription: "fixed", descriptionFixedText: null }),
+    ).toBeNull();
+    expect(
+      resolveFixedDescription({ needsDescription: "fixed", descriptionFixedText: "" }),
+    ).toBeNull();
+    expect(
+      resolveFixedDescription({ needsDescription: "fixed", descriptionFixedText: "   " }),
+    ).toBeNull();
+  });
+
+  it("retourne le texte brut si rempli (aucune dépendance au bien)", () => {
+    expect(
+      resolveFixedDescription({
+        needsDescription: "fixed",
+        descriptionFixedText: "Visitez ce bien d'exception ✨",
+      }),
+    ).toBe("Visitez ce bien d'exception ✨");
+  });
+});
+
+describe("normalizeFixedText", () => {
+  it("non-string → null", () => {
+    expect(normalizeFixedText(null)).toBeNull();
+    expect(normalizeFixedText(undefined)).toBeNull();
+  });
+
+  it("chaîne vide/espaces → null", () => {
+    expect(normalizeFixedText("")).toBeNull();
+    expect(normalizeFixedText("   ")).toBeNull();
+  });
+
+  it("texte rempli → conserve le brut (pas de trim destructif)", () => {
+    expect(normalizeFixedText("  Bonjour  ")).toBe("  Bonjour  ");
   });
 });

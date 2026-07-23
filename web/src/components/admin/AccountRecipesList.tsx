@@ -58,6 +58,7 @@ export interface RecipeItem {
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
+  descriptionFixedText: string | null;
   templateNotes: string | null;
   // Binding
   customLabel: string | null;
@@ -131,6 +132,7 @@ function defaultRecipeFormInitial(): RecipeFormInitial {
     captionPresetId: null,
     descriptionPromptId: null,
     descriptionSourceFieldKey: null,
+    descriptionFixedText: null,
     templateNotes: null,
     customLabel: null,
     dayOfWeek: [],
@@ -163,6 +165,7 @@ function recipeItemToFormInitial(r: RecipeItem): RecipeFormInitial {
     captionPresetId: r.captionPresetId,
     descriptionPromptId: r.descriptionPromptId,
     descriptionSourceFieldKey: r.descriptionSourceFieldKey,
+    descriptionFixedText: r.descriptionFixedText,
     templateNotes: r.templateNotes,
     customLabel: r.customLabel,
     dayOfWeek: r.dayOfWeek,

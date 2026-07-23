@@ -800,6 +800,51 @@ describe("createSlot — requiresProperty", () => {
   });
 });
 
+// ─── Invariant 9 : description mode "fixed" (texte fixe recette) ────────────
+
+describe("createSlot — description fixe (mode fixed)", () => {
+  const tplFixed = {
+    id: "tpl-fixed",
+    label: "Recette texte fixe",
+    source: "auto_template",
+    isArchived: false,
+    captionPresetId: null,
+    descriptionPromptId: null,
+    needsCaptions: false,
+    needsDescription: "fixed",
+    descriptionSourceFieldKey: null,
+    descriptionFixedText: "Visitez ce bien d'exception ✨",
+    coverMode: "none",
+    coverConfig: null,
+    fieldSchema: "[]",
+    requiresProperty: false,
+  };
+
+  it("mode fixed sans bien → slot.description = descriptionFixedText", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce(tplFixed);
+    const slot = await createSlot({ patternTemplateId: "tpl-fixed" }, makeAdminCtx());
+    expect(slot.description).toBe("Visitez ce bien d'exception ✨");
+  });
+
+  it("mode fixed avec input.description explicite → l'input l'emporte", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce(tplFixed);
+    const slot = await createSlot(
+      { patternTemplateId: "tpl-fixed", description: "Légende sur-mesure" },
+      makeAdminCtx(),
+    );
+    expect(slot.description).toBe("Légende sur-mesure");
+  });
+
+  it("mode fixed sans texte configuré → slot.description null", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce({
+      ...tplFixed,
+      descriptionFixedText: null,
+    });
+    const slot = await createSlot({ patternTemplateId: "tpl-fixed" }, makeAdminCtx());
+    expect(slot.description).toBeNull();
+  });
+});
+
 describe("createSlot — isAuto=false (slot manuel)", () => {
   it("Création manuelle pose isAuto=false (distinction avec generateCalendarSlots)", async () => {
     await createSlot(

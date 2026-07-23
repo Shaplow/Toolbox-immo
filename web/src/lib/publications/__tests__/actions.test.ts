@@ -265,6 +265,22 @@ describe("canGenerateDescription", () => {
     expect(v).toEqual({ visible: false });
   });
 
+  it("mode=fixed → masqué", () => {
+    const v = canGenerateDescription(
+      makeCtx({
+        resolved: {
+          needsCaptions: false,
+          needsDescription: "fixed",
+          coverMode: "none",
+          coverPresetId: null,
+          captionPresetId: null,
+          descriptionPromptId: null,
+        },
+      }),
+    );
+    expect(v).toEqual({ visible: false });
+  });
+
   it("mode=autoGenerate → intent=auto, disabled (badge)", () => {
     const v = canGenerateDescription(
       makeCtx({

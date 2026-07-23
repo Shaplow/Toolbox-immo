@@ -57,6 +57,35 @@ export function resolvePreFilledDescription(
   return value.length > 0 ? raw : null;
 }
 
+/**
+ * Normalise le texte fixe saisi côté recette (mode `needsDescription = "fixed"`) :
+ * non-string ou chaîne vide/espaces → null. Conserve le brut (comme
+ * `normalizeSourceFieldKey`) pour ne pas altérer un texte volontairement indenté.
+ */
+export function normalizeFixedText(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  return raw.trim().length > 0 ? raw : null;
+}
+
+interface FixedConfig {
+  needsDescription: string | null | undefined;
+  descriptionFixedText: string | null | undefined;
+}
+
+/**
+ * Retourne le texte fixe à pré-remplir en mode `"fixed"`, ou null.
+ *
+ * Contrairement à `resolvePreFilledDescription`, aucune dépendance au Bien :
+ * la source est un texte littéral stocké sur la recette (PatternTemplate).
+ * Copie one-shot à la création du slot ; jamais re-synchronisée ensuite.
+ */
+export function resolveFixedDescription(config: FixedConfig): string | null {
+  if (config.needsDescription !== "fixed") return null;
+  const raw = config.descriptionFixedText;
+  if (typeof raw !== "string") return null;
+  return raw.trim().length > 0 ? raw : null;
+}
+
 /** Parse tolérant de la colonne `Property.fields` (JSON Record<string,string>). */
 function parseFields(
   input: string | Record<string, unknown> | null | undefined,

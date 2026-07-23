@@ -83,6 +83,7 @@ export default async function AccountFichePage({ params }: Props) {
         captionPresetId: true,
         descriptionPromptId: true,
         descriptionSourceFieldKey: true,
+        descriptionFixedText: true,
         notes: true,
         _count: { select: { bindings: true } },
       },
@@ -195,6 +196,7 @@ export default async function AccountFichePage({ params }: Props) {
       captionPresetId: tpl.captionPresetId,
       descriptionPromptId: tpl.descriptionPromptId,
       descriptionSourceFieldKey: tpl.descriptionSourceFieldKey,
+      descriptionFixedText: tpl.descriptionFixedText,
       templateNotes: tpl.notes,
       // Binding-only
       customLabel: b.customLabel,
@@ -247,6 +249,7 @@ export default async function AccountFichePage({ params }: Props) {
       captionPresetId: t.captionPresetId,
       descriptionPromptId: t.descriptionPromptId,
       descriptionSourceFieldKey: t.descriptionSourceFieldKey,
+      descriptionFixedText: t.descriptionFixedText,
       templateNotes: t.notes,
       customLabel: null,
       dayOfWeek: [],

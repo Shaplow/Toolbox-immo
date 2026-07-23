@@ -8,7 +8,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { normalizeSourceFieldKey } from "@/lib/publications/preFilledDescription";
+import {
+  normalizeSourceFieldKey,
+  normalizeFixedText,
+} from "@/lib/publications/preFilledDescription";
 type CreateBody = {
   label?: string;
   source?: string;
@@ -16,6 +19,7 @@ type CreateBody = {
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
   descriptionSourceFieldKey?: string | null;
+  descriptionFixedText?: string | null;
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
@@ -31,7 +35,7 @@ type CreateBody = {
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"];
 const VALID_CAPTIONS_MODES = ["none", "auto", "manual"];
-const VALID_DESCRIPTION_MODES = ["none", "preFilled", "autoGenerate", "manualWrite"];
+const VALID_DESCRIPTION_MODES = ["none", "preFilled", "fixed", "autoGenerate", "manualWrite"];
 const VALID_COVER_MODES = ["none", "manualSelect", "autoPack", "monteurUpload"];
 
 function validateBody(body: CreateBody, requireAll: boolean): string | null {
@@ -105,6 +109,7 @@ export async function POST(req: NextRequest) {
       captionPresetId: body.captionPresetId ?? null,
       descriptionPromptId: body.descriptionPromptId ?? null,
       descriptionSourceFieldKey: normalizeSourceFieldKey(body.descriptionSourceFieldKey),
+      descriptionFixedText: normalizeFixedText(body.descriptionFixedText),
       coverMode: body.coverMode ?? "none",
       coverConfig:
         body.coverConfig === undefined || body.coverConfig === null

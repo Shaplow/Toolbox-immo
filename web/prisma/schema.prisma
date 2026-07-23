@@ -1130,6 +1130,10 @@ model PatternTemplate {
   /// dont la valeur pré-remplit la légende Instagram (slot.description) au rattachement
   /// d'un bien. null = feature inactive (fallback textarea vide, aucune régression).
   descriptionSourceFieldKey String?
+  /// Mode "fixed" uniquement : texte fixe écrit sur la recette (indépendant du
+  /// bien) qui pré-remplit la légende (slot.description) à la création du slot.
+  /// null = pas de texte fixe. Copie one-shot, jamais re-synchronisée.
+  descriptionFixedText String?
   /// @deprecated V8 — utiliser needsCaptionsMode.
   needsCaptions         Boolean @default(false)
   /// "none" | "auto" | "manual"

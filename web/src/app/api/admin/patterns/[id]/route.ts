@@ -8,7 +8,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { normalizeSourceFieldKey } from "@/lib/publications/preFilledDescription";
+import {
+  normalizeSourceFieldKey,
+  normalizeFixedText,
+} from "@/lib/publications/preFilledDescription";
 type PatchBody = {
   label?: string;
   source?: string;
@@ -16,6 +19,7 @@ type PatchBody = {
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
   descriptionSourceFieldKey?: string | null;
+  descriptionFixedText?: string | null;
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
@@ -32,7 +36,7 @@ type PatchBody = {
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"];
 const VALID_CAPTIONS_MODES = ["none", "auto", "manual"];
-const VALID_DESCRIPTION_MODES = ["none", "preFilled", "autoGenerate", "manualWrite"];
+const VALID_DESCRIPTION_MODES = ["none", "preFilled", "fixed", "autoGenerate", "manualWrite"];
 const VALID_COVER_MODES = ["none", "manualSelect", "autoPack", "monteurUpload"];
 
 interface Params {
@@ -115,6 +119,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.descriptionPromptId !== undefined ? { descriptionPromptId: body.descriptionPromptId } : {}),
       ...(body.descriptionSourceFieldKey !== undefined
         ? { descriptionSourceFieldKey: normalizeSourceFieldKey(body.descriptionSourceFieldKey) }
+        : {}),
+      ...(body.descriptionFixedText !== undefined
+        ? { descriptionFixedText: normalizeFixedText(body.descriptionFixedText) }
         : {}),
       ...(body.coverMode !== undefined ? { coverMode: body.coverMode } : {}),
       ...(body.coverConfig !== undefined

@@ -234,7 +234,8 @@ export function canTriggerCover(ctx: ActionContext): ActionVerdict {
  *
  * Visible seulement quand needsDescription = "manualWrite".
  *  - "none" : pas de description requise.
- *  - "preFilled" : pré-rempli depuis la bibliothèque, pas de génération IA.
+ *  - "preFilled" : pré-rempli depuis un champ du bien, pas de génération IA.
+ *  - "fixed" : pré-rempli depuis un texte fixe de la recette, pas de génération IA.
  *  - "autoGenerate" : le backend déclenche après render — badge "Auto", pas
  *    de bouton manuel.
  *  - "manualWrite" : flow user contrôlé.
@@ -244,6 +245,7 @@ export function canGenerateDescription(ctx: ActionContext): ActionVerdict {
   const mode = ctx.resolved?.needsDescription ?? ctx.pattern?.needsDescription ?? "none";
   if (mode === "none") return { visible: false };
   if (mode === "preFilled") return { visible: false };
+  if (mode === "fixed") return { visible: false };
   if (mode === "autoGenerate") {
     return {
       visible: true,

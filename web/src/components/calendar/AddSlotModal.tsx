@@ -85,7 +85,7 @@ const COVER_MODE_OPTIONS = [
 const DESCRIPTION_OPTIONS = [
   { value: "", label: "Aucune" },
   { value: "none", label: "Aucune" },
-  { value: "preFilled", label: "Pré-remplie" },
+  { value: "preFilled", label: "Pré-remplie par bien" },
   { value: "autoGenerate", label: "Auto-générée" },
   { value: "manualWrite", label: "Manuelle" },
 ];

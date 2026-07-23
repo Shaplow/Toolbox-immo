@@ -49,7 +49,7 @@ const DAYS = [
 
 const SOURCE_OPTIONS = ["auto_template", "manual_rushes", "external_upload"];
 const CAPTIONS_MODE_OPTIONS = ["none", "auto", "manual"];
-const DESCRIPTION_MODE_OPTIONS = ["none", "manualWrite", "preFilled", "autoGenerate"];
+const DESCRIPTION_MODE_OPTIONS = ["none", "manualWrite", "preFilled", "fixed", "autoGenerate"];
 const COVER_MODE_OPTIONS = ["none", "manualSelect", "autoPack", "monteurUpload"];
 
 const COVER_OVERRIDE_OPTIONS = [
@@ -76,6 +76,7 @@ export interface RecipeFormInitial {
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
+  descriptionFixedText: string | null;
   templateNotes: string | null;
   // Binding
   customLabel: string | null;
@@ -108,6 +109,7 @@ export interface RecipeFormValues {
     captionPresetId: string | null;
     descriptionPromptId: string | null;
     descriptionSourceFieldKey: string | null;
+    descriptionFixedText: string | null;
     notes: string | null;
   };
   binding: {
@@ -179,6 +181,9 @@ export function RecipeForm({
   const [descriptionPromptId, setDescriptionPromptId] = useState(initial.descriptionPromptId ?? "");
   const [descriptionSourceFieldKey, setDescriptionSourceFieldKey] = useState(
     initial.descriptionSourceFieldKey ?? "",
+  );
+  const [descriptionFixedText, setDescriptionFixedText] = useState(
+    initial.descriptionFixedText ?? "",
   );
   // Clés de champs de bien suggérées (mode preFilled) — chargées à la volée,
   // saisie libre autorisée (le bien peut ne pas exister encore).
@@ -260,6 +265,8 @@ export function RecipeForm({
         descriptionPromptId: descriptionPromptId || null,
         descriptionSourceFieldKey:
           needsDescription === "preFilled" ? descriptionSourceFieldKey.trim() || null : null,
+        descriptionFixedText:
+          needsDescription === "fixed" ? descriptionFixedText.trim() || null : null,
         notes: templateNotes.trim() || null,
       },
       binding: {
@@ -356,6 +363,8 @@ export function RecipeForm({
             setDescriptionPromptId={setDescriptionPromptId}
             descriptionSourceFieldKey={descriptionSourceFieldKey}
             setDescriptionSourceFieldKey={setDescriptionSourceFieldKey}
+            descriptionFixedText={descriptionFixedText}
+            setDescriptionFixedText={setDescriptionFixedText}
             propertyFieldKeys={propertyFieldKeys}
             templateNotes={templateNotes}
             setTemplateNotes={setTemplateNotes}
@@ -467,6 +476,8 @@ interface ContentTabProps {
   setDescriptionPromptId: (v: string) => void;
   descriptionSourceFieldKey: string;
   setDescriptionSourceFieldKey: (v: string) => void;
+  descriptionFixedText: string;
+  setDescriptionFixedText: (v: string) => void;
   propertyFieldKeys: { key: string; label: string }[];
   templateNotes: string;
   setTemplateNotes: (v: string) => void;
@@ -605,6 +616,20 @@ function ContentTab(p: ContentTabProps) {
               value: f.key,
               label: f.label === f.key ? f.key : `${f.label} · ${f.key}`,
             }))}
+          />
+        </FormField>
+      )}
+
+      {p.needsDescription === "fixed" && (
+        <FormField
+          label="Texte pré-rempli (fixe)"
+          help="Pré-remplit la légende à la création, indépendamment du bien. Le CM peut l'ajuster ensuite."
+        >
+          <Textarea
+            value={p.descriptionFixedText}
+            onChange={(v) => p.setDescriptionFixedText(v)}
+            rows={5}
+            placeholder="Texte de légende par défaut…"
           />
         </FormField>
       )}
