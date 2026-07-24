@@ -3,6 +3,7 @@ import {
   normalizeCustomFields,
   customFieldToSchemaField,
   validateCustomFields,
+  inferDefaultFieldType,
   type CustomField,
 } from "@/lib/customFields";
 
@@ -68,6 +69,28 @@ describe("customFieldToSchemaField", () => {
       type: "text",
       required: false,
     });
+  });
+});
+
+describe("inferDefaultFieldType", () => {
+  it("libellés de texte long → textarea (accent-insensible)", () => {
+    for (const label of [
+      "Description",
+      "description du bien",
+      "Notes",
+      "Adresse",
+      "Commentaire",
+      "Résumé",
+      "Bio",
+    ]) {
+      expect(inferDefaultFieldType(label)).toBe("textarea");
+    }
+  });
+
+  it("libellés courts / autres → text", () => {
+    for (const label of ["Prix", "Surface", "Ville", "Titre", "Code postal"]) {
+      expect(inferDefaultFieldType(label)).toBe("text");
+    }
   });
 });
 

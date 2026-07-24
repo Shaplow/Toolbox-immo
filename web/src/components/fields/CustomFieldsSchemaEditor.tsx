@@ -5,7 +5,12 @@ import { Plus, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Checkbox } from "@/components/ui/Checkbox";
-import { CUSTOM_FIELD_TYPES, type CustomField, type CustomFieldType } from "@/lib/customFields";
+import {
+  CUSTOM_FIELD_TYPES,
+  inferDefaultFieldType,
+  type CustomField,
+  type CustomFieldType,
+} from "@/lib/customFields";
 
 interface CustomFieldsSchemaEditorProps {
   fields: CustomField[];
@@ -67,7 +72,7 @@ export function CustomFieldsSchemaEditor({
       while (existing.has(`${key}_${n}`)) n += 1;
       key = `${key}_${n}`;
     }
-    onChange([...fields, { key, label, type: "text" }]);
+    onChange([...fields, { key, label, type: inferDefaultFieldType(label) }]);
     setNewLabel("");
   }
 

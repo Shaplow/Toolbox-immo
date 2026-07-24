@@ -34,6 +34,20 @@ export const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
 
 const VALID_TYPES = new Set<CustomFieldType>(["text", "textarea", "number", "url"]);
 
+/** Libellés qui suggèrent du texte multi-ligne (accent-insensible). */
+const LONG_TEXT_LABEL = /desc|note|adresse|comment|resum|\bbio\b/i;
+
+/**
+ * Type par défaut suggéré pour un NOUVEAU champ d'après son libellé. Les champs
+ * de texte long courants (description, notes, adresse, commentaire, résumé…) sont
+ * créés en `textarea` — un input une ligne perd les retours à la ligne. Ce n'est
+ * qu'un défaut : l'utilisateur peut toujours changer le type ensuite.
+ */
+export function inferDefaultFieldType(label: string): CustomFieldType {
+  const normalized = label.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  return LONG_TEXT_LABEL.test(normalized) ? "textarea" : "text";
+}
+
 function coerceType(raw: unknown): CustomFieldType {
   return typeof raw === "string" && VALID_TYPES.has(raw as CustomFieldType)
     ? (raw as CustomFieldType)
