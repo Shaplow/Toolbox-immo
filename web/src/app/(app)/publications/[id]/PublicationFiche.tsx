@@ -12,6 +12,7 @@
  * Phase 1.9 (A1) : collapse des sections non-primaires selon le rôle.
  */
 
+import Link from "next/link";
 import { PublicationHeader } from "@/components/publications/PublicationHeader";
 import { PublicationLiveRefresh } from "@/components/publications/PublicationLiveRefresh";
 import { NextActionBanner } from "@/components/publications/NextActionBanner";
@@ -239,6 +240,10 @@ export interface PublicationFicheProps {
   permissions: PublicationFichePermissions;
   // Phase B2 — Rushes
   rushes: RushItem[];
+  // Rushs partagés de l'événement de tournage lié (lecture seule sur la fiche
+  // du reel). Vide si le reel n'est pas rattaché à un event.
+  eventRushes: RushItem[];
+  shootEvent: { id: string; title: string } | null;
   // Phase B3 — Brief
   brief: BriefItem | null;
   briefAttachments: BriefAttachmentItem[];
@@ -332,6 +337,8 @@ export function PublicationFiche({
   steps,
   permissions,
   rushes,
+  eventRushes,
+  shootEvent,
   brief,
   briefAttachments,
   versions,
@@ -519,6 +526,10 @@ export function PublicationFiche({
               slot.status === "RUSHES_EXPECTED" ||
               slot.status === "RUSHES_RECEIVED" ||
               rushes.length > 0) &&
+              // Sur un reel d'event, la section rushs SLOT reste masquée sauf
+              // s'il a réellement des rushs slot — évite un doublon vide à côté
+              // de la section « Rushs du tournage (événement) ».
+              (!shootEvent || rushes.length > 0) &&
               wrap(
                 "rushes",
                 <RushesSection
@@ -529,6 +540,35 @@ export function PublicationFiche({
                   currentUserId={currentUserId}
                 />
               )}
+
+            {/* Rushs de l'événement de tournage lié — partagés par tous les
+                reels, en LECTURE SEULE ici (upload/suppression se font sur la
+                fiche Event). Comble le trou : sans ça, un reel issu d'un event a
+                sa section rushs slot vide. Même audience que les rushs (le
+                monteur assigné les voit). */}
+            {shootEvent && shouldRenderForRole("rushes", currentUserRole) && (
+              <div className="space-y-1.5">
+                <RushesSection
+                  slotId={slot.id}
+                  apiBasePath={`/api/shoot-events/${shootEvent.id}/rushes`}
+                  rushes={eventRushes}
+                  canUploadRushes={false}
+                  canManageRushes={false}
+                  readOnly
+                  title="Rushs du tournage (événement)"
+                  currentUserId={currentUserId}
+                  sectionId="event-rushes"
+                  storageKey={`pub-event-rushes:${slot.id}`}
+                  collapsible
+                />
+                <Link
+                  href={`/events/${shootEvent.id}`}
+                  className="inline-block text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Depuis l&apos;événement « {shootEvent.title} » →
+                </Link>
+              </div>
+            )}
 
             {/* Versions livrées — visible si le pattern implique un montage
                 humain (manual_rushes, needsRushes ou needsBrief), ou si une

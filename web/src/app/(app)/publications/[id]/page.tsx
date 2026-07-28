@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
+import { canUserAccessEvent } from "@/lib/permissions/eventScope";
+import { loadEventForAccess } from "@/lib/services/event/eventRushAccess";
 import { canMarkPublished, canUploadRushes, canEditBrief, canUploadVersion, canPromoteVersion } from "@/lib/permissions/publications";
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
@@ -66,6 +68,9 @@ export default async function PublicationPage({ params }: PageProps) {
           client: { select: { name: true } },
         },
       },
+      // Événement de tournage lié (si le reel en vient) — pour afficher ses
+      // rushs partagés + un back-link sur la fiche.
+      event: { select: { id: true, title: true } },
       pattern: {
         select: {
           id: true,
@@ -373,7 +378,8 @@ export default async function PublicationPage({ params }: PageProps) {
     actor: a.actor ? { id: a.actor.id, name: a.actor.name } : null,
   }));
 
-  const rushes = rawRushes.map((r) => ({
+  // Mapping commun : rushs slot et rushs event ont la même forme sérialisable.
+  const mapRush = (r: (typeof rawRushes)[number]) => ({
     id: r.id,
     fileName: r.fileName,
     mimeType: r.mimeType,
@@ -382,7 +388,32 @@ export default async function PublicationPage({ params }: PageProps) {
     uploadedAt: r.uploadedAt.toISOString(),
     uploadedByUserId: r.uploadedByUserId,
     uploadedBy: r.uploadedBy,
-  }));
+  });
+  const rushes = rawRushes.map(mapRush);
+
+  // Rushs de l'événement de tournage lié (XOR avec les rushs slot-scopés : un
+  // reel d'event a ses rushs sur event.rushes, pas sur son slotId), affichés en
+  // lecture seule sur la fiche du reel. Gating par canUserAccessEvent — la MÊME
+  // autorité que les routes /api/shoot-events/[id]/rushes/* — et non le seul
+  // canUserAccessSlot : un vidéaste réassigné sur ce slot mais qui n'est pas le
+  // vidéaste de l'event ne doit voir ni ces rushs ni leurs métadonnées.
+  let shootEvent: { id: string; title: string } | null = null;
+  let eventRushes: ReturnType<typeof mapRush>[] = [];
+  if (slot.eventId && slot.event) {
+    const accessEvent = await loadEventForAccess(slot.eventId);
+    if (accessEvent && canUserAccessEvent(accessEvent, role, userId)) {
+      shootEvent = { id: slot.event.id, title: slot.event.title };
+      eventRushes = (
+        await prisma.publicationRush.findMany({
+          where: { eventId: slot.eventId, deletedAt: null },
+          orderBy: { uploadedAt: "desc" },
+          include: {
+            uploadedBy: { select: { id: true, name: true, email: true } },
+          },
+        })
+      ).map(mapRush);
+    }
+  }
 
   const versions = rawVersions.map((v) => ({
     id: v.id,
@@ -674,6 +705,8 @@ export default async function PublicationPage({ params }: PageProps) {
         canPromoteVersion: canPromoteVersionFlag,
       }}
       rushes={rushes}
+      eventRushes={eventRushes}
+      shootEvent={shootEvent}
       brief={brief}
       briefAttachments={briefAttachments}
       versions={versions}

@@ -48,6 +48,15 @@ interface RushesSectionProps {
   storageKey?: string;
   defaultOpen?: boolean;
   collapsible?: boolean;
+  /** Base des routes rush (download-all / download-one / delete). Défaut :
+   *  `/api/publications/${slotId}/rushes`. Surchargé pour les rushs d'event :
+   *  `/api/shoot-events/${eventId}/rushes`. */
+  apiBasePath?: string;
+  /** Lecture seule : masque l'upload ET la suppression (rushs d'event sur la
+   *  fiche du reel). */
+  readOnly?: boolean;
+  /** Titre de section (défaut « Rushes »). */
+  title?: string;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -95,23 +104,31 @@ export function RushesSection({
   storageKey,
   defaultOpen = true,
   collapsible = false,
+  apiBasePath,
+  readOnly = false,
+  title = "Rushes",
 }: RushesSectionProps) {
   const router = useRouter();
   const [rushes, setRushes] = useState<Rush[]>(initialRushes);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Base des routes rush. Défaut = flow publication (slot-scopé). Les rushs
+  // d'event surchargent vers `/api/shoot-events/${eventId}/rushes`.
+  const base = apiBasePath ?? `/api/publications/${slotId}/rushes`;
 
   async function downloadAllRushes() {
     // On récupère les URLs presignées (1 requête JSON → erreurs gérées par toast),
     // puis on déclenche N téléchargements DIRECTS depuis R2, en parallèle. Aucun
     // octet ne transite par le serveur → le plus rapide pour les gros bundles.
     try {
-      const res = await fetch(`/api/publications/${slotId}/rushes/download-urls`);
+      const res = await fetch(`${base}/download-urls`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error ?? `Erreur ${res.status}`);
       }
+      // La route publications renvoie `url`, la route event `downloadUrl` — on tolère les deux.
       const { rushes: urls } = (await res.json()) as {
-        rushes: { id: string; fileName: string; url: string }[];
+        rushes: { id: string; fileName: string; url?: string; downloadUrl?: string }[];
       };
 
       // Un iframe caché par fichier = un contexte de navigation SÉPARÉ. Un <a>
@@ -126,7 +143,7 @@ export function RushesSection({
         setTimeout(() => {
           const iframe = document.createElement("iframe");
           iframe.style.display = "none";
-          iframe.src = r.url;
+          iframe.src = r.url ?? r.downloadUrl ?? "";
           document.body.appendChild(iframe);
           // Le gestionnaire de téléchargement du navigateur prend le relais ;
           // on retire l'iframe après un délai large (indépendant du download).
@@ -157,7 +174,7 @@ export function RushesSection({
   async function downloadRush(rush: Rush) {
     setDownloadingId(rush.id);
     try {
-      const res = await fetch(`/api/publications/${slotId}/rushes/${rush.id}`);
+      const res = await fetch(`${base}/${rush.id}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error ?? `Erreur ${res.status}`);
@@ -180,7 +197,7 @@ export function RushesSection({
   // ─── Suppression ──────────────────────────────────────────────────────────
 
   async function deleteRush(rush: Rush) {
-    const res = await fetch(`/api/publications/${slotId}/rushes/${rush.id}`, {
+    const res = await fetch(`${base}/${rush.id}`, {
       method: "DELETE",
     });
     if (!res.ok) {
@@ -199,7 +216,7 @@ export function RushesSection({
 
   return (
     <Section
-      title="Rushes"
+      title={title}
       icon={Clapperboard}
       sectionId={sectionId}
       storageKey={storageKey}
@@ -230,7 +247,7 @@ export function RushesSection({
         {hasRushes && (
           <ul className="divide-y divide-gray-100">
             {rushes.map((rush) => {
-              const canDelete = canManageRushes || rush.uploadedByUserId === currentUserId;
+              const canDelete = !readOnly && (canManageRushes || rush.uploadedByUserId === currentUserId);
               return (
                 <li key={rush.id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0 group">
                   <Clapperboard size={12} className="text-muted-foreground shrink-0" />
@@ -272,7 +289,7 @@ export function RushesSection({
 
         {/* Zone upload — compacte si déjà des rushes, full si vide.
             Réceptrice de drag dans les deux cas. */}
-        {canUploadRushes && (
+        {canUploadRushes && !readOnly && (
           <div className={hasRushes ? "[&_label]:!min-h-[64px] [&_label]:!p-3" : ""}>
             <MediaDropzone
               slotId={slotId}
