@@ -86,20 +86,26 @@ export function CustomFieldsSchemaEditor({
 
       {fields.map((field, i) => (
         <div key={field.key} className="flex items-center gap-2">
-          <Input
-            value={field.label}
-            onChange={(v) => patchField(i, { label: v })}
-            placeholder="Libellé"
-            disabled={readOnly}
-            className="flex-1 min-w-0"
-          />
-          <Input
-            value={field.key}
-            onChange={(v) => patchField(i, { key: v.trim() })}
-            placeholder="clé"
-            disabled={readOnly}
-            className="w-32 shrink-0 font-mono text-xs"
-          />
+          {/* Largeur portée par le <div> conteneur, pas via className sur <Input> :
+              Input force w-full en dur (non écrasable sans tailwind-merge), donc
+              une className de largeur passée directement est ignorée. */}
+          <div className="flex-1 min-w-0">
+            <Input
+              value={field.label}
+              onChange={(v) => patchField(i, { label: v })}
+              placeholder="Libellé"
+              disabled={readOnly}
+            />
+          </div>
+          <div className="w-32 shrink-0">
+            <Input
+              value={field.key}
+              onChange={(v) => patchField(i, { key: v.trim() })}
+              placeholder="clé"
+              disabled={readOnly}
+              className="font-mono text-xs"
+            />
+          </div>
           <div className="w-32 shrink-0">
             <Select
               value={field.type}
