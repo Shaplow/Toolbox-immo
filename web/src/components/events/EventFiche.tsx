@@ -183,7 +183,7 @@ export function EventFiche({ event, recipes, canUploadRushes, canAttachReel }: E
           {canUploadRushes && (
             <MediaDropzone
               slotId={event.id}
-              uploadBasePath={`/api/shoot-events/${event.id}`}
+              uploadBasePath={`/api/shoot-events/${event.id}/rushes`}
               kind="rush"
               accept={RUSH_ACCEPT}
               maxSizeBytes={RUSH_MAX}
