@@ -28,7 +28,10 @@ function readTemplateCanvas(jsonData: string | null | undefined): { canvasWidth:
   }
 }
 
-type TemplateGroup = { id: string; name: string; hidden?: boolean; locked?: boolean };
+/** `parentGroupId` est exposé pour que l'UI puisse afficher un sous-groupe comme
+ *  inclus dans son parent — cocher un parent inclut ses sous-groupes côté rendu
+ *  (cf. `expandGroupIdsWithChildren`). */
+type TemplateGroup = { id: string; name: string; hidden?: boolean; locked?: boolean; parentGroupId?: string };
 
 function readTemplateGroups(jsonData: string | null | undefined): TemplateGroup[] {
   if (!jsonData) return [];
@@ -36,11 +39,17 @@ function readTemplateGroups(jsonData: string | null | undefined): TemplateGroup[
     const parsed = JSON.parse(jsonData) as { groups?: unknown[] };
     if (!Array.isArray(parsed.groups)) return [];
     return parsed.groups
-      .filter((g): g is { id: string; name: string; hidden?: boolean; locked?: boolean } =>
+      .filter((g): g is TemplateGroup =>
         typeof (g as Record<string, unknown>)?.id === "string" &&
         typeof (g as Record<string, unknown>)?.name === "string",
       )
-      .map((g) => ({ id: g.id, name: g.name, hidden: g.hidden, locked: g.locked }));
+      .map((g) => ({
+        id: g.id,
+        name: g.name,
+        hidden: g.hidden,
+        locked: g.locked,
+        parentGroupId: typeof g.parentGroupId === "string" ? g.parentGroupId : undefined,
+      }));
   } catch {
     return [];
   }

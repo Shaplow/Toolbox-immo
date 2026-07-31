@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link2 } from "lucide-react";
 import Link from "next/link";
 import { useBuilderStore } from "@/lib/store/builderStore";
+import { GroupSelectList } from "@/components/builder/shared/GroupSelectList";
 import { toast } from "@/components/ui/Toast";
 
 interface Props {
@@ -347,28 +348,12 @@ export function CoverTabPanel({ templateId }: Props) {
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Texte / overlays gardés sur la cover
             </p>
-            {groups.length === 0 ? (
-              <span className="text-[10px] text-muted-foreground italic">
-                Aucun groupe dans ce template. Ajoute-les depuis l&apos;onglet Calques.
-              </span>
-            ) : (
-              <div className="space-y-1">
-                {groups.map((g) => {
-                  const checked = config.overlayGroupIds.includes(g.id);
-                  return (
-                    <label key={g.id} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => toggleOverlayGroup(g.id, e.target.checked)}
-                        className="rounded"
-                      />
-                      <span className="text-xs text-muted-foreground">{g.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
+            <GroupSelectList
+              groups={groups}
+              selectedIds={config.overlayGroupIds}
+              onToggle={toggleOverlayGroup}
+              emptyLabel="Aucun groupe dans ce template. Ajoute-les depuis l'onglet Calques."
+            />
           </div>
 
           {/* Clips source des frames */}

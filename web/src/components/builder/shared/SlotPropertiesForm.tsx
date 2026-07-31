@@ -2,7 +2,9 @@
 import { useState } from "react";
 import { SelectionRuleEditor } from "@/components/builder/shared/SelectionRuleEditor";
 import { normalizeSelectionRule } from "@/components/builder/shared/SelectionRuleEditor";
+import { GroupSelectList } from "@/components/builder/shared/GroupSelectList";
 import type { VideoSequenceSlot } from "@/types/template";
+import { buildGroupTree } from "@/lib/groupLayout";
 import { type OverlayMode, getOverlayMode } from "@/lib/videoSequenceUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,7 +38,7 @@ export interface SlotPropertiesFormProps {
   slot: VideoSequenceSlot;
   index: number;
   schema: { key: string; label?: string; type: string }[];
-  groups: { id: string; name: string }[];
+  groups: { id: string; name: string; parentGroupId?: string }[];
   videoLibraries: { id: string; name: string }[];
   /** All VideoBlocks in the template, used for the positioning picker. */
   videoBlocks?: { id: string; label?: string }[];
@@ -87,10 +89,13 @@ export function SlotPropertiesForm({
     if (mode === "raw")    onChange({ overlayGroupIds: [] });
     if (mode === "data")   onChange({ overlayGroupIds: undefined });
     if (mode === "groups") {
+      // Pré-cocher un groupe TOP-LEVEL : `groups[0]` suit l'ordre de création et
+      // peut tomber sur un sous-groupe, qui serait alors sélectionné sans son parent.
+      const firstTopLevel = buildGroupTree(groups)[0]?.group.id;
       onChange({
         overlayGroupIds: slot.overlayGroupIds?.length
           ? slot.overlayGroupIds
-          : groups[0] ? [groups[0].id] : [],
+          : firstTopLevel ? [firstTopLevel] : [],
       });
     }
   }
@@ -277,20 +282,12 @@ export function SlotPropertiesForm({
         </div>
 
         {overlayMode === "groups" && (
-          <div className="mt-0.5 flex flex-col gap-1 pl-1">
-            {groups.length > 0 ? groups.map((g) => (
-              <label key={g.id} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={slot.overlayGroupIds?.includes(g.id) ?? false}
-                  onChange={(e) => toggleOverlayGroup(g.id, e.target.checked)}
-                  className="rounded border-border text-indigo-600 focus:ring-indigo-400"
-                />
-                <span className="text-[11px] text-muted-foreground">{g.name || g.id.slice(-6)}</span>
-              </label>
-            )) : (
-              <p className="text-[10px] text-muted-foreground">Aucun groupe dans le template.</p>
-            )}
+          <div className="mt-0.5 pl-1">
+            <GroupSelectList
+              groups={groups}
+              selectedIds={slot.overlayGroupIds ?? []}
+              onToggle={toggleOverlayGroup}
+            />
           </div>
         )}
       </div>

@@ -14,7 +14,7 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 const MIN_FRAME_GAP_S = 1 / 30;
 
 type Frame = { timestamp: number; url: string };
-type TemplateGroup = { id: string; name: string; hidden?: boolean; locked?: boolean };
+type TemplateGroup = { id: string; name: string; hidden?: boolean; locked?: boolean; parentGroupId?: string };
 type CoverPack = {
   id: string;
   status: string;
@@ -783,21 +783,28 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                                   .filter((g) => !g.hidden && !g.locked)
                                   .map((group) => {
                                     const currentGroupIds = overlayGroupsByPack[pack.id] ?? pack.overlayGroupIds;
-                                    const isChecked = currentGroupIds.includes(group.id);
+                                    // Cocher un groupe parent inclut ses sous-groupes côté rendu :
+                                    // la chip du sous-groupe le reflète (cochée + verrouillée).
+                                    const includedByParent = Boolean(
+                                      group.parentGroupId && currentGroupIds.includes(group.parentGroupId),
+                                    );
+                                    const isChecked = includedByParent || currentGroupIds.includes(group.id);
+                                    const locked = groupPatchingPackId === pack.id || includedByParent;
                                     return (
                                       <label
                                         key={group.id}
+                                        title={includedByParent ? "Inclus par son groupe parent" : undefined}
                                         className={`flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-md border transition-colors ${
                                           isChecked
                                             ? "bg-info-50 border-info-200 text-info-700"
                                             : "bg-white border-border text-muted-foreground hover:border-border"
-                                        } ${groupPatchingPackId === pack.id ? "opacity-60 pointer-events-none" : ""}`}
+                                        } ${locked ? "opacity-60 pointer-events-none" : ""}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={isChecked}
                                           className="accent-indigo-600 w-3 h-3"
-                                          disabled={groupPatchingPackId === pack.id}
+                                          disabled={locked}
                                           onChange={(event) => {
                                             const checked = event.target.checked;
                                             const next = checked
@@ -806,6 +813,9 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                                             void patchPackOverlayGroups(pack.id, next);
                                           }}
                                         />
+                                        {group.parentGroupId && (
+                                          <span className="text-[10px] text-indigo-500" title="Sous-groupe">⊟</span>
+                                        )}
                                         {group.name}
                                       </label>
                                     );
