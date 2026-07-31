@@ -6,6 +6,7 @@ import { deleteFromR2, r2Configured, uploadToR2 } from "@/lib/r2";
 import { buildHTML } from "@/lib/renderer/buildHTML";
 import { renderPNG } from "@/lib/renderer/renderPNG";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
+import { expandGroupIdsWithChildren } from "@/lib/groupLayout";
 import { resolveSlotExcludeZones, resolveZone } from "@/lib/triggerAutoCaptionFromTranscription";
 import { logActivity, type ActivityType } from "@/lib/services/slot/activity";
 import { notifyUser } from "@/lib/sseStore";
@@ -250,7 +251,7 @@ function resolveCoverTimestamps(
   slotDurations?: Record<string, number>,
 ): number[] {
   const blockZones = (config.excludeZones ?? [])
-    .map((zone) => resolveZone(zone, template.blocks ?? []))
+    .map((zone) => resolveZone(zone, template.blocks ?? [], template.groups ?? []))
     .filter((zone): zone is NonNullable<typeof zone> => zone !== null);
   const slotZones =
     config.excludeSlotIds?.length && template.videoSequence?.length
@@ -920,7 +921,11 @@ function buildCoverTemplate(
   offsetX: number,
   offsetY: number,
 ): TemplateJSON {
-  const allowedGroups = new Set(overlayGroupIds);
+  // Cocher un groupe parent inclut ses sous-groupes : `block.groupId` pointe
+  // vers le groupe feuille, et `groups` doit rester cohérent avec les blocs
+  // conservés (sinon buildHTML n'émet plus de data-layout-group-id et le bloc
+  // n'est plus auto-layouté).
+  const allowedGroups = expandGroupIdsWithChildren(overlayGroupIds, templateJson.groups);
   const overlayBlocks = templateJson.blocks
     .filter((block) => block.groupId && allowedGroups.has(block.groupId))
     .filter((block) => block.type !== "video" && block.type !== "music")
@@ -1058,12 +1063,14 @@ export async function buildCoverOverlayPreviewHtml(packId: string): Promise<stri
   templateJson = applyAssetMetadata(templateJson, metadataByLibrary);
 
   const overlayGroupIds = safeJson<string[]>(pack.overlayGroupIds, []);
+  // Cocher un groupe parent inclut ses sous-groupes (cf. buildCoverTemplate).
+  const allowedGroups = expandGroupIdsWithChildren(overlayGroupIds, templateJson.groups);
   const overlayTemplate: TemplateJSON = {
     ...templateJson,
     blocks: templateJson.blocks
-      .filter((block) => block.groupId && overlayGroupIds.includes(block.groupId))
+      .filter((block) => block.groupId && allowedGroups.has(block.groupId))
       .filter((block) => block.type !== "video" && block.type !== "music"),
-    groups: templateJson.groups.filter((group) => overlayGroupIds.includes(group.id)),
+    groups: templateJson.groups.filter((group) => allowedGroups.has(group.id)),
     videoSequence: undefined,
     captionAutoConfig: undefined,
   };

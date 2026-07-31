@@ -30,7 +30,8 @@ import {
   buildWordTimestampsForSubmission,
   realignTimedCaptions,
 } from "@/lib/captionWordTiming";
-import type { TemplateJSON, CaptionExcludeZone, AnyBlock, VideoSequenceSlot } from "@/types/template";
+import { expandGroupIdsWithChildren } from "@/lib/groupLayout";
+import type { TemplateJSON, CaptionExcludeZone, AnyBlock, LayerGroup, VideoSequenceSlot } from "@/types/template";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -45,16 +46,22 @@ type Segment = { start: number; end: number; text: string; speaker?: string };
 /**
  * Resolve one exclude zone to { startSec, endSec } using the template blocks.
  * Returns null if the zone cannot be resolved (e.g., group not found).
+ *
+ * `groups` permet d'inclure les blocs des **sous-groupes** du groupe visé —
+ * `block.groupId` pointe vers le groupe feuille, donc un bloc déplacé dans un
+ * sous-groupe sortirait sinon du calcul et la zone perdrait son timing.
  */
 export function resolveZone(
   zone: CaptionExcludeZone,
   blocks: AnyBlock[],
+  groups: LayerGroup[] = [],
 ): { startSec: number; endSec: number | null } | null {
   let startSec: number | undefined;
   let endSec: number | undefined;
 
   if (zone.startGroupId) {
-    const groupBlocks = blocks.filter((b) => b.groupId === zone.startGroupId);
+    const startGroupIds = expandGroupIdsWithChildren([zone.startGroupId], groups);
+    const groupBlocks = blocks.filter((b) => b.groupId && startGroupIds.has(b.groupId));
     if (groupBlocks.length > 0) {
       const withAppearAt = groupBlocks.filter((b) => b.appearAt !== undefined);
       if (withAppearAt.length === 0) {
@@ -75,7 +82,8 @@ export function resolveZone(
   }
 
   if (zone.endGroupId) {
-    const groupBlocks = blocks.filter((b) => b.groupId === zone.endGroupId);
+    const endGroupIds = expandGroupIdsWithChildren([zone.endGroupId], groups);
+    const groupBlocks = blocks.filter((b) => b.groupId && endGroupIds.has(b.groupId));
     if (groupBlocks.length > 0) {
       const withAppearAt = groupBlocks.filter((b) => b.appearAt !== undefined);
       if (withAppearAt.length === 0) {
@@ -396,11 +404,11 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
   }
 
   // Resolve and apply exclude zones
-  // All blocks are flat in templateJson.blocks; groupId references the LayerGroup
+  // All blocks are flat in templateJson.blocks; groupId references the leaf LayerGroup
   const blocks: AnyBlock[] = templateJson.blocks ?? [];
 
   const resolvedZones = (captionAutoConfig.excludeZones ?? [])
-    .map((zone) => resolveZone(zone, blocks))
+    .map((zone) => resolveZone(zone, blocks, templateJson.groups ?? []))
     .filter((z): z is NonNullable<typeof z> => z !== null);
 
   // Slot-based exclusions (sequence templates): convert slot IDs to time zones.

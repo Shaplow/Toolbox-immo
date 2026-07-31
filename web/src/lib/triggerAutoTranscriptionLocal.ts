@@ -197,7 +197,7 @@ export async function triggerAutoTranscriptionLocal(
     // 5. Appliquer les zones d'exclusion ───────────────────────────────────────
     const blocks: AnyBlock[] = templateJson.blocks ?? [];
     const resolvedZones = (captionAutoConfig.excludeZones ?? [])
-      .map((zone) => resolveZone(zone, blocks))
+      .map((zone) => resolveZone(zone, blocks, templateJson.groups ?? []))
       .filter((z): z is NonNullable<typeof z> => z !== null);
 
     const slotZones =

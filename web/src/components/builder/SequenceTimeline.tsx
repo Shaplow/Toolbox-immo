@@ -49,6 +49,7 @@ interface BlockTrack {
 export function SequenceTimeline() {
   const videoSequence = useBuilderStore((s) => s.template.videoSequence);
   const blocks = useBuilderStore((s) => s.template.blocks);
+  const groups = useBuilderStore((s) => s.template.groups);
   const selectedBlockId = useBuilderStore((s) => s.selectedBlockId);
   const selectedSlotId = useBuilderStore((s) => s.selectedSlotId);
   const selectBlock = useBuilderStore((s) => s.selectBlock);
@@ -75,7 +76,7 @@ export function SequenceTimeline() {
       if (block.type === "music") continue; // music has its own row
       const spans: TrackSpan[] = [];
       for (const layout of slotLayouts) {
-        if (!visibleInSlot(block, layout.slot)) continue;
+        if (!visibleInSlot(block, layout.slot, groups)) continue;
         const { appearAt, hideAt } = effectiveTiming(block, layout.slot.id, layout.duration);
         spans.push({ slotIndex: layout.index, appearAt, hideAt });
       }
@@ -83,7 +84,7 @@ export function SequenceTimeline() {
       tracks.push({ blockId: block.id, label: block.binding ?? block.name ?? block.type, spans });
     }
     return tracks;
-  }, [blocks, slotLayouts]);
+  }, [blocks, groups, slotLayouts]);
 
   const musicBlocks = useMemo(
     () => blocks.filter((b): b is MusicBlock => b.type === "music" && !b.hidden),

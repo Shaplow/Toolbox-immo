@@ -220,7 +220,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
                   }>;
                   const blocks: AnyBlock[] = tplJson.blocks ?? [];
                   const resolvedZones = (cfg.excludeZones ?? [])
-                    .map((zone) => resolveZone(zone, blocks))
+                    .map((zone) => resolveZone(zone, blocks, tplJson.groups ?? []))
                     .filter((z): z is NonNullable<typeof z> => z !== null);
 
                   // Charger render pour slotDurations / job.duration via la transcription complète

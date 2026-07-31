@@ -11,6 +11,7 @@ import { uploadToR2, r2Configured, deleteFromR2 } from "@/lib/r2";
 import { submitRunpodJob } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
+import { expandGroupIdsWithChildren } from "@/lib/groupLayout";
 import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
@@ -1546,11 +1547,14 @@ async function renderSlotOverlay(
     return { buffers: [null], plan: null };
   }
 
-  // Compute which blocks are hidden by the group filter for this slot
+  // Compute which blocks are hidden by the group filter for this slot.
+  // expandGroupIdsWithChildren : cocher un groupe parent inclut ses sous-groupes
+  // (block.groupId pointe vers le groupe feuille, cf. groupLayout.ts).
   let baseHiddenByGroup: string[] = [];
   if (slot.overlayGroupIds !== undefined) {
+    const allowedGroupIds = expandGroupIdsWithChildren(slot.overlayGroupIds, templateJson.groups ?? []);
     baseHiddenByGroup = templateJson.blocks
-      .filter((b) => !b.groupId || !slot.overlayGroupIds!.includes(b.groupId))
+      .filter((b) => !b.groupId || !allowedGroupIds.has(b.groupId))
       .map((b) => b.id);
   }
 

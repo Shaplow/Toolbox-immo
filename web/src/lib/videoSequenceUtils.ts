@@ -1,4 +1,5 @@
 import type { AnyBlock, TemplateJSON, VideoBlock, VideoSequenceSlot } from "@/types/template";
+import { expandGroupIdsWithChildren, type GroupNode } from "@/lib/groupLayout";
 
 /** Résume la source vidéo d'un slot en une chaîne lisible. */
 export function getSlotSourceSummary(
@@ -88,12 +89,15 @@ export function ensureVideoSequence(
  * - `overlayGroupIds === undefined` (mode "data") : tous les blocs visibles.
  * - `overlayGroupIds === []` (mode "raw") : aucun bloc.
  * - `overlayGroupIds = [...]` (mode "groups") : seulement les blocs dont
- *   `groupId` est listé.
+ *   `groupId` est listé — **ou dont le groupe est un sous-groupe d'un groupe
+ *   listé** (`block.groupId` pointe vers le groupe feuille, cf. groupLayout.ts).
+ *   Passer `groups` est donc nécessaire pour ne pas perdre les sous-groupes.
  */
-export function isBlockVisibleInSlot(block: AnyBlock, slot: VideoSequenceSlot): boolean {
+export function isBlockVisibleInSlot(block: AnyBlock, slot: VideoSequenceSlot, groups: readonly GroupNode[]): boolean {
   if (slot.overlayGroupIds === undefined) return true;
   if (slot.overlayGroupIds.length === 0) return false;
-  return block.groupId != null && slot.overlayGroupIds.includes(block.groupId);
+  if (block.groupId == null) return false;
+  return expandGroupIdsWithChildren(slot.overlayGroupIds, groups).has(block.groupId);
 }
 
 /**

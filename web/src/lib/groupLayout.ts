@@ -371,6 +371,56 @@ export function getChildAutoLayoutGroups(parentId: string, groups: LayerGroup[])
   return groups.filter((g) => g.parentGroupId === parentId && isAutoLayoutGroup(g));
 }
 
+/** Minimum structurel d'un nœud de hiérarchie de groupes. `LayerGroup` en est un sur-ensemble. */
+export type GroupNode = Pick<LayerGroup, "id" | "parentGroupId">;
+
+/**
+ * Parent effectif d'un groupe : un `parentGroupId` qui ne résout pas vers un
+ * groupe existant est ignoré et le groupe traité comme top-level — même
+ * convention que `templateNormalization.ts` et `BlocksPanel.tsx`.
+ */
+function resolvedParentId(group: GroupNode, knownIds: Set<string>): string | undefined {
+  return group.parentGroupId && knownIds.has(group.parentGroupId) ? group.parentGroupId : undefined;
+}
+
+/**
+ * Étend une liste d'ids de groupes avec leurs **sous-groupes directs** (1 niveau).
+ *
+ * `block.groupId` est plat : il pointe toujours vers le groupe FEUILLE. Un bloc
+ * déplacé dans un sous-groupe ne porte donc plus l'id du parent, et tout filtre
+ * du type `selectedGroupIds.includes(block.groupId)` le perd silencieusement.
+ * Sémantique retenue : **cocher un parent inclut ses sous-groupes**. Ne remonte
+ * volontairement pas aux ancêtres : un sous-groupe reste sélectionnable seul.
+ *
+ * Contrairement à `getChildAutoLayoutGroups`, on **ne filtre pas** sur
+ * `isAutoLayoutGroup` : un sous-groupe en mode `free` doit lui aussi suivre son
+ * parent (il n'est pas auto-layouté, mais ses blocs doivent rester visibles).
+ */
+export function expandGroupIdsWithChildren(groupIds: Iterable<string>, groups: readonly GroupNode[]): Set<string> {
+  const expanded = new Set(groupIds);
+  if (expanded.size === 0) return expanded;
+  const knownIds = new Set(groups.map((group) => group.id));
+  for (const group of groups) {
+    const parentId = resolvedParentId(group, knownIds);
+    if (parentId && expanded.has(parentId)) expanded.add(group.id);
+  }
+  return expanded;
+}
+
+/**
+ * Arbre d'affichage des groupes (profondeur 1), ordre d'origine préservé.
+ * Les groupes dont le parent n'existe plus sont promus top-level.
+ */
+export function buildGroupTree<T extends GroupNode>(groups: readonly T[]): { group: T; children: T[] }[] {
+  const knownIds = new Set(groups.map((group) => group.id));
+  return groups
+    .filter((group) => !resolvedParentId(group, knownIds))
+    .map((group) => ({
+      group,
+      children: groups.filter((candidate) => resolvedParentId(candidate, knownIds) === group.id),
+    }));
+}
+
 /**
  * Bloc « virtuel » représentant un sous-groupe dans le flux de son parent : se
  * comporte comme un bloc non-texte (boxOffset {0,0}, ancre = centre).

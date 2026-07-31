@@ -126,17 +126,24 @@ describe("ensureVideoSequence", () => {
 // ─── isBlockVisibleInSlot ────────────────────────────────────────────────────
 
 describe("isBlockVisibleInSlot", () => {
+  // g1 = groupe parent, sub1 = sous-groupe de g1, g2 = groupe indépendant.
+  const GROUPS = [
+    { id: "g1" },
+    { id: "sub1", parentGroupId: "g1" },
+    { id: "g2" },
+  ];
+
   it("overlayGroupIds undefined → visible", () => {
-    expect(isBlockVisibleInSlot(mkBlock(), mkSlot("s1"))).toBe(true);
+    expect(isBlockVisibleInSlot(mkBlock(), mkSlot("s1"), GROUPS)).toBe(true);
   });
 
   it("overlayGroupIds = [] → invisible", () => {
-    expect(isBlockVisibleInSlot(mkBlock(), mkSlot("s1", { overlayGroupIds: [] }))).toBe(false);
+    expect(isBlockVisibleInSlot(mkBlock(), mkSlot("s1", { overlayGroupIds: [] }), GROUPS)).toBe(false);
   });
 
   it("overlayGroupIds = [g1] et block sans groupId → invisible", () => {
     expect(
-      isBlockVisibleInSlot(mkBlock(), mkSlot("s1", { overlayGroupIds: ["g1"] })),
+      isBlockVisibleInSlot(mkBlock(), mkSlot("s1", { overlayGroupIds: ["g1"] }), GROUPS),
     ).toBe(false);
   });
 
@@ -145,8 +152,49 @@ describe("isBlockVisibleInSlot", () => {
       isBlockVisibleInSlot(
         mkBlock({ groupId: "g1" }),
         mkSlot("s1", { overlayGroupIds: ["g1"] }),
+        GROUPS,
       ),
     ).toBe(true);
+  });
+
+  it("bloc d'un SOUS-GROUPE et slot cochant le parent → visible", () => {
+    expect(
+      isBlockVisibleInSlot(
+        mkBlock({ groupId: "sub1" }),
+        mkSlot("s1", { overlayGroupIds: ["g1"] }),
+        GROUPS,
+      ),
+    ).toBe(true);
+  });
+
+  it("bloc d'un sous-groupe et slot cochant le sous-groupe seul → visible", () => {
+    expect(
+      isBlockVisibleInSlot(
+        mkBlock({ groupId: "sub1" }),
+        mkSlot("s1", { overlayGroupIds: ["sub1"] }),
+        GROUPS,
+      ),
+    ).toBe(true);
+  });
+
+  it("bloc direct du parent et slot cochant le sous-groupe seul → invisible (relation à sens unique)", () => {
+    expect(
+      isBlockVisibleInSlot(
+        mkBlock({ groupId: "g1" }),
+        mkSlot("s1", { overlayGroupIds: ["sub1"] }),
+        GROUPS,
+      ),
+    ).toBe(false);
+  });
+
+  it("aucune hiérarchie fournie → comportement plat historique", () => {
+    expect(
+      isBlockVisibleInSlot(
+        mkBlock({ groupId: "sub1" }),
+        mkSlot("s1", { overlayGroupIds: ["g1"] }),
+        [],
+      ),
+    ).toBe(false);
   });
 });
 

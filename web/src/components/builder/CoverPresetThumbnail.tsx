@@ -17,6 +17,7 @@
  */
 
 import type { TemplateJSON, AnyBlock } from "@/types/template";
+import { expandGroupIdsWithChildren } from "@/lib/groupLayout";
 
 interface ExcludeZone {
   x: number;
@@ -64,7 +65,9 @@ export function CoverPresetThumbnail({
   const aspectRatio = cw / ch;
   const height = width / aspectRatio;
 
-  const selectedGroupIds = new Set(config.overlayGroupIds ?? []);
+  // Parité avec buildCoverTemplate (coverAuto.ts) : cocher un groupe parent
+  // inclut ses sous-groupes.
+  const selectedGroupIds = expandGroupIdsWithChildren(config.overlayGroupIds ?? [], template.groups ?? []);
   const offsetX = config.offsetX ?? 0;
   const offsetY = config.offsetY ?? 0;
   const excludeZones = config.excludeZones ?? [];

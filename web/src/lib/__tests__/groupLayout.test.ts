@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  buildGroupTree,
   computeAutoLayoutPositions,
   computeAutoLayoutPositionsForTree,
+  expandGroupIdsWithChildren,
   getChildAutoLayoutGroups,
   getEffectiveBoxOffset,
   getBlockAnchorOffset,
@@ -500,5 +502,75 @@ describe("computeAutoLayoutPositionsForTree", () => {
     const subFree: LayerGroup = { id: "s2", name: "s2", parentGroupId: "p", layout: { mode: "free" } };
     const other: LayerGroup = { id: "s3", name: "s3", parentGroupId: "x", layout: { mode: "row" } };
     expect(getChildAutoLayoutGroups("p", [parent, subAuto, subFree, other]).map((g) => g.id)).toEqual(["s1"]);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// expandGroupIdsWithChildren / buildGroupTree — sélection hiérarchique
+//
+// `block.groupId` pointe vers le groupe FEUILLE : un bloc déplacé dans un
+// sous-groupe ne porte plus l'id du parent. Sans expansion, cocher un groupe
+// parent dans un clip ou une cover ne sélectionne aucun bloc de ses
+// sous-groupes — ils disparaissent du rendu final.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe("expandGroupIdsWithChildren", () => {
+  const P: LayerGroup = { id: "P", name: "P", layout: { mode: "column" } };
+  const S1: LayerGroup = { id: "S1", name: "S1", parentGroupId: "P", layout: { mode: "row" } };
+  const S2: LayerGroup = { id: "S2", name: "S2", parentGroupId: "P", layout: { mode: "free" } };
+  const Q: LayerGroup = { id: "Q", name: "Q", layout: { mode: "row" } };
+  const ORPH: LayerGroup = { id: "ORPH", name: "ORPH", parentGroupId: "ghost" };
+  const ALL = [P, S1, S2, Q, ORPH];
+
+  const ids = (set: Set<string>) => [...set].sort();
+
+  it("cocher un parent inclut ses sous-groupes", () => {
+    expect(ids(expandGroupIdsWithChildren(["P"], ALL))).toEqual(["P", "S1", "S2"]);
+  });
+
+  it("inclut aussi un sous-groupe en mode free (≠ getChildAutoLayoutGroups)", () => {
+    expect(expandGroupIdsWithChildren(["P"], ALL).has("S2")).toBe(true);
+  });
+
+  it("un sous-groupe coché seul ne remonte pas vers son parent", () => {
+    expect(ids(expandGroupIdsWithChildren(["S1"], ALL))).toEqual(["S1"]);
+  });
+
+  it("un groupe sans enfant n'aspire rien", () => {
+    expect(ids(expandGroupIdsWithChildren(["Q"], ALL))).toEqual(["Q"]);
+  });
+
+  it("sélection vide → set vide (mode « clip seul » préservé)", () => {
+    expect(expandGroupIdsWithChildren([], ALL).size).toBe(0);
+  });
+
+  it("template 100 % plat → set identique à l'entrée (non-régression)", () => {
+    expect(ids(expandGroupIdsWithChildren(["Q"], [Q, { id: "R", name: "R" }]))).toEqual(["Q"]);
+  });
+
+  it("parent + enfant cochés explicitement → pas de doublon", () => {
+    expect(ids(expandGroupIdsWithChildren(["P", "S1"], ALL))).toEqual(["P", "S1", "S2"]);
+  });
+
+  it("id périmé : n'aspire pas les groupes dont le parent n'existe plus", () => {
+    const expanded = expandGroupIdsWithChildren(["ghost"], ALL);
+    expect(expanded.has("ORPH")).toBe(false);
+  });
+});
+
+describe("buildGroupTree", () => {
+  it("rattache les sous-groupes à leur parent en préservant l'ordre", () => {
+    const P: LayerGroup = { id: "P", name: "P" };
+    const S1: LayerGroup = { id: "S1", name: "S1", parentGroupId: "P" };
+    const Q: LayerGroup = { id: "Q", name: "Q" };
+    const tree = buildGroupTree([P, S1, Q]);
+    expect(tree.map((node) => node.group.id)).toEqual(["P", "Q"]);
+    expect(tree[0].children.map((child) => child.id)).toEqual(["S1"]);
+    expect(tree[1].children).toEqual([]);
+  });
+
+  it("un groupe dont le parent n'existe plus est promu top-level", () => {
+    const ORPH: LayerGroup = { id: "ORPH", name: "ORPH", parentGroupId: "ghost" };
+    expect(buildGroupTree([ORPH]).map((node) => node.group.id)).toEqual(["ORPH"]);
   });
 });
