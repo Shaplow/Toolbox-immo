@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  GAP_MIN,
   buildGroupTree,
   computeAutoLayoutPositions,
   computeAutoLayoutPositionsForTree,
@@ -139,6 +140,26 @@ describe("normalizeGroupLayout", () => {
 
   it("mode free → undefined (pas d'auto-layout)", () => {
     expect(normalizeGroupLayout({ mode: "free" })).toBeUndefined();
+  });
+
+  // Un écart négatif fait volontairement se chevaucher les blocs. Un écart de 0
+  // doit rester 0 : le miroir JS du rendu final le confondait avec « non défini »
+  // et le remplaçait par 16 (`gap || 16`), d'où une preview et une vidéo qui
+  // divergeaient sur un groupe collé.
+  it("préserve un gap négatif", () => {
+    expect(normalizeGroupLayout({ mode: "column", gap: -8 })?.gap).toBe(-8);
+  });
+
+  it("préserve un gap de 0 (et ne retombe pas sur le défaut)", () => {
+    expect(normalizeGroupLayout({ mode: "column", gap: 0 })?.gap).toBe(0);
+  });
+
+  it("clampe un gap absurde à GAP_MIN", () => {
+    expect(normalizeGroupLayout({ mode: "column", gap: -9999 })?.gap).toBe(GAP_MIN);
+  });
+
+  it("arrondit un gap négatif fractionnaire", () => {
+    expect(normalizeGroupLayout({ mode: "row", gap: -7.6 })?.gap).toBe(-8);
   });
 
   it("undefined → undefined", () => {
@@ -356,6 +377,73 @@ describe("computeAutoLayoutPositions — ligne", () => {
     );
     expect(pos(map, "a")).toEqual({ x: 0, y: 0 });
     expect(pos(map, "b")).toEqual({ x: 40, y: 10 });
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// computeAutoLayoutPositions — écart négatif (chevauchement volontaire)
+// ──────────────────────────────────────────────────────────────────────────
+
+describe("computeAutoLayoutPositions — gap négatif", () => {
+  it("colonne : chaque bloc remonte de |gap| sur le précédent", () => {
+    const blocks: AnyBlock[] = [
+      text("a", { x: 0, y: 0, w: 100, h: 20, z: 0 }),
+      text("b", { x: 0, y: 30, w: 100, h: 40, z: 1 }),
+      text("c", { x: 0, y: 80, w: 100, h: 20, z: 2 }),
+    ];
+    const map = computeAutoLayoutPositions(
+      group({ mode: "column", gap: -5, justify: "start", align: "top" }),
+      blocks,
+    );
+    expect(pos(map, "a")).toEqual({ x: 0, y: 0 });
+    // a finit à y=20, b démarre 5px plus haut.
+    expect(pos(map, "b")).toEqual({ x: 0, y: 15 });
+    expect(pos(map, "c")).toEqual({ x: 0, y: 50 });
+  });
+
+  it("ligne : chaque bloc empiète de |gap| sur le précédent", () => {
+    const blocks: AnyBlock[] = [
+      text("a", { x: 0, y: 0, w: 30, h: 40, z: 0 }),
+      text("b", { x: 40, y: 0, w: 50, h: 40, z: 1 }),
+      text("c", { x: 100, y: 0, w: 20, h: 40, z: 2 }),
+    ];
+    const map = computeAutoLayoutPositions(
+      group({ mode: "row", gap: -10, justify: "start", align: "top" }),
+      blocks,
+    );
+    expect(pos(map, "a")).toEqual({ x: 0, y: 0 });
+    expect(pos(map, "b")).toEqual({ x: 20, y: 0 });
+    expect(pos(map, "c")).toEqual({ x: 60, y: 0 });
+  });
+
+  it("colonne ancrée : l'ancre reste en place, les voisins la chevauchent", () => {
+    const blocks: AnyBlock[] = [
+      text("a", { x: 0, y: 0, w: 100, h: 20, z: 0 }),
+      text("b", { x: 0, y: 30, w: 100, h: 40, z: 1 }),
+      text("c", { x: 0, y: 80, w: 100, h: 20, z: 2 }),
+    ];
+    const map = computeAutoLayoutPositions(
+      group({ mode: "column", gap: -5, justify: "center", align: "top", height: 200, anchorBlockId: "b" }),
+      blocks,
+    );
+    // L'ancre est centrée dans le cadre, indépendamment du gap.
+    expect(pos(map, "b")).toEqual({ x: 0, y: 80 });
+    // a finit à y=85 alors que b commence à 80 → 5px de recouvrement.
+    expect(pos(map, "a")).toEqual({ x: 0, y: 65 });
+    // c démarre 5px avant la fin de b (120).
+    expect(pos(map, "c")).toEqual({ x: 0, y: 115 });
+  });
+
+  it("gap 0 → blocs jointifs (aucun retour au défaut 16)", () => {
+    const blocks: AnyBlock[] = [
+      text("a", { x: 0, y: 0, w: 100, h: 20, z: 0 }),
+      text("b", { x: 0, y: 30, w: 100, h: 40, z: 1 }),
+    ];
+    const map = computeAutoLayoutPositions(
+      group({ mode: "column", gap: 0, justify: "start", align: "top" }),
+      blocks,
+    );
+    expect(pos(map, "b")).toEqual({ x: 0, y: 20 });
   });
 });
 

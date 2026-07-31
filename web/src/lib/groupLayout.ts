@@ -145,6 +145,21 @@ export function getGroupBounds(blocks: Pick<AnyBlock, "x" | "y" | "w" | "h">[]):
   };
 }
 
+/**
+ * Bornes de l'écart entre membres d'un groupe auto-layout.
+ *
+ * Le gap NÉGATIF est légitime : il rapproche les blocs au-delà du contact et
+ * les fait se chevaucher. Le moteur l'additionne simplement au curseur — aucun
+ * calcul ne divise par le gap, et les `Math.max(0, n - 1)` portent sur le
+ * nombre d'intervalles, jamais sur sa valeur. La borne basse n'est là que pour
+ * rattraper une saisie absurde.
+ */
+export const GAP_MIN = -200;
+/** Borne haute du réglage côté UI. La normalisation ne plafonne pas. */
+export const GAP_MAX = 50;
+/** Écart par défaut d'un groupe auto-layout. */
+export const GAP_DEFAULT = 16;
+
 export function normalizeGroupLayout(layout: GroupLayoutConfig | undefined): GroupLayoutConfig | undefined {
   if (!layout || layout.mode === undefined || layout.mode === "free") return undefined;
 
@@ -154,7 +169,7 @@ export function normalizeGroupLayout(layout: GroupLayoutConfig | undefined): Gro
     mode: layout.mode,
     width: layout.width !== undefined ? Math.max(1, Math.round(layout.width)) : undefined,
     height: layout.height !== undefined ? Math.max(1, Math.round(layout.height)) : undefined,
-    gap: layout.gap !== undefined ? Math.max(0, Math.round(layout.gap)) : 16,
+    gap: layout.gap !== undefined ? Math.max(GAP_MIN, Math.round(layout.gap)) : GAP_DEFAULT,
     justify: layout.justify ?? "center",
     align: layout.align ?? "top",
     order: normalizedOrder.length > 0 ? normalizedOrder : undefined,
@@ -219,7 +234,7 @@ function computeAutoLayoutPositionsRaw(
   const layout = normalizeGroupLayout(group.layout);
   const frameWidth = layout?.width ?? bounds.width;
   const frameHeight = layout?.height ?? bounds.height;
-  const gap = layout?.gap ?? 16;
+  const gap = layout?.gap ?? GAP_DEFAULT;
   const justify = layout?.justify ?? "center";
   const align = layout?.align ?? "top";
   const orderedBlocks = getAutoLayoutOrderedBlocks(group, blocks);

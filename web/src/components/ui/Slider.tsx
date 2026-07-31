@@ -20,6 +20,16 @@ type SliderProps = {
   showValue?: boolean;
   accent?: "default" | "peach" | "sage" | "sky";
   className?: string;
+  /**
+   * Rend la valeur saisissable au clavier au lieu d'un simple affichage.
+   * Utile quand la plage utile du curseur est plus resserrée que la plage
+   * réellement autorisée : le curseur sert au réglage au doigt, le champ
+   * donne accès aux valeurs exactes ou extrêmes.
+   */
+  editable?: boolean;
+  /** Bornes du champ de saisie. Par défaut celles du curseur. */
+  inputMin?: number;
+  inputMax?: number;
 };
 
 export function Slider({
@@ -34,9 +44,14 @@ export function Slider({
   showValue = true,
   accent: _accent = "default",
   className,
+  editable = false,
+  inputMin,
+  inputMax,
 }: SliderProps) {
   void _accent;
   const pct = max === min ? 0 : Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+  const boundMin = inputMin ?? min;
+  const boundMax = inputMax ?? max;
   const trackStyle: CSSProperties = {
     background: `linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) ${pct}%, var(--color-muted) ${pct}%, var(--color-muted) 100%)`,
   };
@@ -81,11 +96,30 @@ export function Slider({
             disabled ? "opacity-50 cursor-not-allowed [&::-webkit-slider-thumb]:cursor-not-allowed" : "",
           ].filter(Boolean).join(" ")}
         />
-        {showValue && (
+        {showValue && (editable ? (
+          <div className="flex items-center gap-0.5 shrink-0">
+            <input
+              type="number"
+              min={boundMin}
+              max={boundMax}
+              step={step}
+              value={value}
+              disabled={disabled}
+              aria-label={label}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (Number.isNaN(next)) return;
+                onChange(Math.min(boundMax, Math.max(boundMin, next)));
+              }}
+              className="w-14 rounded-md border border-input bg-card px-1.5 py-0.5 text-[12px] font-mono text-foreground tabular-nums text-right focus-ring disabled:opacity-50"
+            />
+            {unit && <span className="text-[11px] text-muted-foreground select-none">{unit}</span>}
+          </div>
+        ) : (
           <span className="text-[12px] font-mono text-foreground tabular-nums min-w-[3rem] text-right select-none">
             {displayValue}{unit ?? ""}
           </span>
-        )}
+        ))}
       </div>
     </div>
   );

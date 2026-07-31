@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, EyeOff, Lock, Unlock } from "lucide-react";
-import { getAutoLayoutMode, getAutoLayoutOrderedBlocks, getGroupBounds } from "@/lib/groupLayout";
+import { GAP_DEFAULT, GAP_MAX, GAP_MIN, getAutoLayoutMode, getAutoLayoutOrderedBlocks, getGroupBounds } from "@/lib/groupLayout";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type { AnyBlock, LayerGroup } from "@/types/template";
 import { Slider } from "@/components/ui/Slider";
@@ -67,7 +67,7 @@ export function GroupPropertiesPanel({
       mode: nextMode,
       width: Math.max(1, Math.round(group.layout?.width ?? groupBounds?.width ?? template.canvas.width)),
       height: Math.max(1, Math.round(group.layout?.height ?? groupBounds?.height ?? template.canvas.height)),
-      gap: group.layout?.gap ?? 16,
+      gap: group.layout?.gap ?? GAP_DEFAULT,
       justify: group.layout?.justify ?? "center",
       align: group.layout?.align ?? "top",
       order: initialOrder,
@@ -310,13 +310,18 @@ export function GroupPropertiesPanel({
                   </label>
                 </div>
 
+                {/* Écart négatif = les blocs se chevauchent. Le curseur couvre la
+                    plage de travail courante ; le champ donne accès aux extrêmes. */}
                 <Slider
                   label="Écart"
-                  value={group.layout?.gap ?? 16}
+                  value={group.layout?.gap ?? GAP_DEFAULT}
                   onChange={(v) => updateAutoLayout({ gap: v })}
-                  min={0}
-                  max={50}
+                  min={-50}
+                  max={GAP_MAX}
                   unit="px"
+                  editable
+                  inputMin={GAP_MIN}
+                  inputMax={GAP_MAX}
                 />
 
                 <div className="flex flex-col gap-1">

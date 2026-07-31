@@ -461,7 +461,10 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
         const maxY = Math.max(...blocks.map((item) => item.top + item.frameHeight));
         const frameWidth = Math.max(1, Number(groupLayout.width || Math.round(maxX - minX)));
         const frameHeight = Math.max(1, Number(groupLayout.height || Math.round(maxY - minY)));
-        const gap = Math.max(0, Number(groupLayout.gap || 16));
+        // PARITÉ : le gap peut être NÉGATIF (chevauchement volontaire) — pas de
+        // Math.max(0, …) ici, la borne est posée par normalizeGroupLayout en amont.
+        // Et '??' et non '||' : un gap de 0 est une valeur légitime.
+        const gap = Number(groupLayout.gap ?? 16);
 
         if (mode === 'column') {
           const anchorIndex = groupLayout.justify === 'center' && groupLayout.anchorBlockId
@@ -661,7 +664,8 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
           const maxY = Math.max(...blocks.map((item) => item.top + item.frameHeight));
           const frameWidth = Math.max(1, Number(groupLayout.width || Math.round(maxX - minX)));
           const frameHeight = Math.max(1, Number(groupLayout.height || Math.round(maxY - minY)));
-          const gap = Math.max(0, Number(groupLayout.gap || 16));
+          // PARITÉ : gap négatif autorisé, et '??' pour ne pas transformer 0 en 16.
+          const gap = Number(groupLayout.gap ?? 16);
           if (mode === 'column') {
             const anchorIndex = groupLayout.justify === 'center' && groupLayout.anchorBlockId
               ? blocks.findIndex((item) => item.blockId === groupLayout.anchorBlockId)
@@ -837,7 +841,7 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
               mode: groupLayout.mode === 'column' ? 'column' : 'row',
               justify: groupLayout.justify || 'center',
               align: groupLayout.align || 'top',
-              gap: roundDebugValue(groupLayout.gap || 16),
+              gap: roundDebugValue(groupLayout.gap ?? 16),
               width: roundDebugValue(Number(groupLayout.width || Math.max(1, maxX - minX))),
               height: roundDebugValue(Number(groupLayout.height || Math.max(1, maxY - minY))),
               minX: roundDebugValue(minX),
