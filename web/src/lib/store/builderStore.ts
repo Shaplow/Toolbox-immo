@@ -291,14 +291,24 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
   },
 
   removeGroup: (id) => {
-    // Dissoudre un groupe dissout aussi ses sous-groupes ; leurs blocs sont
-    // détachés (groupId undefined) plutôt que laissés orphelins.
-    const removed = new Set<string>([id, ...get().template.groups.filter((g) => g.parentGroupId === id).map((g) => g.id)]);
+    // Dissoudre un groupe dissout aussi ses sous-groupes.
+    //
+    // Dissoudre un SOUS-groupe remonte ses blocs dans le parent : les détacher
+    // les ferait sortir de la colonne, perdre les règles conditionnelles du
+    // parent, et disparaître de tous les clips et covers dont la sélection
+    // coche le parent (le filtre porte sur `block.groupId`). Un groupe
+    // top-level n'a pas de parent : ses blocs sont détachés comme avant.
+    const groups = get().template.groups;
+    const dissolved = groups.find((group) => group.id === id);
+    const parentId = dissolved?.parentGroupId && groups.some((g) => g.id === dissolved.parentGroupId)
+      ? dissolved.parentGroupId
+      : undefined;
+    const removed = new Set<string>([id, ...groups.filter((g) => g.parentGroupId === id).map((g) => g.id)]);
     const next = syncAutoLayoutGroups({
       ...get().template,
-      groups: get().template.groups.filter((group) => !removed.has(group.id)),
+      groups: groups.filter((group) => !removed.has(group.id)),
       blocks: get().template.blocks.map((block) => (
-        block.groupId !== undefined && removed.has(block.groupId) ? { ...block, groupId: undefined } : block
+        block.groupId !== undefined && removed.has(block.groupId) ? { ...block, groupId: parentId } : block
       )),
     });
     withHistory(get, set, next);
