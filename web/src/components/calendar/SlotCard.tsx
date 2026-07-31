@@ -14,7 +14,7 @@
  * isMine = border-l-2 primary (vs glass shadow inset complexe).
  */
 
-import { Settings2 } from "lucide-react";
+import { Link2 as LinkIcon, Settings2 } from "lucide-react";
 import { AvatarGroup } from "@/components/ui/Avatar";
 import { type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
@@ -51,6 +51,8 @@ export function SlotCard({
   const phaseDot = PHASE_DOT[phase];
   const phaseLabel = PHASE_LABELS[phase];
   const ownerRole = resolveSlotOwner(slot);
+  // Publié sans lien Instagram (marquage admin) — reste à compléter.
+  const missingPublishedUrl = slot.status === "PUBLISHED" && !slot.publishedUrl;
 
   const isMine =
     currentUserId !== undefined &&
@@ -116,6 +118,13 @@ export function SlotCard({
         <span className="text-[10px] text-muted-foreground truncate min-w-0">
           {phaseLabel}
         </span>
+        {missingPublishedUrl && (
+          <LinkIcon
+            size={10}
+            className="text-warning-700 shrink-0"
+            aria-label="Lien Instagram manquant"
+          />
+        )}
         {onOpenDrawer && (
           <button
             type="button"

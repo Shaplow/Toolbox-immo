@@ -100,11 +100,18 @@ Référence : `web/src/lib/services/slot/transitions.ts:44-48`, `canTransition(f
 
 ## Pré-conditions / invariants
 
-- URL Instagram requise non-vide (bouton disabled sinon, UX guard)
-- URL https://instagram.com/ ou https://www.instagram.com/ uniquement
-- `publishedAt` dans fenêtre raisonnable (anti-dates aberrantes)
-- Slot doit être dans un statut autorisé (transitions whitelist)
+- URL Instagram requise non-vide **sauf pour un ADMIN**, qui peut marquer publié sans lien
+  (le slot est alors signalé « lien manquant » sur la fiche et le calendrier, et le lien
+  reste ajoutable ensuite via la même route). Bouton disabled pour les autres rôles.
+- URL https://instagram.com/ ou https://www.instagram.com/ uniquement, quand elle est fournie
+- `publishedAt` dans fenêtre raisonnable (anti-dates aberrantes) ; sur un slot déjà publié
+  qu'on complète, la date d'origine est conservée
+- Slot doit être dans un statut autorisé (transitions whitelist). Exception : un slot déjà
+  `PUBLISHED` n'effectue aucune transition — compléter/corriger son URL est autorisé
 - PATCH direct `status=PUBLISHED` rejeté → forçage du flow via `/mark-published`
+  (idem en lot : `bulk-patch` le refuse, l'entrée dédiée est `/api/calendar/slots/bulk-mark-published`)
+- Bulk calendrier (ADMIN) : ne porte que sur les statuts de `BULK_PUBLISHABLE_STATUSES`
+  (vidéo validée) et les slots ayant un compte Instagram ; jamais d'URL en lot
 
 ## Skills/agents pertinents
 

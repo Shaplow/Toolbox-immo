@@ -24,3 +24,20 @@ export const POST_VALIDATION_STATUSES: ReadonlySet<string> = new Set([
   "ARCHIVED",
   "DONE",
 ]);
+
+/**
+ * Statuts depuis lesquels un slot peut être marqué publié EN LOT.
+ *
+ * Ce sont les seuls que STATUS_TRANSITIONS autorise à passer à PUBLISHED, soit
+ * les créneaux dont la vidéo est validée. Le filtre doit être explicite : côté
+ * serveur `canTransition` renvoie toujours true pour un ADMIN et ne filtrerait
+ * rien, or un lot ne doit pas emporter des créneaux encore en production.
+ *
+ * Vit ici (et non dans transitions.ts, qui importe Prisma) pour être lisible
+ * par le calendrier côté client comme par le service. Un test verrouille sa
+ * cohérence avec STATUS_TRANSITIONS.
+ */
+export const BULK_PUBLISHABLE_STATUSES: ReadonlySet<string> = new Set([
+  "READY_FOR_CM",
+  "SCHEDULED",
+]);

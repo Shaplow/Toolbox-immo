@@ -30,6 +30,7 @@ import {
   canTransition,
   syncSlotsPipelineStatuses,
 } from "@/lib/services/slot/transitions";
+import { BULK_PUBLISHABLE_STATUSES } from "@/lib/publications/constants";
 import {
   resolveSlotEffectivePattern,
   slotEffectivePatternSelect,
@@ -844,6 +845,15 @@ export async function bulkPatchSlots(
   if (patch.status !== undefined && !isValidSlotStatus(patch.status)) {
     throw new ValidationError("Statut invalide");
   }
+  // Même garde anti-bypass que patchSlot : passer PUBLISHED par ce chemin
+  // court-circuiterait la pose de publishedAt et le log d'activité PUBLISHED.
+  // Le bulk « marquer publié » a sa propre entrée : bulkMarkPublishedSlots.
+  if (patch.status === "PUBLISHED") {
+    throw new ForbiddenError(
+      "Pour marquer des slots comme publiés, utilisez l'action « Marquer publié » — " +
+        "elle enregistre aussi la date de publication et l'historique.",
+    );
+  }
   if (
     patch.scheduledAt !== undefined &&
     patch.scheduledAt !== null &&
@@ -969,6 +979,100 @@ export async function bulkPatchSlots(
           },
         });
       }
+      patched += 1;
+    }
+  });
+
+  return { patchedCount: patched, skippedCount: skipped };
+}
+
+// ─── bulkMarkPublishedSlots ──────────────────────────────────────────────────
+
+export interface BulkMarkPublishedInput {
+  slotIds: string[];
+  /** Date de publication commune (ISO). Absente → maintenant. */
+  publishedAt?: string | null;
+}
+
+/**
+ * Marque N slots comme publiés depuis le calendrier.
+ *
+ * Pas de `publishedUrl` : l'URL Instagram est propre à chaque post, un lot ne
+ * peut pas la fournir. Les slots sortent donc « publiés sans lien » — l'UI les
+ * signale et le lien reste ajoutable depuis chaque fiche.
+ *
+ * Sont ignorés (comptés dans `skippedCount`, jamais une erreur) : les ids
+ * introuvables, les slots sans `accountId` (missions stock — publier sur
+ * Instagram suppose un compte, cf. la route unitaire) et ceux dont le statut
+ * n'est pas dans BULK_PUBLISHABLE_STATUSES.
+ */
+export async function bulkMarkPublishedSlots(
+  input: BulkMarkPublishedInput,
+  ctx: UserContext,
+): Promise<{ patchedCount: number; skippedCount: number }> {
+  if (!ctx.canAdminBypass) {
+    throw new ForbiddenError("Réservé aux administrateurs");
+  }
+
+  const actorId = ctx.actualUser.id;
+
+  if (!Array.isArray(input.slotIds) || input.slotIds.length === 0) {
+    throw new ValidationError("slotIds requis (au moins 1)");
+  }
+  if (
+    input.slotIds.length < BULK_PATCH_MIN ||
+    input.slotIds.length > BULK_PATCH_MAX
+  ) {
+    throw new ValidationError(
+      `Entre ${BULK_PATCH_MIN} et ${BULK_PATCH_MAX} slots par opération`,
+    );
+  }
+
+  let publishedAt = new Date();
+  if (input.publishedAt !== undefined && input.publishedAt !== null) {
+    const parsed = new Date(input.publishedAt);
+    if (isNaN(parsed.getTime())) {
+      throw new ValidationError("publishedAt invalide");
+    }
+    // Même fenêtre que la route unitaire.
+    const minDate = new Date("2020-01-01T00:00:00Z");
+    const maxDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    if (parsed < minDate || parsed > maxDate) {
+      throw new ValidationError("publishedAt hors fenêtre autorisée (2020 → +1 an)");
+    }
+    publishedAt = parsed;
+  }
+
+  const slots = await prisma.publicationSlot.findMany({
+    where: { id: { in: input.slotIds } },
+    select: { id: true, status: true, accountId: true },
+  });
+
+  let patched = 0;
+  // Les ids introuvables comptent comme skippés pour ne pas mentir sur le total.
+  let skipped = input.slotIds.length - slots.length;
+
+  const eligible = slots.filter(
+    (slot) => slot.accountId !== null && BULK_PUBLISHABLE_STATUSES.has(slot.status),
+  );
+  skipped += slots.length - eligible.length;
+
+  if (eligible.length === 0) {
+    return { patchedCount: 0, skippedCount: skipped };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const slot of eligible) {
+      await tx.publicationSlot.update({
+        where: { id: slot.id },
+        data: { status: "PUBLISHED", publishedAt },
+      });
+      await logActivity(tx as typeof prisma, {
+        slotId: slot.id,
+        actorId,
+        type: "PUBLISHED",
+        payload: { publishedAt: publishedAt.toISOString(), batch: true },
+      });
       patched += 1;
     }
   });
@@ -1272,10 +1376,13 @@ export async function patchSlot(
 
   // Garde anti-bypass : un ADMIN peut techniquement PATCH status="PUBLISHED"
   // depuis le SlotDetailPanel (matrice STATUS_TRANSITIONS l'autorise), mais
-  // cela court-circuiterait /mark-published qui pose publishedUrl +
-  // publishedAt + activity PUBLISHED. Sans ces champs, le slot apparaît
-  // "publié" sans URL et la worklist CM ne se met pas à jour cohéremment.
-  // Forcer le passage par /mark-published, même pour les ADMIN.
+  // cela court-circuiterait /mark-published qui pose publishedAt + l'activité
+  // PUBLISHED (et publishedUrl quand le lien est fourni). Sans publishedAt ni
+  // activité, la publication n'est pas traçable et la worklist CM ne se met pas
+  // à jour cohéremment. Forcer le passage par /mark-published, même pour l'ADMIN.
+  //
+  // NB : publier SANS lien est un cas légitime (ADMIN), mais il passe lui aussi
+  // par /mark-published — ce n'est pas une raison de rouvrir ce chemin.
   if (status === "PUBLISHED") {
     throw new ForbiddenError(
       "Pour marquer un slot comme publié, utilisez l'action « Marquer publié » dans la fiche publication. " +

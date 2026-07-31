@@ -17,6 +17,7 @@ import {
   Square,
   UserCheck,
   Ban,
+  CheckCircle,
   Clapperboard,
 } from "lucide-react";
 import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
@@ -31,6 +32,8 @@ import { isReadyToSchedule } from "@/lib/slots/bankReady";
 import { BulkReassignModal } from "./BulkReassignModal";
 import { BulkShiftDateModal } from "./BulkShiftDateModal";
 import { BulkCancelModal } from "./BulkCancelModal";
+import { BulkMarkPublishedModal } from "./BulkMarkPublishedModal";
+import { BULK_PUBLISHABLE_STATUSES } from "@/lib/publications/constants";
 import { ScheduleFromBankModal } from "./ScheduleFromBankModal";
 import { CalendarFilters, type CalendarFiltersState } from "./CalendarFilters";
 import { CalendarDndContext, type SlotDropPayload } from "./dnd/CalendarDndContext";
@@ -173,9 +176,9 @@ export function CalendarView({
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(
     () => new Set(),
   );
-  // Phase 7 V2 — split BulkPatchModal en 3 actions focalisées.
+  // Phase 7 V2 — split BulkPatchModal en actions focalisées.
   const [bulkAction, setBulkAction] = useState<
-    "reassign" | "shift" | "cancel" | null
+    "reassign" | "shift" | "cancel" | "publish" | null
   >(null);
   const [generating, setGenerating] = useState(false);
   const [confirmGenOpen, setConfirmGenOpen] = useState(false);
@@ -395,6 +398,15 @@ export function CalendarView({
   );
   const mineCount = slots.filter(isSlotMine).length;
   const kpiFilteredCount = kpiFilter ? slots.filter(matchesKpiFilter).length : 0;
+  // Marquer publié en lot ne porte que sur les créneaux dont la vidéo est validée
+  // et qui ont un compte Instagram — mêmes règles que le service, pour annoncer
+  // le décompte réel avant validation plutôt que de le découvrir après.
+  const bulkPublishableCount = slots.filter(
+    (s) =>
+      bulkSelectedIds.has(s.id) &&
+      s.accountId !== null &&
+      BULK_PUBLISHABLE_STATUSES.has(s.status),
+  ).length;
 
   function slotsForDay(day: Date) {
     return visibleSlots
@@ -1004,6 +1016,15 @@ export function CalendarView({
           </Button>
           <Button
             type="button"
+            variant="primary"
+            size="sm"
+            icon={CheckCircle}
+            onClick={() => setBulkAction("publish")}
+          >
+            Marquer publié
+          </Button>
+          <Button
+            type="button"
             variant="danger"
             size="sm"
             icon={Ban}
@@ -1044,6 +1065,19 @@ export function CalendarView({
       {bulkAction === "shift" && (
         <BulkShiftDateModal
           slotIds={[...bulkSelectedIds]}
+          onPatched={() => {
+            setBulkSelectedIds(new Set());
+            setBulkSelectMode(false);
+            void load();
+          }}
+          onClose={() => setBulkAction(null)}
+        />
+      )}
+
+      {bulkAction === "publish" && (
+        <BulkMarkPublishedModal
+          slotIds={[...bulkSelectedIds]}
+          eligibleCount={bulkPublishableCount}
           onPatched={() => {
             setBulkSelectedIds(new Set());
             setBulkSelectMode(false);

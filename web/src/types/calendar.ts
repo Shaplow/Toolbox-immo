@@ -61,6 +61,12 @@ export interface PublicationSlot {
   /** Dernier DescriptionJob du slot (status + result pour fallback completion). */
   descriptionJobs?: Array<{ status: string; result: string | null }>;
   isAuto: boolean;
+  /**
+   * Lien Instagram du post publié. Null sur un slot PUBLISHED = publication
+   * marquée sans lien (admin) : le calendrier la signale, le lien reste
+   * ajoutable depuis la fiche.
+   */
+  publishedUrl?: string | null;
   createdAt: string;
   updatedAt: string;
   // ── Assignation et pattern (Phase 1.6) ───────────────────────────────────
