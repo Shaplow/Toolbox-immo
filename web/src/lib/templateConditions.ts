@@ -94,8 +94,43 @@ export function getGroupConditionalRules(group: LayerGroup | undefined): BlockCo
   return group?.conditionalRules ?? [];
 }
 
-export function isBlockVisibleForListing(block: BaseBlock, listing: Record<string, unknown>, group?: LayerGroup): boolean {
-  return resolveBlockState(block, listing, group).visible;
+/**
+ * Chaîne de groupes qui gouverne un bloc, de l'ancêtre vers la feuille.
+ *
+ * `block.groupId` est plat : il pointe toujours vers le groupe FEUILLE. Sans
+ * cette remontée, masquer un groupe parent (ou lui poser une règle
+ * conditionnelle) n'aurait aucun effet sur les blocs de ses sous-groupes — ils
+ * resteraient visibles dans le builder ET dans la vidéo livrée.
+ *
+ * Profondeur limitée à 1 niveau par `templateNormalization`, mais la boucle est
+ * bornée pour rester sûre si un jour l'invariant bouge.
+ */
+export function getGroupChain(
+  group: LayerGroup | undefined,
+  groups: readonly LayerGroup[] | undefined,
+): LayerGroup[] {
+  if (!group) return [];
+  const chain = [group];
+  if (!groups?.length) return chain;
+  const seen = new Set<string>([group.id]);
+  let current = group;
+  while (current.parentGroupId && !seen.has(current.parentGroupId)) {
+    const parent = groups.find((candidate) => candidate.id === current.parentGroupId);
+    if (!parent) break;
+    seen.add(parent.id);
+    chain.unshift(parent);
+    current = parent;
+  }
+  return chain;
+}
+
+export function isBlockVisibleForListing(
+  block: BaseBlock,
+  listing: Record<string, unknown>,
+  group?: LayerGroup,
+  groups?: readonly LayerGroup[],
+): boolean {
+  return resolveBlockState(block, listing, group, groups).visible;
 }
 
 export function isSchemaFieldVisible(field: SchemaField, values: Record<string, unknown>): boolean {
@@ -160,18 +195,37 @@ export function getBlockConditionalRules(block: BaseBlock): BlockConditionalRule
   return legacyRules(block);
 }
 
-export function resolveBlockState<T extends BaseBlock>(block: T, listing: Record<string, unknown>, group?: LayerGroup): { visible: boolean; rules: BlockConditionalRule[] } {
-  const groupRules = getGroupConditionalRules(group);
+export function resolveBlockState<T extends BaseBlock>(
+  block: T,
+  listing: Record<string, unknown>,
+  group?: LayerGroup,
+  groups?: readonly LayerGroup[],
+): { visible: boolean; rules: BlockConditionalRule[] } {
+  // Chaîne ancêtre → feuille : un parent masqué (ou masqué par règle) masque
+  // tout ce qu'il contient, sous-groupes compris.
+  const chain = getGroupChain(group, groups);
+  const groupRules = chain.flatMap((item) => getGroupConditionalRules(item));
   const rules = getBlockConditionalRules(block);
-  const groupVisible = resolveVisibility(group?.hidden, groupRules, listing);
-  if (!groupVisible) return { visible: false, rules: [...groupRules, ...rules] };
+
+  for (const item of chain) {
+    if (!resolveVisibility(item.hidden, getGroupConditionalRules(item), listing)) {
+      return { visible: false, rules: [...groupRules, ...rules] };
+    }
+  }
 
   const blockVisible = resolveVisibility(block.hidden, rules, listing);
   return { visible: blockVisible, rules: [...groupRules, ...rules] };
 }
 
-export function resolveBlockForListing<T extends AnyBlock>(block: T, listing: Record<string, unknown>, group?: LayerGroup): T {
-  const groupRules = getGroupConditionalRules(group);
+export function resolveBlockForListing<T extends AnyBlock>(
+  block: T,
+  listing: Record<string, unknown>,
+  group?: LayerGroup,
+  groups?: readonly LayerGroup[],
+): T {
+  // Les effets (offsets, couleurs) d'un parent s'appliquent aussi aux blocs de
+  // ses sous-groupes — sinon un groupe décalé par condition se disloque.
+  const groupRules = getGroupChain(group, groups).flatMap((item) => getGroupConditionalRules(item));
   const rules = getBlockConditionalRules(block);
   const groupEffects = resolveMatchedEffects(groupRules, listing);
   if (rules.length === 0 && Object.keys(groupEffects).length === 0) return block;

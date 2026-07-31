@@ -146,11 +146,11 @@ function getActiveVideoBlocks(
         return false;
       }
       const group = block.groupId ? groupMap.get(block.groupId) : undefined;
-      return isBlockVisibleForListing(block, listingData, group);
+      return isBlockVisibleForListing(block, listingData, group, templateJson.groups);
     })
     .map((block) => {
       const group = block.groupId ? groupMap.get(block.groupId) : undefined;
-      return resolveBlockForListing(block, listingData, group);
+      return resolveBlockForListing(block, listingData, group, templateJson.groups);
     });
 }
 
@@ -181,7 +181,7 @@ function getActiveSequenceSlots(
       const block = templateJson.blocks.find((b) => b.id === slot.videoBlockId);
       if (block) {
         const group = block.groupId ? groupMap.get(block.groupId) : undefined;
-        if (!isBlockVisibleForListing(block, listingData, group)) return false;
+        if (!isBlockVisibleForListing(block, listingData, group, templateJson.groups)) return false;
       }
     }
     return true;

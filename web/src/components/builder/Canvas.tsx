@@ -628,16 +628,18 @@ export function Canvas({
     return [...blocks]
       .sort((a, b) => a.z - b.z)
       .filter((block) => block.type !== "music")
-      .filter((block) => resolveBlockState(block, previewListing, block.groupId ? groupMap.get(block.groupId) : undefined).visible)
+      // `template.groups` : le `hidden` et les règles d'un groupe PARENT
+      // gouvernent aussi les blocs de ses sous-groupes.
+      .filter((block) => resolveBlockState(block, previewListing, block.groupId ? groupMap.get(block.groupId) : undefined, template.groups).visible)
       .map((block) => {
         const group = block.groupId ? groupMap.get(block.groupId) : undefined;
         return {
           block,
           group,
-          displayBlock: resolveBlockForListing(block, previewListing, group),
+          displayBlock: resolveBlockForListing(block, previewListing, group, template.groups),
         };
       });
-  }, [blocks, groupMap, previewListing]);
+  }, [blocks, groupMap, previewListing, template.groups]);
 
   const activeAnchorGroup = useMemo(() => {
     if (selectedGroupId) {

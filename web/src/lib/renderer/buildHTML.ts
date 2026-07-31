@@ -81,9 +81,11 @@ export async function buildHTML(
       }
 
       const group = block.groupId ? groupMap.get(block.groupId) : undefined;
-      if (!isBlockVisibleForListing(block, listing, group)) return "";
+      // `template.groups` est transmis pour que les règles et le `hidden` d'un
+      // groupe PARENT s'appliquent aussi aux blocs de ses sous-groupes.
+      if (!isBlockVisibleForListing(block, listing, group, template.groups)) return "";
 
-      const resolvedBlock = resolveBlockForListing(block, listing, group);
+      const resolvedBlock = resolveBlockForListing(block, listing, group, template.groups);
       const isAutoLayout = isAutoLayoutGroup(group);
       const withRenderMetadata = (html: string) => {
         const rootAttributes: string[] = [];
@@ -143,7 +145,11 @@ export async function buildHTML(
 
   const css = buildCSS(template, overlayMode);
   const fontHtml = await buildFontHtml(template, opts?.publicBase);
-  const behaviorScript = buildBehaviorScript(autoLayoutGroups, opts?.layoutDebug ?? false);
+  const behaviorScript = buildBehaviorScript(
+    autoLayoutGroups,
+    (template.groups ?? []).map((group) => group.id),
+    opts?.layoutDebug ?? false,
+  );
   const perLineTextFilter = buildPerLineTextGooFilterMarkup(template);
   const fauxThinFilter = buildFauxThinFilterMarkup(template);
 
@@ -167,12 +173,15 @@ export async function buildHTML(
 </html>`;
 }
 
-function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId?: string; autoLayoutOffsetX?: number; autoLayoutOffsetY?: number; mode?: "free" | "row" | "column"; width?: number; height?: number; gap?: number; justify?: "start" | "center" | "end"; align?: "top" | "middle" | "bottom"; order?: string[]; anchorBlockId?: string; sizeToContent?: boolean }>, layoutDebug = false): string {
+function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId?: string; autoLayoutOffsetX?: number; autoLayoutOffsetY?: number; mode?: "free" | "row" | "column"; width?: number; height?: number; gap?: number; justify?: "start" | "center" | "end"; align?: "top" | "middle" | "bottom"; order?: string[]; anchorBlockId?: string; sizeToContent?: boolean }>, knownGroupIds: string[], layoutDebug = false): string {
   return `<script>
     window.__templateReady = false;
     window.__layoutDebugSnapshot = null;
     (function () {
       const autoLayoutGroups = ${JSON.stringify(autoLayoutGroups)};
+      // Tous les ids de groupes du template, auto-layout ou non — sert à décider
+      // si un sous-groupe a bien un parent qui le positionnera (parité builder).
+      const knownGroupIds = ${JSON.stringify(knownGroupIds)};
       const layoutDebug = ${layoutDebug ? "true" : "false"};
 
       function roundDebugValue(value) {
@@ -619,11 +628,14 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
       }
 
       function layoutAutoGroups() {
-        const groupById = {};
-        for (const g of autoLayoutGroups) groupById[g.id] = g;
         for (const groupLayout of autoLayoutGroups) {
           // Sous-groupe : positionné par son parent (cf. layoutTreeGroup).
-          if (groupLayout.parentGroupId && groupById[groupLayout.parentGroupId]) continue;
+          // PARITÉ : on teste l'existence du parent parmi TOUS les groupes, pas
+          // seulement les auto-layout — sinon un sous-groupe dont le parent est
+          // en mode « libre » serait layouté ici en top-level alors que le
+          // builder le laisse à ses coordonnées brutes (Canvas.tsx teste sur
+          // groupMap, qui contient tous les groupes).
+          if (groupLayout.parentGroupId && knownGroupIds.indexOf(groupLayout.parentGroupId) !== -1) continue;
           const childGroups = autoLayoutGroups.filter((g) => g.parentGroupId === groupLayout.id);
           if (childGroups.length > 0) { layoutTreeGroup(groupLayout, childGroups); continue; }
           const nodes = [...document.querySelectorAll('[data-layout-group-id="' + groupLayout.id + '"]')].filter((node) => node instanceof HTMLElement);
