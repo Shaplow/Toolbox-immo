@@ -42,16 +42,6 @@ export const publicationCommentSchema = z.object({
 }).strict();
 
 /**
- * POST /api/publications/[id]/mark-published
- * Marque une pub publiée. publishedUrl optionnel mais bornes sur publishedAt.
- */
-export const markPublishedSchema = z.object({
-  publishedUrl: z.string().url().optional().nullable(),
-  publishedAt: z.string().datetime().optional().nullable(),
-  caption: z.string().trim().max(MAX_TEXT_FIELD).optional().nullable(),
-}).strict();
-
-/**
  * PATCH /api/calendar/slots/[id]
  * Mass-assignment guard — seuls les champs whitelist passent. Les autres
  * (assignees, scheduledAt, accountId, etc.) restent sur l'ancienne route

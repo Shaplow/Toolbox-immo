@@ -33,6 +33,11 @@ interface Props {
   };
   /** true pour CM assigné et ADMIN */
   canPublish: boolean;
+  /**
+   * ADMIN uniquement : autorise « publié » sans lien Instagram, quand le post est
+   * parti mais que l'URL n'a pas encore été récupérée. Elle reste ajoutable ensuite.
+   */
+  canPublishWithoutUrl?: boolean;
   /** Steps "amont" pas encore terminées au moment du rendu. */
   incompleteSteps?: Array<{ key: string; label: string; status: "todo" | "failed" }>;
   sectionId?: string;
@@ -53,7 +58,7 @@ function formatDateTimeFR(date: Date): string {
 }
 
 export function PublishSection({
-  slot, canPublish, incompleteSteps = [],
+  slot, canPublish, canPublishWithoutUrl = false, incompleteSteps = [],
   sectionId = "publish",
   storageKey,
   defaultOpen = true,
@@ -61,6 +66,7 @@ export function PublishSection({
 }: Props) {
   const router = useRouter();
   const isPublished = slot.status === "PUBLISHED";
+  const missingUrl = isPublished && !slot.publishedUrl;
 
   const [url, setUrl] = useState(slot.publishedUrl ?? "");
   const [submitting, setSubmitting] = useState(false);
@@ -70,7 +76,8 @@ export function PublishSection({
   const [correcting, setCorrecting] = useState(false);
 
   async function handleMarkPublished() {
-    if (!url.trim()) {
+    const trimmed = url.trim();
+    if (!trimmed && !canPublishWithoutUrl) {
       setError("L'URL Instagram est requise.");
       return;
     }
@@ -80,11 +87,11 @@ export function PublishSection({
       const res = await fetch(`/api/publications/${slot.id}/mark-published`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify(trimmed ? { url: trimmed } : {}),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erreur lors du marquage");
-      toast.success("Publication marquée — ✓");
+      toast.success(trimmed ? "Publication marquée — ✓" : "Publication marquée — lien à renseigner");
       router.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur inconnue";
@@ -132,7 +139,12 @@ export function PublishSection({
       collapsible={collapsible}
       actions={
         isPublished ? (
-          <Badge variant="success" icon={CheckCircle}>publié</Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="success" icon={CheckCircle}>publié</Badge>
+            {missingUrl && (
+              <Badge variant="warning" icon={AlertTriangle}>lien manquant</Badge>
+            )}
+          </div>
         ) : null
       }
     >
@@ -156,7 +168,9 @@ export function PublishSection({
                 {slot.publishedUrl}
               </a>
             ) : (
-              <p className="text-[13px] text-muted-foreground">URL non renseignée</p>
+              <p className="text-[13px] text-warning-700">
+                Lien non renseigné{canPublish ? " — ajoute-le ci-dessous." : "."}
+              </p>
             )}
           </div>
 
@@ -175,16 +189,16 @@ export function PublishSection({
             <div className="pt-3 border-t border-border">
               {!editingUrl ? (
                 <Button
-                  variant="ghost"
+                  variant={missingUrl ? "default" : "ghost"}
                   size="sm"
                   icon={Edit2}
                   onClick={() => setEditingUrl(true)}
                 >
-                  Corriger l&apos;URL
+                  {missingUrl ? "Ajouter le lien" : "Corriger l'URL"}
                 </Button>
               ) : (
                 <div className="space-y-3">
-                  <FormField label="URL corrigée" error={error ?? undefined}>
+                  <FormField label={missingUrl ? "Lien Instagram" : "URL corrigée"} error={error ?? undefined}>
                     <Input
                       type="url"
                       value={correctedUrl}
@@ -256,8 +270,12 @@ export function PublishSection({
 
           <FormField
             label="URL Instagram"
-            required
-            help="Colle l'URL une fois la publication postée."
+            required={!canPublishWithoutUrl}
+            help={
+              canPublishWithoutUrl
+                ? "Colle l'URL une fois la publication postée. Tu peux marquer publié sans, et l'ajouter plus tard."
+                : "Colle l'URL une fois la publication postée."
+            }
             error={error ?? undefined}
           >
             <Input
@@ -277,9 +295,9 @@ export function PublishSection({
             icon={CheckCircle}
             onClick={handleMarkPublished}
             loading={submitting}
-            disabled={!url.trim()}
+            disabled={!url.trim() && !canPublishWithoutUrl}
           >
-            Marquer publié
+            {!url.trim() && canPublishWithoutUrl ? "Marquer publié sans lien" : "Marquer publié"}
           </Button>
         </div>
       )}

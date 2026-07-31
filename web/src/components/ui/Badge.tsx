@@ -8,7 +8,7 @@ import type { LucideIcon } from "lucide-react";
  *
  * Variants :
  * - `default` : muted (zinc-100 + foreground)
- * - `success` / `danger` / `info` : semantic (50 background + 700 text)
+ * - `success` / `danger` / `info` / `warning` : semantic (50 background + 700 text)
  *
  * Les anciens variants pastels (peach/sage/sky/rose) du v2 et la prop `glass`
  * sont mappés vers `default` pour cohérence DA v3.
@@ -19,11 +19,12 @@ type Variant =
   | "success"
   | "danger"
   | "info"
+  | "warning"
   | "peach"
   | "sage"
   | "sky"
   | "rose";
-type ResolvedVariant = "default" | "success" | "danger" | "info";
+type ResolvedVariant = "default" | "success" | "danger" | "info" | "warning";
 type Size = "sm" | "md";
 
 interface BadgeProps {
@@ -41,7 +42,7 @@ interface BadgeProps {
 }
 
 function resolveVariant(v: Variant): ResolvedVariant {
-  if (v === "success" || v === "danger" || v === "info") return v;
+  if (v === "success" || v === "danger" || v === "info" || v === "warning") return v;
   return "default";
 }
 
@@ -50,6 +51,7 @@ const VARIANT_CLS: Record<ResolvedVariant, string> = {
   success: "bg-success-50 text-success-700",
   danger:  "bg-danger-50 text-danger-700",
   info:    "bg-info-50 text-info-700",
+  warning: "bg-warning-50 text-warning-700",
 };
 
 const DOT_CLS: Record<ResolvedVariant, string> = {
@@ -57,6 +59,7 @@ const DOT_CLS: Record<ResolvedVariant, string> = {
   success: "bg-success-600",
   danger:  "bg-danger-600",
   info:    "bg-info-600",
+  warning: "bg-warning-600",
 };
 
 export function Badge({

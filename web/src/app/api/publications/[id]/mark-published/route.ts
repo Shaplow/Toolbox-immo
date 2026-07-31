@@ -4,9 +4,12 @@
  * Auth : session obligatoire → 401.
  *        canMarkPublished → 403 (pas 404 — cas légitime à expliquer à l'utilisateur).
  *
- * Body : { url: string, publishedAt?: string ISO }
+ * Body : { url?: string, publishedAt?: string ISO }
  *   - url       : doit être une URL https:// pointant vers instagram.com ou www.instagram.com,
  *                 max 500 caractères. Validation stricte via URL() + allowlist hôtes.
+ *                 **Optionnel pour un ADMIN uniquement** : le post est parti mais le lien
+ *                 n'est pas encore récupéré. Le slot passe PUBLISHED avec publishedUrl null,
+ *                 et l'UI le signale comme incomplet. Les autres rôles doivent le fournir.
  *   - publishedAt : ISO parsable ; si absent, on utilise now()
  *
  * Stockage URL : champ dédié `publishedUrl` + `publishedAt` sur PublicationSlot
@@ -17,7 +20,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { canMarkPublished } from "@/lib/permissions/publications";
+import { canMarkPublished, canMarkPublishedWithoutUrl } from "@/lib/permissions/publications";
 import { logActivity } from "@/lib/services/slot/activity";
 import { canTransition } from "@/lib/services/slot/transitions";
 import { resolveSlotContext } from "@/lib/services/slot/resolveSlotContext";
@@ -49,7 +52,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // minimal) → petit findUnique dédié.
   const slotAccount = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
-    select: { accountId: true },
+    select: { accountId: true, publishedAt: true },
   });
   if (!slotAccount?.accountId) {
     return NextResponse.json(
@@ -61,7 +64,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   // L5 — Vérification de transition : seul ADMIN peut passer depuis n'importe quel statut.
   // CM ne peut publier que depuis SCHEDULED (statut attendu avant publication IG).
   // L'ADMIN bypass la matrice (canTransition retourne true pour ADMIN vers tout statut).
-  if (!canTransition(slot.status, "PUBLISHED", role)) {
+  //
+  // Exception : un slot DÉJÀ publié n'effectue aucune transition — cette route sert
+  // alors à compléter ou corriger l'URL. La matrice (PUBLISHED → ["ARCHIVED"]) la
+  // refuserait à un CM, ce qui bloquerait le rattrapage d'un post marqué publié sans lien.
+  const isCompletingPublished = slot.status === "PUBLISHED";
+  if (!isCompletingPublished && !canTransition(slot.status, "PUBLISHED", role)) {
     return NextResponse.json(
       {
         error: `Transition non autorisée : impossible de passer de "${slot.status}" à "PUBLISHED" pour le rôle "${role}"`,
@@ -79,28 +87,40 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { url, publishedAt: publishedAtRaw } = rawBody as Record<string, unknown>;
 
-  if (typeof url !== "string") {
-    return NextResponse.json({ error: "url est requis" }, { status: 400 });
+  // URL absente ou vide : toléré pour un ADMIN seulement (publication constatée,
+  // lien à renseigner plus tard). Pour tous les autres rôles, elle reste requise.
+  const rawUrl = typeof url === "string" ? url.trim() : "";
+  const hasUrl = rawUrl.length > 0;
+
+  if (!hasUrl) {
+    if (url !== undefined && url !== null && typeof url !== "string") {
+      return NextResponse.json({ error: "url doit être une chaîne" }, { status: 400 });
+    }
+    if (!canMarkPublishedWithoutUrl({ role })) {
+      return NextResponse.json({ error: "url est requis" }, { status: 400 });
+    }
   }
 
   // M1 — Validation URL stricte : protocole, hôte, longueur.
-  if (url.length > MAX_URL_LENGTH) {
-    return NextResponse.json({ error: `URL trop longue (max ${MAX_URL_LENGTH})` }, { status: 400 });
-  }
+  if (hasUrl) {
+    if (rawUrl.length > MAX_URL_LENGTH) {
+      return NextResponse.json({ error: `URL trop longue (max ${MAX_URL_LENGTH})` }, { status: 400 });
+    }
 
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(url);
-  } catch {
-    return NextResponse.json({ error: "URL invalide" }, { status: 400 });
-  }
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(rawUrl);
+    } catch {
+      return NextResponse.json({ error: "URL invalide" }, { status: 400 });
+    }
 
-  if (parsedUrl.protocol !== "https:") {
-    return NextResponse.json({ error: "URL doit être en https" }, { status: 400 });
-  }
+    if (parsedUrl.protocol !== "https:") {
+      return NextResponse.json({ error: "URL doit être en https" }, { status: 400 });
+    }
 
-  if (!(ALLOWED_INSTAGRAM_HOSTS as readonly string[]).includes(parsedUrl.host)) {
-    return NextResponse.json({ error: "URL doit pointer vers instagram.com" }, { status: 400 });
+    if (!(ALLOWED_INSTAGRAM_HOSTS as readonly string[]).includes(parsedUrl.host)) {
+      return NextResponse.json({ error: "URL doit pointer vers instagram.com" }, { status: 400 });
+    }
   }
 
   let effectivePublishedAt: Date;
@@ -121,16 +141,23 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
     effectivePublishedAt = parsed;
+  } else if (isCompletingPublished && slotAccount.publishedAt) {
+    // On complète l'URL d'un slot déjà publié : la date de publication d'origine
+    // fait foi, la remplacer par now() la fausserait.
+    effectivePublishedAt = slotAccount.publishedAt;
   } else {
     effectivePublishedAt = new Date();
   }
 
   // H2 — Stocker l'URL et la date dans les champs dédiés (plus de hack notes).
+  // publishedUrl n'est écrit que si une URL est fournie : sur un slot déjà publié,
+  // écrire null effacerait le lien existant (le bouton « Corriger l'URL » emprunte
+  // cette même route).
   const updated = await prisma.publicationSlot.update({
     where: { id: slotId },
     data: {
       status: "PUBLISHED",
-      publishedUrl: url,
+      ...(hasUrl ? { publishedUrl: rawUrl } : {}),
       publishedAt: effectivePublishedAt,
     },
     select: { id: true, status: true, publishedUrl: true, publishedAt: true, updatedAt: true },
@@ -142,14 +169,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     actorId: userContext.actualUser.id,
     type: "PUBLISHED",
     payload: {
-      url,
+      ...(hasUrl ? { url: rawUrl } : {}),
       publishedAt: effectivePublishedAt.toISOString(),
     },
   });
 
   return NextResponse.json({
     ...updated,
-    publishedUrl: url,
     publishedAt: effectivePublishedAt.toISOString(),
   });
 }

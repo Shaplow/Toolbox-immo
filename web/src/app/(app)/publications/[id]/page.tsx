@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canUserAccessEvent } from "@/lib/permissions/eventScope";
 import { loadEventForAccess } from "@/lib/services/event/eventRushAccess";
-import { canMarkPublished, canUploadRushes, canEditBrief, canUploadVersion, canPromoteVersion } from "@/lib/permissions/publications";
+import { canMarkPublished, canMarkPublishedWithoutUrl, canUploadRushes, canEditBrief, canUploadVersion, canPromoteVersion } from "@/lib/permissions/publications";
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
 import { syncSlotsPipelineStatuses } from "@/lib/services/slot/transitions";
@@ -614,6 +614,9 @@ export default async function PublicationPage({ params }: PageProps) {
   };
 
   const canPublish = canMarkPublished(userForPermission, slotForPermission);
+  // Marquer publié SANS le lien Instagram : ADMIN uniquement (le lien reste
+  // ajoutable après coup, et la publication est signalée comme incomplète).
+  const canPublishWithoutUrl = canMarkPublishedWithoutUrl({ role });
   const canDelete = role === "ADMIN";
   const canEditRender = role === "ADMIN";
   const canEditCover = role === "ADMIN" || role === "CM";
@@ -692,6 +695,7 @@ export default async function PublicationPage({ params }: PageProps) {
       steps={steps}
       permissions={{
         canMarkPublished: canPublish,
+        canPublishWithoutUrl,
         canDelete,
         canEditRender,
         canEditCover,

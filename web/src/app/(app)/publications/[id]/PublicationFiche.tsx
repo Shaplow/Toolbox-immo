@@ -211,6 +211,8 @@ interface CoverConfigError {
  */
 export interface PublicationFichePermissions {
   canMarkPublished: boolean;
+  /** ADMIN uniquement — marquer publié sans le lien Instagram. */
+  canPublishWithoutUrl: boolean;
   canDelete: boolean;
   canEditRender: boolean;
   canEditCover: boolean;
@@ -362,7 +364,7 @@ export function PublicationFiche({
   // la signature externe pour les consumers (page.tsx) ; à l'intérieur
   // on reste sur l'API plate.
   const {
-    canMarkPublished, canDelete, canEditRender, canEditCover,
+    canMarkPublished, canPublishWithoutUrl, canDelete, canEditRender, canEditCover,
     canEditCaptions, canEditDescription, canUploadRushes, canManageRushes,
     canEditBrief, canManageAttachments, canUploadVersion, canPromoteVersion,
   } = permissions;
@@ -848,6 +850,7 @@ export function PublicationFiche({
                   publishedAt: slot.publishedAt,
                 }}
                 canPublish={canMarkPublished}
+                canPublishWithoutUrl={canPublishWithoutUrl}
                 incompleteSteps={steps
                   .filter((s) => s.visible && s.key !== "publish")
                   .filter((s): s is typeof s & { status: "todo" | "failed" } =>

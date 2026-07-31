@@ -6,6 +6,7 @@ import {
   canEditPublicationVersion,
   canCommentOnPublication,
   canMarkPublished,
+  canMarkPublishedWithoutUrl,
   canEditComment,
   canUploadRushes,
   canDeleteRushes,
@@ -170,6 +171,22 @@ describe("canMarkPublished", () => {
         { assigneeCmId: USER_ID }
       )
     ).toBe(false);
+  });
+});
+
+describe("canMarkPublishedWithoutUrl", () => {
+  it("ADMIN peut publier sans le lien Instagram", () => {
+    expect(canMarkPublishedWithoutUrl({ role: "ADMIN" })).toBe(true);
+  });
+
+  it("CM doit fournir le lien, même sur un slot qui lui est assigné", () => {
+    expect(canMarkPublishedWithoutUrl({ role: "CM" })).toBe(false);
+  });
+
+  it("aucun autre rôle ne peut publier sans lien", () => {
+    expect(canMarkPublishedWithoutUrl({ role: "MONTEUR" })).toBe(false);
+    expect(canMarkPublishedWithoutUrl({ role: "VIDEASTE" })).toBe(false);
+    expect(canMarkPublishedWithoutUrl({ role: "EXTERNAL_GENERATOR" })).toBe(false);
   });
 });
 

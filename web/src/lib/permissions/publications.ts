@@ -235,6 +235,22 @@ export function canMarkPublished(
 }
 
 /**
+ * Permission de marquer une publication comme publiée **sans le lien Instagram**.
+ *
+ * ADMIN uniquement : le post est parti mais l'URL n'a pas encore été récupérée.
+ * Le slot passe PUBLISHED avec `publishedUrl` null, est signalé « lien manquant »
+ * sur la fiche et le calendrier, et le lien reste ajoutable ensuite.
+ *
+ * Un CM doit toujours fournir le lien — c'est lui qui poste, il l'a sous la main.
+ *
+ * S'appuie sur le rôle EFFECTIF (comme canMarkPublished et canTransition) : un
+ * admin qui se met en view-as-CM est traité comme un CM.
+ */
+export function canMarkPublishedWithoutUrl(user: { role: UserRole }): boolean {
+  return user.role === "ADMIN";
+}
+
+/**
  * Variante assert.
  */
 export function assertCanMarkPublished(
