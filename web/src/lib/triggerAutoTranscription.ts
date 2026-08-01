@@ -251,18 +251,24 @@ export async function triggerAutoTranscriptionForRender(
   // pattern.needsCaptions=false + needsDescription=autoGenerate → pas de
   // transcription → description bloquée éternellement après validation client.
   let needsDescriptionAuto = false;
+  // Slot du render, pour rattacher le job : sans lui, `slot.transcriptionJobs`
+  // reste vide côté fiche et l'UI ne sait jamais qu'une transcription tourne
+  // (le chemin local le posait déjà, pas celui-ci).
+  let slotIdForJob: string | null = null;
   try {
     const render = await prisma.render.findUnique({
       where: { id: renderId },
       select: {
         publicationSlot: {
           select: {
+            id: true,
             needsDescriptionOverride: true,
             ...slotEffectivePatternSelect,
           },
         },
       },
     });
+    slotIdForJob = render?.publicationSlot?.id ?? null;
     const eff = render?.publicationSlot
       ? resolveSlotEffectivePattern(render.publicationSlot)
       : null;
@@ -342,6 +348,7 @@ export async function triggerAutoTranscriptionForRender(
           enableDiarization: false,
           outputJsonKey,
           renderId,
+          ...(slotIdForJob ? { slotId: slotIdForJob } : {}),
         },
       });
     } catch (err) {

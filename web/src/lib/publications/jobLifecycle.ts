@@ -84,7 +84,9 @@ export function resolveActiveCoverPack<T extends WithStale>(slot: {
 }
 
 /**
- * Retourne la transcription "courante" du slot.
+ * Retourne la transcription "courante" du slot — pour AFFICHER son état.
+ * Peut renvoyer un job périmé : c'est voulu, la fiche doit pouvoir dire
+ * « obsolète » plutôt que de faire disparaître l'information.
  */
 export function resolveActiveTranscription<T extends WithStale>(slot: {
   activeTranscriptionJob?: T | null;
@@ -92,6 +94,24 @@ export function resolveActiveTranscription<T extends WithStale>(slot: {
 }): T | null {
   if (slot.activeTranscriptionJob) return slot.activeTranscriptionJob;
   return fallbackLatest(slot.transcriptionJobs ?? []);
+}
+
+/**
+ * Retourne la transcription RÉUTILISABLE telle quelle — pour incruster des
+ * sous-titres sans re-transcrire.
+ *
+ * Contrairement à `resolveActiveTranscription`, exige `staleSince == null` :
+ * une transcription périmée décrit une AUTRE vidéo (montage re-rendu, version
+ * promue). La réutiliser ré-incrusterait le texte de l'ancienne vidéo, décalé,
+ * sans le moindre signal. Renvoyer `null` ici force une nouvelle transcription.
+ */
+export function resolveReusableTranscription<T extends WithStale>(slot: {
+  activeTranscriptionJob?: T | null;
+  transcriptionJobs?: T[];
+}): T | null {
+  const active = resolveActiveTranscription(slot);
+  if (!active || active.staleSince) return null;
+  return active;
 }
 
 /**

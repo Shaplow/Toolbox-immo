@@ -9,7 +9,7 @@ import type { Segment } from "@/lib/transcriptionProcess";
 import { getUserContext } from "@/lib/userContext";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
-import { resolveActiveTranscription } from "@/lib/publications/jobLifecycle";
+import { resolveReusableTranscription } from "@/lib/publications/jobLifecycle";
 import { triggerAutoTranscriptionForVersion } from "@/lib/triggerAutoTranscriptionForVersion";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 
@@ -139,7 +139,11 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     // ?transcriptionId=Y (cas où il choisit manuellement une transcription
     // depuis /transcriptions).
     if (!resolvedTranscriptionId) {
-      const active = resolveActiveTranscription({
+      // Réutilisation stricte : une transcription périmée décrit une autre
+      // vidéo (montage re-rendu, version promue) — la réutiliser incrusterait
+      // le texte de l'ancienne, décalé et sans signal. `resolveReusable*`
+      // renvoie null dans ce cas, ce qui relance une transcription plus bas.
+      const active = resolveReusableTranscription({
         activeTranscriptionJob: slot.activeTranscriptionJob,
         transcriptionJobs: slot.transcriptionJobs,
       });
