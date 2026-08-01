@@ -22,11 +22,17 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
-import { autoPromoteIfNoActive } from "@/lib/publications/jobLifecycle";
+import { autoPromoteIfNoActive, markJobsStaleForSlot } from "@/lib/publications/jobLifecycle";
 
 /**
  * À appeler juste après qu'un Render passe à status="DONE".
  * No-op si le render n'est pas rattaché à un PublicationSlot.
+ *
+ * C'est le point de BASCULE d'un re-render : le rendu qui vient d'aboutir
+ * devient le rendu courant du slot, et toute la chaîne aval calée sur le rendu
+ * précédent (sous-titres, transcription, cover, description) est marquée
+ * périmée. Promouvoir ici et pas au lancement est délibéré — pendant le rendu,
+ * et si celui-ci échoue, la fiche continue de servir la vidéo précédente.
  */
 export async function onRenderCompleted(renderId: string): Promise<void> {
   try {
@@ -35,17 +41,44 @@ export async function onRenderCompleted(renderId: string): Promise<void> {
       select: { publicationSlotId: true, videoUrl: true },
     });
     if (!render?.publicationSlotId) return;
+    const slotId = render.publicationSlotId;
+
+    const slot = await prisma.publicationSlot.findUnique({
+      where: { id: slotId },
+      select: { currentRenderId: true },
+    });
+    const previousRenderId = slot?.currentRenderId ?? null;
+    const replacesPreviousRender = previousRenderId !== null && previousRenderId !== renderId;
+
+    // Bascule + invalidation atomiques : le slot ne doit jamais pointer un
+    // nouveau rendu tout en gardant des sous-titres réputés frais issus de
+    // l'ancien (getSlotFinalVideoUrl fait primer la vidéo sous-titrée).
+    await prisma.$transaction(async (tx) => {
+      if (previousRenderId !== renderId) {
+        await tx.publicationSlot.update({
+          where: { id: slotId },
+          data: { currentRenderId: renderId },
+        });
+      }
+      if (replacesPreviousRender) {
+        await markJobsStaleForSlot(tx, slotId, "render_replaced");
+      }
+    });
 
     await logActivity(prisma, {
-      slotId: render.publicationSlotId,
+      slotId,
       actorId: null,
       type: "RENDER_COMPLETED",
-      payload: { renderId, videoUrl: render.videoUrl ?? null },
+      payload: {
+        renderId,
+        videoUrl: render.videoUrl ?? null,
+        ...(replacesPreviousRender ? { replacedRenderId: previousRenderId } : {}),
+      },
     });
 
     await applyAutoTransitionFromPipeline(
       prisma,
-      render.publicationSlotId,
+      slotId,
       "RENDER_COMPLETED",
     );
   } catch (err) {

@@ -383,47 +383,46 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate publicationSlotId if provided.
-    // Fix bug 2026-05-30 : si le slot a déjà un render ERROR (relance après échec),
-    // on délie l'ancien (publicationSlotId = null) pour permettre au NOUVEAU render
-    // d'être linké au slot et donc affiché dans la fiche. Sans ça, le nouveau render
-    // était créé sans publicationSlotId → invisible dans /publications/[id] qui
-    // continuait d'afficher l'ancien ERROR.
-    // L'ancien render reste en DB pour audit (status ERROR + usedAssets préservés).
+    //
+    // Un slot accumule un historique de rendus : le nouveau est TOUJOURS rattaché.
+    // Avant, un re-render sur un slot dont le rendu était DONE partait orphelin
+    // (`publicationSlotId` non posé, faute d'unicité disponible) : la fiche
+    // continuait d'afficher l'ancienne vidéo, et toute la chaîne aval — hook de
+    // complétion, transcription, sous-titres — naissait détachée du slot.
+    //
+    // Le rendu qui fait foi reste l'ancien : `currentRenderId` n'est promu qu'à
+    // la complétion (onRenderCompleted). Un re-render qui échoue ne fait donc
+    // rien perdre.
     let validatedSlotId: string | undefined;
     if (typeof publicationSlotId === "string" && publicationSlotId) {
       const slot = await prisma.publicationSlot.findUnique({
         where: { id: publicationSlotId },
-        select: { id: true, render: { select: { id: true, status: true } } },
+        select: {
+          id: true,
+          renders: {
+            where: { status: { in: ["PENDING", "PROCESSING"] } },
+            select: { id: true, status: true },
+            take: 1,
+          },
+        },
       });
       if (slot) {
-        if (!slot.render) {
-          validatedSlotId = slot.id;
-        } else if (slot.render.status === "ERROR") {
-          await prisma.render.update({
-            where: { id: slot.render.id },
-            data: { publicationSlotId: null },
-          });
-          validatedSlotId = slot.id;
-        } else if (
-          slot.render.status === "PENDING" ||
-          slot.render.status === "PROCESSING"
-        ) {
+        const inFlight = slot.renders[0];
+        if (inFlight) {
           // Fix 2026-05-31 : avant, on créait silencieusement un Render orphelin
-          // (sans publicationSlotId) qui tournait quand même sur RunPod et
-          // consommait la rotation, invisible depuis la fiche. Désormais on
-          // refuse explicitement avec un 409 pour que le client gère le double-clic
-          // ou la double-soumission.
+          // qui tournait quand même sur RunPod et consommait la rotation,
+          // invisible depuis la fiche. Désormais on refuse explicitement avec un
+          // 409 pour que le client gère le double-clic ou la double-soumission.
           return NextResponse.json(
             {
               error: "Un rendu est déjà en cours pour ce slot.",
-              renderId: slot.render.id,
-              status: slot.render.status,
+              renderId: inFlight.id,
+              status: inFlight.status,
             },
             { status: 409 },
           );
         }
-        // Si slot.render est en DONE, on ne touche pas (le nouveau render sera
-        // créé sans publicationSlotId — comportement legacy à revisiter).
+        validatedSlotId = slot.id;
       }
     }
 
