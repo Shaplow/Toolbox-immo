@@ -31,6 +31,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import type { MediaAsset } from "./types";
+import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 import { formatDate } from "./helpers";
 
 interface Props {
@@ -85,6 +86,8 @@ export function MediaAssetsGroupColumn({
   removeFromSequence,
   renderVideoCard,
 }: Props) {
+  const { canManageAssets, canManageLibraries } = useMediaLibraryPermissions();
+
   const isAutoMode = seqState.length === 0;
   const seqIdx = setTag ? seqState.indexOf(setTag) : -1;
   const isSequenced = seqIdx !== -1;
@@ -145,7 +148,7 @@ export function MediaAssetsGroupColumn({
                 placeholder="ex: Tenue A, Plan Ext…"
                 className="w-full text-[10px] border border-danger-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-danger-200"
               />
-            ) : (
+            ) : canManageAssets ? (
               <button
                 onClick={() => { setEditingFamilyKey(groupKey); setFamilyInput(category ?? ""); }}
                 className={`flex items-center gap-1 text-[10px] w-full text-left px-1.5 py-0.5 rounded border transition-colors ${
@@ -158,7 +161,12 @@ export function MediaAssetsGroupColumn({
                 <FolderOpen size={10} className="shrink-0" />
                 <span className="truncate">{category || "Catégorie…"}</span>
               </button>
-            )}
+            ) : category ? (
+              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-danger-50 text-danger-700 border-danger-200 font-medium">
+                <FolderOpen size={10} className="shrink-0" />
+                <span className="truncate">{category}</span>
+              </span>
+            ) : null}
           </div>
         )}
         {/* Divider */}
@@ -195,21 +203,27 @@ export function MediaAssetsGroupColumn({
                   <span className="text-[10px] font-mono bg-info-100 text-info-700 border border-info-200 px-1.5 py-0.5 rounded flex items-center gap-1">
                     <ListOrdered size={10} /> #{seqIdx + 1}
                   </span>
-                  <button onClick={() => moveSetTag(setTag!, -1)} disabled={seqIdx === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30">
-                    <ChevronUp size={12} className="text-muted-foreground" />
-                  </button>
-                  <button onClick={() => moveSetTag(setTag!, 1)} disabled={seqIdx === seqState.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30">
-                    <ChevronDown size={12} className="text-muted-foreground" />
-                  </button>
-                  <button onClick={() => removeFromSequence(setTag!)} className="text-[10px] text-red-400 hover:text-red-600 px-0.5 flex items-center" title="Retirer de la rotation">
-                    <MinusCircle size={11} />
-                  </button>
+                  {/* Réordonner = propriété de la bibliothèque → ADMIN. Le rang
+                      reste affiché pour tous. */}
+                  {canManageLibraries && (
+                    <>
+                      <button onClick={() => moveSetTag(setTag!, -1)} disabled={seqIdx === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30">
+                        <ChevronUp size={12} className="text-muted-foreground" />
+                      </button>
+                      <button onClick={() => moveSetTag(setTag!, 1)} disabled={seqIdx === seqState.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30">
+                        <ChevronDown size={12} className="text-muted-foreground" />
+                      </button>
+                      <button onClick={() => removeFromSequence(setTag!)} className="text-[10px] text-red-400 hover:text-red-600 px-0.5 flex items-center" title="Retirer de la rotation">
+                        <MinusCircle size={11} />
+                      </button>
+                    </>
+                  )}
                 </div>
-              ) : (
+              ) : canManageLibraries ? (
                 <button onClick={() => addToSequence(setTag!)} className="flex items-center gap-1 text-[10px] text-info-700 hover:text-info-700 border border-info-200 rounded-full px-2 py-0.5">
                   <PlusCircle size={10} /> Fixer l&apos;ordre
                 </button>
-              )
+              ) : null
             )
           )}
         </div>

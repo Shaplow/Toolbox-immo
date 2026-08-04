@@ -22,6 +22,7 @@ import {
   BarChart2,
   CheckSquare,
   Clock,
+  Download,
   FolderOpen,
   Globe,
   Layers,
@@ -32,6 +33,8 @@ import {
 } from "lucide-react";
 import type { MediaAsset, MetadataField } from "./types";
 import { LazyVideoThumb } from "./LazyVideoThumb";
+import { downloadAsset } from "./downloadAssets";
+import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 import type { UseAssetInlineEditsResult } from "./useAssetInlineEdits";
 
 interface Props {
@@ -55,11 +58,19 @@ export function MediaAssetsCompactCard({
   hideCategory = false,
   inline,
 }: Props) {
+  const { canManageAssets } = useMediaLibraryPermissions();
+
   const {
-    editingFamilyKey, setEditingFamilyKey, familyInput, setFamilyInput, handleSaveCategory,
-    editingSetTagId, setEditingSetTagId, setTagValue, setSetTagValue, setSetTagError, handleSaveSetTag,
+    editingFamilyKey, setEditingFamilyKey: rawSetEditingFamilyKey, familyInput, setFamilyInput, handleSaveCategory,
+    editingSetTagId, setEditingSetTagId: rawSetEditingSetTagId, setTagValue, setSetTagValue, setSetTagError, handleSaveSetTag,
     handleDelete,
   } = inline;
+
+  // Lecture seule : l'entrée en édition inline est inerte (cf. MediaAssetsVideoCard).
+  const noEdit = <T extends (...args: never[]) => void>(fn: T): T =>
+    (canManageAssets ? fn : () => {}) as T;
+  const setEditingFamilyKey = noEdit(rawSetEditingFamilyKey);
+  const setEditingSetTagId = noEdit(rawSetEditingSetTagId);
 
   const isSelected = selectedIds.has(asset.id);
   const isAssetAccessible = !accountFilter ||
@@ -211,11 +222,24 @@ export function MediaAssetsCompactCard({
         }
       </div>
 
-      {/* Delete */}
+      {/* Download + delete */}
       {!selectMode && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void downloadAsset({ id: asset.id, filename: asset.filename });
+          }}
+          className="opacity-0 group-hover:opacity-100 shrink-0 w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-info-700 transition"
+          title="Télécharger"
+        >
+          <Download size={11} />
+        </button>
+      )}
+      {!selectMode && canManageAssets && (
         <button
           onClick={(e) => { e.stopPropagation(); void handleDelete(asset); }}
           className="opacity-0 group-hover:opacity-100 shrink-0 w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-red-500 transition"
+          title="Supprimer"
         >
           <Trash2 size={11} />
         </button>

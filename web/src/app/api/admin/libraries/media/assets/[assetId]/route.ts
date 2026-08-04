@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
-import { canAccessMediaLibrary } from "@/lib/permissions/mediaLibrary";
+import { canViewMediaLibrary, canManageMediaAssets } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, createPresignedDownloadUrl, r2Configured } from "@/lib/r2";
 
 type Params = { params: Promise<{ assetId: string }> };
 
-// GET /api/admin/libraries/media/assets/[assetId]/download — URL de téléchargement
+// GET /api/admin/libraries/media/assets/[assetId] — URL de téléchargement
 // Retourne une URL pré-signée R2 (valide 1h) avec Content-Disposition: attachment.
-// En dev (R2 non configuré), redirige directement vers l'URL publique.
+// En dev (R2 non configuré), renvoie directement l'URL publique.
+//
+// Lecture : ouverte à tous les rôles médiathèque, MONTEUR compris — télécharger
+// un rush est précisément ce qu'il vient faire ici. Les mutations plus bas
+// (DELETE, PATCH) restent réservées à `canManageMediaAssets`.
 export async function GET(_req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  if (!userContext?.effectiveUser.id || !canViewMediaLibrary(userContext.effectiveUser.role)) {
+    return NextResponse.json({ error: "Réservé aux rôles médiathèque" }, { status: 403 });
   }
 
   const { assetId } = await params;
@@ -44,7 +48,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // DELETE /api/admin/libraries/media/assets/[assetId] — supprime un asset (+ R2)
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
+  if (!userContext?.effectiveUser.id || !canManageMediaAssets(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -97,7 +101,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 // Champs acceptés : duration, tags, setTag, category, incrementUsage, usageCount, resetUsage, lastUsedAt, disabled
 export async function PATCH(req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
+  if (!userContext?.effectiveUser.id || !canManageMediaAssets(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

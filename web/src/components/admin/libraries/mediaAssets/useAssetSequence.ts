@@ -15,6 +15,8 @@
  */
 
 import { useState } from "react";
+import { toast } from "@/components/ui/Toast";
+import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 
 interface UseAssetSequenceParams {
   libraryId: string;
@@ -38,7 +40,18 @@ export function useAssetSequence({
     try { return JSON.parse(initialSequence) as string[]; } catch { return []; }
   });
 
+  // La séquence est une propriété de la BIBLIOTHÈQUE (PATCH media/[id], gaté
+  // `canManageMediaLibraries`) et non des assets — d'où `canManageLibraries`
+  // ici et non `canManageAssets`. Un VIDEASTE gère les assets mais ne réordonne
+  // pas la rotation : sans cette garde, son état local partirait en avant d'un
+  // 403 et afficherait un ordre que le serveur n'a jamais accepté.
+  const { canManageLibraries } = useMediaLibraryPermissions();
+
   async function saveSequence(newSeq: string[]) {
+    if (!canManageLibraries) {
+      toast.error("Réservé aux administrateurs");
+      return;
+    }
     setSeqState(newSeq);
     await fetch(`/api/admin/libraries/media/${libraryId}`, {
       method: "PATCH",

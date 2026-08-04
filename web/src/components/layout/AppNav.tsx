@@ -31,7 +31,7 @@ import {
 import { KbdChord } from "@/components/ui/Kbd";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { canAccessTool } from "@/lib/permissions/tools";
-import { canAccessMediaLibrary } from "@/lib/permissions/mediaLibrary";
+import { canViewMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
@@ -168,9 +168,9 @@ export function AppNav({
           // Événements : le vidéaste y voit ses tournages ; le monteur/CM y
           // accèdent pour ajouter des reels à un événement (scope serveur-side).
           { href: "/events", label: "Événements", icon: <CalendarClock size={14} /> },
-          // Médiathèque : ouverte au VIDEASTE (gestion des assets média + audio).
-          // canAccessMediaLibrary = false pour MONTEUR/CM → l'item leur reste caché.
-          ...(canAccessMediaLibrary(navUser.role)
+          // Médiathèque : le VIDEASTE gère les assets, le MONTEUR consulte et
+          // télécharge (lecture seule). Reste cachée au CM.
+          ...(canViewMediaLibrary(navUser.role)
             ? [{ href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> }]
             : []),
           ...(hasAnyToolPerm

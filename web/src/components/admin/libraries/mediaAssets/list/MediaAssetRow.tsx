@@ -1,9 +1,10 @@
 "use client";
 
 import { memo } from "react";
-import { CheckSquare, Square, FolderOpen, Layers } from "lucide-react";
+import { CheckSquare, Square, Download, FolderOpen, Layers } from "lucide-react";
 import { MediaThumb } from "./MediaThumb";
 import type { MediaAsset } from "../types";
+import { downloadAsset } from "../downloadAssets";
 
 function shortDate(iso: string | null): string {
   if (!iso) return "—";
@@ -126,6 +127,22 @@ export const MediaAssetRow = memo(function MediaAssetRow({
       {/* Accès */}
       <td className="px-2 py-1.5 whitespace-nowrap text-[11.5px] text-muted-foreground">
         {accessLabel}
+      </td>
+
+      {/* Télécharger — stopPropagation : le <tr> ouvre le drawer de détail. */}
+      <td className="px-2 py-1.5">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void downloadAsset({ id: asset.id, filename: asset.filename });
+          }}
+          className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground/60 hover:text-info-700 hover:bg-info-50 transition-colors"
+          title="Télécharger"
+          aria-label={`Télécharger ${asset.filename}`}
+        >
+          <Download size={13} />
+        </button>
       </td>
     </tr>
   );

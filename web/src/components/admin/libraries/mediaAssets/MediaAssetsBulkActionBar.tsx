@@ -9,9 +9,11 @@
  * pour le "tout sélectionner".
  */
 
-import { Square, CheckSquare, X, Trash2 } from "lucide-react";
+import { Square, CheckSquare, X, Trash2, Download } from "lucide-react";
 import type { MediaAsset, InstagramAccount } from "./types";
 import type { UseBulkEditResult } from "./useBulkEdit";
+import { downloadAssets } from "./downloadAssets";
+import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 
 interface Props {
   bulk: UseBulkEditResult;
@@ -21,6 +23,7 @@ interface Props {
 }
 
 export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
+  const { canManageAssets } = useMediaLibraryPermissions();
   const {
     selectedIds,
     setSelectedIds,
@@ -68,6 +71,22 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
       {/* Center: actions (only when items are selected) */}
       {selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 flex-1">
+          {/* Télécharger — en tête : c'est la seule action non destructive, et la
+              seule dont dispose un rôle en lecture seule. */}
+          <button
+            onClick={() => {
+              const selected = filtered.filter((a) => selectedIds.has(a.id));
+              void downloadAssets(selected.map((a) => ({ id: a.id, filename: a.filename })));
+            }}
+            className="flex items-center gap-1 px-2.5 py-1 border border-info-200 text-info-700 text-xs rounded hover:bg-info-50 transition-colors"
+            title={`Télécharger les ${selectedIds.size} fichiers sélectionnés`}
+          >
+            <Download size={11} /> Télécharger ({selectedIds.size})
+          </button>
+          {/* Actions mutantes — masquées en lecture seule : la barre se réduit
+              alors à « tout sélectionner » + « Télécharger » + « Annuler ». */}
+          {canManageAssets && (
+            <>
           {/* W5.11 : couleurs alignées sur Coastal Studio (sage pour
               category/pack actions non-destructives — rose réservé au danger). */}
           {/* Bulk category */}
@@ -163,6 +182,8 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
           >
             <Trash2 size={11} /> Supprimer
           </button>
+            </>
+          )}
           {/* W4.5 : bulkError/bulkSuccess remplacés par toast.error/success
               côté useBulkEdit — feedback en overlay cohérent avec le reste
               de l'app au lieu d'un texte inline dans une barre déjà dense. */}

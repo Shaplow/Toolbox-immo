@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import {
-  canAccessMediaLibrary,
+  canViewMediaLibrary,
   canManageMediaLibraries,
 } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
@@ -12,10 +12,11 @@ import { PageShell } from "@/components/ui/PageShell";
 
 export default async function LibrariesHubPage() {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
+  if (!userContext?.actualUser.id || !canViewMediaLibrary(userContext.effectiveUser.role)) {
     redirect("/templates");
   }
-  // VIDEASTE gère les assets média + audio, pas les données / polices / prompts.
+  // Le hub ne rend que des liens : seul le niveau library-level l'intéresse
+  // (il conditionne la carte « Données » et le bloc « Plus de ressources »).
   const canManage = canManageMediaLibraries(userContext.effectiveUser.role);
 
   // Compteurs côté serveur — split médias vidéo / audio (Phase β médiathèque).

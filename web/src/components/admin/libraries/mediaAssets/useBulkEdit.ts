@@ -16,6 +16,7 @@
 import { useCallback, useState } from "react";
 import type { MediaAsset, InstagramAccount } from "./types";
 import { toast } from "@/components/ui/Toast";
+import { useMediaLibraryReadOnly } from "./mediaLibraryPermissions";
 
 /**
  * Fonction de confirmation asynchrone fournie par le composant parent
@@ -68,6 +69,15 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
   const [bulkTagsInput, setBulkTagsInput] = useState("");
   const [bulkCategoryInput, setBulkCategoryInput] = useState("");
   const [bulkApplying, setBulkApplying] = useState(false);
+
+  // Garde lecture seule — cf. `useAssetInlineEdits`. Le mode sélection reste
+  // ouvert (il porte le téléchargement en lot), seules les mutations tombent.
+  const readOnly = useMediaLibraryReadOnly();
+  const blocked = useCallback((): boolean => {
+    if (!readOnly) return false;
+    toast.error("Médiathèque en lecture seule");
+    return true;
+  }, [readOnly]);
   // W4.5 : bulkError/bulkSuccess state remplacé par toast.error/success — la
   // UI feedback est désormais cohérente avec le reste du design system (Toast
   // overlay) au lieu de rendus inline ad-hoc dans la BulkActionBar.
@@ -94,6 +104,7 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
   }, []);
 
   const handleBulkApplySetTag = useCallback(async () => {
+    if (blocked()) return;
     if (selectedIds.size === 0) return;
     const value = bulkSetTagInput.trim() || null;
     setBulkApplying(true);
@@ -110,9 +121,10 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     }
     setAssets((prev) => prev.map((a) => (selectedIds.has(a.id) ? { ...a, setTag: value } : a)));
     toast.success(value ? `Pack « ${value} » appliqué` : "Pack retiré");
-  }, [bulkSetTagInput, libraryId, selectedIds, setAssets]);
+  }, [blocked, bulkSetTagInput, libraryId, selectedIds, setAssets]);
 
   const handleBulkApplyTags = useCallback(async () => {
+    if (blocked()) return;
     if (selectedIds.size === 0) return;
     const newTags = bulkTagsInput.split(",").map((t) => t.trim()).filter(Boolean);
     setBulkApplying(true);
@@ -129,10 +141,11 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     }
     setAssets((prev) => prev.map((a) => (selectedIds.has(a.id) ? { ...a, tags: newTags } : a)));
     toast.success(newTags.length > 0 ? "Tags appliqués" : "Tags retirés");
-  }, [bulkTagsInput, libraryId, selectedIds, setAssets]);
+  }, [blocked, bulkTagsInput, libraryId, selectedIds, setAssets]);
 
   const handleBulkApplyAccess = useCallback(
     async (action: "add" | "remove_all", accountId?: string) => {
+      if (blocked()) return;
       if (selectedIds.size === 0) return;
       setBulkApplying(true);
       
@@ -165,10 +178,11 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
         toast.success("Accès réinitialisé (global)");
       }
     },
-    [accounts, libraryId, selectedIds, setAssets],
+    [blocked, accounts, libraryId, selectedIds, setAssets],
   );
 
   const handleBulkApplyCategory = useCallback(async () => {
+    if (blocked()) return;
     if (selectedIds.size === 0) return;
     const value = bulkCategoryInput.trim() || null;
     setBulkApplying(true);
@@ -185,9 +199,10 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     }
     setAssets((prev) => prev.map((a) => (selectedIds.has(a.id) ? { ...a, category: value } : a)));
     toast.success(value ? `Catégorie « ${value} » appliquée` : "Catégorie retirée");
-  }, [bulkCategoryInput, libraryId, selectedIds, setAssets]);
+  }, [blocked, bulkCategoryInput, libraryId, selectedIds, setAssets]);
 
   const handleBulkDelete = useCallback(async () => {
+    if (blocked()) return;
     const count = selectedIds.size;
     const ok = await confirm({
       title: `Supprimer ${count} asset${count > 1 ? "s" : ""} ?`,
@@ -211,7 +226,7 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     }
     setAssets((prev) => prev.filter((a) => !selectedIds.has(a.id)));
     exitSelectMode();
-  }, [exitSelectMode, libraryId, selectedIds, setAssets, confirm]);
+  }, [blocked, exitSelectMode, libraryId, selectedIds, setAssets, confirm]);
 
   return {
     selectMode,

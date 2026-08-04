@@ -14,9 +14,10 @@
  * Cas N>1 : badge "+N" + offset visuel léger pour suggérer la pile.
  */
 
-import { Play, Layers, AlertTriangle, EyeOff } from "lucide-react";
+import { Play, Layers, AlertTriangle, EyeOff, Download } from "lucide-react";
 import { LazyVideoThumb } from "./LazyVideoThumb";
 import type { SetGroup } from "./types";
+import { downloadAssets } from "./downloadAssets";
 
 interface Props {
   group: SetGroup;
@@ -38,18 +39,22 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
   if (!primary) return null;
 
   return (
-    <button
-      type="button"
-      onClick={() => onClick?.(group)}
+    // Wrapper <div> et non <button> : le bouton « télécharger le groupe » est un
+    // FRÈRE du bouton d'ouverture. Deux <button> imbriqués sont du HTML invalide
+    // (et le clic interne est avalé par l'externe selon les navigateurs).
+    <div
       className={[
-        "group/stack relative w-full rounded-2xl overflow-hidden transition-all text-left",
+        "group/stack relative w-full rounded-2xl overflow-hidden transition-all",
         "bg-card border border-border ",
         dimmedByAccount ? "opacity-50" : "",
-        "",
         "hover: hover:-translate-y-0.5",
-        "focus-ring",
       ].filter(Boolean).join(" ")}
     >
+      <button
+        type="button"
+        onClick={() => onClick?.(group)}
+        className="block w-full text-left focus-ring"
+      >
       {/* Thumbnail principale + suggestion stack (offset arrière). */}
       <div className="relative aspect-[9/16] bg-gray-200">
         {/* Couche arrière fake : 2 décalages discrets pour suggérer une pile (uniquement si N > 1). */}
@@ -105,6 +110,18 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
           </span>
         )}
       </div>
-    </button>
+      </button>
+
+      {/* Télécharger tout le groupe — hors du bouton d'ouverture (cf. plus haut). */}
+      <button
+        type="button"
+        onClick={() => void downloadAssets(groupAssets.map((a) => ({ id: a.id, filename: a.filename })))}
+        className="absolute top-2 left-2 z-20 w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-info-700 hover:bg-info-50 opacity-0 group-hover/stack:opacity-100 transition-opacity shadow"
+        title={total === 1 ? "Télécharger le plan" : `Télécharger les ${total} plans du groupe`}
+        aria-label={total === 1 ? "Télécharger le plan" : `Télécharger les ${total} plans du groupe`}
+      >
+        <Download size={13} />
+      </button>
+    </div>
   );
 }

@@ -28,6 +28,7 @@ import {
   CheckSquare,
   ChevronRight,
   Clock,
+  Download,
   EyeOff,
   FolderOpen,
   Globe,
@@ -48,6 +49,8 @@ import type { InstagramAccount, MediaAsset, MetadataField } from "./types";
 import { formatDate, formatDuration } from "./helpers";
 import { LazyVideoThumb } from "./LazyVideoThumb";
 import type { UseAssetInlineEditsResult } from "./useAssetInlineEdits";
+import { downloadAsset } from "./downloadAssets";
+import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 
 interface Props {
   asset: MediaAsset;
@@ -88,13 +91,15 @@ export function MediaAssetsVideoCard({
   isManualMode = false,
   onOpenDetail,
 }: Props) {
+  const { canManageAssets } = useMediaLibraryPermissions();
+
   const {
-    editingFamilyKey, setEditingFamilyKey, familyInput, setFamilyInput,
-    editingSetTagId, setEditingSetTagId, setTagValue, setSetTagValue, setTagError, setSetTagError,
-    editingTagsId, setEditingTagsId, tagInput, setTagInput,
-    editingUsageId, setEditingUsageId, usageInput, setUsageInput,
-    editingLastUsedId, setEditingLastUsedId, lastUsedInput, setLastUsedInput,
-    editingMetaKey, setEditingMetaKey, metaInput, setMetaInput, savedMetaFlash, metaSaveError,
+    editingFamilyKey, setEditingFamilyKey: rawSetEditingFamilyKey, familyInput, setFamilyInput,
+    editingSetTagId, setEditingSetTagId: rawSetEditingSetTagId, setTagValue, setSetTagValue, setTagError, setSetTagError,
+    editingTagsId, setEditingTagsId: rawSetEditingTagsId, tagInput, setTagInput,
+    editingUsageId, setEditingUsageId: rawSetEditingUsageId, usageInput, setUsageInput,
+    editingLastUsedId, setEditingLastUsedId: rawSetEditingLastUsedId, lastUsedInput, setLastUsedInput,
+    editingMetaKey, setEditingMetaKey: rawSetEditingMetaKey, metaInput, setMetaInput, savedMetaFlash, metaSaveError,
     handleSaveCategory,
     handleSaveSetTag,
     handleSaveTags,
@@ -107,6 +112,18 @@ export function MediaAssetsVideoCard({
     handleDelete,
     toDateInputValue,
   } = inline;
+
+  // Lecture seule : on neutralise l'ENTRÉE en édition inline plutôt que de
+  // conditionner les ~7 déclencheurs disséminés dans le rendu. Aucun champ ne
+  // peut donc s'ouvrir, et un déclencheur ajouté plus tard reste couvert.
+  const noEdit = <T extends (...args: never[]) => void>(fn: T): T =>
+    (canManageAssets ? fn : () => {}) as T;
+  const setEditingFamilyKey = noEdit(rawSetEditingFamilyKey);
+  const setEditingSetTagId = noEdit(rawSetEditingSetTagId);
+  const setEditingTagsId = noEdit(rawSetEditingTagsId);
+  const setEditingUsageId = noEdit(rawSetEditingUsageId);
+  const setEditingLastUsedId = noEdit(rawSetEditingLastUsedId);
+  const setEditingMetaKey = noEdit(rawSetEditingMetaKey);
 
   const isSelected = selectedIds.has(asset.id);
   const isAssetAccessible = !accountFilter ||
@@ -555,7 +572,7 @@ export function MediaAssetsVideoCard({
       )}
 
       {/* Action buttons */}
-      {!selectMode && (
+      {!selectMode && canManageAssets && (
         <>
           <button
             onClick={(e) => { e.stopPropagation(); void handleDelete(asset); }}
@@ -590,6 +607,22 @@ export function MediaAssetsVideoCard({
             <RotateCcw size={11} />
           </button>
         </>
+      )}
+
+      {/* Télécharger — hors du bloc de gestion : c'est la seule action offerte
+          à un rôle en lecture seule. Sans les boutons de gestion, la pile de
+          droite est libre, d'où la remontée en haut. */}
+      {!selectMode && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void downloadAsset({ id: asset.id, filename: asset.filename });
+          }}
+          className={`absolute ${canManageAssets ? "top-8" : "top-1.5"} right-1.5 w-6 h-6 bg-white/80 hover:bg-info-50 text-muted-foreground hover:text-info-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow`}
+          title="Télécharger"
+        >
+          <Download size={11} />
+        </button>
       )}
     </div>
   );

@@ -37,9 +37,12 @@ import {
   X,
   ChevronDown,
   Info,
+  Download,
 } from "lucide-react";
 import type { InstagramAccount, MediaAsset, MetadataField } from "./types";
 import type { UseAssetInlineEditsResult } from "./useAssetInlineEdits";
+import { downloadAsset } from "./downloadAssets";
+import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 
 interface Props {
   open: boolean;
@@ -71,6 +74,7 @@ export function MediaAssetDetailDrawer({
   setAssets,
   onSwitchAsset,
 }: Props) {
+  const { canManageAssets } = useMediaLibraryPermissions();
   // États locaux contrôlés pour les inputs — sync sur asset change.
   const [categoryInput, setCategoryInput] = useState("");
   const [packInput, setPackInput] = useState("");
@@ -183,7 +187,32 @@ export function MediaAssetDetailDrawer({
           </p>
         </div>
 
-        {/* Rangement — Groupe visible par défaut. Catégorie repliée (mode avancé). */}
+        {/* Rangement — en lecture seule, on affiche les mêmes informations sans
+            aucun contrôle éditable : le monteur a besoin de savoir à quel groupe
+            appartient un plan, pas de pouvoir le changer. */}
+        {!canManageAssets ? (
+          <section className="rounded-2xl bg-card border border-border p-4 space-y-2">
+            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
+              <FolderOpen size={11} /> Rangement
+            </h3>
+            <p className="text-[12px] text-foreground">
+              <span className="text-muted-foreground">Groupe : </span>
+              {asset.setTag && !asset.setTag.startsWith("pack_")
+                ? asset.setTag
+                : <span className="text-muted-foreground italic">aucun</span>}
+            </p>
+            <p className="text-[12px] text-foreground">
+              <span className="text-muted-foreground">Catégorie : </span>
+              {asset.category ?? <span className="text-muted-foreground italic">aucune</span>}
+            </p>
+            <p className="text-[12px] text-foreground">
+              <span className="text-muted-foreground">Tags : </span>
+              {asset.tags.length > 0
+                ? asset.tags.join(", ")
+                : <span className="text-muted-foreground italic">aucun</span>}
+            </p>
+          </section>
+        ) : (
         <section className="rounded-2xl bg-card border border-border p-4 space-y-3">
           <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
             <FolderOpen size={11} /> Rangement
@@ -256,8 +285,11 @@ export function MediaAssetDetailDrawer({
             </div>
           </details>
         </section>
+        )}
 
-        {/* Tags & filtres — collapsible (glass card) */}
+        {/* Tags & filtres — collapsible (glass card). Les tags sont déjà
+            listés dans le bloc « Rangement » en lecture seule. */}
+        {canManageAssets && (
         <details className="group rounded-2xl bg-card border border-border  overflow-hidden" {...(asset.tags.length > 0 ? { open: true } : {})}>
           <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:text-foreground hover:bg-white/40 select-none px-4 py-3 transition-colors">
             <Tag size={11} /> Tags & filtres
@@ -295,8 +327,11 @@ export function MediaAssetDetailDrawer({
             </div>
           </div>
         </details>
+        )}
 
-        {/* Avancé — collapsible (glass card, fermée par défaut) */}
+        {/* Avancé — collapsible (glass card, fermée par défaut). Entièrement
+            composé de contrôles mutants : rien à montrer en lecture seule. */}
+        {canManageAssets && (
         <details className="group rounded-2xl bg-card border border-border  overflow-hidden">
           <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:text-foreground hover:bg-white/40 select-none px-4 py-3 transition-colors">
             <Info size={11} /> Avancé
@@ -403,9 +438,21 @@ export function MediaAssetDetailDrawer({
             )}
           </div>
         </details>
+        )}
       </Drawer.Body>
       <Drawer.Footer>
+        <Button
+          variant={canManageAssets ? "secondary" : "default"}
+          size="sm"
+          icon={Download}
+          onClick={() => {
+            if (asset) void downloadAsset({ id: asset.id, filename: asset.filename });
+          }}
+        >
+          Télécharger
+        </Button>
         <div className="flex-1" />
+        {canManageAssets && (
         <Button
           variant="danger"
           size="sm"
@@ -418,6 +465,7 @@ export function MediaAssetDetailDrawer({
         >
           Supprimer
         </Button>
+        )}
       </Drawer.Footer>
     </Drawer>
   );

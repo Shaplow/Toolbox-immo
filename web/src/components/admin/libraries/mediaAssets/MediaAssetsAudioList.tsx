@@ -12,9 +12,11 @@
  * handlers de save/reset/delete. La vue les reçoit en props.
  */
 
-import { Music2, RotateCcw, Tag, Trash2 } from "lucide-react";
+import { Download, Music2, RotateCcw, Tag, Trash2 } from "lucide-react";
 import type { MediaAsset } from "./types";
 import { formatDate, formatDuration } from "./helpers";
+import { downloadAsset } from "./downloadAssets";
+import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 
 interface Props {
   assets: MediaAsset[];
@@ -38,17 +40,25 @@ export function MediaAssetsAudioList({
   accountFilter,
   editingUsageId,
   usageInput,
-  setEditingUsageId,
+  setEditingUsageId: rawSetEditingUsageId,
   setUsageInput,
   handleSaveUsage,
   editingTagsId,
   tagInput,
-  setEditingTagsId,
+  setEditingTagsId: rawSetEditingTagsId,
   setTagInput,
   handleSaveTags,
   handleResetAssetUsage,
   handleDelete,
 }: Props) {
+  const { canManageAssets } = useMediaLibraryPermissions();
+
+  // Lecture seule : l'entrée en édition inline est inerte (cf. MediaAssetsVideoCard).
+  const noEdit = <T extends (...args: never[]) => void>(fn: T): T =>
+    (canManageAssets ? fn : () => {}) as T;
+  const setEditingUsageId = noEdit(rawSetEditingUsageId);
+  const setEditingTagsId = noEdit(rawSetEditingTagsId);
+
   return (
     <div className="space-y-1.5">
       {assets.map((asset) => (
@@ -138,19 +148,30 @@ export function MediaAssetsAudioList({
           </div>
           <audio controls src={asset.url} className="h-8 w-36 sm:w-48 shrink-0" preload="none" />
           <button
-            onClick={() => void handleResetAssetUsage(asset)}
-            className="p-1.5 text-muted-foreground/60 hover:text-warning-700 rounded transition-colors opacity-0 group-hover:opacity-100"
-            title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
+            onClick={() => void downloadAsset({ id: asset.id, filename: asset.filename })}
+            className="p-1.5 text-muted-foreground/60 hover:text-info-700 rounded transition-colors opacity-0 group-hover:opacity-100"
+            title="Télécharger"
           >
-            <RotateCcw size={14} />
+            <Download size={14} />
           </button>
-          <button
-            onClick={() => void handleDelete(asset)}
-            className="p-1.5 text-muted-foreground/60 hover:text-red-500 rounded transition-colors opacity-0 group-hover:opacity-100"
-            title="Supprimer"
-          >
-            <Trash2 size={14} />
-          </button>
+          {canManageAssets && (
+            <>
+              <button
+                onClick={() => void handleResetAssetUsage(asset)}
+                className="p-1.5 text-muted-foreground/60 hover:text-warning-700 rounded transition-colors opacity-0 group-hover:opacity-100"
+                title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
+              >
+                <RotateCcw size={14} />
+              </button>
+              <button
+                onClick={() => void handleDelete(asset)}
+                className="p-1.5 text-muted-foreground/60 hover:text-red-500 rounded transition-colors opacity-0 group-hover:opacity-100"
+                title="Supprimer"
+              >
+                <Trash2 size={14} />
+              </button>
+            </>
+          )}
         </div>
       ))}
     </div>

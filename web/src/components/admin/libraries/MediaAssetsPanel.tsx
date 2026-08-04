@@ -31,9 +31,19 @@ import { Button } from "@/components/ui/Button";
 import { type CategoryFilter } from "./mediaAssets/MediaAssetsCategoriesSidebar";
 import { useAssetSequence } from "./mediaAssets/useAssetSequence";
 import { useAdvancedMode } from "@/hooks/useAdvancedMode";
+import {
+  MediaLibraryPermissionsProvider,
+  useMediaLibraryPermissions,
+} from "./mediaAssets/mediaLibraryPermissions";
 
 interface Props {
   library: MediaLibrary;
+  /**
+   * Gestion asset-level (upload, édition, tags, suppression, analyse auto).
+   * ADMIN + VIDEASTE. Un MONTEUR consulte et télécharge sans jamais modifier.
+   * Défaut false = least-privilege.
+   */
+  canManageAssets?: boolean;
   /**
    * Gestion library-level (réglages de la bibliothèque). Réservé ADMIN : un
    * VIDEASTE gère les assets mais pas les réglages/rotation de la librairie.
@@ -42,7 +52,27 @@ interface Props {
   canManageLibraries?: boolean;
 }
 
-export function MediaAssetsPanel({ library, canManageLibraries = false }: Props) {
+/**
+ * Wrapper : pose le contexte de permissions, puis rend le panel.
+ *
+ * Le découpage est nécessaire — `MediaAssetsPanelInner` consomme le contexte
+ * dans ses hooks (`useAssetInlineEdits`, `useBulkEdit`, `useAssetSequence`), et
+ * un composant ne peut pas lire un Provider qu'il rend lui-même.
+ */
+export function MediaAssetsPanel({
+  library,
+  canManageAssets = false,
+  canManageLibraries = false,
+}: Props) {
+  return (
+    <MediaLibraryPermissionsProvider value={{ canManageAssets, canManageLibraries }}>
+      <MediaAssetsPanelInner library={library} />
+    </MediaLibraryPermissionsProvider>
+  );
+}
+
+function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
+  const { canManageAssets, canManageLibraries } = useMediaLibraryPermissions();
   // P1.1 — confirmation asynchrone partagée par useBulkEdit + useAssetInlineEdits.
   const { confirm, dialog: confirmDialog } = useConfirm();
   // ── État global de la liste ──
@@ -254,6 +284,11 @@ export function MediaAssetsPanel({ library, canManageLibraries = false }: Props)
   // audio (pas d'autocut).
   useEffect(() => {
     if (library.type !== "video") return;
+    // Sans droits assets, l'atelier « Analyse auto » n'est pas rendu : inutile
+    // d'aller chercher son badge, et la route est de toute façon gatée
+    // `canManageMediaAssets` — l'appel ne ferait qu'un 403 silencieux à chaque
+    // montage du panel.
+    if (!canManageAssets) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -268,7 +303,7 @@ export function MediaAssetsPanel({ library, canManageLibraries = false }: Props)
       }
     })();
     return () => { cancelled = true; };
-  }, [library.id, library.type, showAtelier]);
+  }, [library.id, library.type, showAtelier, canManageAssets]);
 
   // ESC handler géré dans MediaAssetsUploadModal (D7).
 
@@ -692,22 +727,29 @@ export function MediaAssetsPanel({ library, canManageLibraries = false }: Props)
   // Permet de déposer des fichiers n'importe où sur le panel ; ouvre la modal
   // pré-remplie et lance l'upload automatiquement. dragDepthRef évite que les
   // enfants déclenchent un dragleave (compteur d'entrées).
+  // Sans droits assets, le dépôt de fichiers est inerte : pas de surbrillance,
+  // pas d'ouverture de modal. On laisse le navigateur reprendre son
+  // comportement par défaut plutôt que d'afficher une cible qui ne mène à rien.
   const isVideoLib = library.type === "video";
   function handlePageDragOver(e: React.DragEvent) {
+    if (!canManageAssets) return;
     if (!e.dataTransfer?.types?.includes("Files")) return;
     e.preventDefault();
     setPageDragOver(true);
   }
   function handlePageDragEnter(e: React.DragEvent) {
+    if (!canManageAssets) return;
     if (!e.dataTransfer?.types?.includes("Files")) return;
     dragDepthRef.current += 1;
     setPageDragOver(true);
   }
   function handlePageDragLeave() {
+    if (!canManageAssets) return;
     dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
     if (dragDepthRef.current === 0) setPageDragOver(false);
   }
   function handlePageDrop(e: React.DragEvent) {
+    if (!canManageAssets) return;
     e.preventDefault();
     dragDepthRef.current = 0;
     setPageDragOver(false);
@@ -867,11 +909,19 @@ export function MediaAssetsPanel({ library, canManageLibraries = false }: Props)
         <EmptyState
           icon={isVideo ? Play : Music2}
           title={isVideo ? "Aucune vidéo encore" : "Aucune piste audio encore"}
-          description="Glisse tes fichiers directement sur cette page, ou clique ci-dessous pour ouvrir l'uploader."
-          cta={{
-            label: isVideo ? "Ajouter des vidéos" : "Ajouter des musiques",
-            onClick: () => setShowUploadModal(true),
-          }}
+          description={
+            canManageAssets
+              ? "Glisse tes fichiers directement sur cette page, ou clique ci-dessous pour ouvrir l'uploader."
+              : "Cette bibliothèque est vide pour le moment."
+          }
+          cta={
+            canManageAssets
+              ? {
+                  label: isVideo ? "Ajouter des vidéos" : "Ajouter des musiques",
+                  onClick: () => setShowUploadModal(true),
+                }
+              : undefined
+          }
         />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8 text-center">
@@ -972,7 +1022,7 @@ export function MediaAssetsPanel({ library, canManageLibraries = false }: Props)
         </div>
       </div>
       </div>
-      {editingAsset && (
+      {canManageAssets && editingAsset && (
         <MediaAssetEditModal
           asset={editingAsset}
           onClose={() => setEditingAsset(null)}
@@ -982,7 +1032,7 @@ export function MediaAssetsPanel({ library, canManageLibraries = false }: Props)
           }}
         />
       )}
-      {showAtelier && (
+      {canManageAssets && showAtelier && (
         <MediaBatchAutocutPanel
           library={library}
           knownTags={allTags}
@@ -990,25 +1040,31 @@ export function MediaAssetsPanel({ library, canManageLibraries = false }: Props)
         />
       )}
 
-      {/* ── Upload modal (D7 — extraite dans MediaAssetsUploadModal) ── */}
-      <MediaAssetsUploadModal
-        open={showUploadModal}
-        onClose={() => { setShowUploadModal(false); setPendingFiles(null); }}
-        library={library}
-        accounts={accounts}
-        onUploaded={() => void load()}
-        initialFiles={pendingFiles}
-        onInitialFilesConsumed={() => setPendingFiles(null)}
-      />
-      {/* Phase 2 — bulk-sort drawer pour ranger les assets orphelins en 1 décision. */}
-      <MediaAssetsBulkSortDrawer
-        open={sortDrawerOpen}
-        onClose={() => setSortDrawerOpen(false)}
-        libraryId={library.id}
-        orphanAssets={orphanAssets}
-        existingCategories={existingCategories}
-        onApplied={() => void load()}
-      />
+      {/* Modals mutantes : jamais montées sans droits assets — un état résiduel
+          (pendingFiles, sortDrawerOpen) ne doit pas pouvoir les faire surgir. */}
+      {canManageAssets && (
+        <>
+          {/* ── Upload modal (D7 — extraite dans MediaAssetsUploadModal) ── */}
+          <MediaAssetsUploadModal
+            open={showUploadModal}
+            onClose={() => { setShowUploadModal(false); setPendingFiles(null); }}
+            library={library}
+            accounts={accounts}
+            onUploaded={() => void load()}
+            initialFiles={pendingFiles}
+            onInitialFilesConsumed={() => setPendingFiles(null)}
+          />
+          {/* Phase 2 — bulk-sort drawer pour ranger les assets orphelins en 1 décision. */}
+          <MediaAssetsBulkSortDrawer
+            open={sortDrawerOpen}
+            onClose={() => setSortDrawerOpen(false)}
+            libraryId={library.id}
+            orphanAssets={orphanAssets}
+            existingCategories={existingCategories}
+            onApplied={() => void load()}
+          />
+        </>
+      )}
       {/* Phase 3 — drawer détail asset (édition complète en mode noob).
           setAssets : si ouvert via une stack, la liste des autres vidéos du set pour navigation. */}
       <MediaAssetDetailDrawer

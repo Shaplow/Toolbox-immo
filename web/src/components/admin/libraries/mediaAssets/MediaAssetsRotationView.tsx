@@ -16,6 +16,7 @@
  */
 
 import type { Ref } from "react";
+import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 import {
   AlertTriangle,
   ChevronDown,
@@ -71,6 +72,8 @@ export function MediaAssetsRotationView({
   removeFromSequence,
   renderCompactCard,
 }: Props) {
+  const { canManageLibraries } = useMediaLibraryPermissions();
+
   // ── Header : rotation auto vs perso, nb groupes, cycle, prochain ─────────
   const allNamed = groupedBySetTag.filter((g) => g.setTag || g.category);
   const inaccessibleCount = accountFilter ? allNamed.filter((g) => !g.isAccessible).length : 0;
@@ -159,7 +162,7 @@ export function MediaAssetsRotationView({
               </>
             )}
           </div>
-          {seqState.length > 0 && (
+          {canManageLibraries && seqState.length > 0 && (
             <button
               onClick={() => { void saveSequence([]); }}
               className="text-[11px] text-muted-foreground hover:text-red-500 border border-border hover:border-red-200 rounded px-2 py-0.5 transition-colors"
@@ -254,8 +257,10 @@ export function MediaAssetsRotationView({
                 ).map((a) => renderCompactCard(a, { hideCategory: true }))}
               </div>
             </div>
-            {/* Sequence controls */}
-            {seqState.length > 0 && g.setTag && (() => {
+            {/* Sequence controls — l'ordre de rotation est une propriété de la
+                bibliothèque : réservé ADMIN. L'ordre reste VISIBLE pour tous,
+                seuls les contrôles disparaissent. */}
+            {canManageLibraries && seqState.length > 0 && g.setTag && (() => {
               const idx = seqState.indexOf(g.setTag);
               return (
                 <div className="flex flex-col items-center gap-0.5 shrink-0">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
-import { canAccessMediaLibrary } from "@/lib/permissions/mediaLibrary";
+import { canManageMediaAssets } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { createPresignedUploadUrl, getR2PublicUrl, r2Configured } from "@/lib/r2";
 
@@ -21,7 +21,7 @@ const MAX_POSTER_SIZE = 2 * 1024 * 1024; // 2 MB — un JPEG ~320px est très l�
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
+  if (!userContext?.effectiveUser.id || !canManageMediaAssets(userContext.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

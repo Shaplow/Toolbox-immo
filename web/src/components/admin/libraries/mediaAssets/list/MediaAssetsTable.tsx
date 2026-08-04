@@ -97,6 +97,9 @@ export function MediaAssetsTable({
               </button>
             </th>
             <th className="px-2 py-2">Accès</th>
+            <th className="px-2 py-2 w-10">
+              <span className="sr-only">Télécharger</span>
+            </th>
           </tr>
         </thead>
         <tbody>

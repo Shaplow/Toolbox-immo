@@ -3,7 +3,8 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import {
-  canAccessMediaLibrary,
+  canViewMediaLibrary,
+  canManageMediaAssets,
   canManageMediaLibraries,
 } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
@@ -11,9 +12,10 @@ import { MediaLibrariesPanel } from "@/components/admin/libraries/MediaLibraries
 
 export default async function AudioLibrariesPage() {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
+  if (!userContext?.actualUser.id || !canViewMediaLibrary(userContext.effectiveUser.role)) {
     redirect("/templates");
   }
+  const canManageAssets = canManageMediaAssets(userContext.effectiveUser.role);
   const canManage = canManageMediaLibraries(userContext.effectiveUser.role);
 
   const [libCount, assetCount] = await Promise.all([
@@ -60,7 +62,7 @@ export default async function AudioLibrariesPage() {
 
         <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
           <div className="max-w-6xl mx-auto">
-            <MediaLibrariesPanel typeFilter="audio" canManageLibraries={canManage} />
+            <MediaLibrariesPanel typeFilter="audio" canManageAssets={canManageAssets} canManageLibraries={canManage} />
           </div>
         </div>
       </div>

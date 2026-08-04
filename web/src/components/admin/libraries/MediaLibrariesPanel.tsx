@@ -58,10 +58,16 @@ interface MediaLibrary {
 
 export function MediaLibrariesPanel({
   typeFilter: forcedType,
+  // Gestion asset-level (upload par drag-drop sur une card). ADMIN + VIDEASTE.
+  canManageAssets = false,
   // Gestion library-level (créer / réglages / supprimer). Réservé ADMIN ;
   // un VIDEASTE gère les assets mais pas les librairies. Défaut false = least-privilege.
   canManageLibraries = false,
-}: { typeFilter?: "video" | "audio"; canManageLibraries?: boolean } = {}) {
+}: {
+  typeFilter?: "video" | "audio";
+  canManageAssets?: boolean;
+  canManageLibraries?: boolean;
+} = {}) {
   const router = useRouter();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const detailBasePath = forcedType === "audio" ? "/admin/libraries/audio" : "/admin/libraries/media";
@@ -324,7 +330,11 @@ export function MediaLibrariesPanel({
               detailHref={`${detailBasePath}/${lib.id}`}
               canManage={canManageLibraries}
               onDelete={() => void handleDelete(lib.id, lib.name)}
-              onFilesDropped={(files) => setDropTarget({ lib, files })}
+              // Prop optionnelle : ne pas la passer désactive tout le drag-drop
+              // de la card (handlers + surbrillance) sans autre changement.
+              onFilesDropped={
+                canManageAssets ? (files) => setDropTarget({ lib, files }) : undefined
+              }
               onOpenSettings={() => setSettingsLib(lib)}
             />
           ))}

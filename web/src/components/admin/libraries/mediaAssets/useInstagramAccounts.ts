@@ -7,7 +7,7 @@
  *
  * Première brique du split C1-v2 §19. Pas de paramètre.
  *
- * Tape sur `/api/admin/libraries/media/accounts` (gate `canAccessMediaLibrary`,
+ * Tape sur `/api/admin/libraries/media/accounts` (gate `canManageMediaAssets`,
  * ADMIN + VIDEASTE) et NON `/api/admin/accounts` (ADMIN-only via `canAdminBypass`).
  * Avant ce repointage, un VIDEASTE recevait un 403 → liste vide → toute la
  * dimension « compte » (filtre « Tous les comptes », édition d'accès, upload)

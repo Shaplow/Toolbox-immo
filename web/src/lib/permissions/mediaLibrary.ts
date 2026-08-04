@@ -4,10 +4,18 @@
  * La médiathèque n'est PAS branchée sur le système de « tools » (ROLE_TOOL_SCOPE,
  * qui ne gère que l'Atelier). Son gating est ici, sur le rôle effectif.
  *
- * Deux niveaux :
- *  - ASSET-level (upload, analyse auto/autocut, édition, tags, suppression d'assets
- *    + lectures des panels) → ADMIN et VIDEASTE.
+ * Trois niveaux, du plus large au plus restreint :
+ *  - VIEW-level (consulter les panels, trier/filtrer, télécharger) → ADMIN, VIDEASTE
+ *    et MONTEUR. Le MONTEUR s'arrête là : il pioche des rushs pour ses montages
+ *    sans jamais pouvoir modifier la médiathèque.
+ *  - ASSET-level (upload, analyse auto/autocut, édition, tags, suppression d'assets)
+ *    → ADMIN et VIDEASTE.
  *  - LIBRARY-level (créer / supprimer / réglages / rotation d'une librairie) → ADMIN only.
+ *
+ * Les niveaux sont emboîtés : qui gère peut voir. Un handler de LECTURE (GET) se
+ * gate sur `canViewMediaLibrary`, un handler MUTANT sur `canManageMediaAssets`
+ * ou `canManageMediaLibraries` — y compris quand les deux cohabitent dans le
+ * même fichier de route (cas de `media/assets/[assetId]/route.ts`).
  *
  * À appeler avec `effectiveUser.role` (pas `actualUser`, pas `canAdminBypass`) :
  * `resolveUserContext` n'honore l'impersonation / le « view-as-role » que si le
@@ -19,15 +27,32 @@
  * serveur (pages, routes API) ET côté client (AppNav).
  */
 
-/** Rôles autorisés à voir la médiathèque et à gérer ses ASSETS. */
-const MEDIA_LIBRARY_ROLES: readonly string[] = ["ADMIN", "VIDEASTE"];
+/** Rôles autorisés à consulter la médiathèque et à télécharger ses fichiers. */
+const MEDIA_LIBRARY_VIEW_ROLES: readonly string[] = ["ADMIN", "VIDEASTE", "MONTEUR"];
+
+/** Rôles autorisés à gérer les ASSETS de la médiathèque. */
+const MEDIA_LIBRARY_MANAGE_ROLES: readonly string[] = ["ADMIN", "VIDEASTE"];
 
 /**
- * Peut voir la médiathèque (média + audio) et gérer ses ASSETS : upload,
- * analyse auto, édition, tags, suppression d'assets.
+ * Peut consulter la médiathèque (média + audio) et télécharger ses fichiers.
+ *
+ * C'est le gate des pages médiathèque, de l'item de nav, et de tous les
+ * handlers de LECTURE. Le MONTEUR l'obtient sans obtenir `canManageMediaAssets`
+ * — d'où une UI intégralement en lecture seule pour lui.
  */
-export function canAccessMediaLibrary(role: string | null | undefined): boolean {
-  return role != null && MEDIA_LIBRARY_ROLES.includes(role);
+export function canViewMediaLibrary(role: string | null | undefined): boolean {
+  return role != null && MEDIA_LIBRARY_VIEW_ROLES.includes(role);
+}
+
+/**
+ * Peut gérer les ASSETS : upload, analyse auto, édition, tags, suppression.
+ *
+ * ⚠️ Ne PAS utiliser comme gate de simple consultation — un MONTEUR a le droit
+ * de voir et de télécharger sans rien pouvoir modifier. Pour un handler de
+ * lecture (GET) ou un gate de page, c'est `canViewMediaLibrary` qu'il faut.
+ */
+export function canManageMediaAssets(role: string | null | undefined): boolean {
+  return role != null && MEDIA_LIBRARY_MANAGE_ROLES.includes(role);
 }
 
 /**

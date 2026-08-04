@@ -24,6 +24,7 @@ import { useState } from "react";
 import { toast } from "@/components/ui/Toast";
 import type { Dispatch, SetStateAction } from "react";
 import type { MediaAsset, MetadataField } from "./types";
+import { useMediaLibraryReadOnly } from "./mediaLibraryPermissions";
 
 /** Confirmation asynchrone fournie par le composant parent (via `useConfirm`). */
 export type ConfirmFn = (options: {
@@ -119,8 +120,22 @@ export function useAssetInlineEdits({
   const [metaSaveError, setMetaSaveError] = useState<{ assetId: string; key: string } | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
 
+  // ── Garde lecture seule ───────────────────────────────────────────────
+  // Défense en profondeur : l'UI masque déjà les contrôles d'édition et les
+  // routes API refusent la mutation. Cette garde couvre l'entre-deux — un
+  // `onBlur` résiduel, un raccourci clavier, un composant ajouté plus tard qui
+  // oublierait le masquage — pour qu'un rôle en lecture seule reçoive un message
+  // clair plutôt qu'un 403 silencieux.
+  const readOnly = useMediaLibraryReadOnly();
+  function blocked(): boolean {
+    if (!readOnly) return false;
+    toast.error("Médiathèque en lecture seule");
+    return true;
+  }
+
   // ── Handlers ──────────────────────────────────────────────────────────
   async function handleSaveCategory(asset: MediaAsset, categoryValue: string) {
+    if (blocked()) return;
     const val = categoryValue.trim() || null;
     await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
       method: "PATCH",
@@ -131,6 +146,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleSaveCategoryForGroup(groupAssets: MediaAsset[], categoryValue: string) {
+    if (blocked()) return;
     const val = categoryValue.trim() || null;
     await Promise.all(
       groupAssets.map((a) =>
@@ -145,6 +161,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleToggleAccess(asset: MediaAsset, accountId: string, addAccess: boolean) {
+    if (blocked()) return;
     const current = asset.accessAccountIds;
     const next = addAccess
       ? [...current, accountId]
@@ -159,6 +176,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleToggleDisabled(asset: MediaAsset) {
+    if (blocked()) return;
     const next = !asset.disabled;
     const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
       method: "PATCH",
@@ -170,6 +188,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleSaveMetadata(asset: MediaAsset, key: string, value: string) {
+    if (blocked()) return;
     setEditingMetaKey(null);
     const currentMeta = asset.metadata ?? {};
     const schemaField = metadataSchema.find((f) => f.key === key);
@@ -194,6 +213,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleSaveUsage(asset: MediaAsset, raw: string) {
+    if (blocked()) return;
     const val = parseInt(raw, 10);
     setEditingUsageId(null);
     setUsageInput("");
@@ -212,6 +232,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleResetAssetUsage(asset: MediaAsset) {
+    if (blocked()) return;
     const body = accountFilter
       ? { resetUsageForAccount: accountFilter }
       : { resetUsage: true };
@@ -229,6 +250,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleSaveTags(asset: MediaAsset, newTags: string[]) {
+    if (blocked()) return;
     const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -241,6 +263,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleSaveSetTag(asset: MediaAsset, raw: string) {
+    if (blocked()) return;
     const value = raw.trim() || null;
     if (value === (asset.setTag ?? null)) {
       setEditingSetTagId(null);
@@ -265,6 +288,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleSaveLastUsed(asset: MediaAsset, dateStr: string) {
+    if (blocked()) return;
     setEditingLastUsedId(null);
     setLastUsedInput("");
     const lastUsedAt = dateStr ? new Date(dateStr).toISOString() : null;
@@ -279,6 +303,7 @@ export function useAssetInlineEdits({
   }
 
   async function handleDelete(asset: MediaAsset) {
+    if (blocked()) return;
     const ok = await confirm({
       title: `Supprimer « ${asset.filename} » ?`,
       description: "Cette action est irréversible.",

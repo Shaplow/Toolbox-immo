@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { Chip } from "@/components/ui/Chip";
 import type { InstagramAccount, MediaLibrary, SortKey } from "./types";
+import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 
 interface Props {
   library: MediaLibrary;
@@ -92,6 +93,8 @@ export function MediaAssetsToolbar({
 }: Props) {
   void _library;
 
+  const { canManageAssets } = useMediaLibraryPermissions();
+
   const accountOptions = [
     { value: "", label: "Tous les comptes" },
     ...accounts.map((a) => ({
@@ -116,7 +119,7 @@ export function MediaAssetsToolbar({
           {isAdvanced ? "Avancé activé" : "Avancé"}
         </Chip>
         <div className="flex items-center gap-2 flex-wrap">
-        {isVideo && isAdvanced && (
+        {isVideo && isAdvanced && canManageAssets && (
           <div className="relative">
             <Button
               variant="secondary"
@@ -136,9 +139,11 @@ export function MediaAssetsToolbar({
             )}
           </div>
         )}
-        <Button variant="primary" size="sm" icon={Upload} onClick={onOpenUpload}>
-          {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
-        </Button>
+        {canManageAssets && (
+          <Button variant="primary" size="sm" icon={Upload} onClick={onOpenUpload}>
+            {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
+          </Button>
+        )}
         </div>
       </div>
 

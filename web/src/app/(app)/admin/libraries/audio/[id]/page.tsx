@@ -1,7 +1,8 @@
 import { redirect, notFound } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import {
-  canAccessMediaLibrary,
+  canViewMediaLibrary,
+  canManageMediaAssets,
   canManageMediaLibraries,
 } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
@@ -17,9 +18,10 @@ type Props = { params: Promise<{ id: string }> };
  */
 export default async function AudioLibraryDetailPage({ params }: Props) {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id || !canAccessMediaLibrary(userContext.effectiveUser.role)) {
+  if (!userContext?.actualUser.id || !canViewMediaLibrary(userContext.effectiveUser.role)) {
     redirect("/templates");
   }
+  const canManageAssets = canManageMediaAssets(userContext.effectiveUser.role);
   const canManage = canManageMediaLibraries(userContext.effectiveUser.role);
 
   const { id } = await params;
@@ -42,6 +44,7 @@ export default async function AudioLibraryDetailPage({ params }: Props) {
         rotationScope: library.rotationScope,
         maxUsageCount: library.maxUsageCount,
       }}
+      canManageAssets={canManageAssets}
       canManageLibraries={canManage}
     />
   );
