@@ -10,10 +10,17 @@
  * - badge      : optional badge text (e.g. "Bêta"), null if none
  */
 
-import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText, Clapperboard } from "lucide-react";
+import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText, ClipboardList, Clapperboard } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type ToolKey = "templates" | "captions" | "covers" | "transcription" | "description" | "mission";
+export type ToolKey =
+  | "templates"
+  | "captions"
+  | "covers"
+  | "transcription"
+  | "description"
+  | "brief"
+  | "mission";
 
 export type ToolMeta = {
   href: string;
@@ -76,6 +83,18 @@ export const TOOL_META: Record<ToolKey, ToolMeta> = {
     color: "amber",
     badge: null,
   },
+  brief: {
+    href: "/briefs",
+    navLabel: "Briefs",
+    cardLabel: "Briefs monteur",
+    description:
+      "Rédigez un brief de montage à partir d'une transcription et d'un prompt dédié. Sortie en Markdown ou en texte brut, prête à copier.",
+    // ClipboardList et non FileText : FileText est déjà pris par Descriptions, et
+    // deux outils voisins avec la même icône se confondent dans la nav.
+    Icon: ClipboardList,
+    color: "violet",
+    badge: null,
+  },
   mission: {
     href: "/missions/new",
     navLabel: "Missions",
@@ -94,5 +113,8 @@ export const TOOL_ORDER: ToolKey[] = [
   "transcription",
   "captions",
   "description",
+  // Après "description" : les deux consomment une transcription, on les garde
+  // voisins pour que le rapprochement soit lisible.
+  "brief",
   "covers",
 ];

@@ -1,36 +1,38 @@
 /**
  * GET  /api/description/prompts  — liste les prompts actifs (user authentifié)
  * POST /api/description/prompts  — créer un prompt (admin uniquement)
+ *
+ * Les deux acceptent `kind` ("description" | "brief"). Le défaut est
+ * "description", donc l'outil descriptions et les recettes existantes ne voient
+ * jamais les prompts de brief — et réciproquement.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { normalizeRecipeKind } from "@/lib/llm/recipes";
+import { normalizePromptKind, isPromptKind } from "@/lib/llm/promptKind";
 
-const VALID_RECIPES = [
-  "transcript_only",
-  "transcript_and_frame",
-  "transcript_multi_frame",
-  "two_pass_reformulate",
-  "context_enriched",
-] as const;
-type RecipeKind = (typeof VALID_RECIPES)[number];
+// Recettes et normalisation : source unique dans `lib/llm/recipes.ts`.
 
-function normalizeRecipeKind(value: unknown): RecipeKind {
-  return typeof value === "string" && (VALID_RECIPES as readonly string[]).includes(value)
-    ? (value as RecipeKind)
-    : "transcript_only";
-}
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   const userContext = await getUserContext();
   if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
+  // `?kind=` filtre par usage. Absent ⇒ "description", pour que les appelants
+  // existants (outil descriptions, DescriptionSection, admin recettes) gardent
+  // exactement le même résultat qu'avant l'ajout du champ.
+  const rawKind = new URL(req.url).searchParams.get("kind");
+  if (rawKind !== null && !isPromptKind(rawKind)) {
+    return NextResponse.json({ error: "Paramètre 'kind' invalide" }, { status: 400 });
+  }
+  const kind = normalizePromptKind(rawKind);
+
   const prompts = await prisma.descriptionPrompt.findMany({
-    where: { isActive: true },
+    where: { isActive: true, kind },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -38,6 +40,7 @@ export async function GET() {
       prompt: true,
       isActive: true,
       createdAt: true,
+      kind: true,
       recipeKind: true,
       recipeConfig: true,
     },
@@ -60,19 +63,24 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as {
     name?: string;
     prompt?: string;
+    kind?: string;
     recipeKind?: string;
     recipeConfig?: Record<string, unknown> | null;
   };
-  const { name, prompt, recipeKind, recipeConfig } = body;
+  const { name, prompt, kind, recipeKind, recipeConfig } = body;
 
   if (!name?.trim() || !prompt?.trim()) {
     return NextResponse.json({ error: "Nom et prompt requis" }, { status: 400 });
+  }
+  if (kind !== undefined && !isPromptKind(kind)) {
+    return NextResponse.json({ error: "Champ 'kind' invalide" }, { status: 400 });
   }
 
   const created = await prisma.descriptionPrompt.create({
     data: {
       name: name.trim(),
       prompt: prompt.trim(),
+      kind: normalizePromptKind(kind),
       recipeKind: normalizeRecipeKind(recipeKind),
       recipeConfig:
         recipeConfig && typeof recipeConfig === "object"

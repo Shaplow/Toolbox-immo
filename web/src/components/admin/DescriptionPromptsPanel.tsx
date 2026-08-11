@@ -9,13 +9,14 @@ import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { toast } from "@/components/ui/Toast";
+import {
+  BRIEF_ALLOWED_RECIPES,
+  VALID_RECIPE_KINDS,
+  type RecipeKind,
+} from "@/lib/llm/recipes";
+import type { PromptKind } from "@/lib/llm/promptKind";
 
-type RecipeKind =
-  | "transcript_only"
-  | "transcript_and_frame"
-  | "transcript_multi_frame"
-  | "two_pass_reformulate"
-  | "context_enriched";
+// Le type RecipeKind vient de `lib/llm/recipes.ts` (source unique).
 
 const RECIPE_LABELS: Record<RecipeKind, string> = {
   transcript_only: "Transcription seule (défaut)",
@@ -43,8 +44,22 @@ type PromptRow = {
   recipeConfig?: { frameCount?: number; contextFieldKeys?: string[] } | null;
 };
 
-export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: PromptRow[] }) {
+/**
+ * Panneau CRUD des prompts IA, paramétré par usage.
+ *
+ * `kind="brief"` restreint les recettes proposées : celles à image ou à contexte
+ * de slot ne s'exécuteraient pas dans un brief standalone (la route renverrait
+ * un 400). Autant ne pas les offrir dans le formulaire.
+ */
+export function DescriptionPromptsPanel({
+  initialPrompts,
+  kind = "description",
+}: {
+  initialPrompts: PromptRow[];
+  kind?: PromptKind;
+}) {
   const [prompts, setPrompts] = useState<PromptRow[]>(initialPrompts);
+  const availableRecipes = kind === "brief" ? BRIEF_ALLOWED_RECIPES : VALID_RECIPE_KINDS;
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -96,6 +111,7 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
           body: JSON.stringify({
             name: formName.trim(),
             prompt: formPrompt.trim(),
+            kind,
             recipeKind: formRecipeKind,
             recipeConfig,
           }),
@@ -193,6 +209,7 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
           name={formName}
           prompt={formPrompt}
           recipeKind={formRecipeKind}
+          availableRecipes={availableRecipes}
           frameCount={formFrameCount}
           saving={saving}
           onName={setFormName}
@@ -223,6 +240,7 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
                   name={formName}
                   prompt={formPrompt}
                   recipeKind={formRecipeKind}
+                  availableRecipes={availableRecipes}
                   frameCount={formFrameCount}
                   saving={saving}
                   onName={setFormName}
@@ -295,6 +313,7 @@ function PromptForm({
   name,
   prompt,
   recipeKind,
+  availableRecipes,
   frameCount,
   saving,
   onName,
@@ -308,6 +327,8 @@ function PromptForm({
   name: string;
   prompt: string;
   recipeKind: RecipeKind;
+  /** Recettes proposées — restreintes pour les prompts de brief. */
+  availableRecipes: readonly RecipeKind[];
   frameCount: number;
   saving: boolean;
   onName: (v: string) => void;
@@ -342,7 +363,7 @@ function PromptForm({
           onChange={(e) => onRecipeKind(e.target.value as RecipeKind)}
           className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-info-200 bg-white"
         >
-          {(Object.keys(RECIPE_LABELS) as RecipeKind[]).map((k) => (
+          {availableRecipes.map((k) => (
             <option key={k} value={k}>{RECIPE_LABELS[k]}</option>
           ))}
         </select>

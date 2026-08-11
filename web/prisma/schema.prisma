@@ -391,6 +391,12 @@ model DescriptionPrompt {
   name             String
   prompt           String // Instructions pour le LLM
   isActive         Boolean           @default(true)
+  /// Usage du prompt : "description" (légende Instagram, défaut historique) |
+  /// "brief" (brief de montage pour le monteur). Sert à ne pas mélanger les deux
+  /// familles dans les pickers — un prompt de brief ne doit pas apparaître dans
+  /// l'outil descriptions, et réciproquement. Stringly-typed comme recipeKind,
+  /// validé par `lib/llm/promptKind.ts`.
+  kind             String            @default("description")
   /// Recipe d'exécution bundlée au prompt (P6).
   /// Valeurs : "transcript_only" (défaut, comportement historique) |
   /// "transcript_and_frame" | "transcript_multi_frame" | "two_pass_reformulate" |
@@ -406,6 +412,8 @@ model DescriptionPrompt {
   patternBindings  PatternBinding[]  @relation("BindingDescriptionPromptOverride")
   /// Slots one-off référençant ce prompt via override (Phase 5 Workflows).
   slotsOverride    PublicationSlot[] @relation("SlotDescriptionPromptOverride")
+
+  @@index([kind, isActive])
 }
 
 /// Résultat d'une génération de description à partir d'un SRT/JSON
@@ -414,6 +422,9 @@ model DescriptionJob {
   userId          String
   user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   status          String             @default("COMPLETED") // COMPLETED | FAILED
+  /// Usage de la génération : "description" | "brief". Miroir de
+  /// DescriptionPrompt.kind — permet de séparer les historiques des deux outils.
+  kind            String             @default("description")
   /// "upload" = fichier uploadé, "transcription" = TranscriptionJob existant
   inputType       String             @default("upload")
   inputFilename   String? // nom du fichier SRT/JSON original
@@ -438,6 +449,9 @@ model DescriptionJob {
   updatedAt       DateTime           @updatedAt
 
   @@index([slotId])
+  /// Les deux listings (outil descriptions et outil briefs) filtrent sur userId
+  /// et trient par createdAt desc — cet index manquait.
+  @@index([userId, kind, createdAt])
 }
 
 // ─── Content Library ─────────────────────────────────────────────────────────

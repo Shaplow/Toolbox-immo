@@ -68,13 +68,15 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
   };
 
   const [prompts, jobs] = await Promise.all([
+    // `kind: "description"` : sans ce filtre, les prompts de brief monteur
+    // remonteraient dans le picker de légendes Instagram.
     prisma.descriptionPrompt.findMany({
-      where: { isActive: true },
+      where: { isActive: true, kind: "description" },
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, prompt: true, createdAt: true },
     }),
     prisma.descriptionJob.findMany({
-      where: isAdmin ? {} : { userId },
+      where: { kind: "description", ...(isAdmin ? {} : { userId }) },
       orderBy: { createdAt: "desc" },
       take: 50,
       include: {

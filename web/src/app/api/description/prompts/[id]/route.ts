@@ -7,14 +7,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { isRecipeKind, VALID_RECIPE_KINDS } from "@/lib/llm/recipes";
 
-const VALID_RECIPES = [
-  "transcript_only",
-  "transcript_and_frame",
-  "transcript_multi_frame",
-  "two_pass_reformulate",
-  "context_enriched",
-] as const;
+// Recettes valides : source unique dans `lib/llm/recipes.ts`.
 
 async function requireAdmin() {
   const userContext = await getUserContext();
@@ -55,10 +50,10 @@ export async function PATCH(
 
   if (
     body.recipeKind !== undefined &&
-    !(VALID_RECIPES as readonly string[]).includes(body.recipeKind)
+    !isRecipeKind(body.recipeKind)
   ) {
     return NextResponse.json(
-      { error: `recipeKind invalide. Valeurs : ${VALID_RECIPES.join(", ")}` },
+      { error: `recipeKind invalide. Valeurs : ${VALID_RECIPE_KINDS.join(", ")}` },
       { status: 400 },
     );
   }

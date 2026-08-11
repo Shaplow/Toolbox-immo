@@ -10,7 +10,7 @@
  */
 
 import { redirect } from "next/navigation";
-import { Subtitles, FileText, Mic, Wrench, Clapperboard } from "lucide-react";
+import { Subtitles, FileText, ClipboardList, Mic, Wrench, Clapperboard } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { canAccessTool } from "@/lib/permissions/tools";
 import { Hub, type HubItem } from "@/components/ui/molecules/Hub";
@@ -46,6 +46,13 @@ const TOOLS: ToolEntry[] = [
     label: "Descriptions IA",
     description: "Légendes Instagram (Claude / GPT).",
     icon: FileText,
+  },
+  {
+    perm: "brief",
+    href: "/briefs",
+    label: "Briefs monteur",
+    description: "Brief de montage depuis une transcription.",
+    icon: ClipboardList,
   },
   {
     perm: "transcription",
