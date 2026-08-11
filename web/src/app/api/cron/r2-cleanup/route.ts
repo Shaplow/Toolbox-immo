@@ -12,7 +12,14 @@
  * Body : vide (POST uniquement — pas de GET pour réduire la surface en prod)
  *
  * Réponse :
- *   200 { scanned, orphans, deleted, dryRun }
+ *   200 { scanned, orphans, deleted, dryRun, multipart: { found, aborted, bytesFreed } }
+ *
+ * Deux nettoyages distincts sont exécutés :
+ *   1. Objets orphelins (ListObjectsV2 + cross-check DB) — cf. lib/r2Cleanup.ts
+ *   2. Uploads multipart inachevés — INVISIBLES pour ListObjectsV2 (un multipart
+ *      en cours n'est pas un objet), donc jamais couverts par le point 1, alors
+ *      que R2 facture les parties déjà poussées. Un onglet fermé pendant un
+ *      upload de 100 Go coûte 100 Go permanents sans ce nettoyage.
  *
  * Câblage externe (Vercel cron, cron-job.org, etc.) :
  *   - Méthode : POST
@@ -27,6 +34,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { cleanupOrphanR2Objects } from "@/lib/r2Cleanup";
+import { abortStaleMultipartUploads } from "@/lib/r2Multipart";
+import { MULTIPART } from "@/lib/upload/limits";
 import { timingSafeEqualStrings } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
@@ -54,8 +63,25 @@ export async function POST(req: NextRequest) {
   // 4. Exécution du nettoyage
   try {
     const result = await cleanupOrphanR2Objects({ dryRun });
-    console.log(`[cron/r2-cleanup] Terminé — scanned=${result.scanned}, orphans=${result.orphans}, deleted=${result.deleted}, dryRun=${result.dryRun}`);
-    return NextResponse.json(result);
+    console.log(`[cron/r2-cleanup] Orphelins — scanned=${result.scanned}, orphans=${result.orphans}, deleted=${result.deleted}, dryRun=${result.dryRun}`);
+
+    // Uploads multipart inachevés. Best-effort et isolé du bloc précédent : un
+    // échec ici ne doit pas masquer le résultat du nettoyage d'orphelins, qui a
+    // déjà eu lieu.
+    let multipart: Awaited<ReturnType<typeof abortStaleMultipartUploads>> | { error: string };
+    try {
+      multipart = await abortStaleMultipartUploads(MULTIPART.STALE_ABORT_MS, { dryRun });
+      console.log(
+        `[cron/r2-cleanup] Multipart inachevés — found=${multipart.found}, ` +
+          `aborted=${multipart.aborted}, freed=${(multipart.bytesFreed / 1024 ** 3).toFixed(2)} Go, ` +
+          `dryRun=${multipart.dryRun}`,
+      );
+    } catch (mpErr) {
+      console.error("[cron/r2-cleanup] Abandon des multipart inachevés échoué :", mpErr);
+      multipart = { error: mpErr instanceof Error ? mpErr.message : "Erreur interne" };
+    }
+
+    return NextResponse.json({ ...result, multipart });
   } catch (err) {
     console.error("[cron/r2-cleanup] Erreur :", err);
     const message = err instanceof Error ? err.message : "Erreur interne";

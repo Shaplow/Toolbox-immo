@@ -20,6 +20,7 @@ import { NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/slot/activity";
+import { releaseJobSources } from "@/lib/upload/releaseJobSource";
 
 // Fix bug 2026-05-30 : seuils réduits — l'UI alerte déjà dès 30min, et les
 // jobs PROCESSING > 30min sont en pratique morts (Next hot-reload, render-engine
@@ -27,6 +28,16 @@ import { logActivity } from "@/lib/services/slot/activity";
 // laissait s'accumuler des zombies.
 const PROCESSING_STALL_MS  = 30 * 60 * 1000;       // 30 min (était 2h)
 const QUEUED_STALL_MS      = 10 * 60 * 1000;       // 10 min (était 30min)
+/**
+ * Seuil dédié aux TranscriptionJob en PROCESSING.
+ *
+ * 30 min est juste pour un render ou un caption, mais faux pour une transcription
+ * de gros rush : l'extraction audio lit ~70 % du fichier depuis R2 avant même que
+ * Whisper démarre. Un rush de 100 Go dépasse largement 30 min tout en étant
+ * parfaitement vivant. Aligné sur STALL_MS de api/transcription/[id]/route.ts et
+ * sur STALE_JOB_HOURS de podOrchestrator.
+ */
+const TRANSCRIPTION_PROCESSING_STALL_MS = 6 * 60 * 60 * 1000; // 6 h
 // Seuil pour qu'un job orphelin (slotId=null) soit considéré "vieux".
 // 30 jours après la cassure du lien slot, le job est très probablement
 // inutilisé — flaggué dans le summary pour monitoring (pas supprimé
@@ -58,11 +69,11 @@ export async function POST() {
   // ne supporte pas RETURNING (sauf en Postgres via $executeRaw).
   const captionsToFailProcessing = await prisma.captionJob.findMany({
     where: { status: "PROCESSING", updatedAt: { lt: processingCutoff } },
-    select: { id: true, slotId: true },
+    select: { id: true, slotId: true, inputKey: true },
   });
   const captionsToFailQueued = await prisma.captionJob.findMany({
     where: { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
-    select: { id: true, slotId: true },
+    select: { id: true, slotId: true, inputKey: true },
   });
   await captureSlotIds([
     ...captionsToFailProcessing.map((j) => j.slotId),
@@ -80,9 +91,32 @@ export async function POST() {
   ]);
 
   // ── TranscriptionJob ──────────────────────────────────────────────────────
+  // Select avant updateMany : nécessaire pour libérer les médias sources (voir
+  // plus bas). Sans ça, le sweep marquait FAILED en laissant `inputKey`
+  // renseigné — la clé restait donc "référencée en DB", et l'orphan sweep de
+  // r2Cleanup ne pouvait pas la rattraper non plus. Un rush de 100 Go abandonné
+  // restait payant indéfiniment.
+  const transcriptionProcessingCutoff = new Date(
+    now.getTime() - TRANSCRIPTION_PROCESSING_STALL_MS,
+  );
+  const transcriptionsToFail = await prisma.transcriptionJob.findMany({
+    where: {
+      OR: [
+        { status: "PROCESSING", updatedAt: { lt: transcriptionProcessingCutoff } },
+        { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
+      ],
+    },
+    select: {
+      id: true,
+      inputKey: true,
+      renderId: true,
+      publicationVersionId: true,
+    },
+  });
+
   const [transcriptionProcessing, transcriptionQueued] = await Promise.all([
     prisma.transcriptionJob.updateMany({
-      where: { status: "PROCESSING", updatedAt: { lt: processingCutoff } },
+      where: { status: "PROCESSING", updatedAt: { lt: transcriptionProcessingCutoff } },
       data:  { status: "FAILED", errorMsg: "Job bloqué en PROCESSING — webhook RunPod jamais reçu (sweep automatique)" },
     }),
     prisma.transcriptionJob.updateMany({
@@ -90,6 +124,16 @@ export async function POST() {
       data:  { status: "FAILED", errorMsg: "Job bloqué en QUEUED — upload ou submit jamais finalisé (sweep automatique)" },
     }),
   ]);
+
+  // Libération des médias sources des jobs qu'on vient d'abandonner. Le helper
+  // porte les gardes : rien n'est supprimé pour un job du pipeline auto, ni pour
+  // une clé hors du préfixe d'upload dédié (un render, une version montée…).
+  const releasedSources =
+    (await releaseJobSources(prisma, "transcription", transcriptionsToFail)) +
+    (await releaseJobSources(prisma, "caption", [
+      ...captionsToFailProcessing,
+      ...captionsToFailQueued,
+    ]));
 
   // ── Render — capture slotIds avant updateMany pour audit per-slot ────────
   const rendersToFailProcessing = await prisma.render.findMany({
@@ -223,6 +267,9 @@ export async function POST() {
       processing: autocutBatchProcessing.count,
       pending:    autocutBatchPending.count,
     },
+    /** Médias sources R2 effectivement libérés par ce sweep (rushs de jobs
+     *  abandonnés). Sans ça, ces fichiers restaient facturés à vie. */
+    releasedSources,
     /** Compteurs informatifs — ces jobs ne sont pas modifiés par le sweep,
      *  juste reportés pour monitoring de la dette. */
     orphans: {

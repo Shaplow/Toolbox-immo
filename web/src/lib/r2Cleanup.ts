@@ -44,8 +44,23 @@ const CUTOFF_MS = 24 * 60 * 60 * 1000; // 24h
 
 /** Prefixes R2 scannés. Chaque prefix a son propre cross-check DB.
  *  Ajouter un prefix ici sans étendre loadReferencedKeys → faux positifs
- *  garantis (l'orphan sweep supprimerait des objets référencés ailleurs). */
-const SCAN_PREFIXES = ["publications/", "content-library/"] as const;
+ *  garantis (l'orphan sweep supprimerait des objets référencés ailleurs).
+ *
+ *  `transcription/` et `inputs/captions/` ont été ajoutés parce que les sources
+ *  de ces jobs n'étaient nettoyées QUE par le webhook RunPod : un upload jamais
+ *  soumis (onglet fermé, « Lancer » jamais cliqué) restait indéfiniment. À 100 Go
+ *  par rush, c'est la fuite la plus chère du bucket.
+ *
+ *  ⚠️ `transcription/` contient AUSSI les `segments.json` de sortie
+ *  (TranscriptionJob.outputJsonKey), qui sont persistants et référencés en DB.
+ *  Ils sont couverts par loadReferencedKeys — les retirer de cette liste
+ *  supprimerait tous les transcripts de plus de 24 h. */
+const SCAN_PREFIXES = [
+  "publications/",
+  "content-library/",
+  "transcription/",
+  "inputs/captions/",
+] as const;
 
 // ─── Client R2 ────────────────────────────────────────────────────────────────
 
@@ -70,11 +85,23 @@ function getBucket(): string | null {
 // ─── Helper DB ────────────────────────────────────────────────────────────────
 
 /**
- * Récupère l'ensemble des r2Keys référencés en DB (5 sources).
+ * Récupère l'ensemble des r2Keys référencés en DB (7 sources).
  * Chargement en une seule passe pour éviter les N requêtes par objet.
+ *
+ * Toute clé absente de ce set et plus vieille que CUTOFF_MS sera SUPPRIMÉE.
+ * Ajouter un prefix à SCAN_PREFIXES sans ajouter ici la source DB
+ * correspondante détruit donc des données. Vérifier en dryRun d'abord.
  */
 async function loadReferencedKeys(): Promise<Set<string>> {
-  const [rushKeys, versionKeys, attachmentKeys, mediaAssetKeys, coverKeys] = await Promise.all([
+  const [
+    rushKeys,
+    versionKeys,
+    attachmentKeys,
+    mediaAssetKeys,
+    coverKeys,
+    transcriptionKeys,
+    captionKeys,
+  ] = await Promise.all([
     prisma.publicationRush.findMany({ select: { r2Key: true } }),
     prisma.publicationVersion.findMany({ select: { r2Key: true } }),
     prisma.publicationBriefAttachment.findMany({ select: { r2Key: true } }),
@@ -90,6 +117,17 @@ async function loadReferencedKeys(): Promise<Set<string>> {
       where: { finalCoverKey: { not: null } },
       select: { finalCoverKey: true },
     }),
+    // TranscriptionJob : `inputKey` (source, nullée par le webhook après
+    // traitement) ET `outputJsonKey` (les segments, PERSISTANTS).
+    // Omettre outputJsonKey supprimerait tous les transcripts de plus de 24 h —
+    // perte de données irréversible sur toute la base.
+    prisma.transcriptionJob.findMany({
+      select: { inputKey: true, outputJsonKey: true },
+    }),
+    // CaptionJob : source sous "inputs/captions/" + output.
+    prisma.captionJob.findMany({
+      select: { inputKey: true, outputKey: true },
+    }),
   ]);
 
   const set = new Set<string>();
@@ -98,6 +136,14 @@ async function loadReferencedKeys(): Promise<Set<string>> {
   for (const a of attachmentKeys) set.add(a.r2Key);
   for (const m of mediaAssetKeys) set.add(m.r2Key);
   for (const c of coverKeys) if (c.finalCoverKey) set.add(c.finalCoverKey);
+  for (const t of transcriptionKeys) {
+    if (t.inputKey) set.add(t.inputKey);
+    if (t.outputJsonKey) set.add(t.outputJsonKey);
+  }
+  for (const c of captionKeys) {
+    if (c.inputKey) set.add(c.inputKey);
+    if (c.outputKey) set.add(c.outputKey);
+  }
   return set;
 }
 
