@@ -15,8 +15,69 @@
 const DEFAULT_CONCURRENCY = 4;
 const MAX_RETRIES = 3;
 
+/**
+ * Intervalle entre deux signes de vie envoyés au serveur pendant un upload long.
+ * 2 min laisse une marge confortable sous le seuil de 10 min du sweep admin, tout
+ * en restant négligeable en nombre de requêtes (30/heure).
+ */
+const HEARTBEAT_INTERVAL_MS = 120_000;
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fabrique un émetteur de heartbeat throttlé, à brancher sur `onProgress`.
+ *
+ * Pourquoi piloté par la progression plutôt que par un `setInterval` : il n'y a
+ * aucun timer à annuler à la fin de l'upload, ni au démontage du composant, ni en
+ * cas d'erreur. Le battement s'arrête naturellement quand les parties cessent
+ * d'arriver — donc jamais de requête qui traîne après un upload fini ou annulé.
+ *
+ * Les échecs sont silencieux **par conception** : un heartbeat est un signal
+ * best-effort. Le faire remonter ferait échouer un upload de plusieurs heures pour
+ * un simple hoquet réseau sur une requête accessoire.
+ *
+ * @param url       Route de heartbeat du job (`…/upload-heartbeat`).
+ * @param signal    Même signal que l'upload : plus rien n'est émis après annulation.
+ * @param everyMs   Intervalle minimal entre deux envois.
+ * @returns Une fonction à appeler aussi souvent qu'on veut ; elle n'émet qu'au rythme voulu.
+ */
+export function createUploadHeartbeat(
+  url: string,
+  signal: AbortSignal,
+  everyMs: number = HEARTBEAT_INTERVAL_MS,
+): () => void {
+  // Premier battement décalé d'un intervalle : inutile de pinger juste après le
+  // prepare, qui vient déjà de toucher `updatedAt` en créant le job.
+  let lastSent = Date.now();
+  let inFlightSince: number | null = null;
+
+  return () => {
+    if (signal.aborted) return;
+    const now = Date.now();
+
+    // Garde anti-concurrence, mais **expirable**. Un `fetch` sans timeout peut
+    // rester pendant indéfiniment (serveur qui accepte la connexion sans jamais
+    // répondre). Avec un simple booléen, ce cas bloquerait tous les heartbeats
+    // suivants et le job finirait sweepé — exactement ce qu'on cherche à éviter.
+    // Au-delà d'un intervalle, on considère la requête perdue et on réessaie.
+    if (inFlightSince !== null && now - inFlightSince >= everyMs) {
+      inFlightSince = null;
+    }
+    if (inFlightSince !== null) return;
+    if (now - lastSent < everyMs) return;
+
+    lastSent = now;
+    inFlightSince = now;
+    void fetch(url, { method: "POST", signal })
+      .catch(() => {
+        /* best-effort : ne jamais faire échouer l'upload pour un heartbeat */
+      })
+      .finally(() => {
+        inFlightSince = null;
+      });
+  };
 }
 
 /** PUT d'une partie avec retries (backoff exponentiel). */

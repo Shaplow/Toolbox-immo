@@ -15,10 +15,11 @@ import CaptionEditor from '@/components/captions/CaptionEditor'
 import { getNextHighlightGroup } from '@/lib/captionHighlightCycle'
 import { DEFAULT_CAPTION_CONFIG, mergeCaptionConfig, type CaptionConfigState } from '@/lib/captionPresetConfig'
 import { Caption, parseSRT, serializeSRT } from '@/lib/srt'
-import { uploadFileInParts } from '@/lib/upload/multipartClient'
+import { uploadFileInParts, createUploadHeartbeat } from '@/lib/upload/multipartClient'
+import { UPLOAD_LIMITS, formatMaxSize } from '@/lib/upload/limits'
 
 const API_BASE = '/api/captions'
-const MAX_UPLOAD_SIZE = 20 * 1024 * 1024 * 1024 // 20 Go — aligné serveur
+const MAX_UPLOAD_SIZE = UPLOAD_LIMITS.RUSH_MAX_BYTES // source unique, alignée serveur
 
 type ConfigState = CaptionConfigState
 
@@ -281,7 +282,7 @@ export default function CaptionsApp({
     let submittedToRunPod = false
     try {
       if (videoFile.size > MAX_UPLOAD_SIZE) {
-        throw new Error('Vidéo trop volumineuse (max 20 Go).')
+        throw new Error(`Vidéo trop volumineuse (max ${formatMaxSize(MAX_UPLOAD_SIZE)}).`)
       }
       // ── Mode RunPod : URL présignée (upload direct browser → R2) ─────────
       // Essayer le mode presigned d'abord ; 503 = fallback multipart (local)
@@ -317,10 +318,20 @@ export default function CaptionsApp({
           // Multipart (> 100 Mo, obligatoire > 5 Go). Finalisé via
           // /upload-complete ; annulé (/upload-abort) en cas d'échec.
           const abortController = new AbortController()
+          // Signe de vie pendant l'upload : sur une grosse vidéo le transfert dure
+          // longtemps sans rien écrire en DB, et le sweep admin passerait le job
+          // QUEUED en FAILED au bout de 10 min (→ 409 à la finalisation).
+          const heartbeat = createUploadHeartbeat(
+            `/api/render/captions/${jobId}/upload-heartbeat`,
+            abortController.signal,
+          )
           try {
             const parts = await uploadFileInParts(videoFile, multipart.partUrls, multipart.partSize, {
               signal: abortController.signal,
-              onProgress: (fraction) => setRenderProgress(0.25 + fraction * 0.15),
+              onProgress: (fraction) => {
+                heartbeat()
+                setRenderProgress(0.25 + fraction * 0.15)
+              },
             })
             const completeRes = await fetch(`/api/render/captions/${jobId}/upload-complete`, {
               method: 'POST',

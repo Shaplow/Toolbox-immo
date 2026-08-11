@@ -31,6 +31,7 @@ import { normalizeCaptionConfig } from "@/lib/captionsEngine";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { createMultipartUpload, createPresignedUploadPartUrl } from "@/lib/r2Multipart";
+import { UPLOAD_LIMITS, MULTIPART, tooLargeMessage } from "@/lib/upload/limits";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { onCaptionsCompleted } from "@/lib/services/slot/pipelineHooks";
@@ -126,12 +127,13 @@ const VIDEO_EXTENSIONS = new Set([
 /** Max SRT/subtitle content size stored in DB and sent to the worker. */
 const MAX_SRT_BYTES = 512_000; // 512 KB
 
-// Upload vidéo direct navigateur → R2. Au-delà de 100 Mo on passe en multipart :
-// R2 refuse tout objet en PUT unique > 5 Go. Constantes alignées publications.
-const MULTIPART_THRESHOLD = 100 * 1024 * 1024;   // 100 Mo
-const PART_SIZE = 50 * 1024 * 1024;              // 50 Mo par partie
-const PART_URL_EXPIRY_SECONDS = 6 * 60 * 60;     // 6h
-const MAX_UPLOAD_SIZE = 20 * 1024 * 1024 * 1024; // 20 Go
+// Upload vidéo direct navigateur → R2. Au-delà du seuil on passe en multipart :
+// R2 refuse tout objet en PUT unique > 5 Go. Toutes les valeurs viennent de
+// `lib/upload/limits.ts` — ne pas les redéfinir ici.
+const MULTIPART_THRESHOLD = MULTIPART.THRESHOLD_BYTES;
+const PART_SIZE = MULTIPART.PART_SIZE_BYTES;
+const PART_URL_EXPIRY_SECONDS = MULTIPART.PART_URL_EXPIRY_SECONDS;
+const MAX_UPLOAD_SIZE = UPLOAD_LIMITS.RUSH_MAX_BYTES;
 
 function extractCaptionFontFamilies(configData: Record<string, unknown>): string[] {
   const baseFont = (configData.base as { font?: string } | undefined)?.font;
@@ -330,7 +332,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Le champ 'size' (octets) est requis" }, { status: 400 });
       }
       if (size > MAX_UPLOAD_SIZE) {
-        return NextResponse.json({ error: "Fichier trop volumineux (max 20 Go)" }, { status: 400 });
+        return NextResponse.json({ error: tooLargeMessage(MAX_UPLOAD_SIZE) }, { status: 400 });
       }
 
       const mimeByExt: Record<string, string> = {

@@ -28,6 +28,7 @@ import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { createMultipartUpload, createPresignedUploadPartUrl } from "@/lib/r2Multipart";
+import { UPLOAD_LIMITS, MULTIPART, tooLargeMessage } from "@/lib/upload/limits";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
@@ -46,13 +47,13 @@ const AUDIO_EXTENSIONS = new Set([
   "mp3", "wav", "m4a", "flac", "ogg", "aac", "mp4", "mov", "mkv", "webm",
 ]);
 
-// Upload direct navigateur → R2. Au-delà de 100 Mo on passe en multipart :
-// R2 refuse tout objet en PUT unique > 5 Go (400 EntityTooLarge). Constantes
-// alignées sur le flux publications (upload-presign).
-const MULTIPART_THRESHOLD = 100 * 1024 * 1024;   // 100 Mo
-const PART_SIZE = 50 * 1024 * 1024;              // 50 Mo par partie
-const PART_URL_EXPIRY_SECONDS = 6 * 60 * 60;     // 6h — un 20 Go (~400 parties) sur connexion lente
-const MAX_UPLOAD_SIZE = 20 * 1024 * 1024 * 1024; // 20 Go
+// Upload direct navigateur → R2. Au-delà du seuil on passe en multipart :
+// R2 refuse tout objet en PUT unique > 5 Go (400 EntityTooLarge). Toutes les
+// valeurs viennent de `lib/upload/limits.ts` — ne pas les redéfinir ici.
+const MULTIPART_THRESHOLD = MULTIPART.THRESHOLD_BYTES;
+const PART_SIZE = MULTIPART.PART_SIZE_BYTES;
+const PART_URL_EXPIRY_SECONDS = MULTIPART.PART_URL_EXPIRY_SECONDS;
+const MAX_UPLOAD_SIZE = UPLOAD_LIMITS.RUSH_MAX_BYTES;
 
 const ALLOWED_MODELS = new Set([
   "turbo", "large-v3", "large-v3-turbo", "medium", "small", "base", "tiny",
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Le champ 'size' (octets) est requis" }, { status: 400 });
     }
     if (size > MAX_UPLOAD_SIZE) {
-      return NextResponse.json({ error: "Fichier trop volumineux (max 20 Go)" }, { status: 400 });
+      return NextResponse.json({ error: tooLargeMessage(MAX_UPLOAD_SIZE) }, { status: 400 });
     }
 
     const model            = sanitizeModel(body.model);
@@ -236,6 +237,23 @@ export async function POST(req: NextRequest) {
   const audioFile = formData.get("audio") as File | null;
   if (!audioFile || audioFile.size === 0) {
     return NextResponse.json({ error: "Fichier audio manquant" }, { status: 400 });
+  }
+
+  // Ce chemin bufferise le fichier ENTIER en RAM plus bas (`arrayBuffer()`), et
+  // PM2 redémarre le process à 2048 Mo. Il ne doit donc surtout pas hériter du
+  // plafond de rush (100 Go), qui ne vaut que pour le direct-to-R2 multipart.
+  // Sans cette garde, un gros fichier fait tomber le serveur au lieu de
+  // renvoyer une erreur — et nginx coupe de toute façon au-delà de 2 Go.
+  if (audioFile.size > UPLOAD_LIMITS.SERVER_PROXIED_MAX_BYTES) {
+    return NextResponse.json(
+      {
+        error:
+          `${tooLargeMessage(UPLOAD_LIMITS.SERVER_PROXIED_MAX_BYTES)} pour un envoi direct. ` +
+          `Les fichiers plus lourds passent par l'upload en plusieurs parties : ` +
+          `utilisez l'outil de transcription plutôt qu'un appel direct à cette route.`,
+      },
+      { status: 413 }
+    );
   }
 
   const ext = (audioFile.name.split(".").pop() ?? "").toLowerCase();

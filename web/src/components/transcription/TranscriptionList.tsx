@@ -22,10 +22,11 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
 import { toast } from "@/components/ui/Toast";
 import { fmtDate, fmtDuration } from "@/lib/jobUtils";
-import { uploadFileInParts } from "@/lib/upload/multipartClient";
+import { uploadFileInParts, createUploadHeartbeat } from "@/lib/upload/multipartClient";
+import { UPLOAD_LIMITS, tooLargeMessage } from "@/lib/upload/limits";
 
 const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.flac,.ogg,.aac,.mp4,.mov,.mkv,.webm";
-const MAX_UPLOAD_SIZE = 20 * 1024 * 1024 * 1024; // 20 Go — aligné serveur
+const MAX_UPLOAD_SIZE = UPLOAD_LIMITS.RUSH_MAX_BYTES; // source unique, alignée serveur
 
 type Job = {
   id: string;
@@ -333,7 +334,7 @@ export function TranscriptionList({
         const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
 
         if (file.size > MAX_UPLOAD_SIZE) {
-          throw new Error("Fichier trop volumineux (max 20 Go).");
+          throw new Error(`${tooLargeMessage(MAX_UPLOAD_SIZE)}.`);
         }
 
         setUploadState({
@@ -392,10 +393,20 @@ export function TranscriptionList({
           // le multipart partiel est annulé (/upload-abort) en cas d'échec.
           const { uploadId, partSize, partUrls } = preparePayload.multipart;
           const abortController = new AbortController();
+          // Signe de vie pendant l'upload : sur un gros rush le transfert dure des
+          // heures sans rien écrire en DB, et le sweep admin passerait le job
+          // QUEUED en FAILED au bout de 10 min (→ 409 à la finalisation).
+          const heartbeat = createUploadHeartbeat(
+            `/api/transcription/${jobId}/upload-heartbeat`,
+            abortController.signal,
+          );
           try {
             const parts = await uploadFileInParts(file, partUrls, partSize, {
               signal: abortController.signal,
-              onProgress: (fraction) => onProgress(Math.round(fraction * 100)),
+              onProgress: (fraction) => {
+                heartbeat();
+                onProgress(Math.round(fraction * 100));
+              },
             });
             const completeRes = await fetch(`/api/transcription/${jobId}/upload-complete`, {
               method: "POST",
