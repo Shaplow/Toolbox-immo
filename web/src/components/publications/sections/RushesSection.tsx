@@ -18,6 +18,7 @@ import { DeleteButton } from "@/components/ui/DeleteButton";
 import { toast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { triggerDownloads } from "@/lib/triggerDownloads";
+import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -288,7 +289,7 @@ export function RushesSection({
                 "image/png",
                 "image/webp",
               ]}
-              maxSizeBytes={20 * 1024 * 1024 * 1024}
+              maxSizeBytes={UPLOAD_LIMITS.RUSH_MAX_BYTES}
               multiple
               label={hasRushes ? "+ Ajouter" : "Déposer les rushes"}
               onUploaded={handleUploaded}

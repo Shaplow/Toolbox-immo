@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import { getUserContext } from "@/lib/userContext";
 import { createPresignedUploadUrl, getR2PublicUrl, r2Configured } from "@/lib/r2";
+import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-m4v", "video/webm"];
 const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/wav", "audio/aac", "audio/mp4", "audio/ogg", "audio/x-m4a", "audio/flac"];
 const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES, ...ALLOWED_AUDIO_TYPES];
-const MAX_IMAGE_SIZE = 50 * 1024 * 1024;
-const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
-const MAX_AUDIO_SIZE = 200 * 1024 * 1024;
+// Ce chemin ne fait PAS de multipart : un PUT unique R2 est refusé au-delà de
+// 5 Go, donc ces plafonds restent volontairement bas (pas de 100 Go ici).
+const MAX_IMAGE_SIZE = UPLOAD_LIMITS.IMAGE_MAX_BYTES;
+const MAX_VIDEO_SIZE = UPLOAD_LIMITS.VIDEO_ASSET_MAX_BYTES;
+const MAX_AUDIO_SIZE = UPLOAD_LIMITS.AUDIO_ASSET_MAX_BYTES;
 
 /**
  * Extensions de fichier autorisées par MIME type — utilisées pour bloquer les

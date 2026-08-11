@@ -25,6 +25,7 @@ import { r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { createMultipartUpload, createPresignedUploadPartUrl } from "@/lib/r2Multipart";
 import { rushKey, versionKey, briefAttachmentKey } from "@/lib/r2Keys";
 import { BRIEF_ATTACHMENT_MIME_TYPES } from "@/lib/briefAttachmentTypes";
+import { UPLOAD_LIMITS, MULTIPART, tooLargeMessage } from "@/lib/upload/limits";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
@@ -42,17 +43,18 @@ const ALLOWED_CONTENT_TYPES: Record<string, string[]> = {
   "brief-attachment": BRIEF_ATTACHMENT_MIME_TYPES,
 };
 
+// Plafonds et paramètres multipart : source unique dans `lib/upload/limits.ts`.
 const MAX_SIZE: Record<string, number> = {
-  rush: 20 * 1024 * 1024 * 1024,           // 20 GB
-  version: 20 * 1024 * 1024 * 1024,        // 20 GB
-  "brief-attachment": 50 * 1024 * 1024,    // 50 MB
+  rush: UPLOAD_LIMITS.RUSH_MAX_BYTES,
+  version: UPLOAD_LIMITS.RUSH_MAX_BYTES,
+  "brief-attachment": UPLOAD_LIMITS.BRIEF_ATTACHMENT_MAX_BYTES,
 };
 
-const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100 MB
-const PART_SIZE = 50 * 1024 * 1024;            // 50 MB par partie
-// Toutes les URLs de parties sont signées à t=0 : un 20 Go (~400 parties) sur
-// connexion lente peut dépasser 1h. 6h couvre ce cas (R2/SigV4 tolère jusqu'à 7j).
-const PART_URL_EXPIRY_SECONDS = 6 * 60 * 60;   // 6h
+const MULTIPART_THRESHOLD = MULTIPART.THRESHOLD_BYTES;
+const PART_SIZE = MULTIPART.PART_SIZE_BYTES;
+// Toutes les URLs de parties sont signées à t=0 : cette durée est donc le temps
+// total dont dispose l'upload, il n'y a pas de re-signature.
+const PART_URL_EXPIRY_SECONDS = MULTIPART.PART_URL_EXPIRY_SECONDS;
 
 type UploadKind = "rush" | "version" | "brief-attachment";
 
@@ -127,10 +129,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // 5. Vérifier la taille
   if (size > MAX_SIZE[uploadKind]) {
-    const maxMB = Math.round(MAX_SIZE[uploadKind] / (1024 * 1024));
-    const maxGb = maxMB >= 1024 ? `${maxMB / 1024} GB` : `${maxMB} MB`;
     return NextResponse.json(
-      { error: `Fichier trop volumineux (max ${maxGb})` },
+      { error: tooLargeMessage(MAX_SIZE[uploadKind]) },
       { status: 400 }
     );
   }

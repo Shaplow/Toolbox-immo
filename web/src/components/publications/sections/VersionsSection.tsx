@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast } from "@/components/ui/Toast";
+import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -548,7 +549,7 @@ export function VersionsSection({
               slotId={slotId}
               kind="version"
               accept={["video/mp4", "video/quicktime", "video/x-m4v"]}
-              maxSizeBytes={20 * 1024 * 1024 * 1024}
+              maxSizeBytes={UPLOAD_LIMITS.RUSH_MAX_BYTES}
               multiple={false}
               label={hasVersions ? "+ Nouvelle version" : "Déposer la version montée"}
               onUploaded={handleUploaded}

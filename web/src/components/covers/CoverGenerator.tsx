@@ -7,6 +7,7 @@ import { Film, Upload, Download, RefreshCw, Check, X, Image as ImageIcon, Layers
 import { toast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { UPLOAD_LIMITS, formatMaxSize } from "@/lib/upload/limits";
 
 // Espace minimum entre deux timestamps distincts.
 // 1/30s couvre la plupart des vidéos (30fps). Si la vidéo est en 60fps
@@ -948,7 +949,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                   <>
                     <Upload size={22} className="text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">Cliquer pour choisir une vidéo</span>
-                    <span className="text-xs text-muted-foreground">MP4, MOV, WebM — max 2 Go</span>
+                    <span className="text-xs text-muted-foreground">MP4, MOV, WebM — max {formatMaxSize(UPLOAD_LIMITS.VIDEO_ASSET_MAX_BYTES)}</span>
                   </>
                 )}
               </button>

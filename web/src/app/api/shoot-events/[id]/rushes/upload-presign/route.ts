@@ -17,6 +17,7 @@ import { r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { createMultipartUpload, createPresignedUploadPartUrl } from "@/lib/r2Multipart";
 import { eventRushKey } from "@/lib/r2Keys";
 import { loadEventForAccess } from "@/lib/services/event/eventRushAccess";
+import { UPLOAD_LIMITS, MULTIPART, tooLargeMessage } from "@/lib/upload/limits";
 
 const ALLOWED_CONTENT_TYPES = [
   "video/mp4",
@@ -27,10 +28,11 @@ const ALLOWED_CONTENT_TYPES = [
   "image/png",
   "image/webp",
 ];
-const MAX_SIZE = 20 * 1024 * 1024 * 1024; // 20 GB
-const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100 MB
-const PART_SIZE = 50 * 1024 * 1024; // 50 MB
-const PART_URL_EXPIRY_SECONDS = 6 * 60 * 60; // 6h
+// Plafonds et paramètres multipart : source unique dans `lib/upload/limits.ts`.
+const MAX_SIZE = UPLOAD_LIMITS.RUSH_MAX_BYTES;
+const MULTIPART_THRESHOLD = MULTIPART.THRESHOLD_BYTES;
+const PART_SIZE = MULTIPART.PART_SIZE_BYTES;
+const PART_URL_EXPIRY_SECONDS = MULTIPART.PART_URL_EXPIRY_SECONDS;
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Type de fichier non supporté" }, { status: 400 });
   }
   if (size > MAX_SIZE) {
-    return NextResponse.json({ error: "Fichier trop volumineux (max 20 GB)" }, { status: 400 });
+    return NextResponse.json({ error: tooLargeMessage(MAX_SIZE) }, { status: 400 });
   }
 
   if (!r2Configured()) {

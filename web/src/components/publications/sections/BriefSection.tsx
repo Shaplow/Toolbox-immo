@@ -22,6 +22,7 @@ import { MediaDropzone } from "@/components/ui/MediaDropzone";
 import type { UploadResult } from "@/components/ui/MediaDropzone";
 import { BRIEF_ATTACHMENT_MIME_TYPES } from "@/lib/briefAttachmentTypes";
 import { toast } from "@/components/ui/Toast";
+import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -275,7 +276,7 @@ export function BriefSection({
               slotId={slotId}
               kind="brief-attachment"
               accept={BRIEF_ATTACHMENT_MIME_TYPES}
-              maxSizeBytes={50 * 1024 * 1024} // 50 MB
+              maxSizeBytes={UPLOAD_LIMITS.BRIEF_ATTACHMENT_MAX_BYTES}
               multiple
               label="Ajouter des pièces jointes (PDF, images, audio, doc…)"
               onUploaded={handleAttachmentUploaded}

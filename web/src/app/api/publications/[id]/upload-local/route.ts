@@ -28,15 +28,19 @@ import {
   canEditBrief,
 } from "@/lib/permissions/publications";
 import { isLocalStorage, writeLocalObject } from "@/lib/storage";
+import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 type Params = { params: Promise<{ id: string }> };
 
 // Mêmes seuils que upload-presign — répétés pour ne pas créer de dépendance
 // cyclique (presign importerait storage qui importerait presign).
+// Ce chemin traverse Next.js et bufferise le fichier entier en RAM : il ne doit
+// PAS hériter du plafond de rush (100 Go), qui ne vaut que pour le direct-to-R2.
+// Le vrai plafond ici est `client_max_body_size` de nginx et la RAM du process.
 const MAX_SIZE_BY_KIND: Record<string, number> = {
-  rush: 20 * 1024 * 1024 * 1024,           // 20 GB
-  version: 20 * 1024 * 1024 * 1024,        // 20 GB
-  "brief-attachment": 50 * 1024 * 1024,    // 50 MB
+  rush: UPLOAD_LIMITS.SERVER_PROXIED_MAX_BYTES,
+  version: UPLOAD_LIMITS.SERVER_PROXIED_MAX_BYTES,
+  "brief-attachment": UPLOAD_LIMITS.BRIEF_ATTACHMENT_MAX_BYTES,
 };
 
 function inferKindFromKey(r2Key: string, slotId: string): "rush" | "version" | "brief-attachment" | null {

@@ -8,12 +8,14 @@ import Busboy from "busboy";
 import { Readable } from "stream";
 import { createReadStream } from "fs";
 import { stat, unlink } from "fs/promises";
+import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 const mkdir = promisify(mkdirCb);
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
-const MAX_IMAGE_SIZE = 50 * 1024 * 1024;   // 50 MB
-const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;  // 2 GB
+// Chemin traversant le serveur (busboy → disque) : plafonds bornés par nginx.
+const MAX_IMAGE_SIZE = UPLOAD_LIMITS.IMAGE_MAX_BYTES;
+const MAX_VIDEO_SIZE = UPLOAD_LIMITS.VIDEO_ASSET_MAX_BYTES;
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-m4v", "video/webm"];
 const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES];

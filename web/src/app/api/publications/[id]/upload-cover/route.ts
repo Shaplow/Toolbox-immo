@@ -23,10 +23,11 @@ import { isLocalStorage, writeLocalObject, getPublicUrl } from "@/lib/storage";
 import { logActivity } from "@/lib/services/slot/activity";
 import { resolveSlotContext } from "@/lib/services/slot/resolveSlotContext";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
+import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 type Params = { params: Promise<{ id: string }> };
 
-const MAX_BYTES = 20 * 1024 * 1024; // 20 Mo
+const MAX_BYTES = UPLOAD_LIMITS.COVER_MAX_BYTES;
 const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export async function POST(req: NextRequest, { params }: Params) {

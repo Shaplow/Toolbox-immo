@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaDropzone } from "@/components/ui/MediaDropzone";
 import { toast } from "@/components/ui/Toast";
 import { shortDateTimeFr } from "@/lib/date/formatFr";
+import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 import { STATUS_LABELS } from "@/types/calendar";
 import {
   EVENT_STATUS_BADGE,
@@ -36,7 +37,7 @@ const RUSH_ACCEPT = [
   "image/png",
   "image/webp",
 ];
-const RUSH_MAX = 20 * 1024 * 1024 * 1024;
+const RUSH_MAX = UPLOAD_LIMITS.RUSH_MAX_BYTES;
 
 export interface EventFicheReel {
   id: string;

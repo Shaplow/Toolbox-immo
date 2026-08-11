@@ -20,6 +20,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import type { SchemaField } from "@/types/template";
+import { UPLOAD_LIMITS, formatMaxSize } from "@/lib/upload/limits";
 
 const DEFAULT_MEDIA_PREVIEW_ASPECT_RATIO = 16 / 9;
 const MAX_MEDIA_PREVIEW_HEIGHT = 420;
@@ -272,7 +273,7 @@ export function VideoFieldInput({
       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-info-200 hover:bg-info-50 transition-colors group">
         <span className="text-2xl text-muted-foreground/60 group-hover:text-info-600 transition-colors">🎬</span>
         <span className="text-sm font-medium text-muted-foreground group-hover:text-info-700 mt-1">Cliquer pour choisir une vidéo</span>
-        <span className="text-xs text-muted-foreground/60 mt-0.5">MP4 · MOV · WEBM — max 2 Go</span>
+        <span className="text-xs text-muted-foreground/60 mt-0.5">MP4 · MOV · WEBM — max {formatMaxSize(UPLOAD_LIMITS.VIDEO_ASSET_MAX_BYTES)}</span>
         <input
           type="file"
           accept="video/mp4,video/quicktime,video/x-m4v,video/webm"

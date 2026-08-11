@@ -4,6 +4,7 @@ import { canManageMediaAssets } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { createPresignedUploadUrl, getR2PublicUrl, r2Configured } from "@/lib/r2";
 import path from "path";
+import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -15,8 +16,9 @@ const ALLOWED_AUDIO_TYPES = new Set([
   "audio/x-m4a", "audio/flac", "audio/x-wav",
 ]);
 
-const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
-const MAX_AUDIO_SIZE = 200 * 1024 * 1024; // 200 MB
+// Pas de multipart sur ce chemin : plafonds bas volontairement (cf. limits.ts).
+const MAX_VIDEO_SIZE = UPLOAD_LIMITS.VIDEO_ASSET_MAX_BYTES;
+const MAX_AUDIO_SIZE = UPLOAD_LIMITS.AUDIO_ASSET_MAX_BYTES;
 
 /**
  * POST /api/admin/libraries/media/[id]/upload

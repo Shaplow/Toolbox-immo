@@ -23,6 +23,7 @@ import { Alert } from "@/components/ui/Alert";
 import { StatusBadge } from "@/components/ui/molecules/StatusBadge";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
+import { UPLOAD_LIMITS, formatMaxSize } from "@/lib/upload/limits";
 
 interface Props {
   slot: { id: string };
@@ -187,8 +188,8 @@ export function CoverSection({
       toast.error("Le fichier doit être une image (PNG, JPG, WEBP).");
       return;
     }
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error("Image trop volumineuse (max 20 Mo).");
+    if (file.size > UPLOAD_LIMITS.COVER_MAX_BYTES) {
+      toast.error(`Image trop volumineuse (max ${formatMaxSize(UPLOAD_LIMITS.COVER_MAX_BYTES)}).`);
       return;
     }
     setUploading(true);
