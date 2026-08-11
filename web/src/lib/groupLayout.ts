@@ -199,6 +199,82 @@ export function getAutoLayoutOrderedBlocks(group: LayerGroup, blocks: AnyBlock[]
 }
 
 /**
+ * `sizeToContent` effectif d'un groupe : le flag est **hérité des parents**.
+ *
+ * Les blocs portent un `groupId` plat, donc tous les lecteurs du flag voyaient le
+ * groupe **feuille** uniquement. Cas cassé : un parent auto-layout en « hauteur
+ * réelle du texte » dont les blocs texte vivent dans un sous-groupe — aucun membre
+ * ne voyait le flag, les hauteurs restaient celles des cadres figés, et la bbox du
+ * sous-groupe héritait de ces hauteurs figées. Le réglage du parent ne produisait
+ * donc rien. Les groupes imbriqués et cette fonctionnalité sont arrivés dans le
+ * même commit (`03986cf`) et le câblage n'a jamais été fait.
+ *
+ * PARITÉ : consommé par `Canvas.tsx` (mesure, snapshot debug, props `hugContent`)
+ * et par `buildHTML.ts` (attribut `data-layout-size-to-content`). Une seule
+ * implémentation, appelée des deux côtés.
+ */
+export function resolveSizeToContent(
+  group: LayerGroup | undefined,
+  groups: LayerGroup[] | undefined,
+): boolean {
+  let current = group;
+  // La hiérarchie est bornée à deux niveaux par construction (un groupe avec
+  // `parentGroupId` ne peut pas être parent, cf. types/template.ts), mais un
+  // garde anti-cycle ne coûte rien et évite une boucle infinie sur données
+  // corrompues.
+  const seen = new Set<string>();
+  while (current && !seen.has(current.id)) {
+    if (current.layout?.sizeToContent === true) return true;
+    seen.add(current.id);
+    const parentId = current.parentGroupId;
+    current = parentId ? groups?.find((candidate) => candidate.id === parentId) : undefined;
+  }
+  return false;
+}
+
+/**
+ * Construit la config auto-layout d'un groupe qui bascule en mode `row`/`column`,
+ * en **reportant tous les réglages existants**.
+ *
+ * Extrait de `GroupPropertiesPanel.buildAutoLayout`, où l'objet était reconstruit
+ * à la main : `sizeToContent` y était le seul champ de `GroupLayoutConfig` oublié.
+ * Comme les boutons Ligne/Colonne appellent cette construction **sans garde sur le
+ * mode courant**, recliquer « Colonne » alors qu'on y était déjà suffisait à
+ * remettre « Hauteur réelle du texte » à off — perte de réglage silencieuse.
+ *
+ * Vivre ici plutôt que dans le composant a deux vertus : c'est testable, et le
+ * test de complétude ci-dessous (cf. `groupLayout.test.ts`) échouera si un futur
+ * champ de `GroupLayoutConfig` est ajouté sans être reporté.
+ *
+ * @param fallback Dimensions à utiliser quand le groupe n'a pas encore de
+ *                 `width`/`height` — typiquement la bbox du groupe, sinon le canvas.
+ */
+export function buildAutoLayoutConfig(
+  group: LayerGroup,
+  members: AnyBlock[],
+  nextMode: AutoLayoutMode,
+  fallback: { width: number; height: number },
+): GroupLayoutConfig {
+  const order = getAutoLayoutOrderedBlocks(
+    { ...group, layout: { ...group.layout, mode: nextMode } },
+    members,
+  ).map((member) => member.id);
+
+  return {
+    mode: nextMode,
+    width: Math.max(1, Math.round(group.layout?.width ?? fallback.width)),
+    height: Math.max(1, Math.round(group.layout?.height ?? fallback.height)),
+    gap: group.layout?.gap ?? GAP_DEFAULT,
+    justify: group.layout?.justify ?? "center",
+    align: group.layout?.align ?? "top",
+    order,
+    anchorBlockId: group.layout?.anchorBlockId,
+    // Le champ historiquement perdu. Ne pas retirer sans lire le commentaire ci-dessus.
+    sizeToContent: group.layout?.sizeToContent,
+  };
+}
+
+/**
  * Calcul des positions auto-layout + application du décalage fin par bloc
  * (autoLayoutOffsetX/Y). L'offset est purement cosmétique : il ne change pas le
  * flux (les autres membres ne bougent pas).

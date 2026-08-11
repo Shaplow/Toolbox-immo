@@ -2,7 +2,7 @@
 import type { ListingData } from "@/types/listing";
 import { listFontAssetsByFamilies } from "@/lib/fontAssets";
 import { fontFormatFromUrl, googleFontWeights } from "@/lib/builderFonts";
-import { isAutoLayoutGroup, normalizeGroupLayout } from "@/lib/groupLayout";
+import { isAutoLayoutGroup, normalizeGroupLayout, resolveSizeToContent } from "@/lib/groupLayout";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
   PER_LINE_TEXT_GOO_ALPHA_SLOPE,
@@ -106,7 +106,8 @@ export async function buildHTML(
           `data-layout-source-z="${resolvedBlock.z}"`,
           `data-layout-block-type="${resolvedBlock.type}"`
         );
-        if (group?.layout?.sizeToContent) {
+        // Flag hérité des groupes parents — cf. resolveSizeToContent.
+        if (resolveSizeToContent(group, template.groups)) {
           rootAttributes.push('data-layout-size-to-content="true"');
         }
         if (resolvedBlock.autoLayoutOffsetX) {

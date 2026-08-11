@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   GAP_MIN,
+  GAP_DEFAULT,
+  buildAutoLayoutConfig,
   buildGroupTree,
+  resolveSizeToContent,
   computeAutoLayoutPositions,
   computeAutoLayoutPositionsForTree,
   expandGroupIdsWithChildren,
@@ -660,5 +663,165 @@ describe("buildGroupTree", () => {
   it("un groupe dont le parent n'existe plus est promu top-level", () => {
     const ORPH: LayerGroup = { id: "ORPH", name: "ORPH", parentGroupId: "ghost" };
     expect(buildGroupTree([ORPH]).map((node) => node.group.id)).toEqual(["ORPH"]);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// buildAutoLayoutConfig
+//
+// Régression : cette construction vivait inline dans GroupPropertiesPanel et
+// oubliait `sizeToContent`. Comme les boutons Ligne/Colonne l'appellent sans
+// garde sur le mode courant, recliquer le mode déjà actif suffisait à effacer
+// « Hauteur réelle du texte ».
+// ──────────────────────────────────────────────────────────────────────────
+
+describe("buildAutoLayoutConfig", () => {
+  const members: AnyBlock[] = [
+    text("a", { x: 0, y: 0, w: 100, h: 20 }),
+    text("b", { x: 0, y: 30, w: 100, h: 20 }),
+  ];
+  const fallback = { width: 1080, height: 1920 };
+
+  it("préserve sizeToContent au changement de mode", () => {
+    const g = group({ mode: "column", sizeToContent: true });
+    expect(buildAutoLayoutConfig(g, members, "row", fallback).sizeToContent).toBe(true);
+  });
+
+  it("préserve sizeToContent quand on reclique le mode DÉJÀ actif", () => {
+    // Le scénario exact du bug : « je coche, je touche autre chose, c'est revenu à zéro ».
+    const g = group({ mode: "column", sizeToContent: true });
+    expect(buildAutoLayoutConfig(g, members, "column", fallback).sizeToContent).toBe(true);
+  });
+
+  it("laisse sizeToContent absent quand il n'était pas posé", () => {
+    const g = group({ mode: "column" });
+    expect(buildAutoLayoutConfig(g, members, "row", fallback).sizeToContent).toBeUndefined();
+  });
+
+  it("reporte tous les autres réglages existants", () => {
+    const g = group({
+      mode: "column",
+      width: 500,
+      height: 400,
+      gap: 24,
+      justify: "end",
+      align: "middle",
+      anchorBlockId: "b",
+      sizeToContent: true,
+    });
+    const out = buildAutoLayoutConfig(g, members, "row", fallback);
+    expect(out).toMatchObject({
+      mode: "row",
+      width: 500,
+      height: 400,
+      gap: 24,
+      justify: "end",
+      align: "middle",
+      anchorBlockId: "b",
+      sizeToContent: true,
+    });
+  });
+
+  it("applique les défauts et le fallback de dimensions quand rien n'est posé", () => {
+    const out = buildAutoLayoutConfig(group({ mode: "free" }), members, "column", fallback);
+    expect(out).toMatchObject({
+      mode: "column",
+      width: 1080,
+      height: 1920,
+      gap: GAP_DEFAULT,
+      justify: "center",
+      align: "top",
+    });
+  });
+
+  it("arrondit et borne les dimensions à 1 minimum", () => {
+    const g = group({ mode: "column", width: 12.4, height: 0 });
+    const out = buildAutoLayoutConfig(g, members, "column", fallback);
+    expect(out.width).toBe(12);
+    expect(out.height).toBe(1);
+  });
+
+  it("renseigne l'ordre depuis les membres", () => {
+    const out = buildAutoLayoutConfig(group({ mode: "column" }), members, "column", fallback);
+    expect(out.order).toEqual(["a", "b"]);
+  });
+
+  it("test de complétude : aucun champ de GroupLayoutConfig n'est oublié", () => {
+    // Garde-fou anti-récidive. Si un champ est ajouté au type sans être reporté
+    // dans buildAutoLayoutConfig, ce test échoue et nomme le champ manquant —
+    // au lieu de laisser un réglage se perdre silencieusement, comme
+    // sizeToContent pendant des mois.
+    const full: Required<GroupLayoutConfig> = {
+      mode: "column",
+      width: 500,
+      height: 400,
+      gap: 24,
+      justify: "end",
+      align: "middle",
+      order: ["b", "a"],
+      anchorBlockId: "b",
+      sizeToContent: true,
+    };
+    const out = buildAutoLayoutConfig(group(full), members, "row", fallback);
+    const missing = (Object.keys(full) as (keyof GroupLayoutConfig)[]).filter(
+      (key) => out[key] === undefined,
+    );
+    expect(missing, `champs perdus par buildAutoLayoutConfig : ${missing.join(", ")}`).toEqual([]);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// resolveSizeToContent
+//
+// Régression : tous les lecteurs du flag voyaient le groupe FEUILLE du bloc.
+// Un parent en « hauteur réelle du texte » dont les blocs vivent dans un
+// sous-groupe ne produisait donc rien.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe("resolveSizeToContent", () => {
+  const parent: LayerGroup = { id: "parent", name: "parent", layout: { mode: "column", sizeToContent: true } };
+  const child: LayerGroup = { id: "child", name: "child", layout: { mode: "row" }, parentGroupId: "parent" };
+  const loneParent: LayerGroup = { id: "p2", name: "p2", layout: { mode: "column" } };
+  const loneChild: LayerGroup = { id: "c2", name: "c2", layout: { mode: "row" }, parentGroupId: "p2" };
+
+  it("vrai quand le flag est sur le groupe lui-même", () => {
+    expect(resolveSizeToContent(parent, [parent, child])).toBe(true);
+  });
+
+  it("vrai par HÉRITAGE quand le flag est sur le parent — le bug corrigé", () => {
+    expect(resolveSizeToContent(child, [parent, child])).toBe(true);
+  });
+
+  it("faux quand ni la feuille ni le parent ne le portent", () => {
+    expect(resolveSizeToContent(loneChild, [loneParent, loneChild])).toBe(false);
+  });
+
+  it("faux sur un groupe sans layout, et sur groupe absent", () => {
+    expect(resolveSizeToContent({ id: "x", name: "x", layout: undefined }, [])).toBe(false);
+    expect(resolveSizeToContent(undefined, [])).toBe(false);
+  });
+
+  it("faux si le parent est introuvable dans la liste", () => {
+    // Données incohérentes : on ne remonte pas plus loin, on ne devine pas.
+    expect(resolveSizeToContent(child, [child])).toBe(false);
+  });
+
+  it("tolère une liste de groupes absente", () => {
+    expect(resolveSizeToContent(child, undefined)).toBe(false);
+    expect(resolveSizeToContent(parent, undefined)).toBe(true);
+  });
+
+  it("ne boucle pas sur un cycle parentGroupId", () => {
+    // La hiérarchie est bornée à 2 niveaux par construction, mais des données
+    // corrompues ne doivent pas figer le builder.
+    const a: LayerGroup = { id: "a", name: "a", layout: { mode: "row" }, parentGroupId: "b" };
+    const b: LayerGroup = { id: "b", name: "b", layout: { mode: "row" }, parentGroupId: "a" };
+    expect(resolveSizeToContent(a, [a, b])).toBe(false);
+  });
+
+  it("trouve le flag au bout d'une chaîne de cycle", () => {
+    const a: LayerGroup = { id: "a", name: "a", layout: { mode: "row" }, parentGroupId: "b" };
+    const b: LayerGroup = { id: "b", name: "b", layout: { mode: "row", sizeToContent: true }, parentGroupId: "a" };
+    expect(resolveSizeToContent(a, [a, b])).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, EyeOff, Lock, Unlock } from "lucide-react";
-import { GAP_DEFAULT, GAP_MAX, GAP_MIN, getAutoLayoutMode, getAutoLayoutOrderedBlocks, getGroupBounds } from "@/lib/groupLayout";
+import { buildAutoLayoutConfig, GAP_DEFAULT, GAP_MAX, GAP_MIN, getAutoLayoutMode, getAutoLayoutOrderedBlocks, getGroupBounds } from "@/lib/groupLayout";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type { AnyBlock, LayerGroup } from "@/types/template";
 import { Slider } from "@/components/ui/Slider";
@@ -58,21 +58,14 @@ export function GroupPropertiesPanel({
     updateGroup(group.id, { layout: { ...group.layout, mode: autoLayoutMode, ...changes } });
   }
 
+  // Construction déléguée à `groupLayout.ts` : l'objet était reconstruit ici à la
+  // main et `sizeToContent` y était systématiquement perdu (cf. commentaire de
+  // buildAutoLayoutConfig).
   function buildAutoLayout(nextMode: "row" | "column") {
-    const initialOrder = getAutoLayoutOrderedBlocks(
-      { ...group, layout: { ...group.layout, mode: nextMode } },
-      members,
-    ).map((member) => member.id);
-    return {
-      mode: nextMode,
-      width: Math.max(1, Math.round(group.layout?.width ?? groupBounds?.width ?? template.canvas.width)),
-      height: Math.max(1, Math.round(group.layout?.height ?? groupBounds?.height ?? template.canvas.height)),
-      gap: group.layout?.gap ?? GAP_DEFAULT,
-      justify: group.layout?.justify ?? "center",
-      align: group.layout?.align ?? "top",
-      order: initialOrder,
-      anchorBlockId: group.layout?.anchorBlockId,
-    } as const;
+    return buildAutoLayoutConfig(group, members, nextMode, {
+      width: groupBounds?.width ?? template.canvas.width,
+      height: groupBounds?.height ?? template.canvas.height,
+    });
   }
 
   function moveOrderedMember(itemId: string, direction: -1 | 1) {

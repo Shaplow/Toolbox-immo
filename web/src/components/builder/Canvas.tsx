@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { buildDpeSvg } from "@/lib/dpeSvg";
-import { computeAutoLayoutPositionsForTree, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
+import { computeAutoLayoutPositionsForTree, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, resolveSizeToContent, type BlockLayoutSize } from "@/lib/groupLayout";
 import { buildTextShadowValue, buildTextStrokeValue, composeTextLineHeight, getFauxThinErodeRadius, getFauxThinFilterId, getOpaqueTextBackgroundColor, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import {
@@ -819,7 +819,10 @@ export function Canvas({
       // sizeToContent : pour un texte SANS cartouche, mesurer la hauteur réelle
       // du contenu (.block-text-content) plutôt que de retomber sur le cadre
       // figé. Sinon (cas historique), on garde .block-text-background ?? cadre.
-      const sizeToContent = group?.layout?.sizeToContent === true;
+      // Le flag est HÉRITÉ des groupes parents (cf. resolveSizeToContent) : sans
+      // ça, un parent en « hauteur réelle » n'atteignait pas les blocs d'un
+      // sous-groupe.
+      const sizeToContent = resolveSizeToContent(group, template.groups);
       const background = element.querySelector<HTMLElement>(".block-text-background");
       const measured =
         background ??
@@ -855,7 +858,10 @@ export function Canvas({
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [autoLayoutMeasurementBlocks, fontMetricsVersion]);
+  // `template.groups` : la mesure lit désormais le flag sizeToContent HÉRITÉ des
+  // parents, donc un changement du flag sur un groupe parent doit relancer la
+  // mesure des membres de ses sous-groupes.
+  }, [autoLayoutMeasurementBlocks, fontMetricsVersion, template.groups]);
 
   useLayoutEffect(() => {
     if (!onLayoutDebugSnapshotChange) return;
@@ -865,7 +871,7 @@ export function Canvas({
         const element = measurementLayerRef.current?.querySelector<HTMLElement>(`[data-builder-measure-block-id="${block.id}"]`);
         if (!element || !group) return null;
 
-        const sizeToContent = group.layout?.sizeToContent === true;
+        const sizeToContent = resolveSizeToContent(group, template.groups);
         const background = element.querySelector<HTMLElement>(".block-text-background");
         const measured =
           background ??
@@ -1220,7 +1226,7 @@ export function Canvas({
                     zoom={zoom}
                     defaultFontFamily={template.theme.fonts.body.family}
                     defaultTextColor={template.theme.palette.text}
-                    hugContent={group?.layout?.sizeToContent === true}
+                    hugContent={resolveSizeToContent(group, template.groups)}
                     onMouseDown={(e) => handleMouseDown(e, block)}
                   />
                   {isLocked && (
@@ -1298,7 +1304,7 @@ export function Canvas({
                   zoom={zoom}
                   defaultFontFamily={template.theme.fonts.body.family}
                   defaultTextColor={template.theme.palette.text}
-                  hugContent={group?.layout?.sizeToContent === true}
+                  hugContent={resolveSizeToContent(group, template.groups)}
                   onMouseDown={(e) => handleMouseDown(e, block)}
                 />
                 {isLocked && (
@@ -1400,7 +1406,7 @@ export function Canvas({
               zoom={1}
               defaultFontFamily={template.theme.fonts.body.family}
               defaultTextColor={template.theme.palette.text}
-              hugContent={group?.layout?.sizeToContent === true}
+              hugContent={resolveSizeToContent(group, template.groups)}
               onMouseDown={() => undefined}
             />
           </div>
