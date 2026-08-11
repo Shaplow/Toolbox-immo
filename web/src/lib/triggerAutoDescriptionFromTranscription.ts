@@ -24,13 +24,20 @@
 
 import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/sseStore";
-import { getFromR2, r2Configured } from "@/lib/r2";
+import {
+  parseTranscriptSegments,
+  segmentsToText,
+  readTranscriptText,
+} from "@/lib/transcription/transcriptText";
+import { callClaude } from "@/lib/llm/client";
+import { SYSTEM_PROMPT_DESCRIPTION } from "@/lib/llm/prompts";
 import { logActivity } from "@/lib/services/slot/activity";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
+// Conservé pour la garde de configuration ci-dessous : on veut un DescriptionJob
+// FAILED explicite plutôt qu'une erreur opaque du client LLM.
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
 const MAX_TRANSCRIPT_CHARS = 50_000;
 const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 
@@ -107,29 +114,6 @@ function logSkip(jobId: string, reason: SkipReason, extra?: Record<string, unkno
   );
 }
 
-/**
- * Lit le JSON segments d'une transcription depuis R2 et reconstitue le texte.
- * Retourne null si lecture impossible (R2 absent, fichier absent, JSON malformé).
- */
-async function readTranscriptionTextFromR2(outputJsonKey: string): Promise<string | null> {
-  if (!r2Configured()) return null;
-  try {
-    const buf = await getFromR2(outputJsonKey);
-    if (!buf) return null;
-    const parsed = JSON.parse(buf.toString("utf-8")) as {
-      segments?: Array<{ text?: string }>;
-    };
-    const segments = parsed.segments ?? [];
-    return segments
-      .map((s) => (s.text ?? "").trim())
-      .filter(Boolean)
-      .join("\n")
-      .slice(0, MAX_TRANSCRIPT_CHARS);
-  } catch (err) {
-    console.warn(`[autoDescription] readTranscriptionTextFromR2 failed for key=${outputJsonKey}:`, err);
-    return null;
-  }
-}
 
 /**
  * Helper : crée un DescriptionJob FAILED avec errorMsg + notify SSE.
@@ -356,23 +340,24 @@ export async function triggerAutoDescriptionForTranscription(
     transcriptText = providedTranscriptText.slice(0, MAX_TRANSCRIPT_CHARS);
     transcriptSource = "provided";
   } else if (job.segmentsJson) {
-    try {
-      const parsed = JSON.parse(job.segmentsJson) as Array<{ text?: string }>;
-      const text = parsed
-        .map((s) => (s.text ?? "").trim())
-        .filter(Boolean)
-        .join("\n")
-        .slice(0, MAX_TRANSCRIPT_CHARS);
-      if (text.length > 0) {
-        transcriptText = text;
-        transcriptSource = "db";
-      }
-    } catch (err) {
-      console.warn(`[autoDescription] segmentsJson invalide pour ${transcriptionJobId}:`, err);
+    const text = segmentsToText(parseTranscriptSegments(job.segmentsJson));
+    if (text.length > 0) {
+      transcriptText = text;
+      transcriptSource = "db";
     }
   }
+  // Lecture R2 via le helper partagé. Correctif de production : l'ancien lecteur
+  // local parsait `parsed.segments`, alors que le worker écrit un TABLEAU NU
+  // (runpod_worker.py fait `_json.dumps(list)`). En prod — où `segmentsJson`
+  // inline est absent — le texte lu était donc systématiquement vide, et cette
+  // fonction basculait sur son fallback "frame vidéo" : les descriptions étaient
+  // rédigées depuis une image au lieu du transcript, sans aucun signal.
   if (!transcriptText && job.outputJsonKey) {
-    transcriptText = await readTranscriptionTextFromR2(job.outputJsonKey);
+    transcriptText = await readTranscriptText({
+      status: "COMPLETED",
+      segmentsJson: null,
+      outputJsonKey: job.outputJsonKey,
+    });
     if (transcriptText) transcriptSource = "r2";
   }
 
@@ -436,48 +421,24 @@ export async function triggerAutoDescriptionForTranscription(
     ? `${prompt.prompt}\n\nTranscription :\n${transcriptText}`
     : `${prompt.prompt}\n\nLa vidéo ne contient pas de parole. Base-toi UNIQUEMENT sur l'image jointe (une frame extraite de la vidéo). Décris ce que tu vois — n'invente rien qui n'est pas visible.`;
 
-  const messageContent: Array<
-    | { type: "text"; text: string }
-    | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
-  > = [];
-  if (fallbackFrame) {
-    messageContent.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: fallbackFrame.mediaType,
-        data: fallbackFrame.base64,
-      },
-    });
-  }
-  messageContent.push({ type: "text", text: userMessage });
+  // Client Claude partagé (`lib/llm/client.ts`) : le system prompt était
+  // auparavant recopié ici à l'identique de la route description — troisième
+  // copie de la même chaîne, avec dérive garantie à la première évolution.
+  const image = fallbackFrame
+    ? {
+        base64: fallbackFrame.base64,
+        mimeType: fallbackFrame.mediaType,
+        dataUrl: `data:${fallbackFrame.mediaType};base64,${fallbackFrame.base64}`,
+      }
+    : null;
 
   let result: string;
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: 4096,
-        system:
-          "Tu es un expert en rédaction. Génère uniquement le texte demandé, sans commentaire, introduction ni balise markdown.",
-        messages: [{ role: "user", content: messageContent }],
-      }),
-      signal: AbortSignal.timeout(60_000),
+    result = await callClaude({
+      system: SYSTEM_PROMPT_DESCRIPTION,
+      userMessage,
+      image,
     });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Claude API ${res.status}: ${errText.slice(0, 200)}`);
-    }
-    const data = (await res.json()) as {
-      content: Array<{ type: string; text: string }>;
-    };
-    result = data.content.find((c) => c.type === "text")?.text?.trim() ?? "";
   } catch (err) {
     console.error(`[autoDescription] Claude call failed for slot=${slotId}:`, err);
     const errorMsg = (err instanceof Error ? err.message : String(err)).slice(0, 500);

@@ -29,151 +29,29 @@ import { canAccessTool } from "@/lib/permissions/tools";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
 import { logActivity } from "@/lib/services/slot/activity";
-import { getFromR2, r2Configured } from "@/lib/r2";
+// Le plafond de caractères est appliqué par le helper de lecture et par
+// buildUserMessage — plus besoin de le connaître ici.
+import { getSlotTranscriptText } from "@/lib/transcription/transcriptText";
+import type { LlmImage } from "@/lib/llm/client";
+import { DESCRIPTION_LABELS, SYSTEM_PROMPT_DESCRIPTION } from "@/lib/llm/prompts";
+import {
+  normalizeRecipeKind,
+  runRecipe,
+  validateRecipeInputs,
+  type RecipeConfig,
+} from "@/lib/llm/recipes";
 
-const MAX_TRANSCRIPT_CHARS = 50_000;
 const MAX_PERSONALIZATION_CHARS = 2_000;
 const MAX_REFERENCE_IMAGE_BYTES = 4 * 1024 * 1024;
 const REFERENCE_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-
-const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
-const OPENAI_MODEL  = process.env.OPENAI_MODEL  ?? "gpt-5.4";
 
 type ReferenceImageInput = {
   dataUrl?: string;
   filename?: string;
 };
 
-type ValidatedReferenceImage = {
-  dataUrl: string;
-  base64: string;
-  mimeType: string;
-};
-
-// ─── Recipes ─────────────────────────────────────────────────────────────────
-// Cf. DescriptionPrompt.recipeKind (Phase P6). Avant ce dispatcher, toutes les
-// recipes dégradaient silencieusement en "transcript_only".
-
-type RecipeKind =
-  | "transcript_only"
-  | "transcript_and_frame"
-  | "transcript_multi_frame"
-  | "two_pass_reformulate"
-  | "context_enriched";
-
-type RecipeConfig = {
-  frameCount?: number;
-  contextFieldKeys?: string[];
-} | null;
-
-const VALID_RECIPE_KINDS = new Set<RecipeKind>([
-  "transcript_only",
-  "transcript_and_frame",
-  "transcript_multi_frame",
-  "two_pass_reformulate",
-  "context_enriched",
-]);
-
-function normalizeRecipeKind(value: unknown): RecipeKind {
-  return typeof value === "string" && VALID_RECIPE_KINDS.has(value as RecipeKind)
-    ? (value as RecipeKind)
-    : "transcript_only";
-}
-
-/**
- * Charge le texte de la dernière TranscriptionJob COMPLETED rattachée à un
- * slot (via slot.render.transcriptionJob ou slot.currentVersion.transcriptionJob).
- *
- * Priorité segmentsJson (inline dev local) puis outputJsonKey (R2 prod).
- * Retourne null si pas de transcription utilisable.
- */
-async function loadSlotTranscriptionText(slotId: string): Promise<string | null> {
-  const slot = await prisma.publicationSlot.findUnique({
-    where: { id: slotId },
-    select: {
-      render: {
-        select: {
-          transcriptionJob: {
-            select: { status: true, segmentsJson: true, outputJsonKey: true },
-          },
-        },
-      },
-      currentVersion: {
-        select: {
-          transcriptionJob: {
-            select: { status: true, segmentsJson: true, outputJsonKey: true },
-          },
-        },
-      },
-    },
-  });
-  if (!slot) return null;
-  const txJob =
-    slot.render?.transcriptionJob ?? slot.currentVersion?.transcriptionJob ?? null;
-  if (!txJob || txJob.status !== "COMPLETED") return null;
-
-  // 1) segmentsJson inline (dev local + fallback prod si stocké)
-  if (txJob.segmentsJson) {
-    try {
-      const parsed = JSON.parse(txJob.segmentsJson) as Array<{ text?: string }>;
-      const joined = parsed
-        .map((s) => (s.text ?? "").trim())
-        .filter(Boolean)
-        .join("\n");
-      if (joined) return joined;
-    } catch {
-      // continue avec R2
-    }
-  }
-
-  // 2) outputJsonKey sur R2 (prod RunPod)
-  if (txJob.outputJsonKey && r2Configured()) {
-    try {
-      const buf = await getFromR2(txJob.outputJsonKey);
-      if (!buf) return null;
-      const parsed = JSON.parse(buf.toString("utf-8")) as {
-        segments?: Array<{ text?: string }>;
-      };
-      const segments = parsed.segments ?? [];
-      const joined = segments
-        .map((s) => (s.text ?? "").trim())
-        .filter(Boolean)
-        .join("\n");
-      return joined || null;
-    } catch (err) {
-      console.warn(`[description/generate] R2 transcription fetch failed slot=${slotId}:`, err);
-      return null;
-    }
-  }
-
-  return null;
-}
-
-function buildUserMessage(
-  promptText: string,
-  transcriptText: string | undefined,
-  personalization?: string,
-  hasReferenceImage = false
-): string {
-  const normalizedTranscriptText = transcriptText?.trim() ?? "";
-  let msg = promptText + "\n\n";
-  if (personalization?.trim()) {
-    msg += `Informations complémentaires :\n${personalization.trim()}\n\n`;
-  }
-  if (hasReferenceImage) {
-    msg +=
-      "Une image de référence est jointe. Utilise uniquement les informations visibles et lisibles qui peuvent enrichir la description, sans rien inventer.\n\n";
-  }
-
-  if (normalizedTranscriptText) {
-    msg += `Transcription :\n${normalizedTranscriptText.slice(0, MAX_TRANSCRIPT_CHARS)}`;
-    return msg;
-  }
-
-  msg +=
-    "Aucune transcription n'est fournie. Base-toi uniquement sur l'image de référence et les informations complémentaires ci-dessus. Si une information n'est pas visible, lisible ou certaine, ne l'invente pas.";
-  return msg;
-}
+/** Une image validée est exactement ce qu'attend le client LLM. */
+type ValidatedReferenceImage = LlmImage;
 
 function validateReferenceImage(
   referenceImage?: ReferenceImageInput
@@ -212,120 +90,6 @@ function validateReferenceImage(
     base64,
     mimeType,
   };
-}
-
-async function generateWithClaude(
-  userMessage: string,
-  referenceImage: ValidatedReferenceImage | null
-): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY non configuré");
-
-  const content: Array<
-    | { type: "text"; text: string }
-    | {
-        type: "image";
-        source: {
-          type: "base64";
-          media_type: string;
-          data: string;
-        };
-      }
-  > = [];
-
-  if (referenceImage) {
-    content.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: referenceImage.mimeType,
-        data: referenceImage.base64,
-      },
-    });
-  }
-  content.push({ type: "text", text: userMessage });
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 4096,
-      system:
-        "Tu es un expert en rédaction. Génère uniquement le texte demandé, sans commentaire, introduction ni balise markdown.",
-      messages: [{ role: "user", content }],
-    }),
-    signal: AbortSignal.timeout(60_000),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Claude API ${res.status}: ${errText}`);
-  }
-
-  const data = await res.json() as {
-    content: Array<{ type: string; text: string }>;
-  };
-  return data.content.find((c) => c.type === "text")?.text?.trim() ?? "";
-}
-
-async function generateWithGPT(
-  userMessage: string,
-  referenceImage: ValidatedReferenceImage | null
-): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY non configuré");
-
-  const userContent: string | Array<
-    | { type: "text"; text: string }
-    | { type: "image_url"; image_url: { url: string; detail: "high" } }
-  > = referenceImage
-    ? [
-        { type: "text", text: userMessage },
-        {
-          type: "image_url",
-          image_url: {
-            url: referenceImage.dataUrl,
-            detail: "high",
-          },
-        },
-      ]
-    : userMessage;
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "Tu es un expert en rédaction. Génère uniquement le texte demandé, sans commentaire, introduction ni balise markdown.",
-        },
-        { role: "user", content: userContent },
-      ],
-      temperature: 0.5,
-    }),
-    signal: AbortSignal.timeout(60_000),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`OpenAI API ${res.status}: ${errText}`);
-  }
-
-  const data = await res.json() as {
-    choices: Array<{ message: { content: string } }>;
-  };
-  return data.choices[0]?.message?.content?.trim() ?? "";
 }
 
 export async function POST(req: NextRequest) {
@@ -442,9 +206,9 @@ export async function POST(req: NextRequest) {
   // sur R2). Le client n'a rien à faire — appel cohérent avec la chaîne
   // auto.
   if (!normalizedTranscriptText && !referenceImage && resolvedSlotId) {
-    const fetched = await loadSlotTranscriptionText(resolvedSlotId);
+    const fetched = await getSlotTranscriptText(resolvedSlotId);
     if (fetched) {
-      normalizedTranscriptText = fetched.slice(0, MAX_TRANSCRIPT_CHARS);
+      normalizedTranscriptText = fetched;
     }
   }
 
@@ -473,19 +237,11 @@ export async function POST(req: NextRequest) {
   const recipeConfig = ((prompt as { recipeConfig?: unknown }).recipeConfig ??
     null) as RecipeConfig;
 
-  // Validations spécifiques par recipe (avant tout appel LLM).
-  if (
-    (recipeKind === "transcript_and_frame" ||
-      recipeKind === "transcript_multi_frame") &&
-    !referenceImage
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "Cette recette requiert une image de référence — joignez-en une ou choisissez un autre prompt.",
-      },
-      { status: 400 },
-    );
+  // Validations spécifiques par recipe (avant tout appel LLM, donc avant de
+  // facturer des tokens).
+  const recipeError = validateRecipeInputs({ recipeKind, hasImage: !!referenceImage });
+  if (recipeError) {
+    return NextResponse.json({ error: recipeError }, { status: 400 });
   }
 
   // Pour context_enriched : charger les champs métier du slot (adresse,
@@ -564,12 +320,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const userMessage = buildUserMessage(
-    basePromptText,
-    normalizedTranscriptText,
-    validatedPersonalization,
-    !!referenceImage,
-  );
   const normalizedInputFilename = inputFilename?.trim()
     || (!normalizedTranscriptText ? referenceImageInput?.filename?.trim() : undefined)
     || null;
@@ -578,56 +328,23 @@ export async function POST(req: NextRequest) {
   let errorMsg: string | undefined;
 
   try {
-    if (recipeKind === "two_pass_reformulate") {
-      // Pass 1 : résumé en bullets, sans rédaction finale. Limite max_tokens
-      // implicite via le contrat LLM (~4k tokens). Pas d'image en pass 1
-      // pour rester rapide et déterministe.
-      const pass1Message =
-        prompt.prompt +
-        "\n\n[Étape 1/2] Résume cette transcription en bullets concis (max 12 points), sans rédiger la description finale. Pas d'introduction.\n\n" +
-        (validatedPersonalization?.trim()
-          ? `Informations complémentaires :\n${validatedPersonalization.trim()}\n\n`
-          : "") +
-        (normalizedTranscriptText
-          ? `Transcription :\n${normalizedTranscriptText.slice(0, MAX_TRANSCRIPT_CHARS)}`
-          : "Aucune transcription fournie — base-toi uniquement sur les informations complémentaires.");
-
-      const summary = model === "claude"
-        ? await generateWithClaude(pass1Message, null)
-        : await generateWithGPT(pass1Message, null);
-
-      // Pass 2 : rédaction finale à partir du résumé.
-      const pass2Message =
-        prompt.prompt +
-        "\n\n[Étape 2/2] À partir du résumé ci-dessous, rédige la description finale conformément aux instructions du prompt. Ne reproduis pas le résumé tel quel — rédige du texte fluide.\n\nRésumé :\n" +
-        summary;
-
-      result = model === "claude"
-        ? await generateWithClaude(pass2Message, referenceImage)
-        : await generateWithGPT(pass2Message, referenceImage);
-    } else {
-      // transcript_only | transcript_and_frame | transcript_multi_frame |
-      // context_enriched (single-pass) : un seul appel avec userMessage
-      // construit ci-dessus.
-      //
-      // Note pour transcript_multi_frame : la config peut spécifier
-      // frameCount > 1, mais l'extraction de N frames depuis la vidéo
-      // source nécessite un pipeline FFmpeg côté serveur qui n'est pas
-      // implémenté ici — on consomme la frame fournie comme une seule
-      // image et on logue un warn pour signaler la dégradation.
-      if (
-        recipeKind === "transcript_multi_frame" &&
-        (recipeConfig?.frameCount ?? 1) > 1
-      ) {
-        console.warn(
-          `[description/generate] recipe=transcript_multi_frame frameCount=${recipeConfig?.frameCount} ` +
-            "demandé mais extraction multi-frame non implémentée — dégrade en 1 frame.",
-        );
-      }
-      result = model === "claude"
-        ? await generateWithClaude(userMessage, referenceImage)
-        : await generateWithGPT(userMessage, referenceImage);
-    }
+    // Le dispatcher de recettes (mono-passe / double passe / image) vit dans
+    // `lib/llm/recipes.ts` — partagé avec le générateur de briefs. `promptText`
+    // porte l'enrichissement context_enriched, `rawPromptText` reste le prompt nu
+    // qu'utilisent les deux passes de two_pass_reformulate.
+    result = await runRecipe({
+      recipeKind,
+      recipeConfig,
+      promptText: basePromptText,
+      rawPromptText: prompt.prompt,
+      transcriptText: normalizedTranscriptText,
+      extraInfo: validatedPersonalization,
+      image: referenceImage,
+      model,
+      system: SYSTEM_PROMPT_DESCRIPTION,
+      labels: DESCRIPTION_LABELS,
+      logPrefix: "[description/generate]",
+    });
   } catch (err) {
     const rawMsg = err instanceof Error ? err.message : "Erreur inconnue";
     errorMsg = rawMsg.slice(0, 200);
