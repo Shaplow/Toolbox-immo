@@ -8,7 +8,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getR2PublicUrl, deleteFromR2, r2Configured, isR2PublicUrl } from "@/lib/r2";
+import { getR2PublicUrl, isR2PublicUrl } from "@/lib/r2";
+import { releaseJobSource } from "@/lib/upload/releaseJobSource";
 import { verifyAndParseRunpodWebhook } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
 import { onCaptionsCompleted } from "@/lib/services/slot/pipelineHooks";
@@ -63,14 +64,18 @@ export async function POST(req: NextRequest) {
 
     await prisma.captionJob.update({
       where: { id: job.id },
-      data: { status: "COMPLETED", outputUrl: videoUrl ?? null, inputKey: null },
+      data: { status: "COMPLETED", outputUrl: videoUrl ?? null },
     });
 
-    if (job.inputKey && r2Configured()) {
-      deleteFromR2(job.inputKey).catch((err) =>
-        console.warn(`[webhook/captions] R2 cleanup failed for key=${job.inputKey}:`, err)
-      );
-    }
+    // Correctif perte de données : ce webhook nullait `inputKey` et supprimait
+    // l'objet R2 SANS CONDITION. Or avec l'option « utiliser la vidéo du slot »,
+    // `inputKey` vaut PublicationVersion.r2Key ou la clé du render (cf.
+    // resolveSlotSourceVideo dans api/render/captions/route.ts) — l'incrustation
+    // de sous-titres effaçait donc le montage du monteur ou la vidéo du render,
+    // en laissant la ligne DB pointer vers un objet disparu.
+    // `releaseJobSource` ne supprime que les clés sous "inputs/captions/", soit
+    // les vidéos réellement uploadées pour ce job.
+    await releaseJobSource(prisma, "caption", job);
 
     notifyUser(job.userId, { jobType: "captions", jobId: job.id, status: "COMPLETED", videoUrl: videoUrl ?? null });
     console.info(`[webhook/captions] job=${job.id} done, videoUrl=${videoUrl}`);
@@ -83,14 +88,12 @@ export async function POST(req: NextRequest) {
 
     await prisma.captionJob.update({
       where: { id: job.id },
-      data: { status: "FAILED", errorMsg, inputKey: null },
+      data: { status: "FAILED", errorMsg },
     });
 
-    if (job.inputKey && r2Configured()) {
-      deleteFromR2(job.inputKey).catch((err) =>
-        console.warn(`[webhook/captions] R2 cleanup failed for key=${job.inputKey}:`, err)
-      );
-    }
+    // Même garde qu'en branche COMPLETED : ne jamais supprimer une source qui
+    // appartient à un render ou à une version montée.
+    await releaseJobSource(prisma, "caption", job);
 
     notifyUser(job.userId, { jobType: "captions", jobId: job.id, status: "FAILED", errorMsg });
     console.error(`[webhook/captions] job=${job.id} failed: ${errorMsg}`);
