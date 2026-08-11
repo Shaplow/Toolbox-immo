@@ -916,9 +916,47 @@ async def render_sequence_local(request: Request):
                     pass
 
 
+async def _extract_remote_audio(
+    audio_url: str,
+    work_dir: Path,
+    stamp: int,
+    log_prefix: str,
+) -> Path:
+    """
+    Extrait l'audio d'une URL distante en WAV 16 kHz mono, sans stocker la vidéo.
+
+    Même module que le worker RunPod (`engine/audio_source.py`) — c'est ce qui
+    garantit la parité local ↔ RunPod exigée par les invariants du projet.
+
+    `asyncio.to_thread` est obligatoire : l'extraction est bloquante et peut durer
+    des minutes ; l'exécuter sur l'event loop figerait toutes les autres requêtes.
+    """
+    from engine.audio_source import (
+        AudioExtractionError,
+        extract_audio_16k_mono,
+        extraction_timeout_s,
+        probe_remote_source,
+    )
+
+    info = await asyncio.to_thread(probe_remote_source, audio_url)
+    dest = work_dir / f"audio16k_{stamp}.wav"
+    try:
+        await asyncio.to_thread(
+            extract_audio_16k_mono,
+            audio_url,
+            dest,
+            timeout_s=extraction_timeout_s(info.size_bytes),
+            log_prefix=log_prefix,
+        )
+    except AudioExtractionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return dest
+
+
 @app.post("/api/transcribe")
 async def transcribe_local(
-    audio: UploadFile = File(...),
+    audio: Optional[UploadFile] = File(None),
+    audio_url: Optional[str] = Form(None),
     model_size: str = Form("turbo"),
     language: str = Form("fr"),
     enable_diarization: str = Form("false"),
@@ -928,20 +966,34 @@ async def transcribe_local(
     Mode local (USE_RUNPOD=false) : transcription directe sans RunPod.
     Retourne le JSON des segments directement dans la réponse.
 
+    Deux entrées possibles, exclusives :
+      - `audio` : fichier uploadé (comportement historique). Whisper décode le
+        fichier local, donc aucune pré-extraction n'est faite — divergence
+        intentionnelle avec le worker RunPod, une passe de plus n'apporterait rien.
+      - `audio_url` : URL distante. On extrait alors l'audio en streaming via
+        `engine/audio_source.py`, exactement comme le worker RunPod (parité).
+
     Whisper est intégralement synchrone (CPU/GPU sans yield). On l'exécute
     dans asyncio.to_thread pour libérer l'event loop FastAPI pendant les
     minutes que dure la transcription — sinon TOUTES les autres requêtes
-    (y compris /api/health et les jobs concurrents) seraient bloquées.
+    (y compris /api/health et les jobs concurrents) seraient bloquées. La même
+    règle vaut pour l'extraction audio, qui est bloquante elle aussi.
     """
     from engine.transcribe import transcribe_with_word_timestamps
+
+    if not audio and not audio_url:
+        raise HTTPException(status_code=400, detail="Fournir 'audio' (fichier) ou 'audio_url'.")
 
     work_dir = OUTPUTS_DIR / "temp" / "api"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     stamp = int(time.time() * 1000)
-    suffix = Path(audio.filename or "audio.mp3").suffix.lower() or ".mp3"
-    audio_path = work_dir / f"audio_{stamp}{suffix}"
-    audio_path.write_bytes(await audio.read())
+    if audio_url:
+        audio_path = await _extract_remote_audio(audio_url, work_dir, stamp, "[api/transcribe]")
+    else:
+        suffix = Path(audio.filename or "audio.mp3").suffix.lower() or ".mp3"
+        audio_path = work_dir / f"audio_{stamp}{suffix}"
+        audio_path.write_bytes(await audio.read())
 
     try:
         segments = await asyncio.to_thread(
@@ -969,7 +1021,8 @@ async def transcribe_local(
 
 @app.post("/api/transcribe-multilingual")
 async def transcribe_multilingual_local(
-    audio: UploadFile = File(...),
+    audio: Optional[UploadFile] = File(None),
+    audio_url: Optional[str] = Form(None),
     model_size: str = Form("turbo"),
     # Form-data n'accepte pas proprement un List[str] sur tous les clients ;
     # on prend une chaîne CSV "fr,zh" et on parse côté serveur. Le caller TS
@@ -997,13 +1050,21 @@ async def transcribe_multilingual_local(
             detail=f"Le mode multi-langue exige au moins 2 codes ISO (reçu : '{languages}').",
         )
 
+    if not audio and not audio_url:
+        raise HTTPException(status_code=400, detail="Fournir 'audio' (fichier) ou 'audio_url'.")
+
     work_dir = OUTPUTS_DIR / "temp" / "api"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     stamp = int(time.time() * 1000)
-    suffix = Path(audio.filename or "audio.mp3").suffix.lower() or ".mp3"
-    audio_path = work_dir / f"audio_{stamp}{suffix}"
-    audio_path.write_bytes(await audio.read())
+    if audio_url:
+        audio_path = await _extract_remote_audio(
+            audio_url, work_dir, stamp, "[api/transcribe-multi]"
+        )
+    else:
+        suffix = Path(audio.filename or "audio.mp3").suffix.lower() or ".mp3"
+        audio_path = work_dir / f"audio_{stamp}{suffix}"
+        audio_path.write_bytes(await audio.read())
 
     try:
         # Idem transcribe_local : on libère l'event loop pendant les N passes

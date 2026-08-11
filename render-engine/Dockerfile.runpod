@@ -29,7 +29,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # GPL inclut libx264 (fallback CPU si NVENC indisponible) + NVENC (GPU).
 # Version pinée pour garantir un comportement libass stable entre les rebuilds.
 # Pour mettre à jour : remplacer l'URL par un nouvel autobuild BtbN.
-RUN FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-05-17-13-15/ffmpeg-N-124525-g0c1a1ee12e-linux64-gpl.tar.xz \
+#
+# ⚠️ BtbN SUPPRIME ses anciens autobuilds (rétention de quelques mois seulement).
+# Le pin précédent (autobuild-2026-05-17-13-15) renvoyait 404 : l'image n'était
+# plus reconstructible du tout. Si le build échoue ici avec un 404, c'est ça —
+# repointer sur un autobuild présent dans
+# https://github.com/BtbN/FFmpeg-Builds/releases (ne PAS utiliser le tag
+# `latest`, qui casserait la reproductibilité que ce pin cherche à garantir).
+#
+# Repin du 2026-08-11 (le précédent avait expiré). Ce build est vérifié comme
+# incluant `--enable-openssl` + le protocole `https` et les options
+# `-reconnect*` / `-rw_timeout` — requis par l'extraction audio en streaming
+# depuis R2 (cf. engine/audio_source.py).
+# À surveiller après ce changement : le rendu libass des sous-titres, que le pin
+# d'origine visait à figer.
+RUN FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-10-13-17/ffmpeg-N-126039-g6bbc22dc09-linux64-gpl.tar.xz \
     && FFMPEG_DIR=$(basename "$FFMPEG_URL" .tar.xz) \
     && wget -q "$FFMPEG_URL" \
     && tar -xf "${FFMPEG_DIR}.tar.xz" \

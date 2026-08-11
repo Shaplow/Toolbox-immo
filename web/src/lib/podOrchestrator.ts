@@ -60,7 +60,10 @@ const FASTAPI_HEALTH_TIMEOUT_MS = 5_000;
  * assume the webhook was permanently lost (network failure, app restart, etc.)
  * and reset the counter so the idle-stop logic can proceed.
  */
-const STALE_JOB_HOURS = 4;
+// 6 h et non 4 h : sinon le compteur retombe à 0 pendant une transcription de
+// gros rush encore en cours, et l'idle-stop coupe le pod sous les pieds du job.
+// Aligné sur STALL_MS de api/transcription/[id]/route.ts.
+const STALE_JOB_HOURS = 6;
 
 // ─── In-process concurrency lock ─────────────────────────────────────────────
 // Prevents duplicate pod creation when concurrent requests all see status="stopped".

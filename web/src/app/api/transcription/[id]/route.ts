@@ -23,8 +23,17 @@ const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
 const HF_TOKEN           = process.env.HF_TOKEN;
 
-/** Jobs PROCESSING without resolution for longer than this are considered stalled. */
-const STALL_MS = 2 * 60 * 60 * 1000; // 2 hours
+/**
+ * Jobs PROCESSING without resolution for longer than this are considered stalled.
+ *
+ * 6 h et non 2 h : une transcription de gros rush enchaîne l'extraction audio
+ * (ffmpeg lit ~70 % du fichier depuis R2) puis Whisper. À 8 Mo/s, un rush de
+ * 100 Go dépasse largement 2 h — le job était donc marqué FAILED alors que le
+ * worker travaillait encore, ET sa source R2 était nettoyée sous ses pieds
+ * (cf. plus bas dans ce fichier). Doit rester cohérent avec
+ * PROCESSING_STALL_MS du sweep et STALE_JOB_HOURS de podOrchestrator.
+ */
+const STALL_MS = 6 * 60 * 60 * 1000; // 6 hours
 /** Jobs QUEUED without a runpodJobId for longer than this are considered abandoned. */
 const PRE_SUBMIT_STALL_MS = 15 * 60 * 1000; // 15 minutes
 

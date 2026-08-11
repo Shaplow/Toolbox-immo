@@ -159,7 +159,15 @@ export async function createRunpodPod(
     gpuTypePriority: "availability",
     gpuCount: 1,
     ports: ["8080/http", "22/tcp"],
-    containerDiskInGb: 20,
+    // 30 Go et non 20 : l'image (CUDA + torch + whisperx + pyannote + modèles
+    // pré-bakés) en consomme l'essentiel, et /tmp vit sur ce même disque. À 20 Go
+    // il ne restait que quelques Go utiles — d'où les [Errno 28] No space left on
+    // device observés en transcription. L'extraction audio en streaming
+    // (engine/audio_source.py) évite désormais d'y poser la vidéo, mais cette
+    // marge supprime toute une classe d'échecs pour quelques centimes/mois.
+    // Ne PAS dimensionner ce disque pour la taille des rushs : sur cloudType
+    // COMMUNITY, un gros container disk réduit fortement la dispo des offres GPU.
+    containerDiskInGb: 30,
     volumeMountPath: "/workspace",
   };
   if (networkVolumeId) {

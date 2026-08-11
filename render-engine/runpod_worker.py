@@ -102,12 +102,104 @@ def _upload_to_r2(key: str, filepath: Path, content_type: str = "video/mp4") -> 
 
 
 def _download_file(url: str, dest: Path) -> None:
-    """Télécharge une URL vers un fichier local (streaming)."""
+    """
+    Télécharge une URL vers un fichier local (streaming).
+
+    ⚠️ Matérialise le fichier ENTIER sur le disque du conteneur. Réservé aux
+    handlers qui ont réellement besoin de la vidéo (render, media_edit). Pour la
+    transcription, utiliser `_prepare_audio_for_transcription` : le disque du
+    worker ne fait que quelques Go utiles et cédait dès ~20 Go de rush
+    ([Errno 28] No space left on device).
+    """
     with httpx.stream("GET", url, follow_redirects=True, timeout=120) as resp:
         resp.raise_for_status()
         with open(dest, "wb") as f:
             for chunk in resp.iter_bytes(chunk_size=65536):
                 f.write(chunk)
+
+
+def _prepare_audio_for_transcription(
+    audio_url: str,
+    tmp_path: Path,
+    stamp: int,
+    log_prefix: str,
+) -> Path:
+    """
+    Obtient un WAV 16 kHz mono local à partir d'une URL, sans stocker la vidéo.
+
+    Stratégie unique : extraction ffmpeg en streaming depuis l'URL. Pas de seuil de
+    taille — le handler de transcription n'a jamais besoin d'autre chose que
+    l'audio, et deux chemins conditionnels finiraient par diverger.
+
+    Repli sur téléchargement local **uniquement** si le fichier tient vraiment sur
+    le disque : sur un gros rush, retomber sur `_download_file` reproduirait
+    exactement le crash qu'on cherche à éviter, avec un message d'erreur trompeur.
+    """
+    from engine.audio_source import (
+        AudioExtractionError,
+        extract_audio_16k_mono,
+        extraction_timeout_s,
+        probe_remote_source,
+    )
+
+    wav_path = tmp_path / f"audio16k_{stamp}.wav"
+    info = probe_remote_source(audio_url)
+    free_bytes = shutil.disk_usage(tmp_path).free
+
+    print(
+        f"{log_prefix} source : size={info.size_bytes} ranges={info.accepts_ranges} "
+        f"type={info.content_type} disque_libre={free_bytes / 1024 ** 3:.1f} Go",
+        flush=True,
+    )
+
+    # Sans support des range requests, un .mov dont le `moov` est en fin de fichier
+    # impose à ffmpeg de tout lire avant de connaître les pistes. Sur un gros
+    # fichier c'est inexploitable : mieux vaut échouer tout de suite avec un
+    # message clair que de saturer le lien pendant des heures.
+    no_range_cap = int(os.environ.get("TRANSCRIBE_NO_RANGE_MAX_BYTES", str(8 * 1024**3)))
+    if info.size_bytes and info.size_bytes > no_range_cap and not info.accepts_ranges:
+        raise AudioExtractionError(
+            f"Le stockage ne permet pas la lecture partielle de ce fichier "
+            f"({info.size_bytes / 1024 ** 3:.1f} Go) : traitement impossible."
+        )
+
+    try:
+        extract_audio_16k_mono(
+            audio_url,
+            wav_path,
+            timeout_s=extraction_timeout_s(info.size_bytes),
+            log_prefix=log_prefix,
+        )
+        return wav_path
+    except AudioExtractionError as exc:
+        fallback_cap = int(os.environ.get("TRANSCRIBE_FALLBACK_MAX_BYTES", str(4 * 1024**3)))
+        can_fallback = (
+            info.size_bytes is not None
+            and info.size_bytes <= fallback_cap
+            # 2× la taille : le fichier téléchargé PUIS le WAV extrait doivent tenir.
+            and free_bytes > info.size_bytes * 2 + 512 * 1024**2
+        )
+        if not can_fallback:
+            raise
+
+        print(
+            f"{log_prefix} extraction streaming échouée ({exc}) → repli téléchargement local",
+            flush=True,
+        )
+        src_ext = Path(audio_url.split("?")[0]).suffix or ".mp4"
+        src_path = tmp_path / f"source_{stamp}{src_ext}"
+        _download_file(audio_url, src_path)
+        try:
+            extract_audio_16k_mono(
+                src_path,
+                wav_path,
+                timeout_s=1800,
+                log_prefix=log_prefix,
+            )
+        finally:
+            # Libère le disque AVANT que Whisper charge ses modèles.
+            src_path.unlink(missing_ok=True)
+        return wav_path
 
 
 def _command_parts(command: Any) -> list[str]:
@@ -1365,11 +1457,13 @@ def _handle_transcribe(inp: dict) -> dict[str, Any]:
         tmp_path = Path(tmp)
         stamp = int(time.time() * 1000)
 
-        # 1. Télécharger le fichier audio/vidéo
-        audio_ext = Path(audio_url.split("?")[0]).suffix or ".mp4"
-        audio_path = tmp_path / f"audio_{stamp}{audio_ext}"
-        print(f"[worker/transcribe] Download audio: {audio_url}")
-        _download_file(audio_url, audio_path)
+        # 1. Obtenir l'audio — extraction ffmpeg en streaming depuis l'URL, sans
+        #    jamais poser la vidéo sur le disque du conteneur (quelques Go utiles
+        #    seulement, cf. engine/audio_source.py).
+        print(f"[worker/transcribe] Préparation audio depuis : {audio_url}")
+        audio_path = _prepare_audio_for_transcription(
+            audio_url, tmp_path, stamp, "[worker/transcribe]"
+        )
 
         # 2. Transcrire
         segments = transcribe_with_word_timestamps(
@@ -1447,10 +1541,10 @@ def _handle_transcribe_multilingual(inp: dict) -> dict[str, Any]:
         tmp_path = Path(tmp)
         stamp = int(time.time() * 1000)
 
-        audio_ext = Path(audio_url.split("?")[0]).suffix or ".mp4"
-        audio_path = tmp_path / f"audio_{stamp}{audio_ext}"
-        print(f"[worker/transcribe-multi] Download audio: {audio_url}")
-        _download_file(audio_url, audio_path)
+        print(f"[worker/transcribe-multi] Préparation audio depuis : {audio_url}")
+        audio_path = _prepare_audio_for_transcription(
+            audio_url, tmp_path, stamp, "[worker/transcribe-multi]"
+        )
 
         segments = transcribe_multilingual_with_word_timestamps(
             audio_path=audio_path,
