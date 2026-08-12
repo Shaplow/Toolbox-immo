@@ -24,7 +24,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { selectMediaAssetBySetSequence, buildGroupDiscoveryQuery } from "@/lib/contentLibraryResolver";
+import { selectMediaAssetBySetSequence, buildGroupDiscoveryQuery, preferGroupsWithUnusedAssets } from "@/lib/contentLibraryResolver";
 
 const ASSET = { id: "asset-A", url: "https://r2.test/a.mp4", filename: "a.mp4" };
 const TAG_FRAGMENT = 'lower(ma.tags) ILIKE';
@@ -124,5 +124,92 @@ describe("selectMediaAssetBySetSequence — le tag filtre les 3 chemins de déco
     );
 
     expect(sqlText(mockQueryRaw.mock.calls[0][0])).not.toContain(TAG_FRAGMENT);
+  });
+});
+
+describe("preferGroupsWithUnusedAssets — le neuf d'abord", () => {
+  const neuf = { setTag: "grp-neuf", category: "cat-A", has_unused: true };
+  const epuise = { setTag: "grp-epuise", category: "cat-B", has_unused: false };
+
+  it("ne retient que les groupes contenant du stock jamais servi", () => {
+    expect(preferGroupsWithUnusedAssets([epuise, neuf])).toEqual([neuf]);
+  });
+
+  it("préserve l'ordre d'entrée entre groupes neufs", () => {
+    const neuf2 = { setTag: "grp-neuf-2", category: "cat-C", has_unused: true };
+    expect(preferGroupsWithUnusedAssets([neuf, epuise, neuf2])).toEqual([neuf, neuf2]);
+  });
+
+  it("rend la main au cycle normal quand plus rien n'est neuf", () => {
+    const tous = [epuise, { setTag: "x", category: "cat-D", has_unused: false }];
+    expect(preferGroupsWithUnusedAssets(tous)).toEqual(tous);
+  });
+
+  it("la découverte trie has_unused en premier", () => {
+    const q = buildGroupDiscoveryQuery({
+      libraryId: "lib-1", usageAccountId: "account-1",
+      accessFilter: Prisma.empty, burnFilter: Prisma.empty, tagFrag: Prisma.empty,
+    });
+    const text = sqlText(q);
+    expect(text).toContain("ORDER BY sub2.has_unused DESC");
+    // « jamais servi » se mesure sur l'usage DU COMPTE, pas sur l'agrégat global.
+    expect(text).toContain('mau."lastUsedAt" IS NULL');
+  });
+
+  it("sans compte, `jamais servi` retombe sur l'agrégat global", () => {
+    const text = sqlText(
+      buildGroupDiscoveryQuery({
+        libraryId: "lib-1", accessFilter: Prisma.empty, burnFilter: Prisma.empty, tagFrag: Prisma.empty,
+      }),
+    );
+    expect(text).toContain('ma."lastUsedAt" IS NULL');
+  });
+});
+
+describe("selectMediaAssetBySetSequence — un groupe neuf bat un groupe épuisé", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMediaLibraryFindUnique.mockResolvedValue({
+      setSequence: "[]", maxUsageCount: null, rotationScope: "per_account", rotationMode: "auto",
+    });
+  });
+
+  it("choisit le groupe neuf même quand l'anti-répétition viserait sa catégorie", async () => {
+    // Curseur : la dernière sortie était cat-A — la règle d'alternance voudrait
+    // l'exclure. Mais cat-A est la seule à contenir du stock jamais servi.
+    mockCursorFindUnique.mockResolvedValue({
+      lastUsedCategory: "cat-A", lastUsedSetTag: "grp-neuf", lastAdvancedAt: new Date(),
+    });
+    mockQueryRaw
+      .mockResolvedValueOnce([
+        { setTag: "grp-neuf", category: "cat-A", has_unused: true },
+        { setTag: "grp-epuise", category: "cat-B", has_unused: false },
+      ])
+      .mockResolvedValueOnce([ASSET]);
+
+    const res = await selectMediaAssetBySetSequence(
+      "lib-1", "account-1", undefined, undefined, undefined, undefined, undefined, true,
+    );
+
+    expect(res?.resolvedSetTag).toBe("grp-neuf");
+  });
+
+  it("reprend l'alternance normale quand plus rien n'est neuf", async () => {
+    mockCursorFindUnique.mockResolvedValue({
+      lastUsedCategory: "cat-A", lastUsedSetTag: "grp-1", lastAdvancedAt: new Date(),
+    });
+    mockQueryRaw
+      .mockResolvedValueOnce([
+        { setTag: "grp-1", category: "cat-A", has_unused: false },
+        { setTag: "grp-2", category: "cat-B", has_unused: false },
+      ])
+      .mockResolvedValueOnce([ASSET]);
+
+    const res = await selectMediaAssetBySetSequence(
+      "lib-1", "account-1", undefined, undefined, undefined, undefined, undefined, true,
+    );
+
+    // cat-A vient d'être jouée → exclue.
+    expect(res?.resolvedSetTag).toBe("grp-2");
   });
 });

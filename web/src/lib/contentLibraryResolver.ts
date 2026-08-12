@@ -63,11 +63,29 @@ export function buildAccessFilter(accountId: string | undefined): Prisma.Sql {
  * devait être propagé 7×. Le LPAD numérique a été aligné Media↔Data en W3.1 ;
  * cette constante prévient toute future divergence.
  */
-export const GROUP_DISCOVERY_ORDER_BY = Prisma.sql`
-  ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
-           sub2.group_created_at ASC NULLS LAST,
-           CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
-           sub2."category" ASC NULLS FIRST`;
+const GROUP_DISCOVERY_TIEBREAKERS = Prisma.sql`
+  sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+  sub2.group_created_at ASC NULLS LAST,
+  CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
+  sub2."category" ASC NULLS FIRST`;
+
+export const GROUP_DISCOVERY_ORDER_BY = Prisma.sql`ORDER BY ${GROUP_DISCOVERY_TIEBREAKERS}`;
+
+/**
+ * Media uniquement : les groupes contenant au moins un asset jamais servi à ce
+ * compte passent AVANT tous les autres.
+ *
+ * Sans ce critère, le classement se fait au niveau catégorie
+ * (`MAX(lastUsedAt) PARTITION BY category`) : un groupe entièrement neuf mais
+ * rattaché à une catégorie jouée récemment passait derrière une catégorie plus
+ * ancienne dont tous les assets avaient déjà servi. On resservait donc du
+ * déjà-vu alors que du stock neuf attendait — comportement contre-intuitif
+ * quand on regarde le sélecteur de rushes, qui lui trie par usage.
+ *
+ * Volontairement absent du chemin DataEntry, dont la sémantique de cycle diffère.
+ */
+const GROUP_DISCOVERY_ORDER_BY_UNUSED_FIRST = Prisma.sql`
+  ORDER BY sub2.has_unused DESC, ${GROUP_DISCOVERY_TIEBREAKERS}`;
 
 /**
  * Un curseur a-t-il un historique de rotation ?
@@ -131,15 +149,21 @@ export function buildGroupDiscoveryQuery(opts: {
   const usageJoin = usageAccountId
     ? Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}`
     : Prisma.empty;
+  // « Jamais servi » = aucune ligne d'usage pour ce compte (ou, sans compte,
+  // aucun usage global). Sert de critère de tri primaire.
+  const unusedExpr = usageAccountId
+    ? Prisma.sql`mau."lastUsedAt" IS NULL`
+    : Prisma.sql`ma."lastUsedAt" IS NULL`;
 
   return Prisma.sql`
-    SELECT sub2."setTag", sub2."category"${extraProjected}
+    SELECT sub2."setTag", sub2."category", sub2.has_unused${extraProjected}
     FROM (
-      SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at${extraOuter},
+      SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at, sub1.has_unused${extraOuter},
              MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
       FROM (
         SELECT ma."setTag", ma."category",
                ${lastUsedExpr} AS last_used,
+               COUNT(*) FILTER (WHERE NOT ma."disabled" AND ${unusedExpr}) > 0 AS has_unused,
                MIN(ma."createdAt") AS group_created_at${extraInner}
         FROM "MediaAsset" ma
         ${usageJoin}
@@ -151,7 +175,24 @@ export function buildGroupDiscoveryQuery(opts: {
         HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
       ) sub1
     ) sub2
-    ${GROUP_DISCOVERY_ORDER_BY}`;
+    ${GROUP_DISCOVERY_ORDER_BY_UNUSED_FIRST}`;
+}
+
+/**
+ * Restreint les candidats aux groupes contenant du stock jamais servi.
+ *
+ * Règle produit : tant qu'il reste du neuf pour ce compte, on le sert — quitte à
+ * enchaîner deux vidéos de la même famille. L'anti-répétition (exclusion de la
+ * dernière catégorie) ne s'applique donc plus qu'À L'INTÉRIEUR de ce
+ * sous-ensemble : on garde l'alternance quand elle est possible sans sacrifier
+ * du contenu neuf.
+ *
+ * Retourne `allGroups` inchangé quand plus rien n'est neuf — le cycle reprend
+ * alors son comportement normal (le moins récemment utilisé d'abord).
+ */
+export function preferGroupsWithUnusedAssets<T extends { has_unused?: boolean }>(allGroups: T[]): T[] {
+  const withUnused = allGroups.filter((g) => g.has_unused);
+  return withUnused.length > 0 ? withUnused : allGroups;
 }
 
 function buildDataAccessFilter(accountId: string | undefined): Prisma.Sql {
@@ -837,7 +878,7 @@ export async function selectMediaAssetBySetSequence(
   }
 
   // --- Auto mode: group by (category, setTag), exclude last used category ---
-  type GroupRow = { setTag: string | null; category: string | null };
+  type GroupRow = { setTag: string | null; category: string | null; has_unused?: boolean };
 
   if (effectiveCursorId) {
     if (readOnly) {
@@ -855,7 +896,7 @@ export async function selectMediaAssetBySetSequence(
       // Phase 2 (orphelins) — la clause `(setTag IS NOT NULL OR category IS NOT NULL)`
       // a été retirée : les assets totalement orphelins forment désormais un groupe
       // (null, null) à part entière, traité comme une catégorie normale.
-      const allGroupsRo: Array<{ setTag: string | null; category: string | null }> = await prisma.$queryRaw(
+      const allGroupsRo: GroupRow[] = await prisma.$queryRaw(
         buildGroupDiscoveryQuery({ libraryId, usageAccountId: effectiveCursorId, accessFilter, burnFilter, tagFrag }),
       );
       if (allGroupsRo.length === 0) {
@@ -870,8 +911,10 @@ export async function selectMediaAssetBySetSequence(
           ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
         return fallbackRows[0] ? { ...fallbackRows[0], resolvedSetTag: null, resolvedCategory: null } : null;
       }
-      const eligibleRo = selectEligibleGroups(allGroupsRo, currentCategory, currentSetTag, hasHistory);
-      const candidatesRo = eligibleRo.length > 0 ? eligibleRo : allGroupsRo;
+      // Le neuf d'abord, puis anti-répétition à l'intérieur de ce sous-ensemble.
+      const poolRo = preferGroupsWithUnusedAssets(allGroupsRo);
+      const eligibleRo = selectEligibleGroups(poolRo, currentCategory, currentSetTag, hasHistory);
+      const candidatesRo = eligibleRo.length > 0 ? eligibleRo : poolRo;
       for (const candidate of candidatesRo) {
         const row = await pickFromGroup(candidate.setTag, candidate.category, effectiveCursorId);
         if (row) return { ...row, resolvedSetTag: candidate.setTag, resolvedCategory: candidate.category };
@@ -921,8 +964,10 @@ export async function selectMediaAssetBySetSequence(
 
       if (allGroups.length === 0) return; // handled by fallback below
 
-      const eligible = selectEligibleGroups(allGroups, lockedCategory, lockedSetTag, hasHistory);
-      const candidates = eligible.length > 0 ? eligible : allGroups;
+      // Le neuf d'abord, puis anti-répétition à l'intérieur de ce sous-ensemble.
+      const pool = preferGroupsWithUnusedAssets(allGroups);
+      const eligible = selectEligibleGroups(pool, lockedCategory, lockedSetTag, hasHistory);
+      const candidates = eligible.length > 0 ? eligible : pool;
 
       for (const candidate of candidates) {
         // Inline pickFromGroup using the transaction client
@@ -1022,8 +1067,9 @@ export async function selectMediaAssetBySetSequence(
     return rows[0] ? { ...rows[0], resolvedSetTag: null, resolvedCategory: null } : null;
   }
 
-  // No category exclusion without accountId (no per-account cursor)
-  for (const candidate of allGroups) {
+  // No category exclusion without accountId (no per-account cursor).
+  // Le neuf reste prioritaire (ordonné par la requête, et resserré ici).
+  for (const candidate of preferGroupsWithUnusedAssets(allGroups)) {
     const row = await pickFromGroup(candidate.setTag, candidate.category);
     if (row) {
       return { ...row, resolvedSetTag: candidate.setTag, resolvedCategory: candidate.category };

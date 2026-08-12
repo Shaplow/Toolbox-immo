@@ -37,6 +37,7 @@ import {
   buildBurnFilter,
   buildGroupDiscoveryQuery,
   hasRotationHistory,
+  preferGroupsWithUnusedAssets,
   selectEligibleRotationGroups,
   SHARED_CURSOR_ACCOUNT_ID,
 } from "@/lib/contentLibraryResolver";
@@ -49,6 +50,7 @@ type GroupRow = {
   category: string | null;
   last_used: Date | null;
   group_created_at: Date | null;
+  has_unused: boolean;
   accessible_count: bigint;
 };
 
@@ -259,9 +261,13 @@ function simulateAuto(
   while (remaining.length > 0) {
     // Re-trier remaining selon virtualCatLastUsed + last_used + group_created_at
     remaining.sort((a, b) => compareGroups(a, b, virtualCatLastUsed));
+    // Le neuf d'abord — même règle que le resolver : tant qu'un groupe contient
+    // un asset jamais servi à ce compte, on ne pioche que dans ce sous-ensemble,
+    // et l'anti-répétition ne s'applique qu'à l'intérieur.
+    const pool = preferGroupsWithUnusedAssets(remaining);
     // Sélection éligible (exclusion catégorie ou setTag selon distinct count)
     const eligible = selectEligibleRotationGroups(
-      remaining.map((g) => ({ setTag: g.setTag, category: g.category })),
+      pool.map((g) => ({ setTag: g.setTag, category: g.category })),
       lastCategory,
       lastSetTag,
       hasHistory,
@@ -269,7 +275,7 @@ function simulateAuto(
     // selectEligibleRotationGroups peut retourner des paires (setTag, category)
     // détachées des rows. Re-link via clé pour retrouver le row originel.
     const eligibleKeys = new Set(eligible.map((e) => toGroupKey(e.category, e.setTag)));
-    const pick = remaining.find((g) => eligibleKeys.has(toGroupKey(g.category, g.setTag))) ?? remaining[0];
+    const pick = pool.find((g) => eligibleKeys.has(toGroupKey(g.category, g.setTag))) ?? pool[0];
     if (!pick) break;
     ordered.push(toOrderedPack(pick, ordered.length + 1));
     lastCategory = pick.category;
