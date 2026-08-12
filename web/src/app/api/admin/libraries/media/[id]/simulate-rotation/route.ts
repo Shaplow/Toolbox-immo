@@ -36,6 +36,7 @@ import {
   buildAccessFilter,
   buildBurnFilter,
   buildGroupDiscoveryQuery,
+  hasRotationHistory,
   selectEligibleRotationGroups,
   SHARED_CURSOR_ACCOUNT_ID,
 } from "@/lib/contentLibraryResolver";
@@ -121,7 +122,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   });
   const lastUsedCategory = cursorRow?.lastUsedCategory ?? null;
   const lastUsedSetTag = cursorRow?.lastUsedSetTag ?? null;
-  const hasHistory = cursorRow?.lastAdvancedAt != null;
+  const hasHistory = hasRotationHistory(cursorRow);
 
   const accessFilter = buildAccessFilter(accountId);
   const burnFilter = buildBurnFilter(library.maxUsageCount ?? null, accountId);

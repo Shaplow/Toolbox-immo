@@ -24,7 +24,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { selectMediaAssetBySetSequence } from "@/lib/contentLibraryResolver";
+import { selectMediaAssetBySetSequence, hasRotationHistory } from "@/lib/contentLibraryResolver";
 
 function setupLibrary(rotationMode: string | null, sequence: string[]) {
   mockMediaLibraryFindUnique.mockResolvedValue({
@@ -137,5 +137,24 @@ describe("selectMediaAssetBySetSequence — branchement sur rotationMode", () =>
 
     expect(res?.resolvedSetTag).toBe("grp-1");
     warn.mockRestore();
+  });
+});
+
+describe("hasRotationHistory — arme l'anti-répétition", () => {
+  it("curseur vierge → pas d'historique (aucune exclusion, c'est voulu)", () => {
+    expect(hasRotationHistory(null)).toBe(false);
+    expect(hasRotationHistory({ lastAdvancedAt: null, lastUsedCategory: null, lastUsedSetTag: null })).toBe(false);
+  });
+
+  it("lastAdvancedAt renseigné → historique", () => {
+    expect(hasRotationHistory({ lastAdvancedAt: new Date(), lastUsedCategory: null, lastUsedSetTag: null })).toBe(true);
+  });
+
+  it("curseur legacy (groupe joué mais lastAdvancedAt null) → historique quand même", () => {
+    // Observé en prod : `Behind The Scene / VISITE-3 / lastAdvancedAt=jamais`.
+    // Traité comme « jamais joué », il désactivait toute l'anti-répétition et le
+    // même groupe pouvait ressortir indéfiniment.
+    expect(hasRotationHistory({ lastAdvancedAt: null, lastUsedCategory: "VISITE", lastUsedSetTag: "3" })).toBe(true);
+    expect(hasRotationHistory({ lastAdvancedAt: null, lastUsedCategory: null, lastUsedSetTag: "3" })).toBe(true);
   });
 });

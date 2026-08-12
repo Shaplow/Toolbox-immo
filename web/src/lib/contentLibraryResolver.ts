@@ -70,6 +70,27 @@ export const GROUP_DISCOVERY_ORDER_BY = Prisma.sql`
            sub2."category" ASC NULLS FIRST`;
 
 /**
+ * Un curseur a-t-il un historique de rotation ?
+ *
+ * `hasHistory = false` désactive toute l'anti-répétition (aucun groupe exclu) —
+ * c'est voulu pour un curseur vierge, désastreux sinon : le même groupe peut
+ * alors ressortir à chaque génération.
+ *
+ * `lastAdvancedAt` seul ne suffit pas : des curseurs écrits avant l'ajout de ce
+ * champ portent un `lastUsedCategory` / `lastUsedSetTag` renseigné avec
+ * `lastAdvancedAt` à null. Les traiter comme « jamais joués » gelait
+ * l'anti-répétition sur ces comptes.
+ */
+export function hasRotationHistory(cursor: {
+  lastAdvancedAt?: Date | null;
+  lastUsedCategory?: string | null;
+  lastUsedSetTag?: string | null;
+} | null | undefined): boolean {
+  if (!cursor) return false;
+  return cursor.lastAdvancedAt != null || cursor.lastUsedCategory != null || cursor.lastUsedSetTag != null;
+}
+
+/**
  * Découverte des groupes `(category, setTag)` d'une bibliothèque média.
  *
  * Le corps de cette requête était recopié sur 4 sites (3 dans ce fichier + la
@@ -830,7 +851,7 @@ export async function selectMediaAssetBySetSequence(
       });
       const currentCategory = cursorRow?.lastUsedCategory ?? null;
       const currentSetTag = cursorRow?.lastUsedSetTag ?? null;
-      const hasHistory = cursorRow?.lastAdvancedAt != null;
+      const hasHistory = hasRotationHistory(cursorRow);
       // Phase 2 (orphelins) — la clause `(setTag IS NOT NULL OR category IS NOT NULL)`
       // a été retirée : les assets totalement orphelins forment désormais un groupe
       // (null, null) à part entière, traité comme une catégorie normale.
@@ -881,7 +902,7 @@ export async function selectMediaAssetBySetSequence(
       );
       const lockedCategory = locked[0]?.lastUsedCategory ?? null;
       const lockedSetTag = locked[0]?.lastUsedSetTag ?? null;
-      const hasHistory = locked[0]?.lastAdvancedAt != null;
+      const hasHistory = hasRotationHistory(locked[0]);
 
       // Group discovery inside the transaction.
       // Primary sort: category-level staleness (MAX last_used across all sets in the category)
@@ -1495,10 +1516,17 @@ export async function advanceLibraryCursorsOnSubmit(
           data: { cursor: nextCursor, lastUsedSetTag: selectedSetTag, lastAdvancedAt: new Date() },
         });
       } else {
-        // Auto mode: trust submitted category/setTag from the read-only prefill
+        // Auto mode: trust submitted category/setTag from the read-only prefill.
+        //
+        // Pas d'early return quand les deux sont null : c'est le groupe orphelin
+        // `(null, null)`, un groupe de rotation de plein droit depuis Phase 2. Ne
+        // rien écrire avait deux effets : `lastAdvancedAt` restait null (donc
+        // `hasHistory` false → anti-répétition jamais armée), et le curseur
+        // gardait l'ANCIEN groupe en `lastUsedCategory` → l'orphelin pouvait
+        // ressortir à la génération suivante. C'est le pendant Media du fix C3
+        // déjà appliqué à `advanceDataLibraryCursorOnSubmit`.
         const submittedCategory = submittedCategoryByLibrary[lib.id] ?? null;
         const submittedSetTag = submittedSetTagByLibrary[lib.id] ?? null;
-        if (!submittedCategory && !submittedSetTag) return;
 
         const locked = await tx.$queryRaw<{ lastUsedCategory: string | null; lastUsedSetTag: string | null }[]>(
           Prisma.sql`SELECT "lastUsedCategory", "lastUsedSetTag" FROM "AccountLibraryCursor" WHERE "accountId" = ${cursorAccountId} AND "libraryId" = ${lib.id} FOR UPDATE`,
