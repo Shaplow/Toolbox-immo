@@ -290,6 +290,11 @@ export default async function GeneratePage({ params, searchParams }: Props) {
             autoSubmit={autoMode}
             instagramAccounts={instagramAccounts}
             templateNeedsAccount={templateNeedsAccount}
+            /* Portés explicitement : `libraryPrefillContext` est undefined quand
+               le template n'a aucun binding bibliothèque, et perd `slotId` au
+               changement de compte — le rendu partait alors sans compte ni slot. */
+            accountId={accountId}
+            slotId={slotId}
           />
         </div>
       </div>

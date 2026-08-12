@@ -14,6 +14,7 @@
  * Réponse :
  * {
  *   rotationScope: "per_account" | "shared",
+ *   rotationMode: "auto" | "override" | "none",      // mode EFFECTIF (resolveRotationMode)
  *   cursor: { value, position, totalSlots } | null,  // override mode uniquement
  *   ordered: [
  *     { rank, key, setTag, category, accessibleCount, lastUsedAtForAccount },
@@ -30,13 +31,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { canViewMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import {
   buildAccessFilter,
   buildBurnFilter,
-  GROUP_DISCOVERY_ORDER_BY,
+  buildGroupDiscoveryQuery,
   selectEligibleRotationGroups,
   SHARED_CURSOR_ACCOUNT_ID,
 } from "@/lib/contentLibraryResolver";
+import { resolveRotationMode } from "@/lib/rotation/rotationMode";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -71,6 +74,10 @@ export async function GET(req: NextRequest, { params }: Params) {
   const { id: libraryId } = await params;
   const { searchParams } = new URL(req.url);
   const accountId = searchParams.get("accountId") ?? undefined;
+  // Le bloc qui consomme la bibliothèque filtre souvent par tag (RPI, RVA4…).
+  // Sans ce paramètre, la simulation classerait les groupes tous tags confondus
+  // et cesserait de refléter ce que la production va choisir.
+  const tag = searchParams.get("tag")?.trim() || undefined;
 
   if (!accountId) {
     return NextResponse.json(
@@ -85,6 +92,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       id: true,
       rotationScope: true,
       setSequence: true,
+      rotationMode: true,
       maxUsageCount: true,
     },
   });
@@ -103,12 +111,9 @@ export async function GET(req: NextRequest, { params }: Params) {
   const isShared = library.rotationScope === "shared";
   const cursorAccountId = isShared ? SHARED_CURSOR_ACCOUNT_ID : accountId;
 
-  let sequence: string[] = [];
-  try {
-    sequence = (JSON.parse(library.setSequence) as string[]).filter(Boolean);
-  } catch {
-    sequence = [];
-  }
+  // Même discriminant que le resolver — sinon la simulation cesse d'être un
+  // oracle fidèle de ce que la production va réellement choisir.
+  const { mode: rotationMode, sequence } = resolveRotationMode(library, "simulate-rotation");
 
   const cursorRow = await prisma.accountLibraryCursor.findUnique({
     where: { accountId_libraryId: { accountId: cursorAccountId, libraryId } },
@@ -120,33 +125,27 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const accessFilter = buildAccessFilter(accountId);
   const burnFilter = buildBurnFilter(library.maxUsageCount ?? null, accountId);
+  const tagFrag: Prisma.Sql = tag
+    ? Prisma.sql`AND lower(ma.tags) ILIKE ${`%"${tag.toLowerCase()}"%`}`
+    : Prisma.empty;
 
-  // Group discovery — identique au resolver. Inclut accessible_count pour
-  // l'UI (afficher le nombre d'assets dispos dans chaque pack).
-  const groups: GroupRow[] = await prisma.$queryRaw`
-    SELECT sub2."setTag", sub2."category", sub2.last_used, sub2.group_created_at, sub2.accessible_count
-    FROM (
-      SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at, sub1.accessible_count,
-             MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
-      FROM (
-        SELECT ma."setTag", ma."category",
-               MAX(mau."lastUsedAt") AS last_used,
-               MIN(ma."createdAt") AS group_created_at,
-               COUNT(*) FILTER (WHERE NOT ma."disabled") AS accessible_count
-        FROM "MediaAsset" ma
-        LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${cursorAccountId}
-        WHERE ma."libraryId" = ${libraryId}
-          ${accessFilter}
-          ${burnFilter}
-        GROUP BY ma."setTag", ma."category"
-        HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
-      ) sub1
-    ) sub2
-    ${GROUP_DISCOVERY_ORDER_BY}`;
+  // Group discovery — strictement la même requête que le resolver (helper
+  // partagé). Inclut accessible_count pour l'UI (nombre d'assets dispos par pack).
+  const groups: GroupRow[] = await prisma.$queryRaw(
+    buildGroupDiscoveryQuery({
+      libraryId,
+      usageAccountId: cursorAccountId,
+      accessFilter,
+      burnFilter,
+      tagFrag,
+      withAccessibleCount: true,
+    }),
+  );
 
   if (groups.length === 0) {
     return NextResponse.json({
       rotationScope: library.rotationScope ?? "per_account",
+      rotationMode,
       cursor:
         sequence.length > 0
           ? {
@@ -164,11 +163,12 @@ export async function GET(req: NextRequest, { params }: Params) {
     });
   }
 
-  // --- Override mode (setSequence non vide) ---
-  if (sequence.length > 0) {
+  // --- Override mode (rotationMode="override" + séquence non vide) ---
+  if (rotationMode === "override") {
     const ordered = simulateOverride(sequence, groups, cursorRow?.cursor ?? 0);
     return NextResponse.json({
       rotationScope: library.rotationScope ?? "per_account",
+      rotationMode,
       cursor: {
         value: cursorRow?.cursor ?? 0,
         position: ((cursorRow?.cursor ?? 0) % sequence.length) + 1,
@@ -185,6 +185,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   return NextResponse.json({
     rotationScope: library.rotationScope ?? "per_account",
+    rotationMode,
     cursor: null,
     ordered,
     cycleSize: ordered.length,

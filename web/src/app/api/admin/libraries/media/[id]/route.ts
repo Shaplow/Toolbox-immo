@@ -4,6 +4,7 @@ import { canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
 import { normalizeCustomFields, validateCustomFields, serializeCustomFields } from "@/lib/customFields";
+import { normalizeStringArrayInput } from "@/lib/apiInput";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -15,13 +16,22 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; rotationScope?: string; rotationMode?: string | null; metadataSchema?: unknown; maxUsageCount?: number | null };
+  const body = await req.json() as { name?: string; description?: string; tags?: string[] | string; setSequence?: string[] | string; rotationScope?: string; rotationMode?: string | null; metadataSchema?: unknown; maxUsageCount?: number | null };
 
   const data: Record<string, unknown> = {};
   if (body.name?.trim()) data.name = body.name.trim();
   if (body.description !== undefined) data.description = body.description?.trim() ?? null;
-  if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
-  if (Array.isArray(body.setSequence)) data.setSequence = JSON.stringify(body.setSequence);
+  // `tags` / `setSequence` : tableau ou string JSON acceptés, tout le reste
+  // rejeté en 400. Historiquement ces deux champs étaient ignorés en silence
+  // quand ils n'étaient pas des tableaux — la route répondait 200 sans écrire,
+  // ce qui a gelé la `setSequence` de toutes les bibliothèques (bug rotation).
+  const parsedTags = normalizeStringArrayInput(body.tags, "tags");
+  if (!parsedTags.ok) return NextResponse.json({ error: parsedTags.error }, { status: 400 });
+  if (parsedTags.value !== undefined) data.tags = JSON.stringify(parsedTags.value);
+
+  const parsedSequence = normalizeStringArrayInput(body.setSequence, "setSequence");
+  if (!parsedSequence.ok) return NextResponse.json({ error: parsedSequence.error }, { status: 400 });
+  if (parsedSequence.value !== undefined) data.setSequence = JSON.stringify(parsedSequence.value);
   if (body.rotationScope === "per_account" || body.rotationScope === "shared") {
     data.rotationScope = body.rotationScope;
   }

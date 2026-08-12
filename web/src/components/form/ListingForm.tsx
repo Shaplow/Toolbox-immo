@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { UNSECTIONED_FORM_SECTION_ID, computeSectionFieldStyles, getFieldPlacementClass, getFieldSpanClass, getFormSectionGridClass, getFormSectionSpanClass, getSectionFieldsInVisualOrder, buildVisibleFormSections } from "@/lib/formSections";
 import type { SchemaField, TemplateFormSection } from "@/types/template";
 import type { LibraryPrefillContext, LibraryAssetOption, MetadataDrivenLink } from "@/types/libraryPrefill";
+import { buildRenderRequestBody } from "@/lib/generate/buildRenderRequestBody";
 import { LibraryFieldInput } from "@/components/form/LibraryPicker";
 import { FieldInput } from "@/components/form/FieldInputs";
 import { ListingFormVariantCard } from "@/components/form/ListingFormVariantCard";
@@ -31,6 +32,11 @@ interface Props {
   /** Vrai si le prefill SSR a été bloqué car le template utilise une lib et aucun accountId
    *  n'était connu. Le form doit bloquer le bouton Générer jusqu'à sélection + fetch. */
   templateNeedsAccount?: boolean;
+  /** Compte IG dérivé par la page (query string ou slot). Porté explicitement, et
+   *  non via `libraryPrefillContext` qui est absent sans binding bibliothèque. */
+  accountId?: string;
+  /** Slot de publication d'origine. Même raison : indépendant du contexte de prefill. */
+  slotId?: string;
 }
 
 type Variant = {
@@ -55,57 +61,15 @@ function resolveInitialFieldValue(field: SchemaField, initialValue: unknown): un
   return "";
 }
 
-function buildUsedAssets(
-  ctx: LibraryPrefillContext,
-  selections: Record<string, LibraryAssetOption | null>,
-): {
-  videoAssets?: Record<string, string>;
-  audioAssetId?: string;
-  dataEntryId?: string;
-  /** resolvedSetTag from the DataEntry group selection — drives AccountDataLibraryCursor advance. */
-  dataResolvedSetTag?: string | null;
-  /** resolvedCategory from the DataEntry group selection — drives AccountDataLibraryCursor advance. */
-  dataResolvedCategory?: string | null;
-  setSequencedLibraryIds?: string[];
-  usedSetTagByLibrary?: Record<string, string>;
-  usedCategoryByLibrary?: Record<string, string>;
-  prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string };
-} | undefined {
-  const fieldMap = ctx.fieldLibraryMap ?? {};
-  const videoAssets: Record<string, string> = {};
-  let audioAssetId: string | undefined;
-  for (const [fieldKey, meta] of Object.entries(fieldMap)) {
-    const sel = selections[fieldKey];
-    if (!sel) continue;
-    if (meta.type === "video") {
-      videoAssets[meta.blockId] = sel.id;
-    } else {
-      audioAssetId = sel.id;
-    }
-  }
-  const hasVideo = Object.keys(videoAssets).length > 0;
-  const hasAny = hasVideo || audioAssetId || ctx.dataSuggestion?.entryId;
-  if (!hasAny) return undefined;
-  return {
-    videoAssets: hasVideo ? videoAssets : undefined,
-    audioAssetId,
-    dataEntryId: ctx.dataSuggestion?.entryId,
-    dataResolvedSetTag: ctx.dataSuggestion?.resolvedSetTag,
-    dataResolvedCategory: ctx.dataSuggestion?.resolvedCategory,
-    setSequencedLibraryIds: ctx.setSequencedLibraryIds?.length ? ctx.setSequencedLibraryIds : undefined,
-    usedSetTagByLibrary: ctx.usedSetTagByLibrary && Object.keys(ctx.usedSetTagByLibrary).length > 0 ? ctx.usedSetTagByLibrary : undefined,
-    usedCategoryByLibrary: ctx.usedCategoryByLibrary && Object.keys(ctx.usedCategoryByLibrary).length > 0 ? ctx.usedCategoryByLibrary : undefined,
-    prevDataEntryState: ctx.prevDataEntryState ?? undefined,
-  };
-}
-
-export function ListingForm({ templateId, currentUserId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext: initialLibraryPrefillContext, autoSubmit, instagramAccounts = [], templateNeedsAccount = false }: Props) {
+export function ListingForm({ templateId, currentUserId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext: initialLibraryPrefillContext, autoSubmit, instagramAccounts = [], templateNeedsAccount = false, accountId: accountIdProp, slotId: slotIdProp }: Props) {
   // Phase 2.3 : prefill contexte — peut être chargé côté client après sélection IG.
   const [libraryPrefillContext, setLibraryPrefillContext] = useState<LibraryPrefillContext | undefined>(
     initialLibraryPrefillContext,
   );
+  // `accountId` vient de la page (query string ou slot) et NON du contexte de
+  // prefill, qui est absent quand le template n'utilise aucune bibliothèque.
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
-    initialLibraryPrefillContext?.selectedAccountId ?? "",
+    accountIdProp ?? initialLibraryPrefillContext?.selectedAccountId ?? "",
   );
   const [prefillLoading, setPrefillLoading] = useState(false);
 
@@ -124,6 +88,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const autoSubmitFiredRef = useRef(false);
+  const autoSubmitBlockedNotifiedRef = useRef(false);
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     Object.fromEntries(schema.map((field) => [field.key, resolveInitialFieldValue(field, initialValues?.[field.key])]))
   );
@@ -158,9 +123,9 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accountId,
-          // slotId/listingId ne sont pas connus côté client dans ce contexte
-          // (la page les a déjà utilisés pour les champs — pas de double-fetch).
-          slotId: null,
+          // `slotId` est porté en prop : sans lui, changer de compte faisait
+          // perdre le rattachement du rendu à sa publication.
+          slotId: slotIdProp ?? null,
           listingId: null,
           initialValues: values,
         }),
@@ -412,15 +377,29 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
     [values, visibleRequiredFields]
   );
 
-  // Auto-submit on mount when autoSubmit=true
+  // Le bouton Générer applique ce garde ; l'auto-submit l'ignorait, si bien
+  // qu'un template `generationMode: "auto"` partait sans compte — formulaire
+  // masqué, donc personne ne le voyait. Le rendu était alors créé sans
+  // `accountId`, et la rotation par compte n'enregistrait aucun usage.
+  const autoSubmitBlocked = Boolean(autoSubmit && templateNeedsAccount && !libraryPrefillContext);
+
   useEffect(() => {
-    if (autoSubmit && !autoSubmitFiredRef.current) {
+    if (autoSubmitBlocked && !autoSubmitBlockedNotifiedRef.current) {
+      autoSubmitBlockedNotifiedRef.current = true;
+      toast.info("Sélectionne un compte Instagram pour lancer la génération automatique.");
+    }
+  }, [autoSubmitBlocked]);
+
+  // Auto-submit on mount when autoSubmit=true (et une fois débloqué si l'user
+  // vient de choisir un compte).
+  useEffect(() => {
+    if (autoSubmit && !autoSubmitBlocked && !autoSubmitFiredRef.current) {
       autoSubmitFiredRef.current = true;
       // Small delay so state settles before submitting
       const t = setTimeout(() => formRef.current?.requestSubmit(), 50);
       return () => clearTimeout(t);
     }
-  }, [autoSubmit]);
+  }, [autoSubmit, autoSubmitBlocked]);
 
   // Cleanup all intervals and SSE on unmount
   useEffect(() => {
@@ -545,13 +524,16 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
       const renderRes = await fetch("/api/renders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          templateId,
-          listingId,
-          usedAssets: libraryPrefillContext ? buildUsedAssets(libraryPrefillContext, librarySelections) : undefined,
-          accountId: libraryPrefillContext?.selectedAccountId ?? undefined,
-          publicationSlotId: libraryPrefillContext?.slotId ?? undefined,
-        }),
+        body: JSON.stringify(
+          buildRenderRequestBody({
+            templateId,
+            listingId,
+            accountId: selectedAccountId || accountIdProp,
+            slotId: slotIdProp,
+            context: libraryPrefillContext,
+            selections: librarySelections,
+          }),
+        ),
       });
       const renderContentType = renderRes.headers.get("content-type") ?? "";
       let render: { id?: string; error?: string } = {};
@@ -610,7 +592,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   return (
     <div className="grid gap-6 md:grid-cols-4 items-start">
       {/* ── Form ─────────────────────────────────────────────────────────── */}
-      {autoSubmit && variants.length === 0 && submitErrors.length === 0 ? (
+      {autoSubmit && !autoSubmitBlocked && variants.length === 0 && submitErrors.length === 0 ? (
         <div className="md:col-span-4 flex flex-col items-center justify-center gap-4 py-24">
           <div className="h-10 w-10 rounded-full border-4 border-warning-600 border-t-transparent animate-spin" />
           <p className="text-[13px] text-muted-foreground">Génération automatique en cours…</p>
@@ -629,7 +611,9 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           </button>
         </div>
       ) : null}
-      <form ref={formRef} onSubmit={handleGenerate} className={`min-w-0 space-y-6 order-2 md:order-none md:col-span-3 ${autoSubmit ? "hidden" : ""}`}>
+      {/* Le formulaire reste visible quand l'auto-submit est bloqué : c'est la
+          seule surface qui porte le sélecteur de compte. */}
+      <form ref={formRef} onSubmit={handleGenerate} className={`min-w-0 space-y-6 order-2 md:order-none md:col-span-3 ${autoSubmit && !autoSubmitBlocked ? "hidden" : ""}`}>
         {/* ── Sélecteur compte Instagram (Phase 2.3) ─────────────────────────
             Cas 1 — templateNeedsAccount && !libraryPrefillContext :
               Prefill bloqué. Afficher Alert bloquant + Select compte.

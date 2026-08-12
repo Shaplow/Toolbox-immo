@@ -561,7 +561,13 @@ async function resolveMusicConfig(
  */
 async function loadPrefillAssets(
   renderId: string,
-): Promise<{ videoAssets: Record<string, string>; audioAssetId: string | null }> {
+): Promise<{
+  videoAssets: Record<string, string>;
+  audioAssetId: string | null;
+  /** Groupes déjà réclamés au submit par `advanceLibraryCursorsOnSubmit`, par libraryId. */
+  claimedSetTagByLibrary: Record<string, string>;
+  claimedCategoryByLibrary: Record<string, string>;
+}> {
   try {
     const renderRow = await prisma.render.findUnique({
       where: { id: renderId },
@@ -570,13 +576,17 @@ async function loadPrefillAssets(
     const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as {
       videoAssets?: Record<string, string>;
       audioAssetId?: string;
+      usedSetTagByLibrary?: Record<string, string>;
+      usedCategoryByLibrary?: Record<string, string>;
     };
     return {
       videoAssets: ua.videoAssets ?? {},
       audioAssetId: ua.audioAssetId ?? null,
+      claimedSetTagByLibrary: ua.usedSetTagByLibrary ?? {},
+      claimedCategoryByLibrary: ua.usedCategoryByLibrary ?? {},
     };
   } catch {
-    return { videoAssets: {}, audioAssetId: null };
+    return { videoAssets: {}, audioAssetId: null, claimedSetTagByLibrary: {}, claimedCategoryByLibrary: {} };
   }
 }
 
@@ -1413,6 +1423,21 @@ async function resolveSlotVideoUrl(
     if (strategy === "theme_sequence") {
       // Phase 4 : passe slot.maxDuration comme minimum requis pour l'asset.
       const slotMinDuration = slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined;
+      // Le curseur a DÉJÀ été avancé au submit (advanceLibraryCursorsOnSubmit).
+      // Le groupe réclamé est réinjecté ici en `pinnedSetTag` : la branche pinned
+      // du resolver retourne sans jamais toucher au curseur. Repasser par une
+      // sélection écrivante avançait le curseur une seconde fois, et le
+      // `prevCursorState` renvoyé était jeté — l'avance devenait non revertable.
+      //
+      // `readOnly` ne couvre PAS ce cas à lui seul : le claim ayant déplacé le
+      // curseur de C à C+1, une relecture servirait `sequence[C+1]`, décalée d'un
+      // cran par rapport à ce qui a été réservé. Il ne sert que de filet quand
+      // aucun claim n'existe (rendu sans compte, chemin interne).
+      if (!pinnedSetTag) {
+        console.warn(
+          `[resolveSlotVideoUrl] slot=${slot.id} lib=${slot.libraryId} : aucun groupe réclamé au submit — sélection en lecture seule.`,
+        );
+      }
       const asset = await selectMediaAssetBySetSequence(
         slot.libraryId,
         accountId ?? undefined,
@@ -1421,7 +1446,7 @@ async function resolveSlotVideoUrl(
         pinnedCategory,
         ruleConfig,
         undefined,  // cursorAccountId
-        false,      // readOnly (claim au submit comme avant)
+        true,       // readOnly — le claim a eu lieu au submit
         slotMinDuration,
       );
       if (asset) {
@@ -1622,8 +1647,12 @@ async function generateSequenceRender(
     // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
     // Using these prevents re-querying the library at render time, which would
     // double-advance the rotation cursor and render different content than shown in the form.
-    const { videoAssets: prefillVideoAssets, audioAssetId: prefillAudioAssetId } =
-      await loadPrefillAssets(renderId);
+    const {
+      videoAssets: prefillVideoAssets,
+      audioAssetId: prefillAudioAssetId,
+      claimedSetTagByLibrary,
+      claimedCategoryByLibrary,
+    } = await loadPrefillAssets(renderId);
 
     // 1. Résoudre les URLs vidéo de chaque slot
     await updateRenderTracking(renderId, {
@@ -1635,8 +1664,11 @@ async function generateSequenceRender(
 
     // Résolution séquentielle pour propager le pinnedSetTag entre slots d'une même bibliothèque
     // (ex : intro → outro dans la même prise doivent rester dans le même set).
-    const localPinnedSetTagByLibrary: Record<string, string> = {};
-    const localPinnedCategoryByLibrary: Record<string, string> = {};
+    // Amorcés avec les groupes DÉJÀ réclamés au submit : le rendu reste dans le
+    // groupe réservé et le resolver prend sa branche pinned, qui ne touche pas
+    // au curseur (sinon il avancerait une seconde fois).
+    const localPinnedSetTagByLibrary: Record<string, string> = { ...claimedSetTagByLibrary };
+    const localPinnedCategoryByLibrary: Record<string, string> = { ...claimedCategoryByLibrary };
     const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
     const allBlocks = templateJson.blocks ?? [];
     for (const slot of slots) {
@@ -1843,8 +1875,12 @@ async function generateSequenceRenderLocal(
     // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
     // Using these prevents re-querying the library at render time, which would
     // double-advance the rotation cursor and render different content than shown in the form.
-    const { videoAssets: prefillVideoAssets, audioAssetId: prefillAudioAssetId } =
-      await loadPrefillAssets(renderId);
+    const {
+      videoAssets: prefillVideoAssets,
+      audioAssetId: prefillAudioAssetId,
+      claimedSetTagByLibrary,
+      claimedCategoryByLibrary,
+    } = await loadPrefillAssets(renderId);
 
     // Resolve slots
     await updateRenderTracking(renderId, {
@@ -1855,8 +1891,11 @@ async function generateSequenceRenderLocal(
     });
 
     // Résolution séquentielle pour propager le pinnedSetTag entre slots d'une même bibliothèque
-    const localPinnedSetTagByLibrary: Record<string, string> = {};
-    const localPinnedCategoryByLibrary: Record<string, string> = {};
+    // Amorcés avec les groupes DÉJÀ réclamés au submit : le rendu reste dans le
+    // groupe réservé et le resolver prend sa branche pinned, qui ne touche pas
+    // au curseur (sinon il avancerait une seconde fois).
+    const localPinnedSetTagByLibrary: Record<string, string> = { ...claimedSetTagByLibrary };
+    const localPinnedCategoryByLibrary: Record<string, string> = { ...claimedCategoryByLibrary };
     const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
     const allBlocksLocal = templateJson.blocks ?? [];
     for (const slot of slots) {

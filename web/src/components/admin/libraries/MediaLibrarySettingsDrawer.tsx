@@ -24,6 +24,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
 import { useConfirm } from "@/components/ui/useConfirm";
+import { declaredRotationMode } from "@/lib/rotation/rotationMode";
 import { toast } from "@/components/ui/Toast";
 import {
   ChevronDown,
@@ -82,16 +83,10 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
   const [name, setName] = useState(library?.name ?? "");
   const [description, setDescription] = useState(library?.description ?? "");
   const [tagsCsv, setTagsCsv] = useState(initialTags.join(", "));
-  // Mode rotation. Si library.rotationMode est défini explicitement, on l'utilise.
-  // Sinon back-compat : déduit depuis setSequence (vide=auto, rempli=override).
+  // Mode rotation déclaré (intention). `declaredRotationMode` gère la
+  // back-compat `rotationMode === null` en la déduisant de setSequence.
   const [rotationMode, setRotationMode] = useState<"auto" | "override" | "none">(
-    library?.rotationMode === "none"
-      ? "none"
-      : library?.rotationMode === "override"
-        ? "override"
-        : library?.rotationMode === "auto"
-          ? "auto"
-          : initialSeq.length > 0 ? "override" : "auto",
+    declaredRotationMode({ rotationMode: library?.rotationMode ?? null, setSequence: initialSeq }),
   );
   const [rotationScope, setRotationScope] = useState<"per_account" | "shared">(
     library?.rotationScope === "shared" ? "shared" : "per_account",
@@ -176,15 +171,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
       setTagsCsv(t.join(", "));
       const s = parseStringArray(library.setSequence);
       setSequence(s);
-      setRotationMode(
-        library.rotationMode === "none"
-          ? "none"
-          : library.rotationMode === "override"
-            ? "override"
-            : library.rotationMode === "auto"
-              ? "auto"
-              : s.length > 0 ? "override" : "auto",
-      );
+      setRotationMode(declaredRotationMode({ rotationMode: library.rotationMode ?? null, setSequence: s }));
       setRotationScope(library.rotationScope === "shared" ? "shared" : "per_account");
       setMetadataFields(normalizeCustomFields(library.metadataSchema));
       setMaxUsageCount(library.maxUsageCount != null ? String(library.maxUsageCount) : "");
@@ -243,12 +230,17 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
     setSaving(true);
     try {
       const tagsList = tagsCsv.split(",").map((t) => t.trim()).filter(Boolean);
-      const finalSeq = rotationMode === "override" ? sequence : [];
+      // `setSequence` est la CONFIG du mode « Ordre fixe », pas le discriminant
+      // du mode : c'est `rotationMode` qui décide (cf. resolveRotationMode).
+      // On conserve donc l'ordre saisi même en mode auto, pour qu'un retour en
+      // « Ordre fixe » retrouve la séquence de l'utilisateur.
       const payload = {
         name: name.trim(),
         description: description.trim() || null,
-        tags: JSON.stringify(tagsList),
-        setSequence: JSON.stringify(finalSeq),
+        // Tableaux bruts : la route les sérialise elle-même. Envoyer une string
+        // ici les faisait silencieusement ignorer côté serveur.
+        tags: tagsList,
+        setSequence: sequence,
         rotationScope,
         rotationMode,
         maxUsageCount: parsedMax,
@@ -344,6 +336,16 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
                   ? "Vous définissez l'ordre exact des groupes ci-dessous. Le moteur cycle dessus sans dévier."
                   : "Pas de rotation auto. La sélection se fait via un champ du formulaire de génération (metadata) — vous choisissez vous-même quel asset utiliser."}
             </p>
+            {rotationMode === "override" && sequence.length === 0 && (
+              <p className="text-[10.5px] text-warning-700 mt-1.5 leading-relaxed">
+                Aucun groupe dans la séquence : le moteur tourne en mode Auto tant que vous n&apos;en ajoutez pas.
+              </p>
+            )}
+            {rotationMode === "auto" && sequence.length > 0 && (
+              <p className="text-[10.5px] text-muted-foreground mt-1.5 leading-relaxed">
+                L&apos;ordre fixe défini plus bas ({sequence.length} groupe{sequence.length > 1 ? "s" : ""}) est conservé mais ignoré en mode Auto.
+              </p>
+            )}
           </FormField>
           <FormField label="Comment ils tournent" help="Indépendant : chaque compte avance dans son propre cycle. Partagé : tous les comptes consomment le même.">
             <div className="flex gap-1.5">

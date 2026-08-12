@@ -382,6 +382,33 @@ export async function POST(req: NextRequest) {
       if (account) validatedAccountId = account.id;
     }
 
+    // Garde rotation : une génération qui consomme une bibliothèque en rotation
+    // `per_account` DOIT porter un compte. Sans lui, `recordLibraryUsage`
+    // n'écrit aucune ligne `MediaAssetUsage` (elle est conditionnée à
+    // `render.accountId`) : l'asset est consommé mais reste « jamais utilisé »
+    // du point de vue du compte, et ressort en tête de la rotation suivante.
+    //
+    // Volontairement chirurgical : `PublicationSlot.accountId` est légitimement
+    // nullable (missions sans compte) et les bibliothèques `shared` tournent
+    // très bien sans compte, via les sentinelles de curseur.
+    if (!validatedAccountId && sanitizedUsedAssets?.setSequencedLibraryIds?.length) {
+      const perAccountLibs = await prisma.mediaLibrary.count({
+        where: {
+          id: { in: sanitizedUsedAssets.setSequencedLibraryIds },
+          rotationScope: { not: "shared" },
+        },
+      });
+      if (perAccountLibs > 0) {
+        console.error(
+          `[renders] refus : ${perAccountLibs} bibliothèque(s) en rotation par compte mais aucun accountId (template=${templateId}).`,
+        );
+        return NextResponse.json(
+          { error: "Un compte Instagram est requis : ce template consomme une bibliothèque dont la rotation est propre à chaque compte." },
+          { status: 400 },
+        );
+      }
+    }
+
     // Validate publicationSlotId if provided.
     //
     // Un slot accumule un historique de rendus : le nouveau est TOUJOURS rattaché.

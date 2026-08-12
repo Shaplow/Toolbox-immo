@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { canViewMediaLibrary, canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
+import { normalizeStringArrayInput } from "@/lib/apiInput";
 
 // GET /api/admin/libraries/media — liste les MediaLibrary (+ asset count)
 // Supporte ?type=video|audio pour filtrer. Lecture : tous les rôles médiathèque
@@ -52,8 +53,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
-  const body = await req.json() as { name?: string; type?: string; tags?: string[]; description?: string; setSequence?: string[] };
-  const { name, type, tags = [], description, setSequence = [] } = body;
+  const body = await req.json() as { name?: string; type?: string; tags?: string[] | string; description?: string; setSequence?: string[] | string };
+  const { name, type, description } = body;
 
   if (!name?.trim()) {
     return NextResponse.json({ error: "Le nom est requis" }, { status: 400 });
@@ -61,6 +62,14 @@ export async function POST(req: NextRequest) {
   if (type !== "video" && type !== "audio") {
     return NextResponse.json({ error: "Le type doit être 'video' ou 'audio'" }, { status: 400 });
   }
+  // Même normalisation qu'au PATCH : sans elle, une string JSON serait
+  // double-encodée par le `JSON.stringify` ci-dessous.
+  const parsedTags = normalizeStringArrayInput(body.tags, "tags");
+  if (!parsedTags.ok) return NextResponse.json({ error: parsedTags.error }, { status: 400 });
+  const parsedSequence = normalizeStringArrayInput(body.setSequence, "setSequence");
+  if (!parsedSequence.ok) return NextResponse.json({ error: parsedSequence.error }, { status: 400 });
+  const tags = parsedTags.value ?? [];
+  const setSequence = parsedSequence.value ?? [];
 
   try {
     const library = await prisma.mediaLibrary.create({

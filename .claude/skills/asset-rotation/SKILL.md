@@ -26,7 +26,8 @@ ensuring variety across consecutive generations while respecting per-account iso
 | **Set** | `MediaAsset.setTag` | Assets filmed together (intro + outro). The rotation unit within a family. |
 | **Category** | `MediaAsset.category` | Family of sets — same model, shoot day, or location. Used for consecutive exclusion. |
 | **Group** | `(category, setTag)` pair | The actual rotation unit. Two sets can share a setTag but differ in category → treated as separate groups. |
-| **Override list** | `MediaLibrary.setSequence` | Optional JSON `string[]`. When non-empty, the admin controls exact rotation order. |
+| **Mode** | `MediaLibrary.rotationMode` | `auto` \| `override` \| `none`. **Seule source de vérité du mode** — voir `web/src/lib/rotation/rotationMode.ts`. |
+| **Override list** | `MediaLibrary.setSequence` | JSON `string[]`. Config du mode `override` uniquement. Conservée (jamais effacée) quand le mode est `auto`. Ne décide PAS du mode. |
 | **Per-account cursor** | `AccountLibraryCursor` | Tracks last-used set + category per (account, library). One row per pair. |
 | **Per-account usage** | `MediaAssetUsage` | Per-account lastUsedAt + usageCount. Drives ordering inside each group. |
 | **Global usage** | `MediaAsset.usageCount/lastUsedAt` | Global aggregate. Only used for ordering when no accountId present. |
@@ -36,7 +37,7 @@ ensuring variety across consecutive generations while respecting per-account iso
 
 ## Two Rotation Modes
 
-### Auto Mode (`setSequence` is empty or `[]`)
+### Auto Mode (`rotationMode = "auto"`, ou legacy `null` sans séquence)
 
 The engine discovers groups dynamically and picks the one least recently used by the account,
 with category exclusion to prevent consecutive same-category videos.
@@ -78,7 +79,10 @@ with category exclusion to prevent consecutive same-category videos.
 - Conditionally reverts `lastUsedCategory` to `prevLastUsedCategory` using `IS NOT DISTINCT FROM claimedLastUsedCategory` as the condition.
 - If a concurrent generation has since advanced past the claimed state, the UPDATE is a no-op.
 
-### Override Mode (`setSequence` is non-empty)
+### Override Mode (`rotationMode = "override"` **et** séquence non vide)
+
+Une séquence vide dégrade en auto (avec `console.warn`) plutôt que de ne rien servir.
+
 
 The admin has explicitly ordered setTags. The engine follows that list using an integer cursor.
 
@@ -335,11 +339,14 @@ was populated in the `Render` row.
 - **Override mode never applies category exclusion.** The admin is responsible for the order in `setSequence`. Do not add category exclusion logic to the override path.
 - **Category exclusion fallback is mandatory.** If all candidate groups share `lastUsedCategory`, the exclusion must be dropped and the full list used. Without this fallback, a single-category library blocks all generations.
 - **Access filter is SQL-level, never post-filter.** Fetching all assets and then filtering in application code bypasses the query optimiser and risks leaking restricted assets into selection if the filter code has a bug.
+- **Un rendu sans `accountId` n'écrit aucun `MediaAssetUsage`.** `recordLibraryUsage` conditionne toutes les écritures par compte à `render.accountId`. L'asset est alors consommé mais reste « jamais utilisé » côté compte et ressort en tête de rotation. `POST /api/renders` refuse ce cas pour les bibliothèques `per_account`.
 - **Global aggregates are not used for per-account ordering.** `MediaAsset.usageCount` and `MediaAsset.lastUsedAt` are correct only in the global view. Per-account rotation must JOIN `MediaAssetUsage`.
-- **setTag=null assets are invisible to theme_sequence.** Groups without a `setTag` are excluded from `selectMediaAssetBySetSequence`. These assets may still be selected by `oldest_used` / `least_used` rules.
+- **Les assets `setTag=null` forment un groupe de plein droit.** Depuis Phase 2, le groupe orphelin `(null, null)` participe normalement à la rotation auto. Il reste en revanche injoignable en mode `override` (absent de toute `setSequence`).
+- **Le mode vient de `rotationMode`, jamais de `setSequence.length`.** Passer par `resolveRotationMode()`. Avant le 12/08/2026, le moteur se branchait sur la longueur de la séquence : une bibliothèque affichée « Auto » tournait en ordre fixe sur d'anciens setTags, et les assets uploadés depuis n'étaient jamais servis.
+- **Le filtre par tag s'applique aussi à la découverte des groupes.** Utiliser `buildGroupDiscoveryQuery()`. Sans le tag, l'ancienneté d'un groupe est calculée tous tags confondus et un groupe épuisé pour « RPI » remonte en tête grâce à ses « RVA4 ».
 - **pinnedSetTag skips category exclusion — intentionally.** When the same library is bound to multiple blocks in one generation, subsequent blocks call `pickFromGroup(pinnedSetTag)` directly. Do not re-run auto mode or re-apply category exclusion for these calls.
 - **Prefill locks for theme_sequence, not for other rules.** `selectMediaAssetBySetSequence` uses `SELECT FOR UPDATE`. `selectMediaAsset` (oldest_used/least_used) does not. Do not add locking to the non-theme_sequence path.
-- **setSequence is append-only from asset PATCH.** The API auto-appends a new setTag to `setSequence` when a PATCH sets a previously unknown `setTag`. It never removes or reorders. All reordering requires an explicit PATCH on the library.
+- **`setSequence` n'est modifiée que par le PATCH de la bibliothèque.** Aucune route asset ne l'alimente : un nouveau `setTag` n'entre donc PAS tout seul dans une séquence d'ordre fixe.
 - **Resolver nulls on empty pool, does not throw.** If no accessible asset matches (library empty, all restricted, tag filter yields nothing), `selectMediaAsset` and `selectMediaAssetBySetSequence` return `null`. The form still opens without the suggestion.
 
 ---

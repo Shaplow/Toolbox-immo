@@ -23,19 +23,22 @@ import {
   SHARED_CURSOR_ACCOUNT_ID,
   SHARED_DATA_CURSOR_ACCOUNT_ID,
 } from "@/lib/contentLibraryResolver";
+import { resolveRotationMode } from "@/lib/rotation/rotationMode";
 
 interface Params {
   params: Promise<{ accountId: string }>;
 }
 
-function seqLen(setSequence: string | null | undefined): number {
-  try {
-    return setSequence
-      ? ((JSON.parse(setSequence) as string[]) ?? []).filter(Boolean).length
-      : 0;
-  } catch {
-    return 0;
-  }
+/**
+ * Longueur de séquence EFFECTIVE, c'est-à-dire celle que la rotation utilise
+ * réellement : 0 dès que le mode effectif n'est pas `override`. Sans ça, l'UI
+ * affichait « N thèmes » sur une bibliothèque passée en auto dont la séquence
+ * n'est plus lue — exactement le mensonge qui a masqué le bug de rotation.
+ */
+function effectiveSeqLen(lib: { rotationMode: string | null; setSequence: string } | null | undefined): number {
+  if (!lib) return 0;
+  const { mode, sequence } = resolveRotationMode(lib);
+  return mode === "override" ? sequence.length : 0;
 }
 
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -63,7 +66,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       where: { accountId },
       include: {
         library: {
-          select: { id: true, name: true, type: true, rotationScope: true, setSequence: true },
+          select: { id: true, name: true, type: true, rotationScope: true, setSequence: true, rotationMode: true },
         },
       },
     }),
@@ -77,7 +80,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }),
     prisma.mediaLibrary.findMany({
       where: { rotationScope: "shared" },
-      select: { id: true, name: true, type: true, setSequence: true },
+      select: { id: true, name: true, type: true, setSequence: true, rotationMode: true },
     }),
     prisma.dataLibrary.findMany({
       where: { rotationScope: "shared" },
@@ -122,7 +125,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       lastAdvancedAt: c.lastAdvancedAt?.toISOString() ?? null,
       rotationScope: "per_account",
       cursorAccountId: c.accountId,
-      sequenceLength: seqLen(c.library?.setSequence),
+      sequenceLength: effectiveSeqLen(c.library),
     }));
 
   const sharedMedia = sharedMediaLibs.map((lib) => {
@@ -138,7 +141,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       lastAdvancedAt: c?.lastAdvancedAt?.toISOString() ?? null,
       rotationScope: "shared",
       cursorAccountId: SHARED_CURSOR_ACCOUNT_ID,
-      sequenceLength: seqLen(lib.setSequence),
+      sequenceLength: effectiveSeqLen(lib),
     };
   });
 

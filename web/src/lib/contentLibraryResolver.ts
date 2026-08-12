@@ -11,6 +11,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { resolveRotationMode } from "@/lib/rotation/rotationMode";
 import type {
   TemplateJSON, VideoBlock, MusicBlock, VideoSequenceSlot,
   MediaSelectionRule, MediaSelectionRuleConfig,
@@ -67,6 +68,70 @@ export const GROUP_DISCOVERY_ORDER_BY = Prisma.sql`
            sub2.group_created_at ASC NULLS LAST,
            CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
            sub2."category" ASC NULLS FIRST`;
+
+/**
+ * Découverte des groupes `(category, setTag)` d'une bibliothèque média.
+ *
+ * Le corps de cette requête était recopié sur 4 sites (3 dans ce fichier + la
+ * route simulate-rotation) — `GROUP_DISCOVERY_ORDER_BY` n'avait factorisé que
+ * le tri. D'où le bug qu'elle corrige : `tagFrag` était oublié dans 3 sites sur
+ * 4. L'ancienneté d'un groupe était donc calculée **tous tags confondus**, si
+ * bien qu'un groupe dont les assets « RPI » étaient épuisés remontait en tête du
+ * classement grâce à ses « RVA4 » jamais servis — et la génération RPI ressortait
+ * un asset déjà utilisé. Le 3ᵉ site (chemin sans compte) n'appliquait en prime
+ * aucun `burnFilter` et n'aliasait pas la table.
+ *
+ * @param usageAccountId        Clé d'ordonnancement `MediaAssetUsage`. Absent =
+ *                              pool global, l'ancienneté retombe sur
+ *                              `MediaAsset.lastUsedAt`.
+ * @param withAccessibleCount   Projette `accessible_count` (nombre d'assets
+ *                              actifs du groupe) — utilisé par la simulation
+ *                              admin pour afficher la taille de chaque pack.
+ */
+export function buildGroupDiscoveryQuery(opts: {
+  libraryId: string;
+  usageAccountId?: string;
+  accessFilter: Prisma.Sql;
+  burnFilter: Prisma.Sql;
+  tagFrag: Prisma.Sql;
+  withAccessibleCount?: boolean;
+}): Prisma.Sql {
+  const { libraryId, usageAccountId, accessFilter, burnFilter, tagFrag, withAccessibleCount } = opts;
+  const extraInner = withAccessibleCount
+    ? Prisma.sql`, COUNT(*) FILTER (WHERE NOT ma."disabled") AS accessible_count`
+    : Prisma.empty;
+  const extraOuter = withAccessibleCount ? Prisma.sql`, sub1.accessible_count` : Prisma.empty;
+  const extraProjected = withAccessibleCount ? Prisma.sql`, sub2.accessible_count` : Prisma.empty;
+  // Sans compte : l'ancienneté vient de l'agrégat global, et le pool se limite
+  // aux assets non restreints (aucune ligne MediaAssetAccess).
+  const lastUsedExpr = usageAccountId
+    ? Prisma.sql`MAX(mau."lastUsedAt")`
+    : Prisma.sql`MAX(ma."lastUsedAt")`;
+  const usageJoin = usageAccountId
+    ? Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}`
+    : Prisma.empty;
+
+  return Prisma.sql`
+    SELECT sub2."setTag", sub2."category"${extraProjected}
+    FROM (
+      SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at${extraOuter},
+             MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
+      FROM (
+        SELECT ma."setTag", ma."category",
+               ${lastUsedExpr} AS last_used,
+               MIN(ma."createdAt") AS group_created_at${extraInner}
+        FROM "MediaAsset" ma
+        ${usageJoin}
+        WHERE ma."libraryId" = ${libraryId}
+          ${tagFrag}
+          ${accessFilter}
+          ${burnFilter}
+        GROUP BY ma."setTag", ma."category"
+        HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
+      ) sub1
+    ) sub2
+    ${GROUP_DISCOVERY_ORDER_BY}`;
+}
 
 function buildDataAccessFilter(accountId: string | undefined): Prisma.Sql {
   return accountId
@@ -488,7 +553,10 @@ export async function selectMediaAssetByMetadataValue(
  *
  * @public — also used by generateSequenceRender for slot resolution at render time.
  *
- * **Auto mode** (setSequence empty or not set):
+ * Le mode est décidé par `resolveRotationMode` (colonne `rotationMode`), PAS par
+ * la longueur de `setSequence` — cf. `@/lib/rotation/rotationMode`.
+ *
+ * **Auto mode** (`rotationMode = "auto"`, ou legacy `null` sans séquence) :
  *   1. Collect all distinct (category, setTag) groups eligible for this account.
  *      Eligible = global (no MediaAssetAccess rows) OR account-specific (has access entry for accountId).
  *      Without accountId = global-only pool.
@@ -498,8 +566,9 @@ export async function selectMediaAssetByMetadataValue(
  *      (from MediaAssetUsage when accountId present, from MediaAsset.lastUsedAt otherwise).
  *   4. Within the chosen group, pick the asset with the oldest per-account lastUsedAt.
  *
- * **Override mode** (setSequence non-empty):
+ * **Override mode** (`rotationMode = "override"` avec une séquence non vide) :
  *   Uses the integer cursor into the explicit ordered list (legacy behaviour).
+ *   Une séquence vide dégrade en auto plutôt que de ne rien servir.
  *
  * pinnedSetTag: if provided (2nd+ block sharing the same library in one generation),
  *   skip group discovery and pick from that specific group.
@@ -550,11 +619,12 @@ export async function selectMediaAssetBySetSequence(
     select: { setSequence: true, maxUsageCount: true, rotationScope: true, rotationMode: true },
   });
   if (!library) return null;
+  // `rotationMode` est le discriminant — plus `sequence.length`. Voir
+  // @/lib/rotation/rotationMode pour le pourquoi (une bibliothèque affichée
+  // « Auto » tournait en ordre fixe sur d'anciens setTags).
+  const { mode: rotationMode, sequence } = resolveRotationMode(library, "selectMediaAssetBySetSequence");
   // rotationMode "none" → pas de rotation auto/override. Selection via metadata seulement.
-  if (library.rotationMode === "none") return null;
-
-  let sequence: string[] = [];
-  try { sequence = (JSON.parse(library.setSequence) as string[]).filter((s) => !!s); } catch { sequence = []; }
+  if (rotationMode === "none") return null;
 
   // effectiveCursorId: used for AccountLibraryCursor ops and MediaAssetUsage ordering.
   // For per-account libraries this equals accountId; for shared libraries it is "__shared__".
@@ -656,8 +726,8 @@ export async function selectMediaAssetBySetSequence(
     return row ? { ...row, resolvedSetTag: pinnedSetTag, resolvedCategory: pinnedCategory ?? null } : null;
   }
 
-  // --- Override mode: setSequence explicitly defined → use cursor ---
-  if (sequence.length > 0) {
+  // --- Override mode: rotationMode="override" (+ séquence non vide) → use cursor ---
+  if (rotationMode === "override") {
     if (effectiveCursorId) {
       if (readOnly) {
         // Read-only peek: read current cursor position without advancing or locking
@@ -764,25 +834,9 @@ export async function selectMediaAssetBySetSequence(
       // Phase 2 (orphelins) — la clause `(setTag IS NOT NULL OR category IS NOT NULL)`
       // a été retirée : les assets totalement orphelins forment désormais un groupe
       // (null, null) à part entière, traité comme une catégorie normale.
-      const allGroupsRo: Array<{ setTag: string | null; category: string | null }> = await prisma.$queryRaw`
-          SELECT sub2."setTag", sub2."category"
-          FROM (
-            SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
-                   MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
-            FROM (
-              SELECT ma."setTag", ma."category",
-                     MAX(mau."lastUsedAt") AS last_used,
-                     MIN(ma."createdAt") AS group_created_at
-              FROM "MediaAsset" ma
-              LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
-              WHERE ma."libraryId" = ${libraryId}
-                ${accessFilter}
-                ${burnFilter}
-              GROUP BY ma."setTag", ma."category"
-              HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
-            ) sub1
-          ) sub2
-          ${GROUP_DISCOVERY_ORDER_BY}`;
+      const allGroupsRo: Array<{ setTag: string | null; category: string | null }> = await prisma.$queryRaw(
+        buildGroupDiscoveryQuery({ libraryId, usageAccountId: effectiveCursorId, accessFilter, burnFilter, tagFrag }),
+      );
       if (allGroupsRo.length === 0) {
         const fallbackRows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
           SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
@@ -840,25 +894,9 @@ export async function selectMediaAssetBySetSequence(
       // Usage ordering uses effectiveCursorId; access filter uses real accountId.
       // Phase 2 — la clause `(setTag IS NOT NULL OR category IS NOT NULL)` a été retirée :
       // les assets totalement orphelins forment désormais un groupe (null, null) éligible.
-      const allGroups: GroupRow[] = await tx.$queryRaw`
-          SELECT sub2."setTag", sub2."category"
-          FROM (
-            SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
-                   MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
-            FROM (
-              SELECT ma."setTag", ma."category",
-                     MAX(mau."lastUsedAt") AS last_used,
-                     MIN(ma."createdAt") AS group_created_at
-              FROM "MediaAsset" ma
-              LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
-              WHERE ma."libraryId" = ${libraryId}
-                ${accessFilter}
-                ${burnFilter}
-              GROUP BY ma."setTag", ma."category"
-              HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
-            ) sub1
-          ) sub2
-          ${GROUP_DISCOVERY_ORDER_BY}`;
+      const allGroups: GroupRow[] = await tx.$queryRaw(
+        buildGroupDiscoveryQuery({ libraryId, usageAccountId: effectiveCursorId, accessFilter, burnFilter, tagFrag }),
+      );
 
       if (allGroups.length === 0) return; // handled by fallback below
 
@@ -945,23 +983,12 @@ export async function selectMediaAssetBySetSequence(
   // Same two-level sort as the accountId path: category-level staleness first, set-level second.
   // Phase 2 — la clause `(setTag IS NOT NULL OR category IS NOT NULL)` a été retirée :
   // les assets totalement orphelins forment désormais un groupe (null, null) éligible.
-  const allGroups: GroupRow[] = await prisma.$queryRaw`
-      SELECT sub2."setTag", sub2."category"
-      FROM (
-        SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
-               MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
-        FROM (
-          SELECT "setTag", "category",
-                 MAX("lastUsedAt") AS last_used,
-                 MIN("createdAt") AS group_created_at
-          FROM "MediaAsset"
-          WHERE "libraryId" = ${libraryId}
-            AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = id)
-          GROUP BY "setTag", "category"
-          HAVING COUNT(*) FILTER (WHERE NOT "disabled") > 0
-        ) sub1
-      ) sub2
-      ${GROUP_DISCOVERY_ORDER_BY}`;
+  // Ce site divergeait des deux autres : requête non aliasée, sans `tagFrag` NI
+  // `burnFilter`. Le helper le réaligne (`accessFilter` sans compte se limite
+  // déjà aux assets non restreints).
+  const allGroups: GroupRow[] = await prisma.$queryRaw(
+    buildGroupDiscoveryQuery({ libraryId, accessFilter, burnFilter, tagFrag }),
+  );
 
   if (allGroups.length === 0) {
     const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
@@ -1411,7 +1438,7 @@ export async function advanceLibraryCursorsOnSubmit(
 
   const libs = await prisma.mediaLibrary.findMany({
     where: { id: { in: setSequencedLibraryIds } },
-    select: { id: true, setSequence: true, rotationScope: true },
+    select: { id: true, setSequence: true, rotationScope: true, rotationMode: true },
   });
 
   // W5.5 / rotation-11 : warn si certaines libs ne sont plus en base (deleted
@@ -1428,8 +1455,11 @@ export async function advanceLibraryCursorsOnSubmit(
 
   for (const lib of libs) {
     const cursorAccountId = lib.rotationScope === "shared" ? SHARED_CURSOR_ACCOUNT_ID : accountId;
-    let sequence: string[] = [];
-    try { sequence = (JSON.parse(lib.setSequence) as string[]).filter(Boolean); } catch { sequence = []; }
+    // Même discriminant que `selectMediaAssetBySetSequence`. Indispensable :
+    // sinon le submit continuerait d'avancer le curseur numérique sur une
+    // bibliothèque passée en auto, et d'écraser `lastUsedSetTag` avec un setTag
+    // issu de l'ancienne séquence.
+    const { mode: rotationMode, sequence } = resolveRotationMode(lib, "advanceLibraryCursorsOnSubmit");
 
     await prisma.$transaction(async (tx) => {
       // Ensure cursor row exists before locking
@@ -1439,7 +1469,7 @@ export async function advanceLibraryCursorsOnSubmit(
         create: { accountId: cursorAccountId, libraryId: lib.id, cursor: 0 },
       });
 
-      if (sequence.length > 0) {
+      if (rotationMode === "override") {
         // Override mode: advance cursor from its CURRENT position (handles concurrency)
         const locked = await tx.$queryRaw<{ cursor: number; lastUsedCategory: string | null; lastUsedSetTag: string | null }[]>(
           Prisma.sql`SELECT cursor, "lastUsedCategory", "lastUsedSetTag" FROM "AccountLibraryCursor" WHERE "accountId" = ${cursorAccountId} AND "libraryId" = ${lib.id} FOR UPDATE`,

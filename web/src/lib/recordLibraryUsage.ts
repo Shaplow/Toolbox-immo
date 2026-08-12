@@ -91,6 +91,18 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
 
   const now = new Date();
 
+  // Filet de détection : un rendu qui consomme une bibliothèque en rotation
+  // `theme_sequence` sans compte n'écrira aucune ligne `MediaAssetUsage`
+  // (toutes les écritures par compte sont conditionnées à `accountId`). L'asset
+  // reste alors « jamais utilisé » côté compte et ressort en tête de rotation.
+  // `POST /api/renders` refuse désormais ce cas pour les libs `per_account`, ce
+  // log couvre les rendus créés par d'autres chemins (retry, jobs internes).
+  if (!render.accountId && usedAssets.setSequencedLibraryIds?.length) {
+    console.error(
+      `[recordLibraryUsage] render=${renderId} sans accountId alors qu'il consomme ${usedAssets.setSequencedLibraryIds.length} bibliothèque(s) en rotation — aucun MediaAssetUsage ne sera écrit.`,
+    );
+  }
+
   // --- Video assets ---
   // Chaque (mediaAsset.update + mediaAssetUsage.upsert) est wrappé dans une
   // transaction par assetId. Sans ça, deux webhooks DONE concurrents sur le
