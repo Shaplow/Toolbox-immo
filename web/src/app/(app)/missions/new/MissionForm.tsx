@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Clapperboard, Save } from "lucide-react";
@@ -17,6 +17,8 @@ export interface MissionRecipe {
   source: string;
   templateId: string | null;
   requiresProperty: boolean;
+  /** Type de fiche exigé (garde serveur createSlot) — null = tout type accepté. */
+  requiredEntityTypeId: string | null;
   autoSaveLibraryName: string | null;
 }
 
@@ -29,6 +31,8 @@ export interface MissionAccount {
 export interface MissionProperty {
   id: string;
   label: string;
+  /** Type de la fiche — filtre les options quand la recette exige un type. */
+  typeId: string;
   /** Valeurs partagées du bien (résolues live à la génération). */
   fields: Record<string, string>;
 }
@@ -79,6 +83,19 @@ export function MissionForm({
     () => recipes.find((r) => r.id === recipeId) ?? null,
     [recipes, recipeId],
   );
+  // Quand la recette exige un type de fiche, ne proposer que les fiches de ce
+  // type (la garde serveur createSlot rejette les autres).
+  const compatibleProperties = useMemo(() => {
+    const requiredTypeId = selectedRecipe?.requiredEntityTypeId ?? null;
+    if (!requiredTypeId) return properties;
+    return properties.filter((p) => p.typeId === requiredTypeId);
+  }, [properties, selectedRecipe]);
+  // Changement de recette : une fiche sélectionnée devenue incompatible est désélectionnée.
+  useEffect(() => {
+    if (propertyId && !compatibleProperties.some((p) => p.id === propertyId)) {
+      setPropertyId("");
+    }
+  }, [propertyId, compatibleProperties]);
   const selectedProperty = useMemo(
     () => properties.find((p) => p.id === propertyId) ?? null,
     [properties, propertyId],
@@ -142,7 +159,7 @@ export function MissionForm({
 
   const propertyOptions = [
     { value: "", label: "Aucune fiche" },
-    ...properties.map((p) => ({ value: p.id, label: p.label })),
+    ...compatibleProperties.map((p) => ({ value: p.id, label: p.label })),
   ];
 
   return (
@@ -194,7 +211,7 @@ export function MissionForm({
           label="Fiche"
           help="Optionnel. Fiche partagée (adresse, prix…) réutilisée par plusieurs missions. Éditée une fois, propagée aux prochaines générations."
         >
-          {properties.length > 0 ? (
+          {compatibleProperties.length > 0 ? (
             <Select
               value={propertyId}
               onChange={setPropertyId}
@@ -203,8 +220,13 @@ export function MissionForm({
             />
           ) : (
             <div className="rounded-md border border-input bg-muted px-3 py-2.5 text-sm text-muted-foreground">
-              Aucune fiche pour l&apos;instant.{" "}
-              <Link href="/fiches?type=etype_bien" className="font-medium text-primary hover:underline">
+              {properties.length > 0
+                ? "Aucune fiche du type requis par cette recette."
+                : "Aucune fiche pour l'instant."}{" "}
+              <Link
+                href={`/fiches?type=${selectedRecipe?.requiredEntityTypeId ?? "etype_bien"}`}
+                className="font-medium text-primary hover:underline"
+              >
                 Créez-en une
               </Link>{" "}
               pour partager ses infos entre plusieurs missions.

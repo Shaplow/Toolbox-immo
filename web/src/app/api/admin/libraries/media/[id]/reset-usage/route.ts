@@ -41,13 +41,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
       const usage = await tx.mediaAssetUsage.deleteMany({
         where: { asset: { libraryId } },
       });
-      const cursors = await tx.accountLibraryCursor.deleteMany({
-        where: { libraryId },
-      });
       return {
         reset: assets.count,
         usageRowsDeleted: usage.count,
-        cursorsCleared: cursors.count,
       };
     });
 

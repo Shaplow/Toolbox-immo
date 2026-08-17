@@ -84,16 +84,13 @@ export default async function PublicationVersionsPage({ params }: PageProps) {
   const canPromote = canPromoteVersion({ role });
 
   return (
-    <div className="min-h-screen">
-      <div
-        className="mx-auto max-w-[1400px] px-6 py-8"
-        style={{ background: "rgb(212, 212, 216)" }}
-      >
-        <div className="rounded-t-3xl overflow-hidden px-6 sm:px-8 pt-6 pb-2">
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-[1400px] px-6 py-8">
+        <div className="px-6 sm:px-8 pt-6 pb-2">
           <div className="max-w-4xl mx-auto">
             <Link
               href={`/publications/${slot.id}`}
-              className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-gray-900 transition-colors font-medium"
+              className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors font-medium"
             >
               <ArrowLeft size={13} />
               Retour à la publication

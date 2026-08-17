@@ -64,11 +64,6 @@ async function loadLibraryByToken(token: string) {
       name: true,
       templateType: true,
       fieldsSchema: true,
-      campaigns: {
-        where: { isActive: true },
-        select: { id: true },
-        take: 1,
-      },
     },
   });
 }
@@ -101,10 +96,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!lib) {
     return NextResponse.json({ error: "Lien invalide ou révoqué" }, { status: 404 });
   }
-  // Phase 4 : rattachement direct à la bibliothèque (campagne legacy posée
-  // en trace tant que la table existe — drop N+1).
-  const campaignId = lib.campaigns[0]?.id ?? null;
-
   type EntryPayload = { setTag?: string | null; category?: string | null; fields: Record<string, string> };
   const body = (await req.json()) as { entries?: EntryPayload[] };
   if (!Array.isArray(body.entries) || body.entries.length === 0) {
@@ -154,7 +145,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     const created = await prisma.dataEntry.createMany({
       data: body.entries.map((e) => ({
         libraryId: lib.id,
-        campaignId,
         setTag: e.setTag?.trim() || null,
         fields: JSON.stringify(e.fields),
       })),

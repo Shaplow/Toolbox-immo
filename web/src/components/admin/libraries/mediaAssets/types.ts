@@ -43,7 +43,6 @@ export interface MediaLibrary {
   name: string;
   type: "video" | "audio";
   /** JSON string[] — ordre du theme_sequence. */
-  setSequence: string;
   /** JSON MetadataField[] */
   metadataSchema?: string;
   /** "auto" | "override" | "none" | null. "none" = sélection manuelle via metadata. */

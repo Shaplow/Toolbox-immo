@@ -564,9 +564,8 @@ async function loadPrefillAssets(
 ): Promise<{
   videoAssets: Record<string, string>;
   audioAssetId: string | null;
-  /** Groupes déjà réclamés au submit par `advanceLibraryCursorsOnSubmit`, par libraryId. */
+  /** Dossiers servis au prefill (trace `usedSetTagByLibrary`), par libraryId. */
   claimedSetTagByLibrary: Record<string, string>;
-  claimedCategoryByLibrary: Record<string, string>;
 }> {
   try {
     const renderRow = await prisma.render.findUnique({
@@ -577,16 +576,14 @@ async function loadPrefillAssets(
       videoAssets?: Record<string, string>;
       audioAssetId?: string;
       usedSetTagByLibrary?: Record<string, string>;
-      usedCategoryByLibrary?: Record<string, string>;
     };
     return {
       videoAssets: ua.videoAssets ?? {},
       audioAssetId: ua.audioAssetId ?? null,
       claimedSetTagByLibrary: ua.usedSetTagByLibrary ?? {},
-      claimedCategoryByLibrary: ua.usedCategoryByLibrary ?? {},
     };
   } catch {
-    return { videoAssets: {}, audioAssetId: null, claimedSetTagByLibrary: {}, claimedCategoryByLibrary: {} };
+    return { videoAssets: {}, audioAssetId: null, claimedSetTagByLibrary: {} };
   }
 }
 
@@ -1332,7 +1329,7 @@ async function generateVideoRenderLocal(
  *  2. Sélection metadata-driven via slot.videoBlockId + optionsSource select field
  *  3. Résolution standard depuis la bibliothèque (theme_sequence ou rotation)
  *
- * pinnedSetTag / pinnedCategory : si plusieurs slots partagent la même bibliothèque
+ * pinnedSetTag : si plusieurs slots partagent la même bibliothèque
  * en mode theme_sequence, le 2ème slot (et suivants) reçoit le setTag/category déjà
  * sélectionné par le 1er slot afin de rester dans le même groupe (intro/outro).
  */
@@ -1342,16 +1339,15 @@ async function resolveSlotVideoUrl(
   accountId: string | null,
   schema: SchemaField[],
   pinnedSetTag?: string,
-  pinnedCategory?: string,
   prefillAssetId?: string | null,
   /** Durée minimale requise pour l'asset (s). Héritée du VideoBlock.minDuration ou slot.maxDuration. */
   minDuration?: number,
-): Promise<{ url: string; assetId: string | null; resolvedSetTag: string | null; resolvedCategory: string | null; metadata: Record<string, string | number | null> }> {
+): Promise<{ url: string; assetId: string | null; resolvedSetTag: string | null; metadata: Record<string, string | number | null> }> {
   // 1. Binding explicite dans les données du formulaire
   if (slot.binding) {
     const raw = (listingData as Record<string, unknown>)[slot.binding] as string | undefined;
     if (raw && (raw.startsWith("http") || raw.startsWith("/"))) {
-      return { url: raw, assetId: null, resolvedSetTag: null, resolvedCategory: null, metadata: {} };
+      return { url: raw, assetId: null, resolvedSetTag: null, metadata: {} };
     }
   }
 
@@ -1375,7 +1371,6 @@ async function resolveSlotVideoUrl(
             url: asset.url,
             assetId: asset.id,
             resolvedSetTag: asset.setTag ?? null,
-            resolvedCategory: asset.category ?? null,
             metadata: asset.metadata as Record<string, string | number | null>,
           };
         }
@@ -1398,7 +1393,8 @@ async function resolveSlotVideoUrl(
     try {
       const assetRow = await prisma.mediaAsset.findUnique({
         where: { id: prefillAssetId },
-        select: { id: true, url: true, filename: true, setTag: true, category: true, metadata: true },
+        // NB : plus jamais `category` — colonne morte (Phase 3), drop N+1.
+        select: { id: true, url: true, filename: true, setTag: true, metadata: true },
       });
       if (assetRow) {
         let metadata: Record<string, string | number | null> = {};
@@ -1407,7 +1403,6 @@ async function resolveSlotVideoUrl(
           url: assetRow.url,
           assetId: assetRow.id,
           resolvedSetTag: assetRow.setTag ?? null,
-          resolvedCategory: assetRow.category ?? null,
           metadata,
         };
       }
@@ -1451,7 +1446,6 @@ async function resolveSlotVideoUrl(
           url: asset.url,
           assetId: asset.id,
           resolvedSetTag: asset.resolvedSetTag,
-          resolvedCategory: null,
           metadata,
         };
       }
@@ -1460,7 +1454,7 @@ async function resolveSlotVideoUrl(
       // Pass minDuration (from VideoBlock.minDuration or slot.maxDuration) to filter short assets.
       const asset = await selectAndClaimMediaAsset(slot.libraryId, rule, undefined, accountId ?? undefined, undefined, minDuration);
       if (asset) {
-        return { url: asset.url, assetId: asset.id, resolvedSetTag: null, resolvedCategory: null, metadata: asset.metadata };
+        return { url: asset.url, assetId: asset.id, resolvedSetTag: null, metadata: asset.metadata };
       }
     }
   }
@@ -1517,10 +1511,9 @@ function slotSourceAudioParams(
  */
 function accumulateSlotTracking(
   slot: VideoSequenceSlot,
-  resolved: { assetId: string | null; resolvedSetTag: string | null; resolvedCategory: string | null },
+  resolved: { assetId: string | null; resolvedSetTag: string | null },
   setSequencedLibraryIds: string[],
   usedSetTagByLibrary: Record<string, string>,
-  usedCategoryByLibrary: Record<string, string>,
   sequenceSlotAssets: Record<string, string>,
 ) {
   if (resolved.assetId) sequenceSlotAssets[slot.id] = resolved.assetId;
@@ -1529,7 +1522,6 @@ function accumulateSlotTracking(
       setSequencedLibraryIds.push(slot.libraryId);
     }
     if (resolved.resolvedSetTag) usedSetTagByLibrary[slot.libraryId] = resolved.resolvedSetTag;
-    if (resolved.resolvedCategory) usedCategoryByLibrary[slot.libraryId] = resolved.resolvedCategory;
   }
 }
 
@@ -1631,7 +1623,6 @@ async function generateSequenceRender(
   // Track set-sequence libraries for cursor advancement
   const setSequencedLibraryIds: string[] = [];
   const usedSetTagByLibrary: Record<string, string> = {};
-  const usedCategoryByLibrary: Record<string, string> = {};
   const sequenceSlotAssets: Record<string, string> = {};
 
   try {
@@ -1642,7 +1633,6 @@ async function generateSequenceRender(
       videoAssets: prefillVideoAssets,
       audioAssetId: prefillAudioAssetId,
       claimedSetTagByLibrary,
-      claimedCategoryByLibrary,
     } = await loadPrefillAssets(renderId);
 
     // 1. Résoudre les URLs vidéo de chaque slot
@@ -1659,12 +1649,10 @@ async function generateSequenceRender(
     // groupe réservé et le resolver prend sa branche pinned, qui ne touche pas
     // au curseur (sinon il avancerait une seconde fois).
     const localPinnedSetTagByLibrary: Record<string, string> = { ...claimedSetTagByLibrary };
-    const localPinnedCategoryByLibrary: Record<string, string> = { ...claimedCategoryByLibrary };
     const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
     const allBlocks = templateJson.blocks ?? [];
     for (const slot of slots) {
       const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
-      const pinnedCategory = slot.libraryId ? localPinnedCategoryByLibrary[slot.libraryId] : undefined;
       // Resolve minDuration from the linked VideoBlock (by videoBlockId or binding),
       // falling back to slot.maxDuration so that the asset covers at least the slot's required duration.
       const linkedVideoBlock = slot.videoBlockId
@@ -1673,15 +1661,12 @@ async function generateSequenceRender(
           ? allBlocks.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined
           : undefined;
       const slotMinDuration: number | undefined = linkedVideoBlock?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
-      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory, prefillVideoAssets[slot.id], slotMinDuration);
-      accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDuration);
+      accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, sequenceSlotAssets);
       // Track pinned set for subsequent slots sharing the same library
       if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
         if (resolved.resolvedSetTag && !localPinnedSetTagByLibrary[slot.libraryId]) {
           localPinnedSetTagByLibrary[slot.libraryId] = resolved.resolvedSetTag;
-        }
-        if (resolved.resolvedCategory && !localPinnedCategoryByLibrary[slot.libraryId]) {
-          localPinnedCategoryByLibrary[slot.libraryId] = resolved.resolvedCategory;
         }
       }
       resolvedSlots.push({ slot, videoUrl: resolved.url, metadata: resolved.metadata });
@@ -1815,7 +1800,6 @@ async function generateSequenceRender(
         ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
         setSequencedLibraryIds,
         usedSetTagByLibrary,
-        usedCategoryByLibrary,
       });
     }
 
@@ -1859,7 +1843,6 @@ async function generateSequenceRenderLocal(
   // Track set-sequence libraries for cursor advancement (mirrors RunPod path)
   const setSequencedLibraryIds: string[] = [];
   const usedSetTagByLibrary: Record<string, string> = {};
-  const usedCategoryByLibrary: Record<string, string> = {};
   const sequenceSlotAssets: Record<string, string> = {};
 
   try {
@@ -1870,7 +1853,6 @@ async function generateSequenceRenderLocal(
       videoAssets: prefillVideoAssets,
       audioAssetId: prefillAudioAssetId,
       claimedSetTagByLibrary,
-      claimedCategoryByLibrary,
     } = await loadPrefillAssets(renderId);
 
     // Resolve slots
@@ -1886,12 +1868,10 @@ async function generateSequenceRenderLocal(
     // groupe réservé et le resolver prend sa branche pinned, qui ne touche pas
     // au curseur (sinon il avancerait une seconde fois).
     const localPinnedSetTagByLibrary: Record<string, string> = { ...claimedSetTagByLibrary };
-    const localPinnedCategoryByLibrary: Record<string, string> = { ...claimedCategoryByLibrary };
     const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
     const allBlocksLocal = templateJson.blocks ?? [];
     for (const slot of slots) {
       const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
-      const pinnedCategory = slot.libraryId ? localPinnedCategoryByLibrary[slot.libraryId] : undefined;
       // Resolve minDuration from the linked VideoBlock (by videoBlockId or binding),
       // falling back to slot.maxDuration so that the asset covers at least the slot's required duration.
       const linkedVideoBlockLocal = slot.videoBlockId
@@ -1900,14 +1880,11 @@ async function generateSequenceRenderLocal(
           ? allBlocksLocal.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined
           : undefined;
       const slotMinDurationLocal: number | undefined = linkedVideoBlockLocal?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
-      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory, prefillVideoAssets[slot.id], slotMinDurationLocal);
-      accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDurationLocal);
+      accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, sequenceSlotAssets);
       if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
         if (resolved.resolvedSetTag && !localPinnedSetTagByLibrary[slot.libraryId]) {
           localPinnedSetTagByLibrary[slot.libraryId] = resolved.resolvedSetTag;
-        }
-        if (resolved.resolvedCategory && !localPinnedCategoryByLibrary[slot.libraryId]) {
-          localPinnedCategoryByLibrary[slot.libraryId] = resolved.resolvedCategory;
         }
       }
       resolvedSlots.push({ slot, videoUrl: resolved.url, metadata: resolved.metadata });
@@ -2019,7 +1996,6 @@ async function generateSequenceRenderLocal(
         ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
         setSequencedLibraryIds,
         usedSetTagByLibrary,
-        usedCategoryByLibrary,
       });
     }
     await updateRenderTracking(renderId, {

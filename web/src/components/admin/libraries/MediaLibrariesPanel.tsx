@@ -42,7 +42,6 @@ interface MediaLibrary {
   name: string;
   type: "video" | "audio";
   tags: string;
-  setSequence: string;
   rotationScope?: string;
   /** Mode rotation : "auto" | "override" | "none" | null (back-compat). */
   rotationMode?: string | null;

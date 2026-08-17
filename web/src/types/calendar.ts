@@ -31,7 +31,11 @@ export interface PublicationSlot {
   accountId: string | null;
   /** null = mission sans compte Instagram. */
   account: { id: string; name: string; handle: string } | null;
-  /** Biens — fiche de données partagée rattachée (résolue live à la génération). */
+  /**
+   * Fiche (Entity) rattachée — clé API historique `propertyId`, valeur = id
+   * d'Entity mappé serveur depuis la colonne `entityId` (la colonne DB
+   * `propertyId` est morte depuis la Phase 5).
+   */
   propertyId: string | null;
   scheduledAt: string | null; // ISO ; null = slot stocké en banque
   status: SlotStatus;

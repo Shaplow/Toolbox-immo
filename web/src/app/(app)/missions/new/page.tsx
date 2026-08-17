@@ -11,6 +11,8 @@
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
+import { toUserRole } from "@/lib/permissions/role";
+import { whereClauseForUserEntity } from "@/lib/permissions/entityScope";
 import { prisma } from "@/lib/prisma";
 import { safeJSON } from "@/lib/utils/json";
 import { PageShell } from "@/components/ui/PageShell";
@@ -48,9 +50,17 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
       orderBy: { handle: "asc" },
     }),
     // Phase 5 — fiches (Entity) à la place des Property (ids repris).
+    // Scope par rôle : un porteur de l'outil `mission` non-admin ne doit voir
+    // que SES fiches (pas de fuite des libellés des fiches admin).
     prisma.entity.findMany({
-      where: { isArchived: false },
-      select: { id: true, label: true, fields: true },
+      where: {
+        isArchived: false,
+        ...whereClauseForUserEntity(
+          toUserRole(userContext.effectiveUser.role),
+          userContext.effectiveUser.id,
+        ),
+      },
+      select: { id: true, label: true, typeId: true, fields: true },
       orderBy: { updatedAt: "desc" },
     }),
   ]);
@@ -61,12 +71,16 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
     source: t.source,
     templateId: t.templateId,
     requiresProperty: t.requiresProperty || t.requiresEntityTypeId != null,
+    // Fallback legacy : requiresProperty sans type explicite ⇒ type « Bien »
+    // (même règle que la garde createSlot).
+    requiredEntityTypeId: t.requiresEntityTypeId ?? (t.requiresProperty ? "etype_bien" : null),
     autoSaveLibraryName: t.autoSaveToLibrary?.name ?? null,
   }));
 
   const properties = propertyRows.map((p) => ({
     id: p.id,
     label: p.label,
+    typeId: p.typeId,
     fields: safeJSON<Record<string, string>>(p.fields, {}),
   }));
 

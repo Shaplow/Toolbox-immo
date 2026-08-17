@@ -51,9 +51,21 @@ export default async function EntityDetailPage({ params }: Params) {
   let recipes: AttachRecipeOption[] = [];
   let accounts: AttachAccountOption[] = [];
   if (attachMode === "missions") {
+    // Ne proposer que les recettes compatibles avec le type de CETTE fiche :
+    // createSlot rejette les autres (garde requiresEntityTypeId, avec fallback
+    // legacy requiresProperty → « Bien ») — les lister mènerait à des
+    // créations partielles.
     const [templates, accs] = await Promise.all([
       prisma.patternTemplate.findMany({
-        where: { isArchived: false },
+        where: {
+          isArchived: false,
+          OR: [
+            { requiresEntityTypeId: entity.typeId },
+            entity.typeId === "etype_bien"
+              ? { requiresEntityTypeId: null }
+              : { requiresEntityTypeId: null, requiresProperty: false },
+          ],
+        },
         select: { id: true, label: true, source: true },
         orderBy: { label: "asc" },
       }),

@@ -26,8 +26,6 @@ export interface UsedAssets {
   setSequencedLibraryIds?: string[];
   /** libraryId → resolved setTag used during this generation */
   usedSetTagByLibrary?: Record<string, string>;
-  /** libraryId → resolved category used during this generation */
-  usedCategoryByLibrary?: Record<string, string>;
   /** libraryId → cursor snapshot for failure-recovery revert */
   prevCursorStateByLibrary?: Record<string, CursorRevertState>;
   /** DataEntry claim state for failure-recovery revert */

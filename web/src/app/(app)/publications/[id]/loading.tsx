@@ -1,19 +1,14 @@
 /**
- * Skeleton aligné sur PublicationFiche réelle : même wrapper (shell radial
- * gris diffu + margins/rounded), mêmes proportions header et sections.
+ * Skeleton aligné sur PublicationFiche réelle : même wrapper (flat
+ * bg-background, DA v3), mêmes proportions header et sections.
  * Évite le flash de layout pendant la navigation.
  */
 export default function PublicationLoading() {
   return (
-    <div className="min-h-screen">
-      <div
-        className="mx-auto max-w-[1400px] px-6 py-8"
-        style={{
-          background: "rgb(212, 212, 216)",
-        }}
-      >
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-[1400px] px-6 py-8">
         {/* Header */}
-        <div className="rounded-t-3xl">
+        <div>
           <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-8">
             {/* Breadcrumb */}
             <div className="flex items-center gap-1.5 mb-3">
@@ -29,7 +24,7 @@ export default function PublicationLoading() {
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <div className="h-8 w-20 bg-card border border-border rounded-full animate-pulse" />
-                <div className="h-8 w-8 bg-white/60 rounded-lg animate-pulse" />
+                <div className="h-8 w-8 bg-muted rounded-lg animate-pulse" />
               </div>
             </div>
           </div>

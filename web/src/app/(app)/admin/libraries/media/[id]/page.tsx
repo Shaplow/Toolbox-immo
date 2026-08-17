@@ -40,7 +40,6 @@ export default async function MediaLibraryDetailPage({ params }: Props) {
         id: library.id,
         name: library.name,
         type: library.type as "video" | "audio",
-        setSequence: library.setSequence,
         metadataSchema: library.metadataSchema,
         rotationMode: library.rotationMode,
         rotationScope: library.rotationScope,

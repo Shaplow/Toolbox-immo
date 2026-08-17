@@ -550,6 +550,8 @@ export async function createSlot(
     ...slot,
     fields: safeJSON<Record<string, string>>(slot.fields, {}),
     fieldSchema: normalizeCustomFields(slot.fieldSchema),
+    // Clé API `propertyId` = fiche liée (Entity) — cf. mapping de listSlots.
+    propertyId: slot.entityId,
   };
 }
 
@@ -1579,6 +1581,8 @@ export async function patchSlot(
     ...updated,
     fields: safeJSON<Record<string, string>>(updated.fields, {}),
     fieldSchema: safeJSON<string[]>(updated.fieldSchema, []),
+    // Clé API `propertyId` = fiche liée (Entity) — cf. mapping de listSlots.
+    propertyId: updated.entityId,
   };
 }
 
@@ -1792,6 +1796,10 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
       status: updates.get(s.id) ?? s.status,
       fields: safeJSON<Record<string, string>>(s.fields, {}),
       fieldSchema: safeJSON<string[]>(s.fieldSchema, []),
+      // Clé API `propertyId` = fiche liée (Entity). La colonne DB `propertyId`
+      // est morte (plus écrite depuis la Phase 5) — sans ce mapping le client
+      // lisait null et « perdait » la fiche au refetch.
+      propertyId: s.entityId,
     })),
     hasMore: slots.length === 500,
   };
@@ -1829,6 +1837,8 @@ export async function getSlot(id: string, ctx: UserContext) {
     ...slot,
     fields: safeJSON<Record<string, string>>(slot.fields, {}),
     fieldSchema: safeJSON<string[]>(slot.fieldSchema, []),
+    // Clé API `propertyId` = fiche liée (Entity) — cf. mapping de listSlots.
+    propertyId: slot.entityId,
   };
 }
 

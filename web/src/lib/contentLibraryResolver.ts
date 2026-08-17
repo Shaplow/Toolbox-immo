@@ -503,12 +503,14 @@ export async function selectMediaAssetByMetadataValue(
   metadataKey: string,
   metadataValue: string,
   accountId?: string,
-): Promise<{ id: string; url: string; filename: string; setTag: string | null; category: string | null; metadata: Record<string, string | number | null> } | null> {
+): Promise<{ id: string; url: string; filename: string; setTag: string | null; metadata: Record<string, string | number | null> } | null> {
   const accessFilter = buildAccessFilter(accountId);
 
   // Filter in PostgreSQL on the JSON metadata field: cast to text and use jsonb operator
-  const rows = await prisma.$queryRaw<{ id: string; url: string; filename: string; setTag: string | null; category: string | null; metadata: string }[]>(
-    Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma."setTag", ma.category, ma.metadata FROM "MediaAsset" ma
+  // NB : ne plus jamais SELECTionner ma.category ici — colonne morte (Phase 3),
+  // droppée au deploy N+1 (le raw SQL casserait sans erreur de compilation).
+  const rows = await prisma.$queryRaw<{ id: string; url: string; filename: string; setTag: string | null; metadata: string }[]>(
+    Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma."setTag", ma.metadata FROM "MediaAsset" ma
       WHERE ma."libraryId" = ${libraryId}
       ${accessFilter}
       AND (ma.metadata::jsonb ->> ${metadataKey}) = ${metadataValue}

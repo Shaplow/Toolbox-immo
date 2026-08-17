@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockEntityFindUnique = vi.fn();
 const mockBindingFindUnique = vi.fn();
 const mockBindingFindFirst = vi.fn();
+const mockTemplateFindMany = vi.fn();
 const mockActivityCreate = vi.fn().mockResolvedValue({ id: "act" });
 const mockCreateSlot = vi.fn();
 const mockHasTool = vi.fn();
@@ -25,6 +26,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...a: unknown[]) => mockBindingFindUnique(...a),
       findFirst: (...a: unknown[]) => mockBindingFindFirst(...a),
     },
+    patternTemplate: { findMany: (...a: unknown[]) => mockTemplateFindMany(...a) },
     entityActivity: { create: (...a: unknown[]) => mockActivityCreate(...a) },
   },
 }));
@@ -87,6 +89,10 @@ beforeEach(() => {
     patternTemplate: { source: "manual_rushes" },
   });
   mockBindingFindFirst.mockReset().mockResolvedValue({ id: "bind-fallback" });
+  mockTemplateFindMany.mockReset().mockResolvedValue([
+    { id: "r1", label: "Recette 1", templateId: "tpl-1" },
+    { id: "r2", label: "Recette 2", templateId: null },
+  ]);
   mockActivityCreate.mockReset().mockResolvedValue({ id: "act" });
   mockCreateSlot.mockReset().mockResolvedValue({ id: "slot-x" });
   mockHasTool.mockReset().mockResolvedValue(false);
@@ -196,19 +202,61 @@ describe("attachSlotToEntity — chemin missions (fiche admin)", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("admin : crée un slot par recette avec propertyId=entityId", async () => {
+  it("admin : crée un slot par recette avec propertyId=entityId + templateId hérité", async () => {
     mockCreateSlot.mockResolvedValueOnce({ id: "slot-1" }).mockResolvedValueOnce({ id: "slot-2" });
     const res = await attachSlotToEntity(
       "ent-2",
       { recipeIds: ["r1", "r2"], accountId: "acc-9" },
       ctx("ADMIN", "admin-1", true),
     );
-    expect(res).toEqual({ mode: "missions", createdIds: ["slot-1", "slot-2"], count: 2 });
+    expect(res).toEqual({ mode: "missions", createdIds: ["slot-1", "slot-2"], count: 2, failed: [] });
     expect(mockCreateSlot).toHaveBeenCalledTimes(2);
     const firstCall = mockCreateSlot.mock.calls[0][0];
     expect(firstCall.propertyId).toBe("ent-2");
     expect(firstCall.accountId).toBe("acc-9");
     expect(firstCall.patternTemplateId).toBe("r1");
+    // Sans ça, pas de bouton « Ouvrir le formulaire de génération » sur le slot.
+    expect(firstCall.templateId).toBe("tpl-1");
+    expect(mockCreateSlot.mock.calls[1][0].templateId).toBeNull();
+  });
+
+  it("échec partiel : les autres recettes passent, l'échec est remonté", async () => {
+    mockCreateSlot
+      .mockResolvedValueOnce({ id: "slot-1" })
+      .mockRejectedValueOnce(new ValidationError("La fiche fournie n'est pas du type requis par la recette"));
+    const res = await attachSlotToEntity(
+      "ent-2",
+      { recipeIds: ["r1", "r2"] },
+      ctx("ADMIN", "admin-1", true),
+    );
+    expect(res).toEqual({
+      mode: "missions",
+      createdIds: ["slot-1"],
+      count: 1,
+      failed: [
+        {
+          recipeId: "r2",
+          label: "Recette 2",
+          error: "La fiche fournie n'est pas du type requis par la recette",
+        },
+      ],
+    });
+  });
+
+  it("recette inconnue → failed « Recette introuvable », sans appel createSlot", async () => {
+    mockTemplateFindMany.mockResolvedValue([]);
+    const res = await attachSlotToEntity(
+      "ent-2",
+      { recipeIds: ["ghost"] },
+      ctx("ADMIN", "admin-1", true),
+    );
+    expect(res).toEqual({
+      mode: "missions",
+      createdIds: [],
+      count: 0,
+      failed: [{ recipeId: "ghost", label: "ghost", error: "Recette introuvable" }],
+    });
+    expect(mockCreateSlot).not.toHaveBeenCalled();
   });
 
   it("user avec outil mission (non-admin) → autorisé", async () => {

@@ -55,7 +55,6 @@ export interface LibraryPrefillContext {
    * libraryId → resolved category used in this generation.
    * Stored in Render.usedAssets so recordLibraryUsage can persist lastUsedCategory.
    */
-  usedCategoryByLibrary?: Record<string, string>;
   /**
    * Instagram accounts to show in the account selector (only when at least one block
    * uses theme_sequence). Empty means no selector needed.

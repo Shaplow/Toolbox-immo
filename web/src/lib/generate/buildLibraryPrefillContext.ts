@@ -220,7 +220,6 @@ export async function buildLibraryPrefillContext({
 
   let setSequencedLibraryIds: string[] = [];
   let usedSetTagByLibrary: Record<string, string> | undefined;
-  let usedCategoryByLibrary: Record<string, string> | undefined;
   let dataSuggestion: {
     entryId: string;
     fields: Record<string, string>;
@@ -258,10 +257,6 @@ export async function buildLibraryPrefillContext({
       prefill.usedSetTagByLibrary && Object.keys(prefill.usedSetTagByLibrary).length > 0
         ? prefill.usedSetTagByLibrary
         : undefined;
-    // usedCategoryByLibrary : plus produit par le prefill depuis la suppression
-    // des catégories (plan simplification Phase 3). Champ de trace conservé
-    // dans les types le temps du drop N+1 — toujours undefined désormais.
-    usedCategoryByLibrary = undefined;
 
     for (const block of json.blocks) {
       if (block.type === "video" && block.binding && block.libraryId) {
@@ -393,7 +388,6 @@ export async function buildLibraryPrefillContext({
     dataSuggestion,
     setSequencedLibraryIds,
     usedSetTagByLibrary,
-    usedCategoryByLibrary,
     instagramAccounts,
     selectedAccountId: accountId ?? undefined,
     slotId: slotId ?? undefined,

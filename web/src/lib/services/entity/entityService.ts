@@ -83,7 +83,13 @@ export interface AttachSlotToEntityInput {
 }
 
 export type AttachSlotToEntityResult =
-  | { mode: "missions"; createdIds: string[]; count: number }
+  | {
+      mode: "missions";
+      createdIds: string[];
+      count: number;
+      /** Recettes dont la création a échoué — l'appelant DOIT les afficher (pas d'état partiel silencieux). */
+      failed: { recipeId: string; label: string; error: string }[];
+    }
   | { mode: "reel"; slot: Awaited<ReturnType<typeof createSlot>> };
 
 const ENTITY_STATUSES = ["PLANNED", "SHOT", "DONE", "CANCELLED"] as const;
@@ -641,18 +647,47 @@ async function attachMissionsToEntity(
   }
   const accountId = input.accountId ?? null;
 
+  // Le templateId de la recette doit suivre sur le slot, sinon le drawer ne
+  // propose pas « Ouvrir le formulaire de génération » pour les recettes auto.
+  const templates = await prisma.patternTemplate.findMany({
+    where: { id: { in: recipeIds } },
+    select: { id: true, label: true, templateId: true },
+  });
+  const templateById = new Map(templates.map((t) => [t.id, t]));
+
   // createSlot valide lui-même l'existence/l'archivage de la fiche (branche
-  // propertyId) — pas de double-check ici.
+  // propertyId) — pas de double-check ici. Chaque recette est tentée
+  // indépendamment : un échec (type de fiche incompatible, recette archivée…)
+  // n'annule pas les autres, mais est REMONTÉ à l'appelant.
   const createdIds: string[] = [];
+  const failed: { recipeId: string; label: string; error: string }[] = [];
   for (const recipeId of recipeIds) {
-    const slot = await createSlot(
-      { patternTemplateId: recipeId, accountId, propertyId: entityId },
-      ctx,
-      { requireAdmin: false },
-    );
-    createdIds.push(slot.id);
+    const template = templateById.get(recipeId);
+    if (!template) {
+      failed.push({ recipeId, label: recipeId, error: "Recette introuvable" });
+      continue;
+    }
+    try {
+      const slot = await createSlot(
+        {
+          patternTemplateId: recipeId,
+          accountId,
+          propertyId: entityId,
+          templateId: template.templateId,
+        },
+        ctx,
+        { requireAdmin: false },
+      );
+      createdIds.push(slot.id);
+    } catch (err) {
+      failed.push({
+        recipeId,
+        label: template.label,
+        error: err instanceof Error ? err.message : "Erreur inconnue",
+      });
+    }
   }
-  return { mode: "missions", createdIds, count: createdIds.length };
+  return { mode: "missions", createdIds, count: createdIds.length, failed };
 }
 
 async function attachReelToEntity(

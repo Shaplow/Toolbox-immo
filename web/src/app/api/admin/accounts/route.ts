@@ -26,9 +26,6 @@ export async function GET(req: NextRequest) {
       orderBy: { name: "asc" },
       include: {
         _count: { select: { renders: true } },
-        cursors: {
-          include: { library: { select: { id: true, name: true, setSequence: true } } },
-        },
         client: { select: { id: true, name: true } },
       },
     });

@@ -269,7 +269,6 @@ async function main() {
       id: "test-media-lib-video",
       name: "Test Videos",
       type: "video",
-      setSequence: JSON.stringify(["INTRO", "OUTRO"]),
       metadataSchema: JSON.stringify([]),
     },
   });
@@ -281,7 +280,6 @@ async function main() {
       id: "test-media-lib-audio",
       name: "Test Audio",
       type: "audio",
-      setSequence: JSON.stringify([]),
       metadataSchema: JSON.stringify([]),
     },
   });

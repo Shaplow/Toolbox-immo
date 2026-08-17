@@ -98,8 +98,22 @@ export function AttachSlotModal({
         throw new Error(data.error ?? "Échec de l'attache.");
       }
       if (mode === "missions") {
-        const { count } = (await res.json()) as { count: number };
-        toast.success(`${count} mission${count > 1 ? "s" : ""} créée${count > 1 ? "s" : ""}.`);
+        const { count, failed = [] } = (await res.json()) as {
+          count: number;
+          failed?: { label: string; error: string }[];
+        };
+        const detail = failed.map((f) => `${f.label} : ${f.error}`).join(" — ");
+        if (count === 0) {
+          setError(`Aucune mission créée. ${detail}`);
+          return;
+        }
+        if (failed.length > 0) {
+          toast.error(
+            `${count} mission${count > 1 ? "s" : ""} créée${count > 1 ? "s" : ""}, ${failed.length} en échec — ${detail}`,
+          );
+        } else {
+          toast.success(`${count} mission${count > 1 ? "s" : ""} créée${count > 1 ? "s" : ""}.`);
+        }
         router.push("/calendar");
       } else {
         toast.success("Reel ajouté");
@@ -152,9 +166,16 @@ export function AttachSlotModal({
                 ) : (
                   <div className="max-h-64 overflow-auto rounded-md border border-border divide-y divide-border">
                     {recipes.map((r) => (
-                      <div key={r.id} className="flex items-center gap-2.5 px-3 py-2">
+                      // La Checkbox stoppe la propagation de son propre clic —
+                      // pas de double-toggle quand on clique la ligne.
+                      <div
+                        key={r.id}
+                        onClick={() => toggle(r.id)}
+                        className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-muted/50"
+                      >
                         <Checkbox checked={selected.has(r.id)} onChange={() => toggle(r.id)} label={r.label} />
-                        <span className="ml-auto text-[11px] text-muted-foreground shrink-0">
+                        <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{r.label}</span>
+                        <span className="text-[11px] text-muted-foreground shrink-0">
                           {SOURCE_LABELS_FR[r.source] ?? r.source}
                         </span>
                       </div>

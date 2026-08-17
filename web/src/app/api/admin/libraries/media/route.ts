@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
-  const body = await req.json() as { name?: string; type?: string; tags?: string[] | string; description?: string; setSequence?: string[] | string };
+  const body = await req.json() as { name?: string; type?: string; tags?: string[] | string; description?: string };
   const { name, type, description } = body;
 
   if (!name?.trim()) {
@@ -66,10 +66,7 @@ export async function POST(req: NextRequest) {
   // double-encodée par le `JSON.stringify` ci-dessous.
   const parsedTags = normalizeStringArrayInput(body.tags, "tags");
   if (!parsedTags.ok) return NextResponse.json({ error: parsedTags.error }, { status: 400 });
-  const parsedSequence = normalizeStringArrayInput(body.setSequence, "setSequence");
-  if (!parsedSequence.ok) return NextResponse.json({ error: parsedSequence.error }, { status: 400 });
   const tags = parsedTags.value ?? [];
-  const setSequence = parsedSequence.value ?? [];
 
   try {
     const library = await prisma.mediaLibrary.create({
@@ -78,7 +75,6 @@ export async function POST(req: NextRequest) {
         type,
         tags: JSON.stringify(tags),
         description: description?.trim() ?? null,
-        setSequence: JSON.stringify(setSequence),
       },
     });
     return NextResponse.json(library, { status: 201 });
