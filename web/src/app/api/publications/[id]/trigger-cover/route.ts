@@ -13,16 +13,15 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(_req: NextRequest, { params }: RouteContext) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { id: slotId } = await params;
 

@@ -6,8 +6,9 @@
  * relations lourdes. À utiliser dans le drawer rapide d'aperçu — la fiche
  * complète reste accessible via /admin/accounts/[id].
  */
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 interface Params {
@@ -15,10 +16,8 @@ interface Params {
 }
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { id } = await params;
 
   const account = await prisma.instagramAccount.findUnique({
@@ -47,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         where: {
           accountId: id,
           scheduledAt: { not: null, gte: new Date() },
-          status: { notIn: ["DONE", "CANCELLED"] },
+          status: { notIn: ["PUBLISHED", "CANCELLED", "ARCHIVED"] },
         },
         orderBy: { scheduledAt: "asc" },
         select: {
@@ -79,10 +78,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id: nextSlot.id,
         scheduledAt: nextSlot.scheduledAt!.toISOString(),
         status: nextSlot.status,
-        label:
-          nextSlot.patternBinding?.customLabel ??
-          nextSlot.patternBinding?.patternTemplate?.label ??
-          null,
+        label: patternLabel(nextSlot.patternBinding),
       }
     : null;
 

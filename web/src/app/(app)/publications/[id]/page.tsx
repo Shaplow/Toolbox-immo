@@ -11,6 +11,11 @@ import { toUserRole } from "@/lib/permissions/role";
 import { syncSlotsPipelineStatuses } from "@/lib/services/slot/transitions";
 import { resolveSlotConfig } from "@/lib/services/slot/config";
 import {
+  resolveSlotEffectivePattern,
+  slotEffectivePatternSelect,
+} from "@/lib/services/slot/effectivePattern";
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
+import {
   resolveActiveCaptionJob,
   resolveActiveDescriptionJob,
   resolveActiveTranscription,
@@ -35,9 +40,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   });
   if (!slot) return { title: "Publication | Toolbox Immo" };
   const recipeLabel =
-    slot.patternBinding?.customLabel ??
-    slot.patternBinding?.patternTemplate?.label ??
-    null;
+    patternLabel(slot.patternBinding) ?? null;
   const label = recipeLabel ?? slot.title ?? "Publication";
   const accountSuffix = slot.account ? ` · @${slot.account.handle}` : "";
   return {
@@ -69,55 +72,9 @@ export default async function PublicationPage({ params }: PageProps) {
       // Fiche tournage liée (si le reel en vient) — pour afficher ses
       // rushs partagés + un back-link sur la fiche.
       shootEntity: { select: { id: true, label: true } },
-      // Recette (PatternBinding → PatternTemplate). Source canonique depuis
-      // G.3. On synthétise une vue `pattern` depuis le binding plus bas pour
-      // que la chaîne de production s'affiche.
-      patternBinding: {
-        select: {
-          customLabel: true,
-          templateIdOverride: true,
-          coverModeOverride: true,
-          captionPresetIdOverride: true,
-          descriptionPromptIdOverride: true,
-          patternTemplate: {
-            select: {
-              id: true,
-              label: true,
-              source: true,
-              templateId: true,
-              coverMode: true,
-              needsCaptions: true,
-              needsCaptionsMode: true,
-              needsDescription: true,
-              needsClientValidation: true,
-              allowsClientRevision: true,
-              needsBrief: true,
-              captionPresetId: true,
-              descriptionPromptId: true,
-            },
-          },
-        },
-      },
-      // Missions — recette GLOBALE directe (PatternTemplate sans binding).
-      // Synthétisée en `patternView` plus bas (2e branche) pour que la chaîne
-      // de production s'affiche sur une mission sans compte.
-      patternTemplate: {
-        select: {
-          id: true,
-          label: true,
-          source: true,
-          templateId: true,
-          coverMode: true,
-          needsCaptions: true,
-          needsCaptionsMode: true,
-          needsDescription: true,
-          needsClientValidation: true,
-          allowsClientRevision: true,
-          needsBrief: true,
-          captionPresetId: true,
-          descriptionPromptId: true,
-        },
-      },
+      // Recette effective (binding par compte, sinon template global des
+      // missions) — fragment + résolution partagés (V2.2).
+      ...slotEffectivePatternSelect,
       assigneeMonteur: { select: { id: true, name: true, email: true } },
       assigneeCm: { select: { id: true, name: true, email: true } },
       assigneeVideaste: { select: { id: true, name: true, email: true } },
@@ -207,53 +164,10 @@ export default async function PublicationPage({ params }: PageProps) {
     notFound();
   }
 
-  // G.3 — Vue « pattern » synthétisée depuis la recette : PatternBinding
-  // (overrides binding prioritaires) sinon PatternTemplate global direct
-  // (missions sans compte). Sans elle, la chaîne de production s'affiche vide
-  // et la RenderSection est masquée.
-  const patternView = slot.patternBinding?.patternTemplate
-    ? (() => {
-        const t = slot.patternBinding.patternTemplate;
-        const b = slot.patternBinding;
-        return {
-          id: t.id,
-          label: b.customLabel ?? t.label,
-          source: t.source,
-          templateId: b.templateIdOverride ?? t.templateId,
-          coverMode: b.coverModeOverride ?? t.coverMode,
-          needsCaptions: t.needsCaptions,
-          needsCaptionsMode: t.needsCaptionsMode,
-          needsDescription: t.needsDescription,
-          needsClientValidation: t.needsClientValidation,
-          allowsClientRevision: t.allowsClientRevision,
-          // PatternTemplate n'a pas de champ needsRushes : dérivé de la source.
-          needsRushes: t.source === "manual_rushes",
-          needsBrief: t.needsBrief,
-          captionPresetId: b.captionPresetIdOverride ?? t.captionPresetId,
-          descriptionPromptId: b.descriptionPromptIdOverride ?? t.descriptionPromptId,
-        };
-      })()
-    : slot.patternTemplate
-      ? (() => {
-          const t = slot.patternTemplate;
-          return {
-            id: t.id,
-            label: t.label,
-            source: t.source,
-            templateId: t.templateId,
-            coverMode: t.coverMode,
-            needsCaptions: t.needsCaptions,
-            needsCaptionsMode: t.needsCaptionsMode,
-            needsDescription: t.needsDescription,
-            needsClientValidation: t.needsClientValidation,
-            allowsClientRevision: t.allowsClientRevision,
-            needsRushes: t.source === "manual_rushes",
-            needsBrief: t.needsBrief,
-            captionPresetId: t.captionPresetId,
-            descriptionPromptId: t.descriptionPromptId,
-          };
-        })()
-      : null;
+  // Vue « pattern » de la recette effective (binding avec overrides, sinon
+  // template global des missions). Sans elle, la chaîne de production
+  // s'affiche vide et la RenderSection est masquée.
+  const patternView = resolveSlotEffectivePattern(slot);
 
   // Rattrapage opportuniste : si le render existe (PROCESSING/DONE) mais le
   // slot est resté en TO_DO/IN_PROGRESS, on applique la bonne transition.
@@ -265,7 +179,6 @@ export default async function PublicationPage({ params }: PageProps) {
       pattern: patternView
         ? {
             source: patternView.source,
-            needsCaptions: patternView.needsCaptions,
             needsCaptionsMode: patternView.needsCaptionsMode,
           }
         : null,
@@ -478,7 +391,6 @@ export default async function PublicationPage({ params }: PageProps) {
     {
       needsClientValidationOverride: slot.needsClientValidationOverride,
       allowsClientRevisionOverride: slot.allowsClientRevisionOverride,
-      needsCaptionsOverride: slot.needsCaptionsOverride,
       needsCaptionsModeOverride: slot.needsCaptionsModeOverride,
       needsDescriptionOverride: slot.needsDescriptionOverride,
       needsRushesOverride: slot.needsRushesOverride,
@@ -641,7 +553,6 @@ export default async function PublicationPage({ params }: PageProps) {
               templateId: effectivePattern.templateId,
               coverMode: effectivePattern.coverMode,
               // Toutes les valeurs needs* sont déjà résolues (overrides appliqués)
-              needsCaptions: effectivePattern.needsCaptions,
               needsCaptionsMode: effectivePattern.needsCaptionsMode,
               needsDescription: effectivePattern.needsDescription,
               needsClientValidation: effectivePattern.needsClientValidation,
@@ -747,7 +658,6 @@ export default async function PublicationPage({ params }: PageProps) {
       resolvedConfig={{
         coverMode: resolvedConfig.coverMode,
         coverPresetId: resolvedConfig.coverPresetId,
-        needsCaptions: resolvedConfig.needsCaptions,
         needsCaptionsMode: resolvedConfig.needsCaptionsMode,
         captionPresetId: resolvedConfig.captionPresetId,
       }}

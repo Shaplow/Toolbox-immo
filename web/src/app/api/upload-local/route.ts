@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
@@ -22,10 +22,8 @@ const SAFE_KEY = /^[\w\-.]+$/; // alphanumeric, dash, dot, underscore only
  * qu'un PUT vers une URL pré-signée S3/R2).
  */
 export async function PUT(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return new NextResponse("Non autorisé", { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
 
   const key = req.nextUrl.searchParams.get("key") ?? "";
   if (!SAFE_KEY.test(key)) {

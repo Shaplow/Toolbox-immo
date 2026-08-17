@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { buildHTML } from "@/lib/renderer/buildHTML";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
@@ -20,10 +20,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ templateId: string }> }
 ) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { templateId } = await params;
   const ok = await canAccessTemplate(
@@ -54,10 +53,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ templateId: string }> }
 ) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { templateId } = await params;
   const ok = await canAccessTemplate(

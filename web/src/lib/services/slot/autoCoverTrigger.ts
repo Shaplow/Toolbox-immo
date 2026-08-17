@@ -51,12 +51,11 @@ export async function tryAutoTriggerCover(
         },
         needsClientValidationOverride: true,
         allowsClientRevisionOverride: true,
-        needsCaptionsOverride: true,
+        needsCaptionsModeOverride: true,
         needsDescriptionOverride: true,
         needsRushesOverride: true,
         needsBriefOverride: true,
         coverModeOverride: true,
-        coverPresetIdOverride: true,
         captionPresetIdOverride: true,
         descriptionPromptIdOverride: true,
         // Charge le pattern legacy ET le binding (recette par compte) — la

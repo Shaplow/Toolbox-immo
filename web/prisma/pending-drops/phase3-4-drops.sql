@@ -6,12 +6,17 @@
 DROP INDEX IF EXISTS "PublicationSlot_patternId_idx";
 ALTER TABLE "PublicationSlot" DROP COLUMN IF EXISTS "patternId";
 DROP TABLE IF EXISTS "AccountPattern";
--- Colonnes captions legacy (enum needsCaptionsMode les remplace — vérifier
--- 0 lecture par grep avant) :
--- ALTER TABLE "PatternTemplate" DROP COLUMN IF EXISTS "needsCaptions";
--- ALTER TABLE "PublicationSlot" DROP COLUMN IF EXISTS "needsCaptionsOverride";
--- NB : needsCaptions est encore lu par resolveCaptionsMode → à traiter dans un
--- chantier captions dédié, PAS dans ce drop.
+-- Colonnes captions Boolean (V2.3, 17/08 : plus aucune lecture/écriture côté
+-- code — resolveCaptionsMode ne lit plus que le mode enum ; backfill final
+-- 20260817190000 appliqué avant ce drop) :
+ALTER TABLE "PatternTemplate" DROP COLUMN IF EXISTS "needsCaptions";
+ALTER TABLE "PublicationSlot" DROP COLUMN IF EXISTS "needsCaptionsOverride";
+
+-- Overrides morts (V2.4, 17/08 : plus aucune lecture/écriture côté code) :
+-- templateIdOverride n'a jamais été réglable en UI ; coverPresetIdOverride
+-- n'a jamais été écrit.
+ALTER TABLE "PatternBinding" DROP COLUMN IF EXISTS "templateIdOverride";
+ALTER TABLE "PublicationSlot" DROP COLUMN IF EXISTS "coverPresetIdOverride";
 
 -- ── Phase 3 (rotation média) ────────────────────────────────────────────────
 DROP TABLE IF EXISTS "AccountLibraryCursor";

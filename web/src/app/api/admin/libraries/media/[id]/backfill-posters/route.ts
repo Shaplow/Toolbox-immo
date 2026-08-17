@@ -27,7 +27,7 @@ import { promisify } from "util";
 import path from "path";
 import { existsSync } from "fs";
 import { writeFile, mkdir } from "fs/promises";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, getR2PublicUrl, r2Configured } from "@/lib/r2";
@@ -120,8 +120,9 @@ async function storePoster(assetId: string, jpeg: Buffer): Promise<string> {
 }
 
 export async function POST(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaLibraries(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaLibraries(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

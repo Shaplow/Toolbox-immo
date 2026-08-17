@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 
@@ -21,8 +21,9 @@ type Params = { params: Promise<{ id: string }> };
  * sur un état périmé.
  */
 export async function POST(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaLibraries(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaLibraries(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

@@ -149,7 +149,6 @@ describe("ALLOWED_PATCH_FIELDS_BY_ROLE — security invariants", () => {
 
   it("ADMIN can modify Phase 5 one-off overrides (cover/captions/description presets)", () => {
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("coverModeOverride");
-    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("coverPresetIdOverride");
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("captionPresetIdOverride");
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("descriptionPromptIdOverride");
   });
@@ -179,12 +178,11 @@ describe("isValidSlotStatus", () => {
     expect(isValidSlotStatus("ARCHIVED")).toBe(true);
   });
 
-  it("accepts legacy statuses (cohabitation)", () => {
-    expect(isValidSlotStatus("TO_DO")).toBe(true);
+  it("rejects legacy statuses (backfillés V2.5 — plus jamais valides en PATCH)", () => {
+    for (const s of ["TO_DO", "READY", "CHECKING", "DONE", "REJECTED", "CAPTIONS_PENDING"]) {
+      expect(isValidSlotStatus(s)).toBe(false);
+    }
     expect(isValidSlotStatus("IN_PROGRESS")).toBe(true);
-    expect(isValidSlotStatus("READY")).toBe(true);
-    expect(isValidSlotStatus("CHECKING")).toBe(true);
-    expect(isValidSlotStatus("DONE")).toBe(true);
   });
 
   it("rejects unknown strings", () => {

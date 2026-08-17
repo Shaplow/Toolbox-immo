@@ -2,17 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { deleteCoverCandidateAssets, queueCoverFramePackPreparation, toCoverSourceVideoUrl } from "@/lib/coverAuto";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 import type { CoverAutoConfig } from "@/types/template";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
   const isAdmin = userContext.canAdminBypass;
   if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.COVERS))) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });

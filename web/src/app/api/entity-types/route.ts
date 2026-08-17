@@ -8,7 +8,7 @@
  * `entityScope.whereClauseForUserEntity`).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser, requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeCustomFields,
@@ -41,10 +41,9 @@ function serialize(t: { fieldSchema: string; [k: string]: unknown }) {
 }
 
 export async function GET() {
-  const ctx = await getUserContext();
-  if (!ctx?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
 
   const types = await prisma.entityType.findMany({
     where: ctx.canAdminBypass ? {} : { visibility: "team" },
@@ -56,10 +55,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   let body: Record<string, unknown>;
   try {

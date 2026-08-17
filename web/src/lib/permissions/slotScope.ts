@@ -21,25 +21,9 @@ import { SLOT_STATUSES, type SlotStatus } from "@/types/roles";
 // ---------------------------------------------------------------------------
 
 /**
- * Statuts legacy conservés en cohabitation jusqu'au backfill Phase 1.3.
- * Ces valeurs sont présentes en base depuis l'ancienne pipeline et ne sont pas
- * encore migrées. Elles doivent rester acceptées en PATCH le temps du backfill.
- *
- * @see feedback_publication_strategy_decisions.md Q12
- *
- * Source unique : transitions.ts. Sans ce re-export, l'ajout d'un nouveau
- * statut legacy aurait dû être propagé dans 2 fichiers — divergence aurait
- * causé un PATCH accepté par slotScope mais rejeté par canTransition.
- */
-import { LEGACY_STATUSES as LEGACY_SLOT_STATUSES_REEXPORT } from "@/lib/services/slot/transitions";
-const LEGACY_SLOT_STATUSES = LEGACY_SLOT_STATUSES_REEXPORT;
-
-/**
- * Valide qu'une valeur est un statut de slot acceptable.
- *
- * Accepte à la fois :
- *  - les 15 statuts du nouveau pipeline (`SLOT_STATUSES` dans `@/types/roles`)
- *  - les 5 statuts legacy (`LEGACY_SLOT_STATUSES`) encore présents en base
+ * Valide qu'une valeur est un statut de slot acceptable — les 16 statuts du
+ * pipeline (`SLOT_STATUSES`, resserrage V2.5 : les valeurs legacy sont
+ * backfillées, migration 20260817200000).
  *
  * Note de sécurité : utilise `Object.hasOwn` (pas `in`) pour éviter que des
  * propriétés héritées de `Object.prototype` (ex. "toString", "constructor")
@@ -47,10 +31,7 @@ const LEGACY_SLOT_STATUSES = LEGACY_SLOT_STATUSES_REEXPORT;
  */
 export function isValidSlotStatus(s: unknown): boolean {
   if (typeof s !== "string") return false;
-  return (
-    Object.hasOwn(SLOT_STATUSES, s as SlotStatus) ||
-    (LEGACY_SLOT_STATUSES as readonly string[]).includes(s)
-  );
+  return Object.hasOwn(SLOT_STATUSES, s as SlotStatus);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,13 +172,12 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       // Phase 2.3 — override per-slot de la validation admin du montage
       "needsAdminValidationOverride",
       // Cohérence Workflows Phase 4 — overrides per-slot des autres needs*
-      "needsCaptionsOverride",
+      "needsCaptionsModeOverride",
       "needsDescriptionOverride",
       "needsRushesOverride",
       "needsBriefOverride",
       // Slots one-off Phase 5 — overrides des ressources (preset/prompt)
       "coverModeOverride",
-      "coverPresetIdOverride",
       "captionPresetIdOverride",
       "descriptionPromptIdOverride",
     ],

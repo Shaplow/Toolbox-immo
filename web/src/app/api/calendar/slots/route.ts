@@ -17,15 +17,14 @@
  *  - POST → `services/slot/slotService.createSlot`
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { createSlot, listSlots } from "@/lib/services/slot/slotService";
 import { mapServiceError } from "@/lib/services/_runtime/mapServiceError";
 
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { searchParams } = new URL(req.url);
 
@@ -54,10 +53,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const body = await req.json();
   try {

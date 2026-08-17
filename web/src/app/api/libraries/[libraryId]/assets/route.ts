@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ libraryId: string }> };
@@ -8,10 +8,8 @@ type Params = { params: Promise<{ libraryId: string }> };
 // Auth-gated (no admin required) — returns public asset list for a library.
 // Used by the generation form library picker for all authenticated users.
 export async function GET(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
 
   const { libraryId } = await params;
 

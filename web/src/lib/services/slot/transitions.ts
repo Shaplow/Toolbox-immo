@@ -18,10 +18,6 @@ import { logActivity } from "./activity";
 import { resolveCaptionsMode, isCaptionsAuto } from "@/lib/publications/captionsMode";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
-// ─── Statuts legacy toujours présents en base (Phase 1.3 backfill) ────────────
-
-export const LEGACY_STATUSES = ["TO_DO", "IN_PROGRESS", "READY", "CHECKING", "DONE"] as const;
-
 // ─── Matrice de transitions ────────────────────────────────────────────────────
 
 /**
@@ -44,8 +40,7 @@ export const STATUS_TRANSITIONS: Record<SlotStatus, SlotStatus[]> = {
   // L'ajouter à la matrice ouvrirait cette transition au PATCH générique pour
   // CM/MONTEUR (status patchable + canTransition enforced dans patchSlot),
   // contournant la garde et la génération de token — non voulu.
-  EDIT_APPROVED: ["CAPTIONS_PENDING", "READY_FOR_CM", "SCHEDULED", "CANCELLED"],
-  CAPTIONS_PENDING: ["READY_FOR_CM", "EDIT_APPROVED", "CANCELLED"],
+  EDIT_APPROVED: ["READY_FOR_CM", "SCHEDULED", "CANCELLED"],
   // READY_FOR_CM → AWAITING_CLIENT seulement si needsClientValidation est actif.
   // L'enforcement métier (ne pas envoyer pour validation si non requis) se fait côté
   // route /send-for-validation, pas dans cette matrice générique.
@@ -54,20 +49,12 @@ export const STATUS_TRANSITIONS: Record<SlotStatus, SlotStatus[]> = {
   CLIENT_REVISION: ["AWAITING_CLIENT", "IN_EDIT", "READY_FOR_CM", "CANCELLED"],
   SCHEDULED: ["PUBLISHED", "READY_FOR_CM", "CANCELLED"],
   PUBLISHED: ["ARCHIVED"],
-  REJECTED: ["IN_EDIT", "CANCELLED"],
   BLOCKED: [],  // récupération ADMIN uniquement
   CANCELLED: [],
   ARCHIVED: [],
-  // ── Legacy : transitions vides — la fonction canTransition tolère
-  //    les statuts legacy en `from` via LEGACY_STATUSES (cf. ligne 68)
-  //    et délègue la décision à l'ADMIN pour faire avancer le slot
-  //    vers la pipeline éditoriale moderne. Les entries ci-dessous ne
-  //    servent qu'à satisfaire le type Record<SlotStatus, SlotStatus[]>.
-  TO_DO: [],
-  IN_PROGRESS: [],
-  READY: [],
-  CHECKING: [],
-  DONE: [],
+  // IN_PROGRESS est écrit par le pipeline auto_template ; les sorties
+  // manuelles se font vers les mêmes cibles que l'auto-transition.
+  IN_PROGRESS: ["READY_FOR_CM", "AWAITING_CLIENT", "CANCELLED"],
 };
 
 // ─── canTransition ─────────────────────────────────────────────────────────────
@@ -76,18 +63,15 @@ export const STATUS_TRANSITIONS: Record<SlotStatus, SlotStatus[]> = {
  * Vérifie si la transition `from` → `to` est autorisée pour le rôle donné.
  *
  * - ADMIN : bypass total (toujours true).
- * - Statuts legacy en `from` : ADMIN-only (avant le backfill Phase 1.3, on tolérait
- *   ces transitions pour tous les rôles — bug audit 2026-05-30 : un CM/MONTEUR pouvait
- *   pousser un slot legacy vers PUBLISHED bypass complet de la matrice).
+ * - Un statut inconnu en `from` (donnée corrompue) n'a aucune transition pour
+ *   les non-admins (V2.5 : les statuts legacy sont backfillés, migration
+ *   20260817200000).
  * - Autres rôles : vérifie strictement la matrice STATUS_TRANSITIONS.
  */
 export function canTransition(from: string, to: string, role: UserRole): boolean {
   if (role === "ADMIN") return true;
   // USER / EXTERNAL_GENERATOR n'ont aucun accès à la pipeline éditoriale.
   if (role === "EXTERNAL_GENERATOR") return false;
-  // Statut legacy : seul l'ADMIN peut le faire bouger (sortie déjà gérée plus haut).
-  // Les autres rôles doivent attendre que le slot soit normalisé.
-  if ((LEGACY_STATUSES as readonly string[]).includes(from)) return false;
   const allowed = STATUS_TRANSITIONS[from as SlotStatus];
   return Array.isArray(allowed) && allowed.includes(to as SlotStatus);
 }
@@ -218,11 +202,10 @@ export type PipelineTrigger =
 // (mapSourceToInitialStatus → PLANNED ; createSlot sans pattern → DRAFT). Sans
 // eux, un slot fraîchement créé reste éternellement "À planifier" même quand
 // le Render passe DONE — l'auto-transition pipeline ne le voyait pas comme
-// pilotable. TO_DO est conservé pour les slots legacy non backfillés.
+// pilotable.
 const PIPELINE_DRIVEN_STATUSES = new Set<string>([
   "DRAFT",
   "PLANNED",
-  "TO_DO",
   "IN_PROGRESS",
   "READY_FOR_CM", // accepté car on peut y être passé puis vouloir reculer en IN_PROGRESS
 ]);
@@ -233,9 +216,7 @@ interface SlotForAutoTransition {
   status: string;
   pattern: {
     source: string;
-    /** @deprecated V8 — utiliser needsCaptionsMode. */
-    needsCaptions: boolean;
-    /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean. */
+    /** "none" | "auto" | "manual". */
     needsCaptionsMode?: string | null;
     /** Phase 2026-05-30 : pris en compte pour cibler AWAITING_CLIENT après captions. */
     needsClientValidation?: boolean;
@@ -392,8 +373,7 @@ export async function syncSlotsPipelineStatuses(
     needsClientValidationOverride?: boolean | null;
     pattern: {
       source: string;
-      needsCaptions: boolean;
-      /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean. */
+      /** "none" | "auto" | "manual". */
       needsCaptionsMode?: string | null;
       needsClientValidation?: boolean;
     } | null;

@@ -53,7 +53,7 @@ const GROUPS: Group[] = [
     key: "ready",
     label: "Prêts à programmer",
     hint: "Montage validé — il ne manque qu'une date.",
-    statuses: ["EDIT_APPROVED", "READY_FOR_CM", "CAPTIONS_PENDING"],
+    statuses: ["EDIT_APPROVED", "READY_FOR_CM"],
     variant: "ready",
   },
   {
@@ -74,7 +74,7 @@ const GROUPS: Group[] = [
     key: "todo",
     label: "À démarrer",
     hint: "Mission créée — en attente d'action.",
-    statuses: ["RUSHES_EXPECTED", "PLANNED", "DRAFT", "TO_DO"],
+    statuses: ["RUSHES_EXPECTED", "PLANNED", "DRAFT"],
     variant: "todo",
   },
 ];

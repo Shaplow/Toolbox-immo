@@ -13,7 +13,6 @@ const ACTIVE_STATUSES: SlotStatus[] = [
   "IN_EDIT",
   "EDIT_REVIEW",
   "EDIT_APPROVED",
-  "CAPTIONS_PENDING",
   "READY_FOR_CM",
   "SCHEDULED",
   "DRAFT",

@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin, requireUser } from "@/lib/api/requireAuth";
 
 /**
  * GET /api/caption-presets
@@ -8,10 +8,9 @@ import { getUserContext } from "@/lib/userContext";
  * User or impersonating admin: only presets explicitly assigned via CaptionPresetAccess.
  */
 export async function GET() {
-  const userContext = await getUserContext();
-  if (!userContext) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const isAdmin = userContext.canAdminBypass;
   const effectiveUserId = userContext.effectiveUser.id;
@@ -47,13 +46,9 @@ export async function GET() {
  * Admin only — creates or overwrites a preset.
  */
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
-  if (!userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   // POST est admin-only. Le preset est rattaché à l'admin réel (actualUser),
   // pas à l'identité impersonnée — sinon un admin qui impersonne un CM

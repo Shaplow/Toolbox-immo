@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/admin/libraries/data — liste les DataLibrary (+ nombre de fiches)
 export async function GET() {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   try {
     const libraries = await prisma.dataLibrary.findMany({
@@ -27,10 +25,8 @@ export async function GET() {
 
 // POST /api/admin/libraries/data — crée une DataLibrary
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const body = await req.json() as { name?: string; templateType?: string; description?: string };
   const { name, templateType, description } = body;

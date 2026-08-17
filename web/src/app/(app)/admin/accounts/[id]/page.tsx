@@ -1,3 +1,4 @@
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -57,6 +58,7 @@ export default async function AccountFichePage({ params }: Props) {
   // Données pour le drawer d'édition (catalogue + listes d'assignés / presets).
   const [
     catalogTemplates,
+    videoLibraries,
     builderTemplates,
     monteurUsers,
     cmUsers,
@@ -84,10 +86,16 @@ export default async function AccountFichePage({ params }: Props) {
         descriptionPromptId: true,
         descriptionSourceFieldKey: true,
         descriptionFixedText: true,
+        autoSaveToLibraryId: true,
         notes: true,
         _count: { select: { bindings: true } },
       },
       orderBy: [{ source: "asc" }, { label: "asc" }],
+    }),
+    prisma.mediaLibrary.findMany({
+      where: { type: "video" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
     }),
     prisma.template.findMany({
       select: { id: true, name: true },
@@ -171,7 +179,6 @@ export default async function AccountFichePage({ params }: Props) {
   const recipes: RecipeItem[] = account.patternBindings.map((b) => {
     const tpl = b.patternTemplate;
     const overrideCount = [
-      b.templateIdOverride,
       b.captionPresetIdOverride,
       b.descriptionPromptIdOverride,
       b.coverModeOverride,
@@ -180,7 +187,7 @@ export default async function AccountFichePage({ params }: Props) {
       id: b.id,
       bindingId: b.id,
       patternTemplateId: b.patternTemplateId,
-      label: b.customLabel ?? tpl.label,
+      label: patternLabel(b),
       // Template fields
       templateLabel: tpl.label,
       source: tpl.source,
@@ -198,6 +205,7 @@ export default async function AccountFichePage({ params }: Props) {
       descriptionPromptId: tpl.descriptionPromptId,
       descriptionSourceFieldKey: tpl.descriptionSourceFieldKey,
       descriptionFixedText: tpl.descriptionFixedText,
+      autoSaveToLibraryId: tpl.autoSaveToLibraryId,
       templateNotes: tpl.notes,
       // Binding-only
       customLabel: b.customLabel,
@@ -214,7 +222,6 @@ export default async function AccountFichePage({ params }: Props) {
       descriptionPromptIdOverride: b.descriptionPromptIdOverride,
       coverModeOverride: b.coverModeOverride,
       bindingNotes: b.notes,
-      hasTemplateOverride: !!b.templateIdOverride,
       hasCaptionPresetOverride: !!b.captionPresetIdOverride,
       hasDescriptionPromptOverride: !!b.descriptionPromptIdOverride,
       hasCoverModeOverride: !!b.coverModeOverride,
@@ -252,6 +259,7 @@ export default async function AccountFichePage({ params }: Props) {
       descriptionPromptId: t.descriptionPromptId,
       descriptionSourceFieldKey: t.descriptionSourceFieldKey,
       descriptionFixedText: t.descriptionFixedText,
+      autoSaveToLibraryId: t.autoSaveToLibraryId,
       templateNotes: t.notes,
       customLabel: null,
       dayOfWeek: [],
@@ -267,7 +275,6 @@ export default async function AccountFichePage({ params }: Props) {
       descriptionPromptIdOverride: null,
       coverModeOverride: null,
       bindingNotes: null,
-      hasTemplateOverride: false,
       hasCaptionPresetOverride: false,
       hasDescriptionPromptOverride: false,
       hasCoverModeOverride: false,
@@ -335,6 +342,7 @@ export default async function AccountFichePage({ params }: Props) {
             initialRecipes={allRecipes}
             catalogTemplates={catalogTemplates}
             builderTemplates={builderTemplates}
+            videoLibraries={videoLibraries}
             monteurs={monteurUsers.map((u) => ({ id: u.id, name: u.name }))}
             cms={cmUsers.map((u) => ({ id: u.id, name: u.name }))}
             videastes={videasteUsers.map((u) => ({ id: u.id, name: u.name }))}

@@ -40,19 +40,24 @@ export interface EffectivePattern {
 
   // Workflow flags (immuables au niveau binding pour le scope v1 ;
   // les overrides per-slot existent pour ces flags)
+  /** Dérivé de needsCaptionsMode !== "none" — la colonne Boolean est morte (V2.3). */
   needsCaptions: boolean;
   needsCaptionsMode: string;
   needsDescription: string;
   /** Mode preFilled : clé du champ du Bien qui pré-remplit la légende. null si inactif. */
   descriptionSourceFieldKey: string | null;
+  /** Mode fixed : texte de départ de la légende. null si inactif. */
+  descriptionFixedText: string | null;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsBrief: boolean;
   /** Dérivé de source (manual_rushes ⇒ true). Conservé pour compat. */
   needsRushes: boolean;
-  /** Recette nécessite un bien rattaché pour créer un slot/mission. */
+  /** Recette nécessite un bien rattaché pour créer un slot/mission (legacy). */
   requiresProperty: boolean;
+  /** Type de fiche exigé (remplace requiresProperty). null = aucun. */
+  requiresEntityTypeId: string | null;
 
   // Planning + assignations (toujours portés par le binding)
   dayOfWeek: number[];
@@ -84,22 +89,24 @@ export function resolveEffectivePattern(
     accountId: binding.accountId,
     label: binding.customLabel ?? t.label,
     source: t.source,
-    builderTemplateId: binding.templateIdOverride ?? t.templateId,
+    builderTemplateId: t.templateId,
     captionPresetId: binding.captionPresetIdOverride ?? t.captionPresetId,
     descriptionPromptId:
       binding.descriptionPromptIdOverride ?? t.descriptionPromptId,
     coverMode: binding.coverModeOverride ?? t.coverMode,
     coverConfig: t.coverConfig,
-    needsCaptions: t.needsCaptions,
+    needsCaptions: t.needsCaptionsMode !== "none",
     needsCaptionsMode: t.needsCaptionsMode,
     needsDescription: t.needsDescription,
     descriptionSourceFieldKey: t.descriptionSourceFieldKey,
+    descriptionFixedText: t.descriptionFixedText,
     needsAdminValidation: t.needsAdminValidation,
     needsClientValidation: t.needsClientValidation,
     allowsClientRevision: t.allowsClientRevision,
     needsBrief: t.needsBrief,
     needsRushes: t.source === "manual_rushes",
     requiresProperty: t.requiresProperty,
+    requiresEntityTypeId: t.requiresEntityTypeId,
     dayOfWeek: binding.dayOfWeek,
     publishTime: binding.publishTime,
     isActive: binding.isActive,
@@ -171,6 +178,33 @@ export function toPatternView(
     defaultAssigneeCmId: e.defaultAssigneeCmId,
     defaultAssigneeVideasteId: e.defaultAssigneeVideasteId,
   };
+}
+
+/**
+ * Label visible d'une recette : customLabel du binding sinon label du
+ * template. Source unique du motif `customLabel ?? patternTemplate.label`
+ * (V2.2 — il était réimplémenté dans 11 sites). Typage structurel minimal :
+ * utilisable côté serveur comme dans les composants client (aucune dépendance
+ * runtime Prisma).
+ */
+export function patternLabel(binding: {
+  customLabel: string | null;
+  patternTemplate: { label: string };
+}): string;
+export function patternLabel(
+  binding:
+    | { customLabel: string | null; patternTemplate: { label: string } }
+    | null
+    | undefined,
+): string | null;
+export function patternLabel(
+  binding:
+    | { customLabel: string | null; patternTemplate: { label: string } }
+    | null
+    | undefined,
+): string | null {
+  if (!binding) return null;
+  return binding.customLabel ?? binding.patternTemplate.label;
 }
 
 /** Type-only re-exports utilisés par les call-sites de service. */

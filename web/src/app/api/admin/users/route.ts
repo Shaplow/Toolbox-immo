@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
@@ -7,10 +7,9 @@ import bcrypt from "bcryptjs";
 // Optional ?role=ADMIN|VIDEASTE|MONTEUR|CM|EXTERNAL_GENERATOR filter
 // — utile pour les pickers d'assignation (renvoie alors un payload allégé).
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const roleFilter = req.nextUrl.searchParams.get("role");
   if (roleFilter && ["ADMIN", "VIDEASTE", "MONTEUR", "CM", "EXTERNAL_GENERATOR"].includes(roleFilter)) {
@@ -58,10 +57,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/admin/users — créer un utilisateur
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { username, name, email, password, role = "EXTERNAL_GENERATOR" } = await req.json();
   if (!username || !name || !password) {

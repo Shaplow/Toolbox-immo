@@ -17,8 +17,9 @@
  *
  * Admin-only.
  */
+import { VALID_SOURCES, VALID_CAPTIONS_MODES, VALID_DESCRIPTION_MODES, VALID_COVER_MODES, PUBLISH_TIME_RE } from "@/lib/publications/patternEnums";
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeSourceFieldKey,
@@ -45,6 +46,8 @@ interface TemplatePayload {
   requiresProperty?: boolean;
   /** Phase 5 (métaobjet) — remplace requiresProperty. */
   requiresEntityTypeId?: string | null;
+  /** V2.6 — auto-save de la sortie de génération vers une MediaLibrary vidéo. */
+  autoSaveToLibraryId?: string | null;
   notes?: string | null;
 }
 
@@ -56,7 +59,6 @@ interface BindingPayload {
   defaultAssigneeMonteurId?: string | null;
   defaultAssigneeCmId?: string | null;
   defaultAssigneeVideasteId?: string | null;
-  templateIdOverride?: string | null;
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
   coverModeOverride?: string | null;
@@ -68,11 +70,6 @@ interface CreateRecipeBody {
   binding?: BindingPayload;
 }
 
-const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"];
-const VALID_CAPTIONS_MODES = ["none", "auto", "manual"];
-const VALID_DESCRIPTION_MODES = ["none", "preFilled", "fixed", "autoGenerate", "manualWrite"];
-const VALID_COVER_MODES = ["none", "manualSelect", "autoPack", "monteurUpload"];
-const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
 function validateTemplate(t: TemplatePayload, isNew: boolean): string | null {
   if (isNew) {
@@ -120,10 +117,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
   const { id: accountId } = await params;
 
   let body: CreateRecipeBody;
@@ -195,7 +191,6 @@ export async function POST(
                   ? undefined
                   : (tpl.coverConfig as object),
               needsDescription: tpl.needsDescription ?? "none",
-              needsCaptions: tpl.needsCaptionsMode === "auto",
               needsCaptionsMode: tpl.needsCaptionsMode ?? "none",
               needsAdminValidation: tpl.needsAdminValidation ?? false,
               needsClientValidation: tpl.needsClientValidation ?? false,
@@ -203,6 +198,7 @@ export async function POST(
               needsBrief: tpl.needsBrief ?? false,
               requiresProperty: tpl.requiresProperty ?? false,
               requiresEntityTypeId: tpl.requiresEntityTypeId ?? null,
+              autoSaveToLibraryId: tpl.autoSaveToLibraryId ?? null,
               notes: tpl.notes ?? null,
               updatedByUserId: ctx.actualUser.id,
             },
@@ -220,7 +216,6 @@ export async function POST(
         defaultAssigneeMonteurId: bnd.defaultAssigneeMonteurId ?? null,
         defaultAssigneeCmId: bnd.defaultAssigneeCmId ?? null,
         defaultAssigneeVideasteId: bnd.defaultAssigneeVideasteId ?? null,
-        templateIdOverride: bnd.templateIdOverride ?? null,
         captionPresetIdOverride: bnd.captionPresetIdOverride ?? null,
         descriptionPromptIdOverride: bnd.descriptionPromptIdOverride ?? null,
         coverModeOverride: bnd.coverModeOverride ?? null,

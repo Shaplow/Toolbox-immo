@@ -5,8 +5,9 @@
  * Admin-only. Une recette globale peut être appliquée à N comptes via
  * PatternBinding (route `/api/admin/accounts/[id]/bindings`).
  */
+import { VALID_SOURCES, VALID_CAPTIONS_MODES, VALID_DESCRIPTION_MODES, VALID_COVER_MODES } from "@/lib/publications/patternEnums";
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeSourceFieldKey,
@@ -35,10 +36,6 @@ type CreateBody = {
   autoSaveToLibraryId?: string | null;
 };
 
-const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"];
-const VALID_CAPTIONS_MODES = ["none", "auto", "manual"];
-const VALID_DESCRIPTION_MODES = ["none", "preFilled", "fixed", "autoGenerate", "manualWrite"];
-const VALID_COVER_MODES = ["none", "manualSelect", "autoPack", "monteurUpload"];
 
 function validateBody(body: CreateBody, requireAll: boolean): string | null {
   if (requireAll) {
@@ -61,10 +58,9 @@ function validateBody(body: CreateBody, requireAll: boolean): string | null {
 }
 
 export async function GET() {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
   const templates = await prisma.patternTemplate.findMany({
     where: { isArchived: false },
     orderBy: [{ source: "asc" }, { label: "asc" }],
@@ -76,10 +72,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
   let body: CreateBody;
   try {
     body = (await req.json()) as CreateBody;
@@ -129,7 +124,6 @@ export async function POST(req: NextRequest) {
           ? undefined
           : (body.coverConfig as object),
       needsDescription: body.needsDescription ?? "none",
-      needsCaptions: body.needsCaptionsMode === "auto",
       needsCaptionsMode: body.needsCaptionsMode ?? "none",
       needsAdminValidation: body.needsAdminValidation ?? false,
       needsClientValidation: body.needsClientValidation ?? false,

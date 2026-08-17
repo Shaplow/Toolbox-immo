@@ -17,7 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { resolveSlotConfig } from "@/lib/services/slot/config";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
@@ -27,10 +27,8 @@ import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFrom
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(_req: NextRequest, { params }: RouteContext) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id: slotId } = await params;
   const slot = await prisma.publicationSlot.findUnique({
@@ -50,14 +48,12 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       },
       needsClientValidationOverride: true,
       allowsClientRevisionOverride: true,
-      needsCaptionsOverride: true,
       needsCaptionsModeOverride: true,
       needsAdminValidationOverride: true,
       needsDescriptionOverride: true,
       needsRushesOverride: true,
       needsBriefOverride: true,
       coverModeOverride: true,
-      coverPresetIdOverride: true,
       captionPresetIdOverride: true,
       descriptionPromptIdOverride: true,
       ...slotEffectivePatternSelect,
@@ -76,9 +72,11 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
 
   const resolved = resolveSlotConfig(slot, resolveSlotEffectivePattern(slot));
 
-  if (!resolved.needsCaptions) {
+  // Mode "manual" : les sous-titres s'écrivent à la main (CaptionEditor),
+  // pas de job auto à lancer. "none" : désactivés.
+  if (resolved.needsCaptionsMode !== "auto") {
     return NextResponse.json(
-      { error: "Captions désactivées pour ce slot (override ou pattern)" },
+      { error: "Sous-titres auto désactivés pour ce slot (override ou recette)" },
       { status: 400 },
     );
   }

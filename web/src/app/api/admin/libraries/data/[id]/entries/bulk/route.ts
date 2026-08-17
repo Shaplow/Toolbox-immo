@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import {
   isBulkParseError,
@@ -15,10 +15,8 @@ type Params = { params: Promise<{ id: string }> };
 //
 // `category` n'est plus accepté en mode bulk (concept retiré, plan simplification Phase 4).
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id: libraryId } = await params;
 

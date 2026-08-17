@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { createPresignedUploadUrl, getR2PublicUrl, r2Configured } from "@/lib/r2";
 import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
@@ -39,10 +39,9 @@ const ALLOWED_EXTENSIONS_BY_TYPE: Record<string, readonly string[]> = {
 };
 
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const body = await req.json() as { filename?: string; contentType?: string; size?: number };
   const { filename, contentType, size } = body;

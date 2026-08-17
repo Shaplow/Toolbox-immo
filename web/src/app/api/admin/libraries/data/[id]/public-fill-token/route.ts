@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ id: string }> };
@@ -8,10 +8,8 @@ type Params = { params: Promise<{ id: string }> };
 // POST /api/admin/libraries/data/[id]/public-fill-token
 // Génère (ou renouvelle) le token public — révoque l'ancien.
 export async function POST(_req: Request, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { id } = await params;
   try {
     // 24 bytes hex = 48 chars — suffisant pour rendre l'enumération impossible.
@@ -31,10 +29,8 @@ export async function POST(_req: Request, { params }: Params) {
 // DELETE /api/admin/libraries/data/[id]/public-fill-token
 // Révoque le token public (l'URL existante ne fonctionnera plus).
 export async function DELETE(_req: Request, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { id } = await params;
   try {
     await prisma.dataLibrary.update({

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser, requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { canAccessTemplate } from "@/lib/permissions";
 import { normalizeTemplateJSON, serializeTemplateJSON } from "@/lib/templateNormalization";
@@ -8,10 +8,9 @@ type Params = { params: Promise<{ id: string }> };
 
 // GET /api/templates/:id — propriétaire admin OU user avec accès
 export async function GET(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
   const { id } = await params;
 
   const ok = await canAccessTemplate(userContext.effectiveUser.id, id, userContext.effectiveUser.role ?? undefined);
@@ -29,13 +28,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // PUT /api/templates/:id — propriétaire admin seulement
 export async function PUT(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-  if (!userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { id } = await params;
 
   const existing = await prisma.template.findFirst({ where: { id } });
@@ -70,13 +64,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
 // DELETE /api/templates/:id — propriétaire admin seulement
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-  if (!userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { id } = await params;
 
   // Admin can delete any template (not scoped to userId like original)

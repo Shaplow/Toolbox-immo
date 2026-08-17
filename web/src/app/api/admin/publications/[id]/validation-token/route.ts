@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import {
   generateClientValidationToken,
@@ -26,10 +26,9 @@ type RouteContext = { params: Promise<{ id: string }> };
 // ─── POST — génère un nouveau token (révoque les anciens) ─────────────────────
 
 export async function POST(_req: NextRequest, { params }: RouteContext) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { id: slotId } = await params;
 
@@ -42,7 +41,6 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       needsClientValidationOverride: true,
       allowsClientRevisionOverride: true,
       needsCaptionsModeOverride: true,
-      needsCaptionsOverride: true,
       activeCaptionJob: {
         select: { id: true, status: true, staleSince: true },
       },
@@ -87,7 +85,6 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
   const ALLOWED_STATUSES = [
     "READY_FOR_CM",
     "EDIT_APPROVED",
-    "CAPTIONS_PENDING",
     "CLIENT_REVISION",
     "AWAITING_CLIENT",
   ];
@@ -108,7 +105,6 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
   const captionsMode = resolveCaptionsMode({
     slot: {
       needsCaptionsModeOverride: slot.needsCaptionsModeOverride,
-      needsCaptionsOverride: slot.needsCaptionsOverride,
     },
     pattern: effPattern,
   });
@@ -193,10 +189,9 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
 // ─── GET — info token actif (sans rawToken) ──────────────────────────────────
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { id: slotId } = await params;
   const active = await prisma.clientValidationToken.findFirst({
@@ -216,10 +211,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 // ─── DELETE — révoque tous les tokens actifs ─────────────────────────────────
 
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { id: slotId } = await params;
   const slot = await prisma.publicationSlot.findUnique({

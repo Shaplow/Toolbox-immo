@@ -16,16 +16,15 @@
  */
 
 import { NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 const AUTO_FILENAME_RE = /^auto(?:-transcription)?-([a-z0-9]+)\.json$/i;
 
 export async function POST() {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const orphans = await prisma.captionJob.findMany({
     where: { slotId: null, srtFilename: { startsWith: "auto" } },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin as requireAdminAuth } from "@/lib/api/requireAuth";
 import {
   normalizeCaptionAutoHighlight,
 } from "@/lib/captionPrompt";
@@ -17,14 +17,9 @@ type RequestBody = {
 };
 
 async function requireAdmin() {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return { error: NextResponse.json({ error: "Non authentifié" }, { status: 401 }) };
-  }
-  if (!userContext.canAdminBypass) {
-    return { error: NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 }) };
-  }
-  return { userContext };
+  const auth = await requireAdminAuth();
+  if (auth.response) return { error: auth.response };
+  return { userContext: auth.ctx };
 }
 
 export async function PATCH(

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ id: string }> };
@@ -12,10 +12,8 @@ type Params = { params: Promise<{ id: string }> };
 // sans wrapper campagne. `category` / `usedInCycle` ne sont plus sélectionnés
 // (colonnes dépréciées, plus lues).
 export async function GET(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id: libraryId } = await params;
   const accountId = req.nextUrl.searchParams.get("accountId") ?? undefined;
@@ -65,10 +63,8 @@ export async function GET(req: NextRequest, { params }: Params) {
 // POST /api/admin/libraries/data/[id]/entries — crée une fiche manuellement.
 // body: { setTag?: string | null, fields: Record<string, string> }
 export async function POST(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id: libraryId } = await params;
   const body = (await req.json()) as { setTag?: string | null; fields?: Record<string, string> };

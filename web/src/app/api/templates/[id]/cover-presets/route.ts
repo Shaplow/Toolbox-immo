@@ -3,17 +3,16 @@
  * POST /api/templates/[id]/cover-presets — crée un preset (ADMIN seulement)
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser, requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { id: templateId } = await params;
 
@@ -46,10 +45,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id: templateId } = await params;
 

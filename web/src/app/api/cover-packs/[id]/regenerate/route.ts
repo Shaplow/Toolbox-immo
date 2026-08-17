@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { deleteCoverCandidateAssets, queueCoverFramePackPreparation } from "@/lib/coverAuto";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
@@ -9,10 +9,9 @@ import { prisma } from "@/lib/prisma";
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const isAdmin = userContext.canAdminBypass;
   const effectiveUserId = userContext.effectiveUser.id;

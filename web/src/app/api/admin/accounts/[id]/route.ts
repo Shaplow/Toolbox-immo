@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 // PATCH /api/admin/accounts/[id] — met à jour un compte Instagram
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id } = await params;
   const body = await req.json() as { name?: string; handle?: string; clientId?: string | null };
@@ -38,10 +36,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 // DELETE /api/admin/accounts/[id] — supprime un compte Instagram
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id } = await params;
   try {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ id: string }> };
@@ -39,10 +39,8 @@ function validateFieldsSchema(raw: unknown): { ok: true; json: string } | { ok: 
 // PATCH /api/admin/libraries/data/[id] — met à jour le nom, la description
 // et les réglages de rotation (rotationMode, rotationScope, maxUsageCount).
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id } = await params;
   const body = await req.json() as {
@@ -96,10 +94,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE /api/admin/libraries/data/[id] — supprime une DataLibrary (cascade campaigns + entries)
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id } = await params;
   try {

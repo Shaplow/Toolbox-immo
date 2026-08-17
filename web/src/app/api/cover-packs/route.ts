@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 
 function toBrowserMediaUrl(url: string | null): string | null {
   if (!url) return url;
@@ -66,10 +66,9 @@ function safeJsonArray(raw: string | null | undefined): string[] {
 }
 
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const isAdmin = userContext.canAdminBypass;
   if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.COVERS))) {

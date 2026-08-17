@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ id: string; entryId: string }> };
@@ -8,10 +8,8 @@ type Params = { params: Promise<{ id: string; entryId: string }> };
 // Champs acceptés : fields, setTag, accessAccountIds, resetUsage, resetUsageForAccount.
 // `category` n'est plus accepté (colonne dépréciée, plus lue).
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id: libraryId, entryId } = await params;
   const body = (await req.json()) as {
@@ -101,10 +99,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE /api/admin/libraries/data/[id]/entries/[entryId]
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { id: libraryId, entryId } = await params;
 

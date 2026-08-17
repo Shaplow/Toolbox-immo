@@ -11,16 +11,15 @@
  */
 
 import { NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/observability/captureError";
 import { markJobFailedSchema, validateBody } from "@/lib/validation/apiSchemas";
 
 export async function POST(req: Request) {
-  const ctx = await getUserContext();
-  if (!ctx?.actualUser || !ctx.canAdminBypass) {
-    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
 
   const parsed = await validateBody(req, markJobFailedSchema);
   if (!parsed.success) {

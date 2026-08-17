@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 
@@ -36,10 +36,9 @@ export type SearchResultItem = {
 };
 
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
   if (q.length < 2) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canManageMediaAssets } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 
@@ -17,8 +17,9 @@ type Params = { params: Promise<{ id: string }> };
  * Retourne : { deleted: number }
  */
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaAssets(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaAssets(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin, requireUser } from "@/lib/api/requireAuth";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import {
   normalizeCaptionAutoHighlight,
@@ -18,10 +18,9 @@ type RequestBody = {
 };
 
 export async function GET() {
-  const userContext = await getUserContext();
-  if (!userContext) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   if (
     !userContext.canAdminBypass &&
@@ -44,13 +43,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
-  if (!userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   let body: RequestBody;
   try {

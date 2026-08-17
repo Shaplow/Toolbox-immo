@@ -19,7 +19,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/slot/activity";
 import { revokeClientValidationTokens } from "@/lib/publications/clientValidation";
@@ -40,10 +40,9 @@ const ALLOWED_FROM_STATUSES = [
 ];
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const body = (await req.json().catch(() => ({}))) as { action?: string; comment?: string };
   const action = body.action as Action;

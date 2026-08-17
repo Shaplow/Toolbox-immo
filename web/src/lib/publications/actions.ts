@@ -50,9 +50,7 @@ export type ActionVerdict =
 export interface PatternForActions {
   /** "auto_template" | "manual_rushes" | "external_upload" */
   source: string;
-  /** @deprecated V8 — utiliser needsCaptionsMode. Conservé pour compat. */
-  needsCaptions: boolean;
-  /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean en fallback. */
+  /** "none" | "auto" | "manual". */
   needsCaptionsMode?: string | null;
   /** "none" | "preFilled" | "autoGenerate" | "manualWrite" */
   needsDescription: string;
@@ -61,8 +59,6 @@ export interface PatternForActions {
 }
 
 export interface ResolvedConfigForActions {
-  /** @deprecated V8 — utiliser needsCaptionsMode. */
-  needsCaptions: boolean;
   needsCaptionsMode?: string | null;
   needsDescription: string;
   coverMode: string;

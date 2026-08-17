@@ -9,7 +9,6 @@ export function isReadyToSchedule(slot: PublicationSlot): boolean {
   if (!slot.currentVersionId) return false;
   return (
     slot.status === "EDIT_APPROVED" ||
-    slot.status === "READY_FOR_CM" ||
-    slot.status === "CAPTIONS_PENDING"
+    slot.status === "READY_FOR_CM"
   );
 }

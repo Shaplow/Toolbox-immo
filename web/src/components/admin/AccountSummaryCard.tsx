@@ -75,15 +75,12 @@ const ACTIVE_PIPELINE_STATUSES = [
   "IN_EDIT",
   "EDIT_REVIEW",
   "EDIT_APPROVED",
-  "CAPTIONS_PENDING",
   "READY_FOR_CM",
   "AWAITING_CLIENT",
   "CLIENT_REVISION",
   "SCHEDULED",
-  "TO_DO",
   "IN_PROGRESS",
   "READY",
-  "CHECKING",
 ];
 
 export function AccountSummaryCard({ data }: { data: AccountPeekData }) {

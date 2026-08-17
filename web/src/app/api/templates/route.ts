@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser, requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { emptyTemplate } from "@/types/template";
 import { serializeTemplateJSON } from "@/lib/templateNormalization";
 
 // GET /api/templates
 export async function GET() {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   let templates;
   if (userContext.canAdminBypass) {
@@ -39,13 +38,9 @@ export async function GET() {
 
 // POST /api/templates — ADMIN seulement
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-  if (!userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const body = await req.json().catch(() => ({}));
   const { name = "Nouveau template", client = "", format = "A3_LANDSCAPE", width, height } = body;

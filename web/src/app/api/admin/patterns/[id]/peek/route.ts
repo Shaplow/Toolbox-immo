@@ -8,7 +8,7 @@
  * /admin/patterns.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 interface Params {
@@ -16,10 +16,9 @@ interface Params {
 }
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
   const { id } = await params;
 
   const template = await prisma.patternTemplate.findUnique({

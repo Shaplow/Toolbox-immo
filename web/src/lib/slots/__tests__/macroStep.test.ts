@@ -12,13 +12,11 @@ describe("getMacroStep", () => {
       "IN_EDIT",
       "EDIT_REVIEW",
       "EDIT_APPROVED",
-      "CAPTIONS_PENDING",
       "READY_FOR_CM",
       "AWAITING_CLIENT",
       "CLIENT_REVISION",
       "SCHEDULED",
       "PUBLISHED",
-      "REJECTED",
       "CANCELLED",
       "BLOCKED",
       "ARCHIVED",
@@ -29,12 +27,8 @@ describe("getMacroStep", () => {
     });
   });
 
-  it("maps legacy aliases (TO_DO/IN_PROGRESS/READY/CHECKING/DONE)", () => {
-    expect(getMacroStep("TO_DO" as SlotStatus)).toBe("brief");
-    expect(getMacroStep("IN_PROGRESS" as SlotStatus)).toBe("production");
-    expect(getMacroStep("READY" as SlotStatus)).toBe("validation");
-    expect(getMacroStep("CHECKING" as SlotStatus)).toBe("validation");
-    expect(getMacroStep("DONE" as SlotStatus)).toBe("published");
+  it("maps IN_PROGRESS (pipeline auto) to 'production'", () => {
+    expect(getMacroStep("IN_PROGRESS")).toBe("production");
   });
 
   it("groups production statuses (rushes + edit) under 'production'", () => {
@@ -46,7 +40,6 @@ describe("getMacroStep", () => {
   it("groups validation statuses (review + captions) under 'validation'", () => {
     expect(getMacroStep("EDIT_REVIEW")).toBe("validation");
     expect(getMacroStep("EDIT_APPROVED")).toBe("validation");
-    expect(getMacroStep("CAPTIONS_PENDING")).toBe("validation");
   });
 
   it("groups CM/client workflow under 'scheduled'", () => {
@@ -56,8 +49,7 @@ describe("getMacroStep", () => {
     expect(getMacroStep("SCHEDULED")).toBe("scheduled");
   });
 
-  it("flags REJECTED/CANCELLED/BLOCKED as 'blocked' (out of normal timeline)", () => {
-    expect(getMacroStep("REJECTED")).toBe("blocked");
+  it("flags CANCELLED/BLOCKED as 'blocked' (out of normal timeline)", () => {
     expect(getMacroStep("CANCELLED")).toBe("blocked");
     expect(getMacroStep("BLOCKED")).toBe("blocked");
   });

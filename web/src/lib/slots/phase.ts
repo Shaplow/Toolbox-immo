@@ -18,11 +18,13 @@
  * La granularité technique (où en est le render, la cover, les sous-titres, etc.)
  * est portée par PipelineDots — pas par cette phase.
  *
- * Les statuts legacy (TO_DO, IN_PROGRESS, READY, CHECKING, DONE) sont mappés
- * raisonnablement pour ne pas casser les slots créés avant le backfill Phase 1.2.
+ * V2.5 : la correspondance statut → phase vit dans SLOT_STATUS_META
+ * (lib/slots/statusLabels.ts) — ce module ne garde que le type, les labels et
+ * les couleurs de phase.
  */
 
 import type { SlotStatus } from "@/types/calendar";
+import { SLOT_STATUS_META } from "@/lib/slots/statusLabels";
 
 export type PublicationPhase =
   | "planned"
@@ -34,43 +36,8 @@ export type PublicationPhase =
   | "published"
   | "terminated";
 
-const STATUS_TO_PHASE: Record<SlotStatus, PublicationPhase> = {
-  // ── Nouveaux statuts pipeline ─────────────────────────────────────────────
-  DRAFT: "planned",
-  PLANNED: "planned",
-  RUSHES_EXPECTED: "shooting",
-  RUSHES_RECEIVED: "production",
-  IN_EDIT: "production",
-  // Phase 2.3 — EDIT_REVIEW est sa propre phase ("À valider", owner ADMIN).
-  // Sans ça, le badge "En production" masquait l'attente d'une action admin.
-  EDIT_REVIEW: "admin_review",
-  EDIT_APPROVED: "production",
-  CAPTIONS_PENDING: "production",
-  // "À finaliser" : il reste cover, description et/ou validation client avant
-  // que le slot soit réellement prêt à publier. Auparavant ces statuts étaient
-  // mappés sur "publishing" → badge "À publier" prématuré et trompeur.
-  READY_FOR_CM: "cm_review",
-  AWAITING_CLIENT: "cm_review",
-  CLIENT_REVISION: "cm_review",
-  // "À publier" est strictement réservé à SCHEDULED — tout est validé, on
-  // attend juste le créneau de publication Instagram.
-  SCHEDULED: "publishing",
-  PUBLISHED: "published",
-  CANCELLED: "terminated",
-  REJECTED: "terminated",
-  ARCHIVED: "terminated",
-  BLOCKED: "terminated",
-
-  // ── Legacy aliases ────────────────────────────────────────────────────────
-  TO_DO: "planned",
-  IN_PROGRESS: "production",
-  READY: "cm_review",
-  CHECKING: "cm_review",
-  DONE: "published",
-};
-
 export function getPublicationPhase(status: SlotStatus): PublicationPhase {
-  return STATUS_TO_PHASE[status] ?? "planned";
+  return SLOT_STATUS_META[status]?.phase ?? "planned";
 }
 
 // ── Labels ────────────────────────────────────────────────────────────────────

@@ -5,8 +5,9 @@
  * DELETE /api/admin/patterns/[id] — archive (soft) le template ; les bindings
  *   existants restent valides.
  */
+import { VALID_SOURCES, VALID_CAPTIONS_MODES, VALID_DESCRIPTION_MODES, VALID_COVER_MODES } from "@/lib/publications/patternEnums";
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeSourceFieldKey,
@@ -36,20 +37,15 @@ type PatchBody = {
   autoSaveToLibraryId?: string | null;
 };
 
-const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"];
-const VALID_CAPTIONS_MODES = ["none", "auto", "manual"];
-const VALID_DESCRIPTION_MODES = ["none", "preFilled", "fixed", "autoGenerate", "manualWrite"];
-const VALID_COVER_MODES = ["none", "manualSelect", "autoPack", "monteurUpload"];
 
 interface Params {
   params: Promise<{ id: string }>;
 }
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
   const { id } = await params;
   const template = await prisma.patternTemplate.findUnique({
     where: { id },
@@ -70,10 +66,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
   const { id } = await params;
   let body: PatchBody;
   try {
@@ -144,7 +139,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.needsCaptionsMode !== undefined
         ? {
             needsCaptionsMode: body.needsCaptionsMode,
-            needsCaptions: body.needsCaptionsMode === "auto",
           }
         : {}),
       ...(body.needsAdminValidation !== undefined ? { needsAdminValidation: body.needsAdminValidation } : {}),
@@ -168,10 +162,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
   const { id } = await params;
 
   // Soft-delete via isArchived. Les bindings + slots historiques restent

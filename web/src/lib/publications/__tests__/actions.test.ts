@@ -13,12 +13,12 @@ function makeCtx(overrides: Partial<ActionContext> = {}): ActionContext {
   return {
     pattern: {
       source: "auto_template",
-      needsCaptions: true,
+      needsCaptionsMode: "auto",
       needsDescription: "autoGenerate",
       coverMode: "autoPack",
     },
     resolved: {
-      needsCaptions: true,
+      needsCaptionsMode: "auto",
       needsDescription: "autoGenerate",
       coverMode: "autoPack",
       coverPresetId: "preset-1",
@@ -53,7 +53,7 @@ describe("canTriggerCaptions", () => {
       makeCtx({
         pattern: {
           source: "auto_template",
-          needsCaptions: false,
+          needsCaptionsMode: "none",
           needsDescription: "none",
           coverMode: "none",
         },
@@ -72,7 +72,7 @@ describe("canTriggerCaptions", () => {
       makeCtx({
         pattern: {
           source: "manual_rushes",
-          needsCaptions: true,
+          needsCaptionsMode: "auto",
           needsDescription: "none",
           coverMode: "none",
         },
@@ -87,7 +87,7 @@ describe("canTriggerCaptions", () => {
       makeCtx({
         pattern: {
           source: "manual_rushes",
-          needsCaptions: true,
+          needsCaptionsMode: "auto",
           needsDescription: "none",
           coverMode: "none",
         },
@@ -102,7 +102,7 @@ describe("canTriggerCaptions", () => {
       makeCtx({
         pattern: {
           source: "manual_rushes",
-          needsCaptions: true,
+          needsCaptionsMode: "auto",
           needsDescription: "none",
           coverMode: "none",
         },
@@ -118,7 +118,7 @@ describe("canTriggerCaptions", () => {
       makeCtx({
         pattern: {
           source: "manual_rushes",
-          needsCaptions: true,
+          needsCaptionsMode: "auto",
           needsDescription: "none",
           coverMode: "none",
         },
@@ -135,7 +135,7 @@ describe("canTriggerCaptions", () => {
       makeCtx({
         pattern: {
           source: "external_upload",
-          needsCaptions: true,
+          needsCaptionsMode: "auto",
           needsDescription: "none",
           coverMode: "none",
         },
@@ -165,7 +165,7 @@ describe("canTriggerCover", () => {
     const v = canTriggerCover(
       makeCtx({
         resolved: {
-          needsCaptions: false,
+          needsCaptionsMode: "none",
           needsDescription: "none",
           coverMode: "none",
           coverPresetId: null,
@@ -195,7 +195,7 @@ describe("canTriggerCover", () => {
     const v = canTriggerCover(
       makeCtx({
         resolved: {
-          needsCaptions: false,
+          needsCaptionsMode: "none",
           needsDescription: "none",
           coverMode: "autoPack",
           coverPresetId: null,
@@ -237,7 +237,7 @@ describe("canGenerateDescription", () => {
     const v = canGenerateDescription(
       makeCtx({
         resolved: {
-          needsCaptions: false,
+          needsCaptionsMode: "none",
           needsDescription: "none",
           coverMode: "none",
           coverPresetId: null,
@@ -253,7 +253,7 @@ describe("canGenerateDescription", () => {
     const v = canGenerateDescription(
       makeCtx({
         resolved: {
-          needsCaptions: false,
+          needsCaptionsMode: "none",
           needsDescription: "preFilled",
           coverMode: "none",
           coverPresetId: null,
@@ -269,7 +269,7 @@ describe("canGenerateDescription", () => {
     const v = canGenerateDescription(
       makeCtx({
         resolved: {
-          needsCaptions: false,
+          needsCaptionsMode: "none",
           needsDescription: "fixed",
           coverMode: "none",
           coverPresetId: null,
@@ -285,7 +285,7 @@ describe("canGenerateDescription", () => {
     const v = canGenerateDescription(
       makeCtx({
         resolved: {
-          needsCaptions: false,
+          needsCaptionsMode: "none",
           needsDescription: "autoGenerate",
           coverMode: "none",
           coverPresetId: null,
@@ -301,7 +301,7 @@ describe("canGenerateDescription", () => {
     const v = canGenerateDescription(
       makeCtx({
         resolved: {
-          needsCaptions: false,
+          needsCaptionsMode: "none",
           needsDescription: "manualWrite",
           coverMode: "none",
           coverPresetId: null,
@@ -319,7 +319,7 @@ describe("canGenerateDescription", () => {
         resolved: null,
         pattern: {
           source: "auto_template",
-          needsCaptions: false,
+          needsCaptionsMode: "none",
           needsDescription: "manualWrite",
           coverMode: "none",
         },

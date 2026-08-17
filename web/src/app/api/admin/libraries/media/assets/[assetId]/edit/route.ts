@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canManageMediaAssets } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
@@ -17,8 +17,9 @@ const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID ?? "";
  * Crée un MediaEditJob, soumet à RunPod avec webhookUrl, retourne { jobId }.
  */
 export async function POST(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaAssets(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaAssets(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -172,8 +173,9 @@ export async function POST(req: NextRequest, { params }: Params) {
  * Utilisé par le client pour le polling pendant le traitement.
  */
 export async function GET(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaAssets(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaAssets(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

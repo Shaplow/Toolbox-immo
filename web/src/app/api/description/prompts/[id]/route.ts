@@ -3,6 +3,7 @@
  * DELETE /api/description/prompts/[id]  — supprimer un prompt (admin uniquement)
  */
 
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
@@ -119,7 +120,7 @@ export async function DELETE(
       ...templates.map((t) => ({ id: t.id, label: t.label, account: null as { id: string; handle: string } | null })),
       ...bindings.map((b) => ({
         id: b.id,
-        label: b.customLabel ?? b.patternTemplate.label,
+        label: patternLabel(b),
         account: b.account,
       })),
     ];

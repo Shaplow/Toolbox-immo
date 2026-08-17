@@ -22,7 +22,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext, type UserContext } from "@/lib/userContext";
+import { type UserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
@@ -197,10 +198,9 @@ async function attachCaptionFontAssets(req: NextRequest, configData: Record<stri
 
 export async function POST(req: NextRequest) {
   // ─── Auth ─────────────────────────────────────────────────────────────────
-  const userContext = await getUserContext();
-  if (!userContext) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
   const isAdmin = userContext.canAdminBypass;
   if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.CAPTIONS))) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });

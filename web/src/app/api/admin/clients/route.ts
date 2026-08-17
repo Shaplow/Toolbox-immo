@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/admin/clients — liste tous les clients
 export async function GET() {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const clients = await prisma.client.findMany({
     orderBy: { name: "asc" },
@@ -24,10 +22,8 @@ export async function GET() {
 
 // POST /api/admin/clients — créer un nouveau client
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const body = await req.json() as { name?: string; contactName?: string; email?: string; phone?: string };
   const { name, contactName, email, phone } = body;

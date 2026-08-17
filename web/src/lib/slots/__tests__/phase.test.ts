@@ -20,7 +20,6 @@ describe("getPublicationPhase", () => {
     expect(getPublicationPhase("RUSHES_RECEIVED")).toBe("production");
     expect(getPublicationPhase("IN_EDIT")).toBe("production");
     expect(getPublicationPhase("EDIT_APPROVED")).toBe("production");
-    expect(getPublicationPhase("CAPTIONS_PENDING")).toBe("production");
   });
 
   it("EDIT_REVIEW → admin_review (Phase 2.3 : sa propre phase)", () => {
@@ -45,17 +44,12 @@ describe("getPublicationPhase", () => {
 
   it("statuts terminaux → terminated", () => {
     expect(getPublicationPhase("CANCELLED")).toBe("terminated");
-    expect(getPublicationPhase("REJECTED")).toBe("terminated");
     expect(getPublicationPhase("ARCHIVED")).toBe("terminated");
     expect(getPublicationPhase("BLOCKED")).toBe("terminated");
   });
 
-  it("statuts legacy mappés raisonnablement", () => {
-    expect(getPublicationPhase("TO_DO")).toBe("planned");
+  it("IN_PROGRESS (pipeline auto) → production", () => {
     expect(getPublicationPhase("IN_PROGRESS")).toBe("production");
-    expect(getPublicationPhase("READY")).toBe("cm_review");
-    expect(getPublicationPhase("CHECKING")).toBe("cm_review");
-    expect(getPublicationPhase("DONE")).toBe("published");
   });
 });
 

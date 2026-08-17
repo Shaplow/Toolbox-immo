@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { startRenderGeneration } from "@/lib/renderer/generateRender";
@@ -206,10 +206,9 @@ async function revertAdvancesOnFailure(usedAssets: {
 // POST /api/renders — déclenche une génération
 export async function POST(req: NextRequest) {
   try {
-    const userContext = await getUserContext();
-    if (!userContext?.effectiveUser.id) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-    }
+    const auth = await requireUser();
+    if (auth.response) return auth.response;
+    const userContext = auth.ctx;
     const isAdmin = userContext.canAdminBypass;
 
     // Verify the user has the templates tool

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canViewMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 
@@ -13,8 +13,9 @@ type Params = { params: Promise<{ id: string }> };
  * dynamiquement un champ "select" de type optionsSource="metadata-values-from-library".
  */
 export async function GET(req: Request, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canViewMediaLibrary(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canViewMediaLibrary(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 

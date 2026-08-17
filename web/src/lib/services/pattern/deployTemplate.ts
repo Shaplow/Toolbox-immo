@@ -14,6 +14,7 @@
  *    (silencieusement). Le retour précise le nombre créés vs skipés.
  *  - Le binding par défaut a `isActive: true`.
  */
+import { PUBLISH_TIME_RE } from "@/lib/publications/patternEnums";
 import { prisma } from "@/lib/prisma";
 import type { UserContext } from "@/lib/userContext";
 import {
@@ -23,7 +24,6 @@ import {
 } from "@/lib/services/_runtime/errors";
 import { assertAssigneeRole } from "@/lib/services/slot/slotService";
 
-const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 export const DEPLOY_MIN_ACCOUNTS = 1;
 export const DEPLOY_MAX_ACCOUNTS = 50;
 

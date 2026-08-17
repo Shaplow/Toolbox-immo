@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser, requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { RENDER_PIPELINE, RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
 import { revertLibraryCursors } from "@/lib/recordLibraryUsage";
@@ -14,10 +14,9 @@ const PRE_SUBMIT_STALL_MS = 2 * 60 * 1000;
 
 // GET /api/renders/:id — statut courant (RunPod completes via webhook, pas de polling ici)
 export async function GET(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
   const { id } = await params;
 
   let render = await prisma.render.findUnique({ where: { id } });
@@ -95,13 +94,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // DELETE /api/renders/:id — admin only
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const deleteContext = await getUserContext();
-  if (!deleteContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-  if (!deleteContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const deleteContext = auth.ctx;
   const { id } = await params;
   const render = await prisma.render.findUnique({ where: { id } });
   if (!render) return NextResponse.json({ error: "Render introuvable" }, { status: 404 });

@@ -30,7 +30,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { canAccessTool } from "@/lib/permissions/tools";
 import { TOOLS } from "@/lib/permissions";
@@ -64,10 +64,9 @@ const bodySchema = z.object({
 
 export async function POST(req: NextRequest) {
   // ─── Auth ──────────────────────────────────────────────────────────────────
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
   const effectiveUserId = userContext.effectiveUser.id;
 
   // canAccessTool (et non hasTool) : combine ROLE_TOOL_SCOPE et User.permissions,

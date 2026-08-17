@@ -17,7 +17,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/slot/activity";
 import { releaseJobSources } from "@/lib/upload/releaseJobSource";
@@ -46,10 +46,9 @@ const TRANSCRIPTION_PROCESSING_STALL_MS = 6 * 60 * 60 * 1000; // 6 h
 const ORPHAN_AGE_MS        = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 export async function POST() {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const now = new Date();
   const processingCutoff = new Date(now.getTime() - PROCESSING_STALL_MS);

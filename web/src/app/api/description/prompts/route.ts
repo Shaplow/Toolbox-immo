@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { normalizeRecipeKind } from "@/lib/llm/recipes";
@@ -17,10 +17,9 @@ import { normalizePromptKind, isPromptKind } from "@/lib/llm/promptKind";
 // Recettes et normalisation : source unique dans `lib/llm/recipes.ts`.
 
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   // `?kind=` filtre par usage. Absent ⇒ "description", pour que les appelants
   // existants (outil descriptions, DescriptionSection, admin recettes) gardent
@@ -50,10 +49,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
   // Ressource admin globale : on autorise l'ADMIN réel même en impersonation
   // (les prompts ne sont pas scopés au user impersonné).
   if (userContext.actualUser.role !== "ADMIN") {

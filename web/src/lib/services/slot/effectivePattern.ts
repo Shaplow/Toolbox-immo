@@ -16,23 +16,32 @@ import { resolveEffectivePattern } from "@/lib/services/pattern/resolveEffective
  * (transcription/description/cover) et la résolution `resolveSlotConfig`.
  */
 export interface SlotEffectivePattern {
+  /** Id du PatternTemplate (jamais du binding — utilisé par les vues UI). */
+  id: string;
+  /** Label visible : customLabel du binding sinon label du template. */
+  label: string;
   source: string;
   templateId: string | null;
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   coverMode: string;
   coverConfig: unknown;
+  /** Dérivé de needsCaptionsMode !== "none" — la colonne Boolean est morte (V2.3). */
   needsCaptions: boolean;
   needsCaptionsMode: string;
   needsDescription: string;
   /** Mode preFilled : clé du champ du Bien qui pré-remplit la légende. null si inactif. */
   descriptionSourceFieldKey: string | null;
+  /** Mode fixed : texte de départ de la légende. null si inactif. */
+  descriptionFixedText: string | null;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsBrief: boolean;
   needsRushes: boolean;
   requiresProperty: boolean;
+  /** Type de fiche exigé (remplace requiresProperty). null = aucun. */
+  requiresEntityTypeId: string | null;
 }
 
 /**
@@ -41,21 +50,24 @@ export interface SlotEffectivePattern {
  * (dérivé de `source === "manual_rushes"`).
  */
 const TEMPLATE_PATTERN_SELECT = {
+  id: true,
+  label: true,
   source: true,
   templateId: true,
   captionPresetId: true,
   descriptionPromptId: true,
   coverMode: true,
   coverConfig: true,
-  needsCaptions: true,
   needsCaptionsMode: true,
   needsDescription: true,
   descriptionSourceFieldKey: true,
+  descriptionFixedText: true,
   needsAdminValidation: true,
   needsClientValidation: true,
   allowsClientRevision: true,
   needsBrief: true,
   requiresProperty: true,
+  requiresEntityTypeId: true,
 } satisfies Prisma.PatternTemplateSelect;
 
 /**
@@ -92,6 +104,8 @@ export function resolveSlotEffectivePattern(
   if (slot.patternBinding) {
     const e = resolveEffectivePattern(slot.patternBinding);
     return {
+      id: e.templateId,
+      label: e.label,
       source: e.source,
       templateId: e.builderTemplateId,
       captionPresetId: e.captionPresetId,
@@ -102,34 +116,48 @@ export function resolveSlotEffectivePattern(
       needsCaptionsMode: e.needsCaptionsMode,
       needsDescription: e.needsDescription,
       descriptionSourceFieldKey: e.descriptionSourceFieldKey,
+      descriptionFixedText: e.descriptionFixedText,
       needsAdminValidation: e.needsAdminValidation,
       needsClientValidation: e.needsClientValidation,
       allowsClientRevision: e.allowsClientRevision,
       needsBrief: e.needsBrief,
       needsRushes: e.needsRushes,
       requiresProperty: e.requiresProperty,
+      requiresEntityTypeId: e.requiresEntityTypeId,
     };
   }
   if (slot.patternTemplate) {
     const t = slot.patternTemplate;
     return {
+      id: t.id,
+      label: t.label,
       source: t.source,
       templateId: t.templateId,
       captionPresetId: t.captionPresetId,
       descriptionPromptId: t.descriptionPromptId,
       coverMode: t.coverMode,
       coverConfig: t.coverConfig,
-      needsCaptions: t.needsCaptions,
+      needsCaptions: t.needsCaptionsMode !== "none",
       needsCaptionsMode: t.needsCaptionsMode,
       needsDescription: t.needsDescription,
       descriptionSourceFieldKey: t.descriptionSourceFieldKey,
+      descriptionFixedText: t.descriptionFixedText,
       needsAdminValidation: t.needsAdminValidation,
       needsClientValidation: t.needsClientValidation,
       allowsClientRevision: t.allowsClientRevision,
       needsBrief: t.needsBrief,
       needsRushes: t.source === "manual_rushes",
       requiresProperty: t.requiresProperty,
+      requiresEntityTypeId: t.requiresEntityTypeId,
     };
   }
   return null;
+}
+
+/**
+ * Label visible de la recette effective d'un slot — raccourci quand seul le
+ * label importe (listes, breadcrumbs, metadata). null si slot sans recette.
+ */
+export function resolvePatternLabel(slot: SlotWithEffectivePattern): string | null {
+  return resolveSlotEffectivePattern(slot)?.label ?? null;
 }

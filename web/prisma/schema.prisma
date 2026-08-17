@@ -855,7 +855,7 @@ model PublicationSlot {
   /// Date et heure cible de publication (UTC). null = slot stocké en banque (sans date programmée).
   scheduledAt        DateTime?
   /// "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE"
-  status             String            @default("TO_DO")
+  status             String            @default("DRAFT")
   title              String?
   /// Texte de la légende Instagram (rédigée par la CM ou générée par IA).
   /// Anciennement scindée en `caption` + `description` — fusionnée Phase 2.1.
@@ -932,6 +932,7 @@ model PublicationSlot {
   /// Override per-slot de allowsClientRevision du pattern. null = hérite du pattern.
   allowsClientRevisionOverride  Boolean?
   /// @deprecated V8 — utiliser needsCaptionsModeOverride.
+  /// MORT (V2.3, 17/08) — remplacé par needsCaptionsModeOverride (backfill 20260817190000). Drop N+1.
   needsCaptionsOverride         Boolean?
   /// V8 — Override per-slot du mode captions enum. null = hérite du pattern.
   /// Valeurs : "none" | "auto" | "manual".
@@ -947,6 +948,7 @@ model PublicationSlot {
   /// "none" | "manualSelect" | "autoPack" | "monteurUpload"). null = hérite.
   coverModeOverride             String?
   /// Override per-slot de l'ID du preset cover utilisé. null = hérite.
+  /// MORT (V2.4, 17/08) — jamais écrit, plus aucune lecture. Drop N+1.
   coverPresetIdOverride         String?
   coverPresetOverride           TemplateCoverPreset?    @relation("SlotCoverPresetOverride", fields: [coverPresetIdOverride], references: [id], onDelete: SetNull)
   /// Override per-slot de l'ID du preset captions utilisé. null = hérite.
@@ -1375,6 +1377,7 @@ model PatternBinding {
 
   // Optional overrides per-account (rare — pour "même recette mais preset captions
   // différent pour ce compte". null = hérite du template).
+  /// MORT (V2.4, 17/08) — jamais réglable en UI, plus aucune lecture. Drop N+1.
   templateIdOverride          String?
   templateOverride            Template?          @relation("BindingTemplateOverride", fields: [templateIdOverride], references: [id], onDelete: SetNull)
   captionPresetIdOverride     String?

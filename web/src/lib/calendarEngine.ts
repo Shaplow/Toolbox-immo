@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import type { SlotStatus } from "@/types/roles";
 
 /**
@@ -116,11 +117,11 @@ export async function generateCalendarSlots(
     .map((b) => ({
       id: b.id,
       accountId: b.accountId,
-      label: b.customLabel ?? b.patternTemplate.label,
+      label: patternLabel(b),
       source: b.patternTemplate.source,
       dayOfWeek: b.dayOfWeek,
       publishTime: b.publishTime,
-      templateId: b.templateIdOverride ?? b.patternTemplate.templateId,
+      templateId: b.patternTemplate.templateId,
       defaultAssigneeMonteurId: b.defaultAssigneeMonteurId,
       defaultAssigneeCmId: b.defaultAssigneeCmId,
       defaultAssigneeVideasteId: b.defaultAssigneeVideasteId,

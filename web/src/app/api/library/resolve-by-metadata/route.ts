@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { selectMediaAssetByMetadataValue } from "@/lib/contentLibraryResolver";
 
 /**
@@ -17,10 +17,8 @@ import { selectMediaAssetByMetadataValue } from "@/lib/contentLibraryResolver";
  * Returns { id, url, filename } or null (404) if no matching asset is found.
  */
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
 
   const { searchParams } = req.nextUrl;
   const libraryId = searchParams.get("libraryId");

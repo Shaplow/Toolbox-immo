@@ -17,6 +17,7 @@
  * - ESC        : ferme (géré par Drawer)
  */
 
+import { CAPTIONS_MODE_LABELS_FR, normalizeCaptionsMode } from "@/lib/publications/captionsMode";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -86,7 +87,6 @@ const RESERVED_TERMINAL_FOR_SELECT = new Set<SlotStatus>([
   "PUBLISHED",
   "CANCELLED",
   "ARCHIVED",
-  "REJECTED",
 ]);
 
 type TabKey = "status" | "config";
@@ -171,8 +171,9 @@ export function SlotDetailPanel({
   const [needsAdminValidationOverride, setNeedsAdminValidationOverride] = useState<boolean | null>(
     slot.needsAdminValidationOverride ?? null,
   );
-  const [needsCaptionsOverride, setNeedsCaptionsOverride] = useState<boolean | null>(
-    slot.needsCaptionsOverride ?? null,
+  // null = hérite de la recette ; sinon "none" | "auto" | "manual".
+  const [needsCaptionsModeOverride, setNeedsCaptionsModeOverride] = useState<string | null>(
+    slot.needsCaptionsModeOverride ?? null,
   );
   const [needsDescriptionOverride, setNeedsDescriptionOverride] = useState<string | null>(
     slot.needsDescriptionOverride ?? null,
@@ -368,7 +369,7 @@ export function SlotDetailPanel({
           assigneeVideasteId: assigneeVideasteId || null,
           scheduledAt: scheduledAtIso,
           needsAdminValidationOverride,
-          needsCaptionsOverride,
+          needsCaptionsModeOverride,
           needsDescriptionOverride,
           needsRushesOverride,
           needsBriefOverride,
@@ -413,7 +414,7 @@ export function SlotDetailPanel({
     assigneeCmId,
     assigneeVideasteId,
     needsAdminValidationOverride,
-    needsCaptionsOverride,
+    needsCaptionsModeOverride,
     needsDescriptionOverride,
     needsRushesOverride,
     needsBriefOverride,
@@ -489,12 +490,11 @@ export function SlotDetailPanel({
           assigneeMonteurId: slot.assigneeMonteurId ?? undefined,
           assigneeCmId: slot.assigneeCmId ?? undefined,
           assigneeVideasteId: slot.assigneeVideasteId ?? undefined,
-          needsCaptionsOverride: slot.needsCaptionsOverride ?? undefined,
+          needsCaptionsModeOverride: slot.needsCaptionsModeOverride ?? undefined,
           needsDescriptionOverride: slot.needsDescriptionOverride ?? undefined,
           needsRushesOverride: slot.needsRushesOverride ?? undefined,
           needsBriefOverride: slot.needsBriefOverride ?? undefined,
           coverModeOverride: slot.coverModeOverride ?? undefined,
-          coverPresetIdOverride: slot.coverPresetIdOverride ?? undefined,
           captionPresetIdOverride: slot.captionPresetIdOverride ?? undefined,
           descriptionPromptIdOverride: slot.descriptionPromptIdOverride ?? undefined,
         }),
@@ -947,26 +947,34 @@ export function SlotDetailPanel({
               </OverrideControl>
 
               <OverrideControl
-                label="Sous-titres auto"
-                inheritedValue={slot.pattern?.needsCaptions ? "Oui" : "Non"}
-                isOverriden={needsCaptionsOverride !== null}
+                label="Sous-titres"
+                inheritedValue={
+                  CAPTIONS_MODE_LABELS_FR[
+                    normalizeCaptionsMode(slot.pattern?.needsCaptionsMode)
+                  ]
+                }
+                isOverriden={needsCaptionsModeOverride !== null}
                 onToggleOverride={(v) =>
-                  setNeedsCaptionsOverride(v ? !slot.pattern?.needsCaptions : null)
+                  setNeedsCaptionsModeOverride(
+                    v ? normalizeCaptionsMode(slot.pattern?.needsCaptionsMode) : null,
+                  )
                 }
               >
                 <Combobox
-                  value={String(needsCaptionsOverride ?? false)}
-                  onChange={(v) => setNeedsCaptionsOverride(v === "true")}
+                  value={needsCaptionsModeOverride ?? "none"}
+                  onChange={(v) => setNeedsCaptionsModeOverride(v)}
                   options={[
-                    { value: "true", label: "Forcer : Oui" },
-                    { value: "false", label: "Forcer : Non" },
+                    { value: "none", label: "Aucun sous-titre" },
+                    { value: "auto", label: "Auto (preset + IA)" },
+                    { value: "manual", label: "Manuel (écrits à la main)" },
                   ]}
                 />
               </OverrideControl>
 
               {/* Preset captions si captions actives (héritées ou override) */}
-              {(needsCaptionsOverride === true ||
-                (needsCaptionsOverride === null && slot.pattern?.needsCaptions)) &&
+              {(needsCaptionsModeOverride === "auto" ||
+                (needsCaptionsModeOverride === null &&
+                  slot.pattern?.needsCaptionsMode === "auto")) &&
                 captionPresets.length > 0 && (
                   <FormField label="Preset captions (override)" help="Hérité du pattern si non choisi.">
                     <Combobox

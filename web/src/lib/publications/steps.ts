@@ -98,7 +98,7 @@ export interface PublicationStep {
 // Statuts slot terminaux / bloquants
 // ---------------------------------------------------------------------------
 
-const BLOCKED_SLOT_STATUSES = new Set(["CANCELLED", "REJECTED", "ARCHIVED"]);
+const BLOCKED_SLOT_STATUSES = new Set(["CANCELLED", "ARCHIVED"]);
 
 // ---------------------------------------------------------------------------
 // Mappers de statut job → StepStatus

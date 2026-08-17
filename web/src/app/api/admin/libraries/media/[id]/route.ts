@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
@@ -10,8 +10,9 @@ type Params = { params: Promise<{ id: string }> };
 
 // PATCH /api/admin/libraries/media/[id] — met à jour une MediaLibrary (name, description, tags, tirage)
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaLibraries(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaLibraries(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -70,8 +71,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE /api/admin/libraries/media/[id] — supprime une MediaLibrary (cascade assets)
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaLibraries(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaLibraries(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

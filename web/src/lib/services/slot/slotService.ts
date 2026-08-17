@@ -9,6 +9,7 @@
  * Voir `web/src/lib/services/README.md` pour la convention complète.
  */
 
+import { PUBLISH_TIME_RE } from "@/lib/publications/patternEnums";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import type { UserContext } from "@/lib/userContext";
@@ -35,6 +36,7 @@ import {
   resolveSlotEffectivePattern,
   slotEffectivePatternSelect,
 } from "@/lib/services/slot/effectivePattern";
+import { resolveEffectivePattern, type EffectivePattern } from "@/lib/services/pattern/resolveEffective";
 import {
   resolvePreFilledDescription,
   resolveFixedDescription,
@@ -84,13 +86,13 @@ export interface CreateSlotInput {
   assigneeCmId?: string | null;
   assigneeVideasteId?: string | null;
   // ── Phase 6 : overrides one-off (booleans/strings ou null pour hériter du pattern) ──
-  needsCaptionsOverride?: boolean | null;
+  /** "none" | "auto" | "manual". null = hérite de la recette. */
+  needsCaptionsModeOverride?: string | null;
   needsDescriptionOverride?: string | null;
   needsRushesOverride?: boolean | null;
   needsBriefOverride?: boolean | null;
   coverModeOverride?: string | null;
   // ── Phase 2 (Cohérence Rôles) : pickers preset/prompt one-off ──
-  coverPresetIdOverride?: string | null;
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
   /**
@@ -254,7 +256,7 @@ export async function createSlot(
     source: string;
     captionPresetId: string | null;
     descriptionPromptId: string | null;
-    needsCaptions: boolean;
+    needsCaptionsMode: string;
     needsDescription: string;
     descriptionSourceFieldKey: string | null;
     descriptionFixedText: string | null;
@@ -312,24 +314,27 @@ export async function createSlot(
         }
       }
     }
-    patternLabel = t.label;
+    // Résolution partagée binding + overrides (V2.2). NB : le label prend
+    // désormais le customLabel du binding s'il existe (cohérent avec toutes
+    // les surfaces d'affichage — avant, le label brut du template fuyait ici).
+    const e = resolveEffectivePattern(binding);
+    patternLabel = e.label;
     resolvedPattern = {
-      accountId: binding.accountId,
-      source: t.source,
-      captionPresetId: binding.captionPresetIdOverride ?? t.captionPresetId,
-      descriptionPromptId:
-        binding.descriptionPromptIdOverride ?? t.descriptionPromptId,
-      needsCaptions: t.needsCaptions,
-      needsDescription: t.needsDescription,
-      descriptionSourceFieldKey: t.descriptionSourceFieldKey,
-      descriptionFixedText: t.descriptionFixedText,
-      coverMode: binding.coverModeOverride ?? t.coverMode,
-      coverConfig: t.coverConfig,
-      defaultAssigneeMonteurId: binding.defaultAssigneeMonteurId,
-      defaultAssigneeCmId: binding.defaultAssigneeCmId,
-      defaultAssigneeVideasteId: binding.defaultAssigneeVideasteId,
+      accountId: e.accountId,
+      source: e.source,
+      captionPresetId: e.captionPresetId,
+      descriptionPromptId: e.descriptionPromptId,
+      needsCaptionsMode: e.needsCaptionsMode,
+      needsDescription: e.needsDescription,
+      descriptionSourceFieldKey: e.descriptionSourceFieldKey,
+      descriptionFixedText: e.descriptionFixedText,
+      coverMode: e.coverMode,
+      coverConfig: e.coverConfig,
+      defaultAssigneeMonteurId: e.defaultAssigneeMonteurId,
+      defaultAssigneeCmId: e.defaultAssigneeCmId,
+      defaultAssigneeVideasteId: e.defaultAssigneeVideasteId,
     };
-    initialStatus = mapSourceToInitialStatus(t.source);
+    initialStatus = mapSourceToInitialStatus(e.source);
     if (!resolvedAssigneeMonteurId && binding.defaultAssigneeMonteurId) {
       resolvedAssigneeMonteurId = binding.defaultAssigneeMonteurId;
     }
@@ -357,7 +362,7 @@ export async function createSlot(
       source: template.source,
       captionPresetId: template.captionPresetId,
       descriptionPromptId: template.descriptionPromptId,
-      needsCaptions: template.needsCaptions,
+      needsCaptionsMode: template.needsCaptionsMode,
       needsDescription: template.needsDescription,
       descriptionSourceFieldKey: template.descriptionSourceFieldKey,
       descriptionFixedText: template.descriptionFixedText,
@@ -426,11 +431,11 @@ export async function createSlot(
   // toggles ↔ presets. Sans ces guards, un admin pouvait créer un slot
   // où needsCaptions=true mais sans aucun captionPresetId résolvable —
   // trigger-captions échouait plus tard de façon cryptique.
-  const resolvedNeedsCaptions =
-    input.needsCaptionsOverride ?? resolvedPattern?.needsCaptions ?? false;
+  const resolvedCaptionsMode =
+    input.needsCaptionsModeOverride ?? resolvedPattern?.needsCaptionsMode ?? "none";
   const resolvedCaptionPresetId =
     input.captionPresetIdOverride ?? resolvedPattern?.captionPresetId ?? null;
-  if (resolvedNeedsCaptions === true && !resolvedCaptionPresetId) {
+  if (resolvedCaptionsMode === "auto" && !resolvedCaptionPresetId) {
     throw new ValidationError(
       "Sous-titres auto activés mais aucun preset captions défini (ni au slot, ni au pattern)",
     );
@@ -496,9 +501,7 @@ export async function createSlot(
       title: (input.title?.trim() || patternLabel) ?? null,
       description: input.description ?? prefilledDescription ?? null,
       notes: input.notes ?? null,
-      // Status initial dérivé du pattern.source (cohérence calendarEngine
-      // — sinon le défaut DB "TO_DO" laisse les slots manuels invisibles
-      // dans les worklists qui filtrent par status moderne).
+      // Status initial dérivé du pattern.source (cohérence calendarEngine).
       status: initialStatus,
       templateId: input.templateId ?? null,
       fields: input.fields ? JSON.stringify(input.fields) : "{}",
@@ -516,8 +519,8 @@ export async function createSlot(
       assigneeCmId: resolvedAssigneeCmId,
       assigneeVideasteId: resolvedAssigneeVideasteId,
       // Phase 6 — overrides one-off (uniquement si fournis dans le body)
-      ...(input.needsCaptionsOverride !== undefined
-        ? { needsCaptionsOverride: input.needsCaptionsOverride }
+      ...(input.needsCaptionsModeOverride !== undefined
+        ? { needsCaptionsModeOverride: input.needsCaptionsModeOverride }
         : {}),
       ...(input.needsDescriptionOverride !== undefined
         ? { needsDescriptionOverride: input.needsDescriptionOverride }
@@ -530,9 +533,6 @@ export async function createSlot(
         : {}),
       ...(input.coverModeOverride !== undefined
         ? { coverModeOverride: input.coverModeOverride }
-        : {}),
-      ...(input.coverPresetIdOverride !== undefined
-        ? { coverPresetIdOverride: input.coverPresetIdOverride }
         : {}),
       ...(input.captionPresetIdOverride !== undefined
         ? { captionPresetIdOverride: input.captionPresetIdOverride }
@@ -891,7 +891,6 @@ export interface BulkScheduleSlotsInput {
   useBindingTime?: boolean;
 }
 
-const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
 /**
  * Sprint B — Programme N slots banque vers le calendrier en une opération.
@@ -1009,7 +1008,7 @@ export async function bulkScheduleSlots(
  * figure dans leur ALLOWED_PATCH_FIELDS_BY_ROLE. L'escalade vers PUBLISHED se fait
  * exclusivement via POST /api/publications/[id]/mark-published.
  */
-const RESERVED_TERMINAL_STATUSES = ["PUBLISHED", "CANCELLED", "ARCHIVED", "REJECTED"] as const;
+const RESERVED_TERMINAL_STATUSES = ["PUBLISHED", "CANCELLED", "ARCHIVED"] as const;
 
 /** Borne max pour les champs texte libres (DoS storage + XSS différé). */
 const MAX_TEXT_FIELD = 5000;
@@ -1060,30 +1059,14 @@ export async function patchSlot(
       assigneeCmId: true,
       assigneeVideasteId: true,
       // Champs nécessaires pour la validation cross-field Phase 5
-      needsCaptionsOverride: true,
+      needsCaptionsModeOverride: true,
       needsDescriptionOverride: true,
       captionPresetIdOverride: true,
       descriptionPromptIdOverride: true,
       coverModeOverride: true,
-      coverPresetIdOverride: true,
-      // La résolution effective merge template + binding overrides côté code.
-      patternBinding: {
-        select: {
-          captionPresetIdOverride: true,
-          descriptionPromptIdOverride: true,
-          coverModeOverride: true,
-          patternTemplate: {
-            select: {
-              captionPresetId: true,
-              descriptionPromptId: true,
-              needsCaptions: true,
-              needsDescription: true,
-              coverMode: true,
-              coverConfig: true,
-            },
-          },
-        },
-      },
+      // La résolution effective merge template + binding overrides côté code
+      // (resolveEffectivePattern — include full requis).
+      patternBinding: { include: { patternTemplate: true } },
     },
   });
 
@@ -1115,12 +1098,11 @@ export async function patchSlot(
     needsAdminValidationOverride,
     needsClientValidationOverride,
     allowsClientRevisionOverride,
-    needsCaptionsOverride,
+    needsCaptionsModeOverride,
     needsDescriptionOverride,
     needsRushesOverride,
     needsBriefOverride,
     coverModeOverride,
-    coverPresetIdOverride,
     captionPresetIdOverride,
     descriptionPromptIdOverride,
   } = body as Record<string, unknown>;
@@ -1264,25 +1246,9 @@ export async function patchSlot(
   //      peut être incohérente sans alerte.
   // NB : clé API `patternBindingId` (ex-`patternId`, renommée V1 17/08) —
   // la valeur est un id de PatternBinding (canonique).
-  let effectivePattern: {
-    captionPresetId: string | null;
-    descriptionPromptId: string | null;
-    needsCaptions: boolean;
-    needsDescription: string;
-    coverMode: string;
-    coverConfig: unknown;
-  } | null = null;
+  let effectivePattern: EffectivePattern | null = null;
   if (slot.patternBinding) {
-    const b = slot.patternBinding;
-    const t = b.patternTemplate;
-    effectivePattern = {
-      captionPresetId: b.captionPresetIdOverride ?? t.captionPresetId,
-      descriptionPromptId: b.descriptionPromptIdOverride ?? t.descriptionPromptId,
-      needsCaptions: t.needsCaptions,
-      needsDescription: t.needsDescription,
-      coverMode: b.coverModeOverride ?? t.coverMode,
-      coverConfig: t.coverConfig,
-    };
+    effectivePattern = resolveEffectivePattern(slot.patternBinding);
   }
   if (typeof patternBindingId === "string" && patternBindingId !== "") {
     const binding = await prisma.patternBinding.findUnique({
@@ -1302,15 +1268,7 @@ export async function patchSlot(
         "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
       );
     }
-    const t = binding.patternTemplate;
-    effectivePattern = {
-      captionPresetId: binding.captionPresetIdOverride ?? t.captionPresetId,
-      descriptionPromptId: binding.descriptionPromptIdOverride ?? t.descriptionPromptId,
-      needsCaptions: t.needsCaptions,
-      needsDescription: t.needsDescription,
-      coverMode: binding.coverModeOverride ?? t.coverMode,
-      coverConfig: t.coverConfig,
-    };
+    effectivePattern = resolveEffectivePattern(binding);
   }
   // patternBindingId="" / null : reset l'effective pattern à null pour la validation.
   if (patternBindingId === null || patternBindingId === "") {
@@ -1321,18 +1279,19 @@ export async function patchSlot(
   // Simule l'état post-update (slot ∪ body diff) pour vérifier la cohérence
   // toggles ↔ presets. Évite de sauver un slot où la cover auto est activée
   // sans preset (trigger-cover refuserait plus tard cryptiquement).
-  const postUpdateNeedsCaptions =
-    needsCaptionsOverride !== undefined
-      ? (needsCaptionsOverride as boolean | null)
-      : slot.needsCaptionsOverride;
+  const postUpdateCaptionsMode =
+    needsCaptionsModeOverride !== undefined
+      ? (needsCaptionsModeOverride as string | null)
+      : slot.needsCaptionsModeOverride;
   const postUpdateCaptionPresetId =
     captionPresetIdOverride !== undefined
       ? (captionPresetIdOverride as string | null)
       : slot.captionPresetIdOverride;
-  const resolvedNeedsCaptions = postUpdateNeedsCaptions ?? effectivePattern?.needsCaptions ?? false;
+  const resolvedCaptionsMode =
+    postUpdateCaptionsMode ?? effectivePattern?.needsCaptionsMode ?? "none";
   const resolvedCaptionPresetId =
     postUpdateCaptionPresetId ?? effectivePattern?.captionPresetId ?? null;
-  if (resolvedNeedsCaptions === true && !resolvedCaptionPresetId) {
+  if (resolvedCaptionsMode === "auto" && !resolvedCaptionPresetId) {
     throw new ValidationError(
       "Sous-titres auto activés mais aucun preset captions défini (ni au slot, ni au pattern)",
     );
@@ -1455,12 +1414,11 @@ export async function patchSlot(
         needsAdminValidationOverride: (v) => v as boolean | null,
         needsClientValidationOverride: (v) => v as boolean | null,
         allowsClientRevisionOverride: (v) => v as boolean | null,
-        needsCaptionsOverride: (v) => v as boolean | null,
+        needsCaptionsModeOverride: (v) => v as string | null,
         needsDescriptionOverride: (v) => v as string | null, // enum string
         needsRushesOverride: (v) => v as boolean | null,
         needsBriefOverride: (v) => v as boolean | null,
         coverModeOverride: (v) => v as string | null,
-        coverPresetIdOverride: (v) => v as string | null,
         captionPresetIdOverride: (v) => v as string | null,
         descriptionPromptIdOverride: (v) => v as string | null,
       };
@@ -1471,9 +1429,9 @@ export async function patchSlot(
         assigneeMonteurId, assigneeCmId, assigneeVideasteId,
         currentVersionId, isAuto,
         needsAdminValidationOverride, needsClientValidationOverride,
-        allowsClientRevisionOverride, needsCaptionsOverride,
+        allowsClientRevisionOverride, needsCaptionsModeOverride,
         needsDescriptionOverride, needsRushesOverride, needsBriefOverride,
-        coverModeOverride, coverPresetIdOverride,
+        coverModeOverride,
         captionPresetIdOverride, descriptionPromptIdOverride,
       };
 
@@ -1698,40 +1656,7 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
       // `pattern` (même shape qu'avant le décommissionnement AccountPattern)
       // est synthétisée dans le map de retour — les slots recette bénéficient
       // désormais aussi de l'affichage des héritages (fix résidu G.3).
-      patternBinding: {
-        select: {
-          customLabel: true,
-          coverModeOverride: true,
-          patternTemplate: {
-            select: {
-              label: true,
-              source: true,
-              needsCaptions: true,
-              needsCaptionsMode: true,
-              needsAdminValidation: true,
-              needsClientValidation: true,
-              allowsClientRevision: true,
-              needsDescription: true,
-              needsBrief: true,
-              coverMode: true,
-            },
-          },
-        },
-      },
-      patternTemplate: {
-        select: {
-          label: true,
-          source: true,
-          needsCaptions: true,
-          needsCaptionsMode: true,
-          needsAdminValidation: true,
-          needsClientValidation: true,
-          allowsClientRevision: true,
-          needsDescription: true,
-          needsBrief: true,
-          coverMode: true,
-        },
-      },
+      ...slotEffectivePatternSelect,
       // Dernier job captions/description pour alimenter PipelineDots avec
       // les vraies données (au lieu de déduire depuis slot.status).
       // take:5 + staleSince exposé : syncSlotsPipelineStatuses applique
@@ -1750,24 +1675,9 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
     },
   });
 
-  // Vue recette synthétisée (binding avec overrides → template global → null),
-  // même shape que l'ancien `slot.pattern` pour les consommateurs UI.
-  const patternViewOf = (s: (typeof slots)[number]) => {
-    if (s.patternBinding?.patternTemplate) {
-      const b = s.patternBinding;
-      const t = b.patternTemplate;
-      return {
-        ...t,
-        label: b.customLabel ?? t.label,
-        coverMode: b.coverModeOverride ?? t.coverMode,
-        needsRushes: t.source === "manual_rushes",
-      };
-    }
-    if (s.patternTemplate) {
-      return { ...s.patternTemplate, needsRushes: s.patternTemplate.source === "manual_rushes" };
-    }
-    return null;
-  };
+  // Vue recette effective (binding avec overrides → template global → null) —
+  // résolution partagée (V2.2), même shape que l'ancien `slot.pattern`.
+  const patternViewOf = resolveSlotEffectivePattern;
 
   const updates = await syncSlotsPipelineStatuses(
     prisma,
@@ -1779,7 +1689,6 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
         pattern: pattern
           ? {
               source: pattern.source,
-              needsCaptions: pattern.needsCaptions,
               needsCaptionsMode: pattern.needsCaptionsMode,
             }
           : null,

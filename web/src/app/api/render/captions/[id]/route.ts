@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser, requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl, deleteFromR2, r2Configured } from "@/lib/r2";
 import { resolveRunpodJobPhase, runpodConfigured, isPodJobId } from "@/lib/runpod";
@@ -34,10 +34,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   // ─── Auth ────────────────────────────────────────────────────────────────
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { id } = await params;
 
@@ -148,13 +147,9 @@ export async function GET(
 
 // DELETE /api/render/captions/[id] — admin only
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-  if (!userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
   const { id } = await params;
   const job = await prisma.captionJob.findUnique({ where: { id } });
   if (!job) return NextResponse.json({ error: "Job introuvable" }, { status: 404 });

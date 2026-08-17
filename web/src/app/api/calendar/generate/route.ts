@@ -4,14 +4,12 @@
  * Body: { accountIds?: string[], dateFrom: string (ISO), dateTo: string (ISO) }
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { generateCalendarSlots } from "@/lib/calendarEngine";
 
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const body = await req.json();
   const { accountIds, dateFrom, dateTo } = body;

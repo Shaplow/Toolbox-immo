@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canViewMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 
@@ -12,8 +12,9 @@ type Params = { params: Promise<{ id: string }> };
 // permet au panel de remapper usageCount/lastUsedAt au changement de compte
 // SANS retélécharger tout le tableau d'assets (url/metadata/etc.).
 export async function GET(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canViewMediaLibrary(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canViewMediaLibrary(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

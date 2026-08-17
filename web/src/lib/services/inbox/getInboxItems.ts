@@ -14,6 +14,7 @@
  * pour éviter d'exploser la mémoire si un type a 500 items.
  */
 
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { prisma } from "@/lib/prisma";
 import type { SlotStatus } from "@/types/roles";
 
@@ -67,7 +68,6 @@ const ACTIVE_STATUSES_FOR_OVERDUE: SlotStatus[] = [
   "IN_EDIT",
   "EDIT_REVIEW",
   "EDIT_APPROVED",
-  "CAPTIONS_PENDING",
   "READY_FOR_CM",
   "SCHEDULED",
 ];
@@ -100,11 +100,7 @@ function serializeSlot(s: SlotRaw): InboxItem["slot"] {
     status: s.status,
     scheduledAt: s.scheduledAt ? s.scheduledAt.toISOString() : null,
     updatedAt: s.updatedAt.toISOString(),
-    patternLabel:
-      s.patternBinding?.customLabel ??
-      s.patternBinding?.patternTemplate?.label ??
-      s.patternTemplate?.label ??
-      null,
+    patternLabel: patternLabel(s.patternBinding) ?? s.patternTemplate?.label ?? null,
     accountHandle: s.account?.handle ?? null,
     accountName: s.account?.name ?? null,
     accountId: s.account?.id ?? null,
@@ -166,7 +162,7 @@ export async function getInboxItems(): Promise<InboxItem[]> {
       where: {
         assigneeMonteurId: null,
         status: {
-          in: ["RUSHES_RECEIVED", "IN_EDIT", "EDIT_REVIEW", "CAPTIONS_PENDING"],
+          in: ["RUSHES_RECEIVED", "IN_EDIT", "EDIT_REVIEW"],
         },
       },
       select: SLOT_SELECT,
@@ -211,7 +207,7 @@ export async function getInboxItems(): Promise<InboxItem[]> {
       where: {
         scheduledAt: null,
         currentVersionId: { not: null },
-        status: { in: ["EDIT_APPROVED", "READY_FOR_CM", "CAPTIONS_PENDING"] },
+        status: { in: ["EDIT_APPROVED", "READY_FOR_CM"] },
       },
       select: SLOT_SELECT,
       orderBy: { updatedAt: "desc" },

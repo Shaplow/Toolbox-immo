@@ -1,5 +1,5 @@
 ﻿import { NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { isCaptionCompatibleFontAsset, listFontAssets } from "@/lib/fontAssets";
 
 /**
@@ -40,10 +40,8 @@ const STATIC_FONTS: string[] = [
  * Essaie d'abord la Python API (source of truth), fallback sur STATIC_FONTS.
  */
 export async function GET() {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
 
   const captionsApiUrl = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
   const compatibleGlobalFonts = (await listFontAssets())

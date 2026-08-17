@@ -23,7 +23,6 @@ function makeSlot(overrides: Partial<Parameters<typeof computeAutoTransitionTarg
     needsClientValidationOverride: null,
     pattern: {
       source: "auto_template",
-      needsCaptions: true,
       needsCaptionsMode: "auto",
       needsClientValidation: true,
     },
@@ -44,7 +43,6 @@ describe("computeAutoTransitionTargetPure — stale-aware (W2/QW6)", () => {
       makeSlot({
         pattern: {
           source: "auto_template",
-          needsCaptions: true,
           needsCaptionsMode: "auto",
           needsClientValidation: false,
         },
@@ -73,7 +71,6 @@ describe("computeAutoTransitionTargetPure — stale-aware (W2/QW6)", () => {
         needsClientValidationOverride: true,
         pattern: {
           source: "auto_template",
-          needsCaptions: true,
           needsCaptionsMode: "auto",
           needsClientValidation: false,
         },
@@ -87,7 +84,6 @@ describe("computeAutoTransitionTargetPure — stale-aware (W2/QW6)", () => {
       makeSlot({
         pattern: {
           source: "manual_rushes",
-          needsCaptions: true,
           needsCaptionsMode: "auto",
           needsClientValidation: true,
         },
@@ -114,7 +110,6 @@ describe("computeAutoTransitionTargetPure — stale-aware (W2/QW6)", () => {
       makeSlot({
         pattern: {
           source: "auto_template",
-          needsCaptions: false,
           needsCaptionsMode: "none",
           needsClientValidation: true,
         },
@@ -140,13 +135,12 @@ describe("canTransition — ADMIN bypass", () => {
   });
 });
 
-describe("canTransition — statuts legacy verrouillés (durcissement 2026-05-30)", () => {
-  // Avant le backfill Phase 1.3 on tolérait n'importe quelle sortie depuis un
-  // statut legacy — un MONTEUR pouvait pousser un slot legacy vers PUBLISHED en
-  // bypassant la matrice. Désormais : ADMIN-only.
-  const legacyStatuses = ["TO_DO", "IN_PROGRESS", "READY", "CHECKING", "DONE"];
-  for (const s of legacyStatuses) {
-    it(`refuse le statut legacy "${s}" en source pour MONTEUR (ADMIN-only)`, () => {
+describe("canTransition — statut inconnu en source (donnée corrompue)", () => {
+  // V2.5 : les statuts legacy sont backfillés (20260817200000). Un statut
+  // inconnu (donnée corrompue, valeur pré-backfill) n'a aucune transition pour
+  // les non-admins ; l'ADMIN garde son bypass pour réparer.
+  for (const s of ["TO_DO", "READY", "N_IMPORTE_QUOI"]) {
+    it(`statut inconnu "${s}" : aucune transition pour MONTEUR, bypass ADMIN`, () => {
       expect(canTransition(s, "PLANNED", "MONTEUR")).toBe(false);
       expect(canTransition(s, "PLANNED", "ADMIN")).toBe(true);
     });
@@ -182,9 +176,9 @@ describe("canTransition — matrice pour rôles non-ADMIN", () => {
 describe("STATUS_TRANSITIONS — cohérence de la matrice", () => {
   const allStatuses: SlotStatus[] = [
     "DRAFT", "PLANNED", "RUSHES_EXPECTED", "RUSHES_RECEIVED", "IN_EDIT",
-    "EDIT_REVIEW", "EDIT_APPROVED", "CAPTIONS_PENDING", "READY_FOR_CM",
+    "IN_PROGRESS", "EDIT_REVIEW", "EDIT_APPROVED", "READY_FOR_CM",
     "AWAITING_CLIENT", "CLIENT_REVISION",
-    "SCHEDULED", "PUBLISHED", "REJECTED", "CANCELLED", "BLOCKED", "ARCHIVED",
+    "SCHEDULED", "PUBLISHED", "CANCELLED", "BLOCKED", "ARCHIVED",
   ];
 
   it("tous les statuts SlotStatus ont une entrée dans STATUS_TRANSITIONS", () => {
@@ -300,13 +294,13 @@ describe("computeAutoTransition", () => {
 // ─── computeAutoTransitionTargetPure (pipeline RunPod) ────────────────────────
 
 describe("computeAutoTransitionTargetPure — règles auto_template", () => {
-  const autoTemplatePattern = { source: "auto_template", needsCaptions: false };
-  const autoTemplateWithCaptions = { source: "auto_template", needsCaptions: true };
+  const autoTemplatePattern = { source: "auto_template", needsCaptionsMode: "none" };
+  const autoTemplateWithCaptions = { source: "auto_template", needsCaptionsMode: "auto" };
 
-  it("retourne IN_PROGRESS si render PENDING (TO_DO → IN_PROGRESS)", () => {
+  it("retourne IN_PROGRESS si render PENDING (PLANNED → IN_PROGRESS)", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: autoTemplatePattern,
         render: { status: "PENDING" },
         latestCaptionJobStatus: null,
@@ -314,10 +308,10 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
     ).toBe("IN_PROGRESS");
   });
 
-  it("retourne IN_PROGRESS si render PROCESSING (TO_DO → IN_PROGRESS)", () => {
+  it("retourne IN_PROGRESS si render PROCESSING (PLANNED → IN_PROGRESS)", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: autoTemplatePattern,
         render: { status: "PROCESSING" },
         latestCaptionJobStatus: null,
@@ -328,7 +322,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
   it("retourne IN_PROGRESS si render ERROR (le CM verra l'erreur, pas READY_FOR_CM)", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: autoTemplatePattern,
         render: { status: "ERROR" },
         latestCaptionJobStatus: null,
@@ -339,7 +333,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
   it("retourne READY_FOR_CM si render DONE et pas de captions à faire", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: autoTemplatePattern,
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
@@ -350,7 +344,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
   it("retourne IN_PROGRESS si render DONE mais captions encore PROCESSING", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: autoTemplateWithCaptions,
         render: { status: "DONE" },
         latestCaptionJobStatus: "PROCESSING",
@@ -361,7 +355,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
   it("retourne IN_PROGRESS si render DONE mais captions QUEUED", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: autoTemplateWithCaptions,
         render: { status: "DONE" },
         latestCaptionJobStatus: "QUEUED",
@@ -374,7 +368,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
     // qui a fail silencieusement) — on ne bloque pas le CM.
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: autoTemplateWithCaptions,
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
@@ -385,7 +379,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
   it("retourne READY_FOR_CM si render DONE + captions COMPLETED", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: autoTemplateWithCaptions,
         render: { status: "DONE" },
         latestCaptionJobStatus: "COMPLETED",
@@ -399,7 +393,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
     // reste en IN_PROGRESS jusqu'à action explicite admin.
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: autoTemplateWithCaptions,
         render: { status: "DONE" },
         latestCaptionJobStatus: "FAILED",
@@ -413,7 +407,7 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "IN_EDIT",
-        pattern: { source: "auto_template", needsCaptions: false },
+        pattern: { source: "auto_template", needsCaptionsMode: "none" },
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
       }),
@@ -421,7 +415,7 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "SCHEDULED",
-        pattern: { source: "auto_template", needsCaptions: false },
+        pattern: { source: "auto_template", needsCaptionsMode: "none" },
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
       }),
@@ -429,7 +423,7 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "PUBLISHED",
-        pattern: { source: "auto_template", needsCaptions: false },
+        pattern: { source: "auto_template", needsCaptionsMode: "none" },
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
       }),
@@ -440,7 +434,7 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "IN_PROGRESS",
-        pattern: { source: "auto_template", needsCaptions: false },
+        pattern: { source: "auto_template", needsCaptionsMode: "none" },
         render: { status: "PROCESSING" },
         latestCaptionJobStatus: null,
       }),
@@ -451,7 +445,7 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "READY_FOR_CM",
-        pattern: { source: "auto_template", needsCaptions: false },
+        pattern: { source: "auto_template", needsCaptionsMode: "none" },
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
       }),
@@ -462,7 +456,7 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "IN_PROGRESS",
-        pattern: { source: "auto_template", needsCaptions: true },
+        pattern: { source: "auto_template", needsCaptionsMode: "auto" },
         render: { status: "DONE" },
         latestCaptionJobStatus: "COMPLETED",
       }),
@@ -472,8 +466,8 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
   it("retourne null si pattern.source = manual_rushes (autre flow)", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
-        pattern: { source: "manual_rushes", needsCaptions: false },
+        status: "PLANNED",
+        pattern: { source: "manual_rushes", needsCaptionsMode: "none" },
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
       }),
@@ -483,8 +477,8 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
   it("retourne null si pattern.source = external_upload", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
-        pattern: { source: "external_upload", needsCaptions: false },
+        status: "PLANNED",
+        pattern: { source: "external_upload", needsCaptionsMode: "none" },
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
       }),
@@ -494,7 +488,7 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
   it("retourne null si pattern est null", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
+        status: "PLANNED",
         pattern: null,
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
@@ -505,8 +499,8 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
   it("retourne null si render est null (pas encore créé)", () => {
     expect(
       computeAutoTransitionTargetPure({
-        status: "TO_DO",
-        pattern: { source: "auto_template", needsCaptions: false },
+        status: "PLANNED",
+        pattern: { source: "auto_template", needsCaptionsMode: "none" },
         render: null,
         latestCaptionJobStatus: null,
       }),
@@ -522,8 +516,8 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
 // DONE. Ces tests figent l'invariant pour les statuts initiaux modernes.
 
 describe("computeAutoTransitionTargetPure — statuts initiaux modernes", () => {
-  const autoTemplate = { source: "auto_template", needsCaptions: false };
-  const autoTemplateWithCaptions = { source: "auto_template", needsCaptions: true };
+  const autoTemplate = { source: "auto_template", needsCaptionsMode: "none" };
+  const autoTemplateWithCaptions = { source: "auto_template", needsCaptionsMode: "auto" };
 
   it("PLANNED + render DONE + pas de captions → READY_FOR_CM", () => {
     expect(

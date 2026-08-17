@@ -214,7 +214,6 @@ export async function triggerAutoTranscriptionForVersion(
         uploadedByUserId: true,
         slot: {
           select: {
-            needsCaptionsOverride: true,
             needsCaptionsModeOverride: true,
             needsDescriptionOverride: true,
             ...slotEffectivePatternSelect,
@@ -240,7 +239,6 @@ export async function triggerAutoTranscriptionForVersion(
       resolveCaptionsMode({
         slot: {
           needsCaptionsModeOverride: version.slot.needsCaptionsModeOverride,
-          needsCaptionsOverride: version.slot.needsCaptionsOverride,
         },
         pattern: eff,
       }) !== "none";
@@ -285,7 +283,6 @@ export async function triggerAutoTranscriptionForVersion(
       uploadedByUserId: true,
       slot: {
         select: {
-          needsCaptionsOverride: true,
           needsCaptionsModeOverride: true,
           needsDescriptionOverride: true,
           ...slotEffectivePatternSelect,
@@ -314,7 +311,6 @@ export async function triggerAutoTranscriptionForVersion(
     resolveCaptionsMode({
       slot: {
         needsCaptionsModeOverride: version.slot.needsCaptionsModeOverride,
-        needsCaptionsOverride: version.slot.needsCaptionsOverride,
       },
       pattern: eff,
     }) !== "none";

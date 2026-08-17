@@ -70,6 +70,8 @@ export interface PublicationSlot {
     needsAdminValidation?: boolean;
     // Cohérence Workflows Phase 4 — autres needs* hérités du pattern
     needsCaptions?: boolean;
+    /** "none" | "auto" | "manual". */
+    needsCaptionsMode?: string;
     needsDescription?: string;
     needsRushes?: boolean;
     needsBrief?: boolean;
@@ -85,13 +87,13 @@ export interface PublicationSlot {
   needsAdminValidationOverride?: boolean | null;
   needsClientValidationOverride?: boolean | null;
   allowsClientRevisionOverride?: boolean | null;
-  needsCaptionsOverride?: boolean | null;
+  /** "none" | "auto" | "manual". null = hérite de la recette. */
+  needsCaptionsModeOverride?: string | null;
   needsDescriptionOverride?: string | null;
   needsRushesOverride?: boolean | null;
   needsBriefOverride?: boolean | null;
   // Phase 5 slots one-off — overrides des ressources (preset/prompt)
   coverModeOverride?: string | null;
-  coverPresetIdOverride?: string | null;
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
 }

@@ -9,17 +9,15 @@
  * Admin-only. Auth via getUserContext() / canAdminBypass.
  */
 import { NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { normalizeCustomFields } from "@/lib/customFields";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { id } = await params;
 
   const type = await prisma.entityType.findUnique({

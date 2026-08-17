@@ -50,25 +50,18 @@ export type SlotStatus =
   | "IN_EDIT"
   | "EDIT_REVIEW"
   | "EDIT_APPROVED"
-  | "CAPTIONS_PENDING"
   | "READY_FOR_CM"
   | "AWAITING_CLIENT"
   | "CLIENT_REVISION"
   | "SCHEDULED"
   | "PUBLISHED"
-  | "REJECTED"
   | "CANCELLED"
   | "BLOCKED"
   | "ARCHIVED"
-  // ── Aliases legacy (Phase 1.2 backfill incomplet) ─────────────────────────
-  // Conservés dans le type tant que la DB peut renvoyer ces valeurs ; les
-  // worklists doivent les filtrer pour ne pas perdre silencieusement les
-  // slots qui les portent.
-  | "TO_DO"
-  | "IN_PROGRESS"
-  | "READY"
-  | "CHECKING"
-  | "DONE";
+  // Écrit par le pipeline auto_template (render/captions en cours) — pas un
+  // legacy : conservé au resserrage V2.5 (22 → 16 statuts, backfill
+  // 20260817200000).
+  | "IN_PROGRESS";
 
 export const SLOT_STATUSES = {
   DRAFT: "DRAFT",
@@ -78,22 +71,15 @@ export const SLOT_STATUSES = {
   IN_EDIT: "IN_EDIT",
   EDIT_REVIEW: "EDIT_REVIEW",
   EDIT_APPROVED: "EDIT_APPROVED",
-  CAPTIONS_PENDING: "CAPTIONS_PENDING",
   READY_FOR_CM: "READY_FOR_CM",
   AWAITING_CLIENT: "AWAITING_CLIENT",
   CLIENT_REVISION: "CLIENT_REVISION",
   SCHEDULED: "SCHEDULED",
   PUBLISHED: "PUBLISHED",
-  REJECTED: "REJECTED",
   CANCELLED: "CANCELLED",
   BLOCKED: "BLOCKED",
   ARCHIVED: "ARCHIVED",
-  // Legacy
-  TO_DO: "TO_DO",
   IN_PROGRESS: "IN_PROGRESS",
-  READY: "READY",
-  CHECKING: "CHECKING",
-  DONE: "DONE",
 } as const satisfies Record<SlotStatus, SlotStatus>;
 
 // ---------------------------------------------------------------------------
@@ -104,17 +90,11 @@ export const SLOT_STATUSES = {
  * Statuts terminaux du pipeline éditorial : un slot dans l'un de ces statuts
  * est considéré comme "terminé" et n'apparaît pas dans la worklist active.
  *
- * Inclut également "DONE" — statut legacy terminal, coexistant avec
- * "PUBLISHED" le temps du backfill Phase 1.3.
- *
- * @see slotScope.ts pour les statuts legacy non-terminaux (TO_DO, IN_PROGRESS, etc.)
  */
 export const TERMINAL_STATUSES = [
   "PUBLISHED",
   "ARCHIVED",
   "CANCELLED",
-  "REJECTED",
-  "DONE", // statut legacy terminal
 ] as const satisfies string[];
 
 export type TerminalStatus = (typeof TERMINAL_STATUSES)[number];

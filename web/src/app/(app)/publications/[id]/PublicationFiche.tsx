@@ -138,9 +138,7 @@ interface PatternInfo {
   source: string;
   templateId: string | null;
   coverMode: string;
-  /** @deprecated V8 — utiliser needsCaptionsMode. Conservé pour compat. */
-  needsCaptions: boolean;
-  /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean en fallback. */
+  /** "none" | "auto" | "manual". */
   needsCaptionsMode?: string | null;
   needsDescription: string;
   needsClientValidation: boolean;
@@ -303,8 +301,6 @@ export interface PublicationFicheProps {
   resolvedConfig: {
     coverMode: string;
     coverPresetId: string | null;
-    /** @deprecated V8 — utiliser needsCaptionsMode. */
-    needsCaptions: boolean;
     /** V8 — "none" | "auto" | "manual". */
     needsCaptionsMode?: "none" | "auto" | "manual";
     captionPresetId: string | null;
@@ -600,14 +596,12 @@ export function PublicationFiche({
                     pattern: pattern
                       ? {
                           source: pattern.source,
-                          needsCaptions: pattern.needsCaptions,
                           needsCaptionsMode: pattern.needsCaptionsMode,
                           needsDescription: pattern.needsDescription,
                           coverMode: pattern.coverMode,
                         }
                       : null,
                     resolved: {
-                      needsCaptions: resolvedConfig.needsCaptions,
                       needsCaptionsMode: resolvedConfig.needsCaptionsMode,
                       needsDescription: pattern?.needsDescription ?? "none",
                       coverMode: resolvedConfig.coverMode,
@@ -679,7 +673,6 @@ export function PublicationFiche({
                   pattern={
                     pattern
                       ? {
-                          needsCaptions: pattern.needsCaptions,
                           needsCaptionsMode: pattern.needsCaptionsMode,
                           source: pattern.source,
                         }
@@ -717,7 +710,6 @@ export function PublicationFiche({
               const SENDABLE_STATUSES = [
                 "READY_FOR_CM",
                 "EDIT_APPROVED",
-                "CAPTIONS_PENDING",
                 "CLIENT_REVISION",
                 "AWAITING_CLIENT",
               ];
@@ -756,7 +748,6 @@ export function PublicationFiche({
                     ? {
                         needsDescription: pattern.needsDescription,
                         source: pattern.source,
-                        needsCaptions: pattern.needsCaptions,
                         needsCaptionsMode: pattern.needsCaptionsMode,
                         coverMode: pattern.coverMode,
                       }

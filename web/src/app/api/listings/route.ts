@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { isSchemaFieldVisible } from "@/lib/templateConditions";
@@ -7,10 +7,9 @@ import type { TemplateJSON, SchemaField } from "@/types/template";
 
 // POST /api/listings
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   try {
     const body = await req.json();
@@ -81,10 +80,9 @@ export async function POST(req: NextRequest) {
 
 // GET /api/listings — liste les listings de l'utilisateur
 export async function GET(_req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const listings = await prisma.listing.findMany({
     where: { userId: userContext.effectiveUser.id },

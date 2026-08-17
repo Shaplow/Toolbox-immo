@@ -373,8 +373,7 @@ export function CalendarView({
     const isTerminal =
       slot.status === "PUBLISHED" ||
       slot.status === "CANCELLED" ||
-      slot.status === "ARCHIVED" ||
-      slot.status === "REJECTED";
+      slot.status === "ARCHIVED";
     switch (kpiFilter) {
       case "overdue":
         return (
@@ -976,8 +975,7 @@ export function CalendarView({
             const wasReady =
               scheduledSlot.currentVersionId != null &&
               (scheduledSlot.status === "EDIT_APPROVED" ||
-                scheduledSlot.status === "READY_FOR_CM" ||
-                scheduledSlot.status === "CAPTIONS_PENDING");
+                scheduledSlot.status === "READY_FOR_CM");
             setBacklogTotal((prev) => Math.max(0, prev - 1));
             if (wasReady) {
               setBacklogReadyCount((prev) => Math.max(0, prev - 1));

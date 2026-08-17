@@ -39,7 +39,8 @@ interface Props {
   resolvedConfig: {
     coverMode: string; // "none" | "manualSelect" | "autoPack" | "monteurUpload"
     coverPresetId: string | null;
-    needsCaptions: boolean;
+    /** "none" | "auto" | "manual". */
+    needsCaptionsMode?: string | null;
     captionPresetId: string | null;
   };
   /** Statut du dernier captionJob lié — masque le bouton "Lancer captions"
@@ -68,7 +69,7 @@ export function OneOffTriggerButtons({
   // déclenché, on ne re-propose pas le bouton — l'admin doit voir l'état
   // dans la section dédiée et regénérer depuis là si besoin.
   const showCoverButton = resolvedConfig.coverMode === "autoPack" && !hasCoverPack;
-  const showCaptionsButton = resolvedConfig.needsCaptions === true && !hasCaptionJob;
+  const showCaptionsButton = resolvedConfig.needsCaptionsMode === "auto" && !hasCaptionJob;
   const coverDisabled = !resolvedConfig.coverPresetId;
   const captionsDisabled = !resolvedConfig.captionPresetId;
 

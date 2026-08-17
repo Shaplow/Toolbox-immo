@@ -34,6 +34,7 @@ import { toast } from "@/components/ui/Toast";
 import { EntityPicker } from "@/components/entities/EntityPicker";
 import { formatNextActionLine } from "@/lib/publications/nextActionLabel";
 import { SOURCE_LABELS_FR } from "@/lib/i18n/glossary";
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 
 interface Account {
   id: string;
@@ -118,7 +119,8 @@ export function AddSlotModal({
   // gardant l'override possible.
   const [timeUnlocked, setTimeUnlocked] = useState(false);
 
-  const [oneOffNeedsCaptions, setOneOffNeedsCaptions] = useState<boolean | null>(null);
+  // null = hérite de la recette ; sinon "none" | "auto" | "manual".
+  const [oneOffCaptionsMode, setOneOffCaptionsMode] = useState<string | null>(null);
   // P0 — toggle "Rushes attendus" retiré de l'UI (dérivé de source). On garde
   // le state à null pour ne jamais envoyer needsRushesOverride côté API.
   const [oneOffNeedsRushes] = useState<boolean | null>(null);
@@ -194,7 +196,6 @@ export function AddSlotModal({
       dayOfWeek: number[];
       publishTime: string;
       isActive: boolean;
-      templateIdOverride: string | null;
       defaultAssigneeMonteur: { id: string; name: string } | null;
       defaultAssigneeCm: { id: string; name: string } | null;
       defaultAssigneeVideaste: { id: string; name: string } | null;
@@ -218,8 +219,8 @@ export function AddSlotModal({
           .filter((b) => b.isActive)
           .map((b) => ({
             id: b.id,
-            label: b.customLabel ?? b.patternTemplate.label,
-            templateId: b.templateIdOverride ?? b.patternTemplate.templateId,
+            label: patternLabel(b),
+            templateId: b.patternTemplate.templateId,
             dayOfWeek: b.dayOfWeek,
             publishTime: b.publishTime,
             isActive: b.isActive,
@@ -317,7 +318,7 @@ export function AddSlotModal({
     }
     if (!title.trim()) return false;
     if (oneOffCoverMode === "autoPack" && coverPresets.length === 0) return false;
-    if (oneOffNeedsCaptions === true && !oneOffCaptionPresetId) return false;
+    if (oneOffCaptionsMode === "auto" && !oneOffCaptionPresetId) return false;
     if (oneOffNeedsDescription === "autoGenerate" && !oneOffDescriptionPromptId) return false;
     return true;
   }, [
@@ -329,7 +330,7 @@ export function AddSlotModal({
     title,
     oneOffCoverMode,
     coverPresets.length,
-    oneOffNeedsCaptions,
+    oneOffCaptionsMode,
     oneOffCaptionPresetId,
     oneOffNeedsDescription,
     oneOffDescriptionPromptId,
@@ -364,7 +365,7 @@ export function AddSlotModal({
       };
 
       if (!isPatternMode) {
-        if (oneOffNeedsCaptions !== null) payload.needsCaptionsOverride = oneOffNeedsCaptions;
+        if (oneOffCaptionsMode !== null) payload.needsCaptionsModeOverride = oneOffCaptionsMode;
         if (oneOffNeedsRushes !== null) payload.needsRushesOverride = oneOffNeedsRushes;
         if (oneOffNeedsBrief !== null) payload.needsBriefOverride = oneOffNeedsBrief;
         if (oneOffCoverMode) payload.coverModeOverride = oneOffCoverMode;
@@ -746,11 +747,19 @@ export function AddSlotModal({
                     placeholder="Hérite de la recette"
                   />
                 </FormField>
-                <OneOffToggle
-                  label="Sous-titres auto"
-                  value={oneOffNeedsCaptions}
-                  onChange={setOneOffNeedsCaptions}
-                />
+                <FormField label="Sous-titres">
+                  <Combobox
+                    value={oneOffCaptionsMode ?? ""}
+                    onChange={(v) => setOneOffCaptionsMode(v === "" ? null : v)}
+                    options={[
+                      { value: "", label: "Hérite de la recette" },
+                      { value: "none", label: "Aucun sous-titre" },
+                      { value: "auto", label: "Auto (preset + IA)" },
+                      { value: "manual", label: "Manuel (écrits à la main)" },
+                    ]}
+                    placeholder="Hérite de la recette"
+                  />
+                </FormField>
                 {/* P0 — "Rushes attendus" retiré : la valeur est dérivée
                     de la source du pattern (manual_rushes → true). Pour un
                     slot one-off sans pattern, par défaut pas de rushs. */}
@@ -768,7 +777,7 @@ export function AddSlotModal({
                 </p>
               )}
 
-              {oneOffNeedsCaptions === true && (
+              {oneOffCaptionsMode === "auto" && (
                 <FormField label="Preset captions" required>
                   <Combobox
                     value={oneOffCaptionPresetId}

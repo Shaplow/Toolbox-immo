@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -16,10 +16,9 @@ import { prisma } from "@/lib/prisma";
  * impersonne un autre rôle, c'est bien sa propre visite qui compte.
  */
 export async function POST() {
-  const userContext = await getUserContext();
-  if (!userContext?.actualUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   try {
     await prisma.user.update({

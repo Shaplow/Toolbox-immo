@@ -76,8 +76,8 @@ export interface RecipeItem {
   captionPresetIdOverride: string | null;
   descriptionPromptIdOverride: string | null;
   coverModeOverride: string | null;
+  autoSaveToLibraryId: string | null;
   bindingNotes: string | null;
-  hasTemplateOverride: boolean;
   hasCaptionPresetOverride: boolean;
   hasDescriptionPromptOverride: boolean;
   hasCoverModeOverride: boolean;
@@ -102,6 +102,7 @@ interface Props {
   initialRecipes: RecipeItem[];
   catalogTemplates: CatalogTemplate[];
   builderTemplates: { id: string; name: string }[];
+  videoLibraries: { id: string; name: string }[];
   monteurs: AssigneeOption[];
   cms: AssigneeOption[];
   videastes: AssigneeOption[];
@@ -136,6 +137,7 @@ function defaultRecipeFormInitial(): RecipeFormInitial {
     descriptionPromptId: null,
     descriptionSourceFieldKey: null,
     descriptionFixedText: null,
+    autoSaveToLibraryId: null,
     templateNotes: null,
     customLabel: null,
     dayOfWeek: [],
@@ -170,6 +172,7 @@ function recipeItemToFormInitial(r: RecipeItem): RecipeFormInitial {
     descriptionPromptId: r.descriptionPromptId,
     descriptionSourceFieldKey: r.descriptionSourceFieldKey,
     descriptionFixedText: r.descriptionFixedText,
+    autoSaveToLibraryId: r.autoSaveToLibraryId,
     templateNotes: r.templateNotes,
     customLabel: r.customLabel,
     dayOfWeek: r.dayOfWeek,
@@ -192,6 +195,7 @@ export function AccountRecipesList({
   initialRecipes,
   catalogTemplates,
   builderTemplates,
+  videoLibraries,
   monteurs,
   cms,
   videastes,
@@ -487,6 +491,7 @@ export function AccountRecipesList({
             cms={cms}
             videastes={videastes}
             builderTemplates={builderTemplates}
+            videoLibraries={videoLibraries}
             captionPresets={captionPresets}
             descriptionPrompts={descriptionPrompts}
             saving={saving}

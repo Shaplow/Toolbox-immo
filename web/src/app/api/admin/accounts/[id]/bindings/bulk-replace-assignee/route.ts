@@ -12,7 +12,7 @@
  * Admin only.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 interface Params {
@@ -23,10 +23,9 @@ type Role = "monteur" | "cm" | "videaste";
 const VALID_ROLES: Role[] = ["monteur", "cm", "videaste"];
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
   const { id: accountId } = await params;
 
   let body: { role?: Role; from?: string | null; to?: string | null };

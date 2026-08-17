@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { isCaptionCompatibleFontAsset, listFontAssetsByFamilies } from "@/lib/fontAssets";
 import { normalizeCaptionConfig } from "@/lib/captionsEngine";
 
@@ -64,10 +64,9 @@ function isOutputAccessibleToUser(
  */
 
 async function proxyRequest(req: NextRequest, path: string[]): Promise<NextResponse> {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const targetPath = "/" + path.join("/");
 

@@ -4,9 +4,8 @@
  *
  * Migré du Pages Router (src/pages/api/upload-file.ts, dernier survivant) en
  * V1 17/08 : même URL, même contrat de réponse `{ url } | { error }`, même
- * streaming Busboy (pas de buffering en mémoire). L'auth passe désormais par
- * getUserContext() (règle du repo) au lieu d'un fetch HTTP vers
- * /api/auth/session. NB : aucun consommateur dans le repo au moment de la
+ * streaming Busboy (pas de buffering en mémoire). L'auth passe par
+ * requireUser() (V2.1) au lieu d'un fetch HTTP vers /api/auth/session. NB : aucun consommateur dans le repo au moment de la
  * migration — conservée pour d'éventuels appels hors repo.
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -17,7 +16,7 @@ import { createReadStream, createWriteStream } from "fs";
 import { mkdir, rename, stat, unlink } from "fs/promises";
 import path from "path";
 
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { r2Configured, uploadToR2 } from "@/lib/r2";
 import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
@@ -44,11 +43,9 @@ type UploadResponse = {
   error?: string;
 };
 
-export async function POST(req: NextRequest): Promise<NextResponse<UploadResponse>> {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
 
   const contentType = req.headers.get("content-type") ?? "";
   if (!contentType.includes("multipart/form-data")) {

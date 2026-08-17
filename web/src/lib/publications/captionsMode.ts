@@ -8,8 +8,8 @@
  * override `slot.needsCaptionsModeOverride`. Le mode "manual" ouvre
  * CaptionEditor dans la fiche pub pour saisir des sous-titres à la main.
  *
- * Champs deprecated `needsCaptions` (Boolean) + `needsCaptionsOverride`
- * conservés en parallèle pour rollback (drop après ~1 mois).
+ * Colonnes Boolean `needsCaptions` / `needsCaptionsOverride` : mortes (V2.3,
+ * backfill final 20260817190000) — drop en N+1, plus aucune lecture/écriture.
  */
 
 export type CaptionsMode = "none" | "auto" | "manual";
@@ -38,30 +38,16 @@ export function normalizeCaptionsMode(raw: string | null | undefined): CaptionsM
  * on lit le Boolean. Garantit zéro régression pendant la transition.
  */
 export function resolveCaptionsMode(input: {
-  slot?: {
-    needsCaptionsModeOverride?: string | null;
-    needsCaptionsOverride?: boolean | null;
-  } | null;
-  pattern?: {
-    needsCaptionsMode?: string | null;
-    needsCaptions?: boolean | null;
-  } | null;
+  slot?: { needsCaptionsModeOverride?: string | null } | null;
+  pattern?: { needsCaptionsMode?: string | null } | null;
 }): CaptionsMode {
-  // 1) Override per-slot mode enum prioritaire
+  // 1) Override per-slot prioritaire
   if (input.slot?.needsCaptionsModeOverride != null) {
     return normalizeCaptionsMode(input.slot.needsCaptionsModeOverride);
   }
-  // 1bis) Fallback compat Boolean per-slot
-  if (input.slot?.needsCaptionsOverride != null) {
-    return input.slot.needsCaptionsOverride ? "auto" : "none";
-  }
-  // 2) Pattern mode enum
+  // 2) Mode du pattern
   if (input.pattern?.needsCaptionsMode != null) {
     return normalizeCaptionsMode(input.pattern.needsCaptionsMode);
-  }
-  // 2bis) Fallback compat Boolean pattern
-  if (input.pattern?.needsCaptions != null) {
-    return input.pattern.needsCaptions ? "auto" : "none";
   }
   return "none";
 }

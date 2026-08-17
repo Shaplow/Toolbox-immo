@@ -1,3 +1,4 @@
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { CheckCircle2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -21,16 +22,12 @@ import {
 
 const CM_STATUSES: SlotStatus[] = [
   "EDIT_APPROVED",
-  "CAPTIONS_PENDING",
   "READY_FOR_CM",
   "AWAITING_CLIENT",
   "CLIENT_REVISION",
   "SCHEDULED",
   "PUBLISHED",
   // Legacy
-  "READY",
-  "CHECKING",
-  "DONE",
 ];
 
 const PUBLISHED_WINDOW_DAYS = 14;
@@ -73,7 +70,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
   const patternViewOf = (s: (typeof rawSlots)[number]) =>
     s.patternBinding?.patternTemplate
       ? {
-          label: s.patternBinding.customLabel ?? s.patternBinding.patternTemplate.label,
+          label: patternLabel(s.patternBinding),
           coverMode:
             s.patternBinding.coverModeOverride ?? s.patternBinding.patternTemplate.coverMode,
         }

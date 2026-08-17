@@ -40,9 +40,7 @@ interface Props {
    *  "auto" (rendu en cours / fini / en échec). */
   renderStatus?: string | null;
   pattern: {
-    /** @deprecated V8 — utiliser needsCaptionsMode. */
-    needsCaptions: boolean;
-    /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean. */
+    /** "none" | "auto" | "manual". */
     needsCaptionsMode?: string | null;
     source?: string;
   } | null;
@@ -169,7 +167,6 @@ export function CaptionsSection({
     pattern: pattern
       ? {
           source: pattern.source ?? "auto_template",
-          needsCaptions: pattern.needsCaptions,
           needsCaptionsMode: pattern.needsCaptionsMode,
           needsDescription: "none",
           coverMode: "none",

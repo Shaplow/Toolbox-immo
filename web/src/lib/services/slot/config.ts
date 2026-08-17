@@ -102,16 +102,13 @@ interface SlotForAllOverrides {
   needsAdminValidationOverride?: boolean | null;
   needsClientValidationOverride: boolean | null;
   allowsClientRevisionOverride: boolean | null;
-  /** @deprecated V8 — utiliser needsCaptionsModeOverride. */
-  needsCaptionsOverride: boolean | null;
-  /** V8 — "none" | "auto" | "manual". null = hérite du pattern. */
+  /** "none" | "auto" | "manual". null = hérite du pattern. */
   needsCaptionsModeOverride?: string | null;
   needsDescriptionOverride: string | null;
   needsRushesOverride: boolean | null;
   needsBriefOverride: boolean | null;
   // Phase 5 — overrides one-off (référence directe aux ressources)
   coverModeOverride?: string | null;
-  coverPresetIdOverride?: string | null;
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
 }
@@ -121,9 +118,7 @@ interface PatternForAllNeeds {
   needsAdminValidation?: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
-  /** @deprecated V8 — utiliser needsCaptionsMode. */
-  needsCaptions: boolean;
-  /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean. */
+  /** "none" | "auto" | "manual". */
   needsCaptionsMode?: string | null;
   needsDescription: string;
   needsRushes: boolean;
@@ -185,36 +180,26 @@ export function resolveSlotConfig(
   const nav = resolveOverride(slot.needsAdminValidationOverride, pattern?.needsAdminValidation, false);
   const ncv = resolveOverride(slot.needsClientValidationOverride, pattern?.needsClientValidation, false);
   const acr = resolveOverride(slot.allowsClientRevisionOverride, pattern?.allowsClientRevision, false);
-  const nc = resolveOverride(slot.needsCaptionsOverride, pattern?.needsCaptions, false);
-  // V8 — mode résolu via helper (gère le fallback Boolean → enum).
+  // V2.3 — le mode enum est l'unique source ; le Boolean est dérivé.
   const ncMode = resolveCaptionsMode({
-    slot: {
-      needsCaptionsModeOverride: slot.needsCaptionsModeOverride,
-      needsCaptionsOverride: slot.needsCaptionsOverride,
-    },
-    pattern: pattern
-      ? { needsCaptionsMode: pattern.needsCaptionsMode, needsCaptions: pattern.needsCaptions }
-      : null,
+    slot: { needsCaptionsModeOverride: slot.needsCaptionsModeOverride },
+    pattern: pattern ? { needsCaptionsMode: pattern.needsCaptionsMode } : null,
   });
   const ncModeSource: ResolveSource =
-    slot.needsCaptionsModeOverride != null || slot.needsCaptionsOverride != null
-      ? "override"
-      : pattern
-        ? "pattern"
-        : "default";
+    slot.needsCaptionsModeOverride != null ? "override" : pattern ? "pattern" : "default";
   const nd = resolveOverride(slot.needsDescriptionOverride, pattern?.needsDescription, "none");
   const nr = resolveOverride(slot.needsRushesOverride, pattern?.needsRushes, false);
   const nb = resolveOverride(slot.needsBriefOverride, pattern?.needsBrief, false);
   // Phase 5 — overrides one-off
   const cm = resolveOverride(slot.coverModeOverride, pattern?.coverMode, "none");
-  const cpId = resolveOverride(slot.coverPresetIdOverride, pattern?.coverPresetId, null);
+  const cpId = resolveOverride(undefined, pattern?.coverPresetId, null);
   const captPId = resolveOverride(slot.captionPresetIdOverride, pattern?.captionPresetId, null);
   const descPId = resolveOverride(slot.descriptionPromptIdOverride, pattern?.descriptionPromptId, null);
   return {
     needsAdminValidation: nav.value,
     needsClientValidation: ncv.value,
     allowsClientRevision: acr.value,
-    needsCaptions: nc.value,
+    needsCaptions: ncMode !== "none",
     needsCaptionsMode: ncMode,
     needsDescription: nd.value,
     needsRushes: nr.value,
@@ -227,7 +212,7 @@ export function resolveSlotConfig(
       needsAdminValidation: nav.source,
       needsClientValidation: ncv.source,
       allowsClientRevision: acr.source,
-      needsCaptions: nc.source,
+      needsCaptions: ncModeSource,
       needsCaptionsMode: ncModeSource,
       needsDescription: nd.source,
       needsRushes: nr.source,

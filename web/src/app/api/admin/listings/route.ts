@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -13,10 +13,8 @@ import { prisma } from "@/lib/prisma";
  * listings d'autres users — cf. CLAUDE.md Phase 1.8 § "Décision par usage").
  */
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const userIdFilter = req.nextUrl.searchParams.get("userId");
   const where = userIdFilter ? { userId: userIdFilter } : {};

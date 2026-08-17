@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { EXTERNAL_GENERATOR_ALLOWED_TOOLS, type Tool } from "@/lib/permissions";
@@ -8,10 +8,9 @@ type Params = { params: Promise<{ id: string }> };
 
 // PATCH /api/admin/users/[id] — modifier nom, mot de passe, rôle
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { id } = await params;
   const body = await req.json();
@@ -80,10 +79,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE /api/admin/users/[id]
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const { id } = await params;
   if (id === userContext.actualUser.id) {

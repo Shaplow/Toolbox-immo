@@ -312,7 +312,7 @@ describe("patchSlot — patternBindingId cross-account guard", () => {
 // ─── Invariant 4 : cross-field validation utilise NOUVEAU pattern ──────────
 
 describe("patchSlot — cross-field validation post-update pattern", () => {
-  it("change patternBindingId vers une recette sans captionPresetId + active needsCaptionsOverride → rejet", async () => {
+  it("change patternBindingId vers une recette sans captionPresetId + active needsCaptionsModeOverride → rejet", async () => {
     mockSlotFindUnique
       .mockResolvedValueOnce(
         makeSlot({
@@ -339,7 +339,7 @@ describe("patchSlot — cross-field validation post-update pattern", () => {
     await expect(
       patchSlot(
         "slot-1",
-        { patternBindingId: "binding-new", needsCaptionsOverride: true },
+        { patternBindingId: "binding-new", needsCaptionsModeOverride: "auto" },
         makeUserCtx("ADMIN"),
       ),
     ).rejects.toBeInstanceOf(ValidationError);
@@ -371,7 +371,7 @@ describe("patchSlot — cross-field validation post-update pattern", () => {
 
     const result = await patchSlot(
       "slot-1",
-      { patternBindingId: "binding-new", needsCaptionsOverride: true },
+      { patternBindingId: "binding-new", needsCaptionsModeOverride: "auto" },
       makeUserCtx("ADMIN"),
     );
     expect(result).toBeDefined();

@@ -13,7 +13,7 @@
  * ADMIN uniquement.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 import {
@@ -42,10 +42,9 @@ function extractR2KeyFromVideoUrl(videoUrl: string): string | null {
 }
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   // ?force=true : invalide la transcription existante et marque les
   // CaptionJobs comme stale, pour forcer un re-Whisper from scratch.

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canViewMediaLibrary, canManageMediaAssets } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, createPresignedDownloadUrl, r2Configured } from "@/lib/r2";
@@ -15,8 +15,9 @@ type Params = { params: Promise<{ assetId: string }> };
 // un rush est précisément ce qu'il vient faire ici. Les mutations plus bas
 // (DELETE, PATCH) restent réservées à `canManageMediaAssets`.
 export async function GET(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canViewMediaLibrary(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canViewMediaLibrary(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux rôles médiathèque" }, { status: 403 });
   }
 
@@ -48,8 +49,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // DELETE /api/admin/libraries/media/assets/[assetId] — supprime un asset (+ R2)
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaAssets(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaAssets(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -101,8 +103,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 // PATCH /api/admin/libraries/media/assets/[assetId]
 // Champs acceptés : duration, tags, setTag, category, incrementUsage, usageCount, resetUsage, lastUsedAt, disabled
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaAssets(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaAssets(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

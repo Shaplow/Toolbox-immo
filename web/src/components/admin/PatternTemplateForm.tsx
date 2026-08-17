@@ -7,6 +7,7 @@
  * d'assignations (qui vivent dans le PatternBinding, par compte).
  */
 
+import { useRecipeEntityBinding } from "@/components/admin/shared/useRecipeEntityBinding";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Sparkles, Trash2, ExternalLink, Rocket } from "lucide-react";
@@ -156,54 +157,14 @@ export function PatternTemplateForm({
   const [descriptionFixedText, setDescriptionFixedText] = useState<string>(
     initial?.descriptionFixedText ?? "",
   );
-  // Phase 5 (métaobjet) — « Exige une fiche » : select de type au lieu d'un
-  // toggle booléen. Compat : requiresProperty=true sans requiresEntityTypeId
-  // (recette pas encore migrée) affiche « Bien » sélectionné.
-  const [requiresEntityTypeId, setRequiresEntityTypeId] = useState(
-    initial?.requiresEntityTypeId ?? (initial?.requiresProperty ? "etype_bien" : ""),
-  );
-  const [entityTypes, setEntityTypes] = useState<{ id: string; name: string }[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const r = await fetch("/api/entity-types");
-        if (!r.ok) return;
-        const data = (await r.json()) as { types: { id: string; name: string }[] };
-        if (!cancelled) setEntityTypes(data.types);
-      } catch {
-        /* liste indisponible — le select reste vide */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Clés de champs de fiche suggérées (mode preFilled) — chargées à la volée
-  // depuis le type de fiche sélectionné (fallback « Bien » si aucun type
-  // requis). Saisie libre autorisée via allowCustom (la fiche peut ne pas
-  // exister encore).
-  const [propertyFieldKeys, setPropertyFieldKeys] = useState<{ key: string; label: string }[]>([]);
-  const fieldKeysTypeId = requiresEntityTypeId || "etype_bien";
-  useEffect(() => {
-    if (needsDescription !== "preFilled") return;
-    let cancelled = false;
-    void (async () => {
-      setPropertyFieldKeys([]);
-      try {
-        const r = await fetch(`/api/entity-types/${fieldKeysTypeId}/field-keys`);
-        if (!r.ok) return;
-        const data = (await r.json()) as { key: string; label: string }[];
-        if (!cancelled) setPropertyFieldKeys(data);
-      } catch {
-        /* suggestions indisponibles — la saisie libre reste possible */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [needsDescription, fieldKeysTypeId]);
+  // Socle partagé RecipeForm/PatternTemplateForm (V2.6) : « Exige une
+  // fiche » + types de fiche + clés de champ suggérées (mode preFilled).
+  const { requiresEntityTypeId, setRequiresEntityTypeId, entityTypes, propertyFieldKeys } =
+    useRecipeEntityBinding({
+      initialRequiresEntityTypeId: initial?.requiresEntityTypeId,
+      initialRequiresProperty: initial?.requiresProperty,
+      needsDescription,
+    });
   const [needsAdminValidation, setNeedsAdminValidation] = useState(
     initial?.needsAdminValidation ?? false,
   );
@@ -489,7 +450,7 @@ export function PatternTemplateForm({
         onCancel={() => setConfirmArchive(false)}
       />
 
-      <header className="shrink-0 px-5 pt-5 pb-3 border-b border-white/30">
+      <header className="shrink-0 px-5 pt-5 pb-3 border-b border-border">
         <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
           {templateId ? "Édition" : "Nouvelle recette"}
         </p>
@@ -566,7 +527,7 @@ export function PatternTemplateForm({
         </section>
 
         {/* Production */}
-        <section className="space-y-3 pt-4 border-t border-white/40">
+        <section className="space-y-3 pt-4 border-t border-border">
           <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
             Production
           </h3>
@@ -657,7 +618,7 @@ export function PatternTemplateForm({
         </section>
 
         {/* Workflow */}
-        <section className="space-y-2 pt-4 border-t border-white/40">
+        <section className="space-y-2 pt-4 border-t border-border">
           <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
             Workflow
           </h3>
@@ -692,7 +653,7 @@ export function PatternTemplateForm({
         </section>
 
         {/* Missions */}
-        <section className="space-y-3 pt-4 border-t border-white/40">
+        <section className="space-y-3 pt-4 border-t border-border">
           <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
             Missions
           </h3>
@@ -712,7 +673,7 @@ export function PatternTemplateForm({
         </section>
 
         {/* Notes */}
-        <section className="pt-4 border-t border-white/40">
+        <section className="pt-4 border-t border-border">
           <FormField label="Notes internes">
             <Textarea
               value={notes}
@@ -725,7 +686,7 @@ export function PatternTemplateForm({
 
         {/* Sprint B — Comptes utilisant cette recette (lazy-loaded). */}
         {templateId && (
-          <section className="pt-4 border-t border-white/40">
+          <section className="pt-4 border-t border-border">
             <CollapsibleSection
               title={`Comptes liés${linkedBindings ? ` · ${linkedBindings.length}` : ""}`}
               defaultOpen={false}
@@ -801,7 +762,7 @@ export function PatternTemplateForm({
         />
       )}
 
-      <footer className="shrink-0 flex items-center justify-between gap-2 px-5 py-3 bg-white/30 border-t border-white/30">
+      <footer className="shrink-0 flex items-center justify-between gap-2 px-5 py-3 bg-muted border-t border-border">
         {/* Sprint C — bouton "Déployer" + bouton "Archiver" en édition. */}
         <div className="inline-flex items-center gap-2">
           {templateId && (

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 
@@ -8,10 +8,8 @@ import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 // GET /api/admin/accounts — liste les comptes Instagram
 // Accepte ?clientId=<id> pour filtrer par client
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const { searchParams } = new URL(req.url);
   const clientIdFilter = searchParams.get("clientId");
@@ -37,10 +35,8 @@ export async function GET(req: NextRequest) {
 
 // POST /api/admin/accounts — crée un compte Instagram
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
 
   const body = await req.json() as { name?: string; handle?: string; clientId?: string | null };
   const { name, handle, clientId } = body;

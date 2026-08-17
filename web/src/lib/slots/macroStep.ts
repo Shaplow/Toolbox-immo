@@ -6,11 +6,12 @@
  * actions). La macroStep sert uniquement à afficher une timeline visuelle
  * cohérente cross-surface (PublicationHeader, SlotCard, Worklist).
  *
- * Cas particuliers REJECTED / CANCELLED / BLOCKED / ARCHIVED → "blocked"
- * (état terminal hors flux normal — la timeline les affiche en rose).
+ * Cas particuliers CANCELLED / BLOCKED → "blocked" (état terminal hors flux
+ * normal — la timeline les affiche en rose).
  */
 
 import type { SlotStatus } from "@/types/calendar";
+import { SLOT_STATUS_META } from "@/lib/slots/statusLabels";
 
 export type MacroStep =
   | "brief"
@@ -46,43 +47,8 @@ export const MACRO_STEP_ORDER: MacroStep[] = [
 ];
 
 /**
- * Map statut technique → macroStep. Déterministe, sans branche conditionnelle
- * sur des champs non-statut (assignée, currentVersion, etc.).
+ * Statut technique → macroStep — dérivé de SLOT_STATUS_META (V2.5).
  */
 export function getMacroStep(status: SlotStatus): MacroStep {
-  switch (status) {
-    case "DRAFT":
-    case "PLANNED":
-    case "TO_DO":
-      return "brief";
-
-    case "RUSHES_EXPECTED":
-    case "RUSHES_RECEIVED":
-    case "IN_EDIT":
-    case "IN_PROGRESS":
-      return "production";
-
-    case "EDIT_REVIEW":
-    case "EDIT_APPROVED":
-    case "CAPTIONS_PENDING":
-    case "CHECKING":
-    case "READY":
-      return "validation";
-
-    case "READY_FOR_CM":
-    case "AWAITING_CLIENT":
-    case "CLIENT_REVISION":
-    case "SCHEDULED":
-      return "scheduled";
-
-    case "PUBLISHED":
-    case "DONE":
-    case "ARCHIVED":
-      return "published";
-
-    case "REJECTED":
-    case "CANCELLED":
-    case "BLOCKED":
-      return "blocked";
-  }
+  return SLOT_STATUS_META[status]?.macroStep ?? "brief";
 }

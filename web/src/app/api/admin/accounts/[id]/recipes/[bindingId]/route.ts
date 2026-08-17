@@ -13,8 +13,9 @@
  *
  * Admin-only.
  */
+import { VALID_SOURCES, VALID_CAPTIONS_MODES, VALID_DESCRIPTION_MODES, VALID_COVER_MODES, PUBLISH_TIME_RE } from "@/lib/publications/patternEnums";
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeSourceFieldKey,
@@ -29,6 +30,8 @@ interface TemplatePatch {
   descriptionPromptId?: string | null;
   descriptionSourceFieldKey?: string | null;
   descriptionFixedText?: string | null;
+  /** V2.6 — auto-save de la sortie de génération vers une MediaLibrary vidéo. */
+  autoSaveToLibraryId?: string | null;
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
@@ -51,7 +54,6 @@ interface BindingPatch {
   defaultAssigneeMonteurId?: string | null;
   defaultAssigneeCmId?: string | null;
   defaultAssigneeVideasteId?: string | null;
-  templateIdOverride?: string | null;
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
   coverModeOverride?: string | null;
@@ -63,11 +65,6 @@ interface PatchBody {
   binding?: BindingPatch;
 }
 
-const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"];
-const VALID_CAPTIONS_MODES = ["none", "auto", "manual"];
-const VALID_DESCRIPTION_MODES = ["none", "preFilled", "fixed", "autoGenerate", "manualWrite"];
-const VALID_COVER_MODES = ["none", "manualSelect", "autoPack", "monteurUpload"];
-const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
 function validateTemplate(t: TemplatePatch): string | null {
   if (t.label !== undefined && !t.label.trim()) return "template.label vide interdit";
@@ -113,10 +110,9 @@ interface Params {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
   const { id: accountId, bindingId } = await params;
 
   let body: PatchBody;
@@ -170,6 +166,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ...(tpl.descriptionSourceFieldKey !== undefined && {
             descriptionSourceFieldKey: normalizeSourceFieldKey(tpl.descriptionSourceFieldKey),
           }),
+          ...(tpl.autoSaveToLibraryId !== undefined && {
+            autoSaveToLibraryId: tpl.autoSaveToLibraryId,
+          }),
           ...(tpl.descriptionFixedText !== undefined && {
             descriptionFixedText: normalizeFixedText(tpl.descriptionFixedText),
           }),
@@ -180,7 +179,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ...(tpl.needsDescription !== undefined && { needsDescription: tpl.needsDescription }),
           ...(tpl.needsCaptionsMode !== undefined && {
             needsCaptionsMode: tpl.needsCaptionsMode,
-            needsCaptions: tpl.needsCaptionsMode === "auto",
           }),
           ...(tpl.needsAdminValidation !== undefined && { needsAdminValidation: tpl.needsAdminValidation }),
           ...(tpl.needsClientValidation !== undefined && { needsClientValidation: tpl.needsClientValidation }),
@@ -210,7 +208,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         ...(bnd.defaultAssigneeVideasteId !== undefined && {
           defaultAssigneeVideasteId: bnd.defaultAssigneeVideasteId,
         }),
-        ...(bnd.templateIdOverride !== undefined && { templateIdOverride: bnd.templateIdOverride }),
         ...(bnd.captionPresetIdOverride !== undefined && {
           captionPresetIdOverride: bnd.captionPresetIdOverride,
         }),
@@ -229,10 +226,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const ctx = await getUserContext();
-  if (!ctx?.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
-  }
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { id: accountId, bindingId } = await params;
   const binding = await prisma.patternBinding.findUnique({ where: { id: bindingId } });
   if (!binding || binding.accountId !== accountId) {

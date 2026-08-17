@@ -81,12 +81,10 @@ const MONTEUR_SECTION_MAP: Partial<Record<SlotStatus, MonteurSection>> = {
   CLIENT_REVISION: "in_progress",
   // En attente (informatif — le monteur ne peut rien faire de plus)
   EDIT_APPROVED: "waiting",
-  CAPTIONS_PENDING: "waiting",
   READY_FOR_CM: "waiting",
   AWAITING_CLIENT: "waiting",
-  // Exclus : SCHEDULED, PUBLISHED, REJECTED, CANCELLED, BLOCKED, ARCHIVED
-  // ── Legacy aliases (Phase 1.2 backfill incomplet) ─────────────────────────
-  TO_DO: "todo",
+  // Exclus : SCHEDULED, PUBLISHED, CANCELLED, BLOCKED, ARCHIVED
+  // Écrit par le pipeline auto_template.
   IN_PROGRESS: "in_progress",
 };
 
@@ -116,7 +114,6 @@ export type CmSection = "overdue" | "to_prepare" | "to_publish" | "published";
 const CM_SECTION_MAP: Partial<Record<SlotStatus, CmSection>> = {
   // À préparer
   EDIT_APPROVED: "to_prepare",
-  CAPTIONS_PENDING: "to_prepare",
   READY_FOR_CM: "to_prepare",
   // W2 — le CM peut continuer cover/desc pendant la validation client (le user
   // a dit : "elle peut evidemment finir la cover et la desc pendant la
@@ -127,11 +124,7 @@ const CM_SECTION_MAP: Partial<Record<SlotStatus, CmSection>> = {
   SCHEDULED: "to_publish",
   PUBLISHED: "published",
   // Exclus : DRAFT, PLANNED, RUSHES_EXPECTED, RUSHES_RECEIVED, IN_EDIT, EDIT_REVIEW,
-  //          REJECTED, CANCELLED, BLOCKED, ARCHIVED
-  // ── Legacy aliases (Phase 1.2 backfill incomplet) ─────────────────────────
-  READY: "to_prepare",
-  CHECKING: "to_prepare",
-  DONE: "published",
+  //          CANCELLED, BLOCKED, ARCHIVED
 };
 
 /**
@@ -173,16 +166,11 @@ const VIDEASTE_SECTION_MAP: Partial<Record<SlotStatus, VideasteSection>> = {
   IN_EDIT: "in_edit",
   EDIT_REVIEW: "in_edit",
   EDIT_APPROVED: "in_edit",
-  CAPTIONS_PENDING: "in_edit",
   READY_FOR_CM: "in_edit",
   CLIENT_REVISION: "in_edit",
   AWAITING_CLIENT: "in_edit",
   SCHEDULED: "in_edit",
-  // Exclus : PUBLISHED, REJECTED, CANCELLED, BLOCKED, ARCHIVED
-  // ── Legacy alias (Phase 1.2 backfill incomplet) ───────────────────────────
-  // Pour un vidéaste, "TO_DO" signifie "à shooter" (les rushes ne sont
-  // pas encore livrés) → même section que PLANNED.
-  TO_DO: "to_shoot",
+  // Exclus : PUBLISHED, CANCELLED, BLOCKED, ARCHIVED
 };
 
 /**

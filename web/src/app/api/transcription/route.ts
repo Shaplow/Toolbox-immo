@@ -23,7 +23,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
@@ -74,10 +74,9 @@ function toBoolean(value: FormDataEntryValue | null, def = false): boolean {
 
 export async function POST(req: NextRequest) {
   // ─── Auth ────────────────────────────────────────────────────────────────
-  const userContext = await getUserContext();
-  if (!userContext) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
   const isAdmin = userContext.canAdminBypass;
   if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.TRANSCRIPTION))) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
@@ -498,10 +497,9 @@ export async function POST(req: NextRequest) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const userContext = auth.ctx;
 
   const url = new URL(req.url);
   const cursorParam = url.searchParams.get("cursor");

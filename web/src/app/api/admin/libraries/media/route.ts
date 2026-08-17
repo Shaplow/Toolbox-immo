@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canViewMediaLibrary, canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { normalizeStringArrayInput } from "@/lib/apiInput";
@@ -8,8 +8,9 @@ import { normalizeStringArrayInput } from "@/lib/apiInput";
 // Supporte ?type=video|audio pour filtrer. Lecture : tous les rôles médiathèque
 // (le MONTEUR consulte et télécharge). La création (POST) reste ADMIN.
 export async function GET(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canViewMediaLibrary(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canViewMediaLibrary(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -48,8 +49,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/admin/libraries/media — crée une MediaLibrary
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaLibraries(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaLibraries(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

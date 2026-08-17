@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canManageMediaAssets } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { objectExistsInR2, r2Configured } from "@/lib/r2";
@@ -24,8 +24,9 @@ const execFileAsync = promisify(execFile);
 type Params = { params: Promise<{ assetId: string }> };
 
 export async function PATCH(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaAssets(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaAssets(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

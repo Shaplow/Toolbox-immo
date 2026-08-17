@@ -92,12 +92,11 @@ describe("resolveEffectivePattern", () => {
     expect(eff.label).toBe("Variante compte X");
   });
 
-  it("templateIdOverride remplace template.templateId", () => {
-
+  it("templateIdOverride est mort (V2.4) : le template du blueprint prime toujours", () => {
     const eff = resolveEffectivePattern(
       makeBinding({ templateIdOverride: "builder-tpl-B" }),
     );
-    expect(eff.builderTemplateId).toBe("builder-tpl-B");
+    expect(eff.builderTemplateId).toBe(makeBinding({}).patternTemplate.templateId);
   });
 
   it("captionPresetIdOverride remplace template.captionPresetId", () => {

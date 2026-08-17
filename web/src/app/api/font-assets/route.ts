@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { listFontAssets } from "@/lib/fontAssets";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
 
   try {
     const fonts = await listFontAssets();

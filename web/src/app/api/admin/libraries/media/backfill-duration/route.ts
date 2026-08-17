@@ -24,7 +24,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import { existsSync } from "fs";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 
@@ -97,8 +97,9 @@ async function probeDuration(url: string): Promise<number | null> {
 }
 
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canManageMediaLibraries(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canManageMediaLibraries(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 

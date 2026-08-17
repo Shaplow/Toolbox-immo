@@ -1,3 +1,4 @@
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -28,11 +29,9 @@ const MONTEUR_STATUSES: SlotStatus[] = [
   "IN_EDIT",
   "EDIT_REVIEW",
   "EDIT_APPROVED",
-  "CAPTIONS_PENDING",
   "READY_FOR_CM",
   "AWAITING_CLIENT",
   "CLIENT_REVISION",
-  "TO_DO",
   "IN_PROGRESS",
 ];
 
@@ -77,7 +76,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     account: s.account,
     // Vue recette synthétisée (binding → template global → null).
     pattern: s.patternBinding?.patternTemplate
-      ? { label: s.patternBinding.customLabel ?? s.patternBinding.patternTemplate.label }
+      ? { label: patternLabel(s.patternBinding) }
       : s.patternTemplate
         ? { label: s.patternTemplate.label }
         : null,

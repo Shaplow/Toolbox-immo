@@ -16,7 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { canViewMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { createPresignedDownloadUrl, r2Configured } from "@/lib/r2";
@@ -29,8 +29,9 @@ import { createPresignedDownloadUrl, r2Configured } from "@/lib/r2";
 const MAX_ASSETS_PER_BATCH = 25;
 
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id || !canViewMediaLibrary(userContext.effectiveUser.role)) {
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  if (!canViewMediaLibrary(auth.ctx.effectiveUser.role)) {
     return NextResponse.json({ error: "Réservé aux rôles médiathèque" }, { status: 403 });
   }
 

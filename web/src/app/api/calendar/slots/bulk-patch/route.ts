@@ -6,15 +6,14 @@
  * Admin only.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 import { bulkPatchSlots } from "@/lib/services/slot/slotService";
 import { mapServiceError } from "@/lib/services/_runtime/mapServiceError";
 
 export async function POST(req: NextRequest) {
-  const ctx = await getUserContext();
-  if (!ctx?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
+  const ctx = auth.ctx;
 
   let body: { slotIds?: string[]; patch?: Record<string, unknown> };
   try {

@@ -15,13 +15,11 @@ const BACKLOG_ACTIVE_STATUSES = [
   "IN_EDIT",
   "EDIT_REVIEW",
   "EDIT_APPROVED",
-  "CAPTIONS_PENDING",
   "READY_FOR_CM",
-  "TO_DO",
   "IN_PROGRESS",
 ];
 
-const BACKLOG_READY_STATUSES = ["EDIT_APPROVED", "READY_FOR_CM", "CAPTIONS_PENDING"];
+const BACKLOG_READY_STATUSES = ["EDIT_APPROVED", "READY_FOR_CM"];
 
 /** Returns the ISO string of Monday for the week containing `date` (server-side). */
 function getMondayISOOf(date: Date): string {

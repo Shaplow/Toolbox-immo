@@ -16,6 +16,7 @@
  * très clair, opacité 30%. Le tooltip natif `title` donne l'état au hover.
  */
 
+import { resolveCaptionsMode } from "@/lib/publications/captionsMode";
 import type { PublicationSlot } from "@/types/calendar";
 
 type DotStatus = "todo" | "processing" | "done" | "failed" | "muted";
@@ -91,8 +92,11 @@ function coverStatus(slot: PublicationSlot): DotStatus {
 }
 
 function captionsStatus(slot: PublicationSlot): DotStatus {
-  const needs = slot.needsCaptionsOverride ?? slot.pattern?.needsCaptions;
-  if (!needs) return "muted";
+  const mode = resolveCaptionsMode({
+    slot: { needsCaptionsModeOverride: slot.needsCaptionsModeOverride },
+    pattern: slot.pattern ? { needsCaptionsMode: slot.pattern.needsCaptionsMode } : null,
+  });
+  if (mode === "none") return "muted";
 
   const job = slot.captionJobs?.[0];
   if (!job) return "todo";

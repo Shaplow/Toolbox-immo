@@ -163,7 +163,7 @@ describe("resolveSlotConfig", () => {
   const pattern = {
     needsClientValidation: true,
     allowsClientRevision: true,
-    needsCaptions: true,
+    needsCaptionsMode: "auto",
     needsDescription: "autoGenerate",
     needsRushes: true,
     needsBrief: false,
@@ -174,7 +174,6 @@ describe("resolveSlotConfig", () => {
       {
         needsClientValidationOverride: null,
         allowsClientRevisionOverride: null,
-        needsCaptionsOverride: null,
         needsDescriptionOverride: null,
         needsRushesOverride: null,
         needsBriefOverride: null,
@@ -189,12 +188,12 @@ describe("resolveSlotConfig", () => {
     expect(cfg.source.needsCaptions).toBe("pattern");
   });
 
-  it("override needsCaptions=false → désactive captions pour ce slot uniquement", () => {
+  it("override needsCaptionsMode=none → désactive captions pour ce slot uniquement", () => {
     const cfg = resolveSlotConfig(
       {
         needsClientValidationOverride: null,
         allowsClientRevisionOverride: null,
-        needsCaptionsOverride: false,
+        needsCaptionsModeOverride: "none",
         needsDescriptionOverride: null,
         needsRushesOverride: null,
         needsBriefOverride: null,
@@ -213,7 +212,6 @@ describe("resolveSlotConfig", () => {
       {
         needsClientValidationOverride: null,
         allowsClientRevisionOverride: null,
-        needsCaptionsOverride: null,
         needsDescriptionOverride: "none",
         needsRushesOverride: null,
         needsBriefOverride: null,
@@ -229,7 +227,6 @@ describe("resolveSlotConfig", () => {
       {
         needsClientValidationOverride: null,
         allowsClientRevisionOverride: null,
-        needsCaptionsOverride: null,
         needsDescriptionOverride: null,
         needsRushesOverride: null,
         needsBriefOverride: null,
@@ -246,7 +243,7 @@ describe("resolveSlotConfig", () => {
       {
         needsClientValidationOverride: false,
         allowsClientRevisionOverride: false,
-        needsCaptionsOverride: false,
+        needsCaptionsModeOverride: "none",
         needsDescriptionOverride: "none",
         needsRushesOverride: false,
         needsBriefOverride: true,

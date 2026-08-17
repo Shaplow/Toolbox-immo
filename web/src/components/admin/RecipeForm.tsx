@@ -19,6 +19,7 @@
  * partout.
  */
 
+import { useRecipeEntityBinding } from "@/components/admin/shared/useRecipeEntityBinding";
 import { useEffect, useState } from "react";
 import { Save, Trash2, AlertTriangle, Sparkles, CalendarDays, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -79,6 +80,8 @@ export interface RecipeFormInitial {
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
   descriptionFixedText: string | null;
+  /** V2.6 — auto-save de la sortie de génération vers une MediaLibrary vidéo. */
+  autoSaveToLibraryId: string | null;
   templateNotes: string | null;
   // Binding
   customLabel: string | null;
@@ -113,6 +116,7 @@ export interface RecipeFormValues {
     descriptionPromptId: string | null;
     descriptionSourceFieldKey: string | null;
     descriptionFixedText: string | null;
+    autoSaveToLibraryId: string | null;
     notes: string | null;
   };
   binding: {
@@ -141,6 +145,8 @@ interface Props {
   builderTemplates: { id: string; name: string }[];
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
+  /** Bibliothèques vidéo pour l'auto-save de sortie (V2.6). */
+  videoLibraries: { id: string; name: string }[];
   saving: boolean;
   onSave: (values: RecipeFormValues) => Promise<void> | void;
   onDelete?: () => void;
@@ -157,6 +163,7 @@ export function RecipeForm({
   builderTemplates,
   captionPresets,
   descriptionPrompts,
+  videoLibraries,
   saving,
   onSave,
   onDelete,
@@ -179,29 +186,13 @@ export function RecipeForm({
   const [needsClientValidation, setNeedsClientValidation] = useState(initial.needsClientValidation);
   const [allowsClientRevision, setAllowsClientRevision] = useState(initial.allowsClientRevision);
   const [needsBrief, setNeedsBrief] = useState(initial.needsBrief);
-  // Phase 5 (métaobjet) — « Exige une fiche » : select de type au lieu d'un
-  // toggle booléen. Compat : requiresProperty=true sans requiresEntityTypeId
-  // (recette pas encore migrée) affiche « Bien » sélectionné.
-  const [requiresEntityTypeId, setRequiresEntityTypeId] = useState(
-    initial.requiresEntityTypeId ?? (initial.requiresProperty ? "etype_bien" : ""),
-  );
-  const [entityTypes, setEntityTypes] = useState<{ id: string; name: string }[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const r = await fetch("/api/entity-types");
-        if (!r.ok) return;
-        const data = (await r.json()) as { types: { id: string; name: string }[] };
-        if (!cancelled) setEntityTypes(data.types);
-      } catch {
-        /* liste indisponible — le select reste vide */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Socle partagé RecipeForm/PatternTemplateForm (V2.6).
+  const { requiresEntityTypeId, setRequiresEntityTypeId, entityTypes, propertyFieldKeys } =
+    useRecipeEntityBinding({
+      initialRequiresEntityTypeId: initial.requiresEntityTypeId,
+      initialRequiresProperty: initial.requiresProperty,
+      needsDescription,
+    });
   const [captionPresetId, setCaptionPresetId] = useState(initial.captionPresetId ?? "");
   const [descriptionPromptId, setDescriptionPromptId] = useState(initial.descriptionPromptId ?? "");
   const [descriptionSourceFieldKey, setDescriptionSourceFieldKey] = useState(
@@ -210,29 +201,7 @@ export function RecipeForm({
   const [descriptionFixedText, setDescriptionFixedText] = useState(
     initial.descriptionFixedText ?? "",
   );
-  // Clés de champs de fiche suggérées (mode preFilled) — chargées à la volée
-  // depuis le type de fiche sélectionné (fallback « Bien » si aucun type
-  // requis), saisie libre autorisée (la fiche peut ne pas exister encore).
-  const [propertyFieldKeys, setPropertyFieldKeys] = useState<{ key: string; label: string }[]>([]);
-  const fieldKeysTypeId = requiresEntityTypeId || "etype_bien";
-  useEffect(() => {
-    if (needsDescription !== "preFilled") return;
-    let cancelled = false;
-    void (async () => {
-      setPropertyFieldKeys([]);
-      try {
-        const r = await fetch(`/api/entity-types/${fieldKeysTypeId}/field-keys`);
-        if (!r.ok) return;
-        const data = (await r.json()) as { key: string; label: string }[];
-        if (!cancelled) setPropertyFieldKeys(data);
-      } catch {
-        /* suggestions indisponibles — saisie libre */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [needsDescription, fieldKeysTypeId]);
+  const [autoSaveLibraryId, setAutoSaveLibraryId] = useState(initial.autoSaveToLibraryId ?? "");
   const [templateNotes, setTemplateNotes] = useState(initial.templateNotes ?? "");
 
   // Binding state
@@ -296,6 +265,7 @@ export function RecipeForm({
           needsDescription === "preFilled" ? descriptionSourceFieldKey.trim() || null : null,
         descriptionFixedText:
           needsDescription === "fixed" ? descriptionFixedText.trim() || null : null,
+        autoSaveToLibraryId: autoSaveLibraryId || null,
         notes: templateNotes.trim() || null,
       },
       binding: {
@@ -398,6 +368,9 @@ export function RecipeForm({
             propertyFieldKeys={propertyFieldKeys}
             templateNotes={templateNotes}
             setTemplateNotes={setTemplateNotes}
+            autoSaveLibraryId={autoSaveLibraryId}
+            setAutoSaveLibraryId={setAutoSaveLibraryId}
+            videoLibraries={videoLibraries}
             builderTemplates={builderTemplates}
             captionPresets={captionPresets}
             descriptionPrompts={descriptionPrompts}
@@ -511,6 +484,9 @@ interface ContentTabProps {
   setDescriptionFixedText: (v: string) => void;
   propertyFieldKeys: { key: string; label: string }[];
   templateNotes: string;
+  autoSaveLibraryId: string;
+  setAutoSaveLibraryId: (v: string) => void;
+  videoLibraries: { id: string; name: string }[];
   setTemplateNotes: (v: string) => void;
   builderTemplates: { id: string; name: string }[];
   captionPresets: { id: string; name: string }[];
@@ -702,6 +678,20 @@ function ContentTab(p: ContentTabProps) {
             label="Client peut demander une révision"
           />
         </div>
+      </FormField>
+
+      <FormField
+        label="Auto-save sortie vers bibliothèque"
+        help="La sortie de génération est copiée automatiquement en tant que média vidéo."
+      >
+        <Combobox
+          value={p.autoSaveLibraryId}
+          onChange={p.setAutoSaveLibraryId}
+          options={[
+            { value: "", label: "Aucune (désactivé)" },
+            ...p.videoLibraries.map((lib) => ({ value: lib.id, label: lib.name })),
+          ]}
+        />
       </FormField>
 
       <FormField label="Notes (privées)">

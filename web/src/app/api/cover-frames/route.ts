@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
-import { getUserContext } from "@/lib/userContext";
+import { requireUser } from "@/lib/api/requireAuth";
 
 const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 
 type Frame = { timestamp: number; url: string };
 
 export async function POST(req: NextRequest) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth.response) return auth.response;
 
   let body: { videoUrl?: string; timestamps?: unknown };
   try {
