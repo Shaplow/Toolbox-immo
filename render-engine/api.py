@@ -543,6 +543,7 @@ async def render_template_local(
             audio_codec=_audio_codec,
             audio_codec_args=_audio_args,
             max_duration=max_duration,
+            clip_duration=float(video_info.duration or 0.0) or None,
             **music_opts,
         )
     else:
@@ -737,6 +738,7 @@ async def render_sequence_local(request: Request):
                     video_codec=_codec, video_codec_args=_codec_args,
                     audio_codec=_audio_codec, audio_codec_args=_audio_args,
                     max_duration=max_dur,
+                    clip_duration=float(video_info.duration or 0.0) or None,
                     source_has_audio=video_info.has_audio,
                     mute_source=slot_mute_source, source_volume=slot_source_volume,
                 )

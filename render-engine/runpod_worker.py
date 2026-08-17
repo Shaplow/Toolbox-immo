@@ -913,6 +913,7 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
                     audio_codec=a_codec,
                     audio_codec_args=a_args,
                     max_duration=max_duration,
+                    clip_duration=float(video_info.duration or 0.0) or None,
                     **music_opts,
                 )
             else:
@@ -1226,6 +1227,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                     audio_codec=audio_codec,
                     audio_codec_args=audio_args,
                     max_duration=max_dur,
+                    clip_duration=float(video_info.duration or 0.0) or None,
                     source_has_audio=video_info.has_audio,
                     mute_source=slot_mute_source,
                     source_volume=slot_source_volume,

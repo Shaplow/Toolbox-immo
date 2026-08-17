@@ -5,10 +5,76 @@ from typing import TypedDict
 
 
 class OverlaySegment(TypedDict):
-    """Describes one overlay PNG and its active time window."""
+    """Describes one overlay PNG and its active time window.
+
+    ``start``/``end`` may be negative: ``-v`` means "v seconds before the end
+    of the clip" and is resolved against the effective clip duration by
+    :func:`resolve_overlay_segments` before building the filter graph.
+    """
     index: int
     start: float          # seconds, inclusive
     end: float | None     # seconds, exclusive; None = until end of video
+
+
+def resolve_overlay_segments(
+    segments: list[OverlaySegment],
+    clip_duration: float | None,
+    max_duration: float | None = None,
+) -> list[OverlaySegment]:
+    """
+    Resolves end-anchored bounds (negative floats, ``-v`` = effective duration − v)
+    into absolute seconds.
+
+    The web app emits segment bounds assuming "the clip is long enough" (every
+    start-anchored breakpoint precedes every end-anchored one). When the actual
+    clip is shorter, bounds are clamped and forced monotonically increasing so
+    windows shrink gracefully instead of producing an invalid graph.
+
+    Segments with no negative bound are returned unchanged (legacy fast path).
+    """
+    has_negative = any(
+        seg["start"] < 0 or (seg["end"] is not None and seg["end"] < 0)
+        for seg in segments
+    )
+    if not has_negative:
+        return segments
+
+    eff: float | None = clip_duration if clip_duration and clip_duration > 0 else None
+    if max_duration is not None:
+        eff = min(eff, max_duration) if eff is not None else max_duration
+    if eff is None:
+        raise ValueError(
+            "resolve_overlay_segments: clip_duration is required to resolve "
+            "end-anchored (negative) overlay segment bounds"
+        )
+
+    def _resolve(bound: float) -> float:
+        absolute = eff + bound if bound < 0 else bound
+        return min(max(absolute, 0.0), eff)
+
+    resolved: list[OverlaySegment] = []
+    prev_bound = 0.0
+    for seg in segments:
+        start = max(_resolve(seg["start"]), prev_bound)
+        end: float | None = None
+        if seg["end"] is not None:
+            end = max(_resolve(seg["end"]), start)
+        prev_bound = start if end is None else end
+        # Degenerate window (clip shorter than assumed) — drop, except the
+        # open-ended segment which must survive so the graph stays valid.
+        if end is not None and end <= start:
+            continue
+        resolved.append({"index": seg["index"], "start": start, "end": end})
+
+    # Merge adjacent segments that collapsed onto the same overlay index
+    merged: list[OverlaySegment] = []
+    for seg in resolved:
+        last = merged[-1] if merged else None
+        if last and last["index"] == seg["index"] and last["end"] == seg["start"]:
+            merged[-1] = {"index": last["index"], "start": last["start"], "end": seg["end"]}
+        else:
+            merged.append(seg)
+    return merged
 
 
 def build_music_track_filter(
@@ -409,6 +475,7 @@ def build_template_ffmpeg_cmd_timed(
     audio_codec: str = "aac",
     audio_codec_args: list[str] | None = None,
     max_duration: float | None = None,
+    clip_duration: float | None = None,
     # ── Music options (all optional — backward compatible) ────────────────────
     music_path: str | None = None,
     music_volume: float = 0.3,
@@ -421,6 +488,7 @@ def build_template_ffmpeg_cmd_timed(
 ) -> list[str]:
     """Multi-overlay command with per-segment time windows."""
     audio_codec_args = audio_codec_args or ["-b:a", "192k"]
+    segments = resolve_overlay_segments(segments, clip_duration, max_duration)
     filter_complex = build_template_filter_complex_timed(block, segments)
 
     duration_args = ["-t", str(max_duration)] if max_duration is not None else []
