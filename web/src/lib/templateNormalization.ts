@@ -58,15 +58,54 @@ function normalizeBlockRules(block: AnyBlock): BlockConditionalRule[] | undefine
   return rules.length > 0 ? rules : undefined;
 }
 
+/**
+ * Sanitize d'une paire valeur+ancre de timing. Retourne la paire valide ou rien.
+ * - Ancre "start" (ou absente) : valeur > 0 requise, sauf si `allowZero`
+ *   (un `appearAt: 0` en override de slot est significatif face au global).
+ * - Ancre "end" : valeur > 0 requise (« 0 s avant la fin » est dégénéré).
+ *   L'ancre n'est conservée que si sa valeur survit ; "start" explicite est strippé.
+ */
+function sanitizeTimingPair(
+  value: unknown,
+  anchor: unknown,
+  allowZero: boolean,
+): { value: number; anchor?: "end" } | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (anchor === "end") {
+    return value > 0 ? { value, anchor: "end" } : undefined;
+  }
+  if (value > 0 || (allowZero && value === 0)) return { value };
+  return undefined;
+}
+
+function sanitizeSlotTimings(block: AnyBlock): AnyBlock["slotTimings"] {
+  if (!block.slotTimings || typeof block.slotTimings !== "object") return undefined;
+  const result: NonNullable<AnyBlock["slotTimings"]> = {};
+  for (const [slotId, entry] of Object.entries(block.slotTimings)) {
+    if (!entry || typeof entry !== "object") continue;
+    const appear = sanitizeTimingPair(entry.appearAt, entry.appearAnchor, true);
+    const hide = sanitizeTimingPair(entry.hideAt, entry.hideAnchor, false);
+    if (!appear && !hide) continue;
+    result[slotId] = {
+      ...(appear ? { appearAt: appear.value, ...(appear.anchor ? { appearAnchor: appear.anchor } : {}) } : {}),
+      ...(hide ? { hideAt: hide.value, ...(hide.anchor ? { hideAnchor: hide.anchor } : {}) } : {}),
+    };
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function normalizeBlock<T extends AnyBlock>(block: T): T {
   // Sanitize timing fields: keep only valid positive numbers
-  const appearAt = typeof block.appearAt === "number" && block.appearAt > 0 ? block.appearAt : undefined;
-  const hideAt = typeof block.hideAt === "number" && block.hideAt > 0 ? block.hideAt : undefined;
+  const appear = sanitizeTimingPair(block.appearAt, block.appearAnchor, false);
+  const hide = sanitizeTimingPair(block.hideAt, block.hideAnchor, false);
 
   return {
     ...block,
-    appearAt,
-    hideAt,
+    appearAt: appear?.value,
+    appearAnchor: appear?.anchor,
+    hideAt: hide?.value,
+    hideAnchor: hide?.anchor,
+    slotTimings: sanitizeSlotTimings(block),
     conditionalRules: normalizeBlockRules(block),
     showIf: undefined,
     conditionalOverrides: undefined,

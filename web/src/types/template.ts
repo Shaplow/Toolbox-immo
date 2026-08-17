@@ -84,6 +84,24 @@ export type BlockType =
   | "dpe"
   | "music";
 
+/**
+ * Ancrage d'une borne de timing vidéo.
+ * - "start" (défaut, champ absent) : la valeur compte depuis le début du clip.
+ * - "end" : la valeur compte à rebours depuis la fin réelle du clip
+ *   (« X s avant la fin »), résolue au render une fois la durée connue.
+ */
+export type TimingAnchor = "start" | "end";
+
+/** Override de timing d'un bloc pour un slot de séquence donné. */
+export interface BlockSlotTiming {
+  appearAt?: number;
+  hideAt?: number;
+  /** "end" = `appearAt` compte depuis la fin du clip. Absent = "start". */
+  appearAnchor?: TimingAnchor;
+  /** "end" = `hideAt` compte depuis la fin du clip. Absent = "start". */
+  hideAnchor?: TimingAnchor;
+}
+
 export interface BaseBlock {
   id: string;
   name?: string;
@@ -103,12 +121,17 @@ export interface BaseBlock {
   appearAt?: number;
   /** Seconde de disparition dans la vidéo (global). undefined = visible jusqu'à la fin. Ne s'applique que pour les templates vidéo. */
   hideAt?: number;
+  /** "end" = `appearAt` compte à rebours depuis la fin du clip. Absent = "start". */
+  appearAnchor?: TimingAnchor;
+  /** "end" = `hideAt` compte à rebours depuis la fin du clip. Absent = "start". */
+  hideAnchor?: TimingAnchor;
   /**
    * Overrides de timing par slot de séquence. Clé = slot.id.
-   * Prioritaire sur `appearAt`/`hideAt` pour ce slot spécifique.
+   * Prioritaire sur `appearAt`/`hideAt` pour ce slot spécifique (résolution
+   * par paire : l'ancre d'un niveau ne s'applique qu'à la valeur du même niveau).
    * Permet d'avoir un bloc qui apparaît à 2s dans le clip 1 et à 0.5s dans le clip 2.
    */
-  slotTimings?: Record<string, { appearAt?: number; hideAt?: number }>;
+  slotTimings?: Record<string, BlockSlotTiming>;
   /**
    * Décalage fin (px) appliqué APRÈS le calcul de position auto-layout, sans
    * perturber le flux des autres membres du groupe. Permet p.ex. de décaler de
