@@ -179,7 +179,7 @@ export function VideoSequencePanel({
 
                   {/* Label + badges */}
                   <div className="flex-1 min-w-0">
-                    <span className={`block font-medium text-[11px] truncate ${isSelected ? "text-indigo-800" : "text-gray-800"}`}>
+                    <span className={`block font-medium text-[11px] truncate ${isSelected ? "text-indigo-800" : "text-foreground"}`}>
                       {label}
                     </span>
                     <div className="flex items-center gap-1 mt-0.5 flex-wrap">

@@ -352,14 +352,14 @@ export function DataEntriesSpreadsheet({
                   key={r.id}
                   className={[
                     "group/row transition-colors",
-                    isSelected ? "bg-info-50/45" : "hover:bg-white/55",
+                    isSelected ? "bg-info-50/45" : "hover:bg-muted",
                   ].join(" ")}
                 >
                   <td
                     style={{ left: OFFSET_CHECKBOX }}
                     className={[
                       "sticky z-20 border-b border-r border-border/40 px-2.5 py-1",
-                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                      isSelected ? "bg-info-50/95" : "bg-card group-hover/row:bg-muted",
                     ].join(" ")}
                   >
                     <Checkbox
@@ -373,7 +373,7 @@ export function DataEntriesSpreadsheet({
                     style={{ left: OFFSET_SET }}
                     className={[
                       "sticky z-20 border-b border-r border-border/40 p-0",
-                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                      isSelected ? "bg-info-50/95" : "bg-card group-hover/row:bg-muted",
                     ].join(" ")}
                     data-cell={`${r.id}::set`}
                   >
@@ -397,7 +397,7 @@ export function DataEntriesSpreadsheet({
                     style={{ right: RIGHT_ACCESS }}
                     className={[
                       "sticky z-20 border-b border-l border-border/40 px-2 py-1",
-                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                      isSelected ? "bg-info-50/95" : "bg-card group-hover/row:bg-muted",
                     ].join(" ")}
                   >
                     {r.accessAccountIds.length === 0 ? (
@@ -432,7 +432,7 @@ export function DataEntriesSpreadsheet({
                     style={{ right: RIGHT_ACTIONS }}
                     className={[
                       "sticky z-20 border-b border-l border-border/40 px-1 py-1 text-center",
-                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                      isSelected ? "bg-info-50/95" : "bg-card group-hover/row:bg-muted",
                     ].join(" ")}
                   >
                     <button
@@ -579,7 +579,7 @@ function SortableHeader({
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-center justify-between gap-1.5 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:bg-white/40 transition-colors truncate"
+      className="w-full flex items-center justify-between gap-1.5 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:bg-muted transition-colors truncate"
       title={`Trier par ${label}`}
     >
       <span className="truncate">

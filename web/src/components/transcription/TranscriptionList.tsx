@@ -697,7 +697,7 @@ export function TranscriptionList({
       {returnTo && (
         <Link
           href={returnTo}
-          className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-gray-900 transition-colors"
+          className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft size={12} />
           Retour à la publication
@@ -706,7 +706,7 @@ export function TranscriptionList({
 
       {/* V2 friction MED-6 : banner contextuel quand on est ouvert depuis un slot. */}
       {slotContext && (
-        <div className="rounded-xl bg-gradient-to-b from-info-50/85 to-info-50/55 px-4 py-3 ">
+        <div className="rounded-xl bg-info-50 px-4 py-3 ">
           <p className="text-[10px] uppercase tracking-widest font-semibold text-info-700">
             Transcription pour une publication
           </p>
@@ -743,10 +743,10 @@ export function TranscriptionList({
 
       {/* Section Langues — toujours visible, FR coché par défaut.
           1 langue = mode mono. 2+ = mode multi auto (traduction inverse). */}
-      <div className="rounded-2xl border border-white/50 bg-card border border-border px-4 py-3 ">
+      <div className="rounded-2xl border border-border bg-card border border-border px-4 py-3 ">
         <div className="flex items-center gap-2 mb-2">
           <Languages className="h-4 w-4 text-info-700" />
-          <span className="text-sm font-semibold text-gray-900">Langues</span>
+          <span className="text-sm font-semibold text-foreground">Langues</span>
           {isMultilingual && (
             <span className="text-[10px] uppercase tracking-widest font-bold text-info-700">
               Multi · bêta
@@ -799,7 +799,7 @@ export function TranscriptionList({
         className={`relative rounded-2xl border-2 border-dashed p-10 text-center transition-colors  ${
           dragging
             ? "border-info-200 bg-info-50/70"
-            : "border-white/60 bg-white/60 hover:border-info-200 hover:bg-info-50/40"
+            : "border-border bg-muted hover:border-info-200 hover:bg-info-50/40"
         } ${uploadState ? "pointer-events-none opacity-80" : "cursor-pointer"}`}
         onDragEnter={(event) => {
           event.preventDefault();
@@ -866,8 +866,8 @@ export function TranscriptionList({
       {feedback && (
         <div className={`rounded-2xl px-4 py-3 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,1)] ${
           feedback.type === "success"
-            ? "bg-gradient-to-b from-green-50/85 to-green-50/55 text-green-800 shadow-[inset_0_0_0_1px_rgba(134,239,172,0.40)]"
-            : "bg-gradient-to-b from-danger-50/85 to-danger-50/55 text-danger-700 shadow-[inset_0_0_0_1px_rgba(244,114,182,0.30)]"
+            ? "bg-green-50 text-green-800 shadow-[inset_0_0_0_1px_rgba(134,239,172,0.40)]"
+            : "bg-danger-50 text-danger-700 shadow-[inset_0_0_0_1px_rgba(244,114,182,0.30)]"
         }`}>
           {feedback.message}
         </div>
@@ -876,7 +876,7 @@ export function TranscriptionList({
       <section className="space-y-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-800">File de transcription</h2>
+            <h2 className="text-sm font-semibold text-foreground">File de transcription</h2>
             <p className="text-sm text-muted-foreground">Les rushs ne partent plus automatiquement. Vous contrôlez le départ, un par un ou en lot.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -904,7 +904,7 @@ export function TranscriptionList({
         </div>
 
         {queueJobs.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/60 bg-card border border-border px-6 py-10 text-center text-sm text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,1)]">
+          <div className="rounded-2xl border border-dashed border-border bg-card border border-border px-6 py-10 text-center text-sm text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,1)]">
             Aucun rush en attente ou en cours. Ajoutez vos fichiers ci-dessus pour préparer un lot.
           </div>
         ) : (
@@ -916,14 +916,14 @@ export function TranscriptionList({
               const isStarting = !!startingJobIds[job.id];
 
               return (
-                <li key={job.id} className="rounded-xl border border-white/50 bg-card border border-border p-5 ">
+                <li key={job.id} className="rounded-xl border border-border bg-card border border-border p-5 ">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
                       <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                         <FileAudio className="h-5 w-5" />
                       </div>
                       <div className="min-w-0 space-y-1">
-                        <p className="truncate text-sm font-semibold text-gray-900">
+                        <p className="truncate text-sm font-semibold text-foreground">
                           {job.inputFilename ?? "Fichier inconnu"}
                         </p>
                         <p className="text-xs text-muted-foreground">Ajouté le {fmtDate(job.createdAt)}</p>
@@ -991,12 +991,12 @@ export function TranscriptionList({
                       </div>
 
                       {jobErrors[job.id] && (
-                        <div className="rounded-xl bg-gradient-to-b from-danger-50/85 to-danger-50/55 px-4 py-3 text-sm text-danger-700 ">
+                        <div className="rounded-xl bg-danger-50 px-4 py-3 text-sm text-danger-700 ">
                           {jobErrors[job.id]}
                         </div>
                       )}
 
-                      <div className="flex flex-col gap-3 border-t border-white/40 pt-3 md:flex-row md:items-center md:justify-between">
+                      <div className="flex flex-col gap-3 border-t border-border pt-3 md:flex-row md:items-center md:justify-between">
                         <p className="text-sm text-muted-foreground">
                           Rush prêt. Lancez-le seul ou avec le lot complet.
                         </p>
@@ -1038,7 +1038,7 @@ export function TranscriptionList({
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-4 flex flex-col gap-4 border-t border-white/40 pt-4 md:flex-row md:items-center md:justify-between">
+                    <div className="mt-4 flex flex-col gap-4 border-t border-border pt-4 md:flex-row md:items-center md:justify-between">
                       <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
                         {job.languages && job.languages.length >= 2 ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-info-100 px-3 py-1 text-info-700">
@@ -1075,20 +1075,20 @@ export function TranscriptionList({
       {historyJobs.length > 0 && (
         <section className="space-y-4">
           <div>
-            <h2 className="text-sm font-semibold text-gray-800">Historique</h2>
+            <h2 className="text-sm font-semibold text-foreground">Historique</h2>
             <p className="text-sm text-muted-foreground">Les transcriptions terminées ou en échec restent accessibles ici.</p>
           </div>
 
           <ul className="space-y-3">
             {historyJobs.map((job) => (
-              <li key={job.id} className="rounded-xl border border-white/50 bg-card border border-border p-5 ">
+              <li key={job.id} className="rounded-xl border border-border bg-card border border-border p-5 ">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                       <FileAudio className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 space-y-1">
-                      <p className="truncate text-sm font-semibold text-gray-900">
+                      <p className="truncate text-sm font-semibold text-foreground">
                         {job.inputFilename ?? "Fichier inconnu"}
                       </p>
                       <p className="text-xs text-muted-foreground">

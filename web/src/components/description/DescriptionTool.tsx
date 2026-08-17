@@ -391,7 +391,7 @@ export function DescriptionTool({
       {returnTo && (
         <Link
           href={returnTo}
-          className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-950 font-medium"
+          className="inline-flex items-center gap-1.5 text-sm text-foreground hover:text-foreground font-medium"
         >
           <ArrowLeft size={14} />
           Retour à la fiche publication
@@ -401,7 +401,7 @@ export function DescriptionTool({
       {/* ── Section 1: Source ──────────────────────────────────────────── */}
       <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-gray-700">Source</h2>
+          <h2 className="text-sm font-semibold text-foreground">Source</h2>
         </div>
 
         {/* Input tabs */}
@@ -410,8 +410,8 @@ export function DescriptionTool({
             onClick={() => setInputTab("upload")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               inputTab === "upload"
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
+                ? "bg-white text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Upload size={12} /> Uploader un fichier
@@ -420,8 +420,8 @@ export function DescriptionTool({
             onClick={() => setInputTab("transcription")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               inputTab === "transcription"
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
+                ? "bg-white text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Mic size={12} /> Transcription existante
@@ -459,21 +459,21 @@ export function DescriptionTool({
                     <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                       <Check size={16} className="text-green-600" />
                     </div>
-                    <p className="text-sm font-medium text-gray-800">
+                    <p className="text-sm font-medium text-foreground">
                       {inputFilename ?? "Fichier chargé"}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted-foreground">
                       {transcriptText.length.toLocaleString()} caractères extraits
                     </p>
-                    <p className="text-xs text-gray-400">Cliquer pour changer de fichier</p>
+                    <p className="text-xs text-muted-foreground">Cliquer pour changer de fichier</p>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-2">
-                    <FileText size={28} className="text-gray-300" />
-                    <p className="text-sm font-medium text-gray-600">
+                    <FileText size={28} className="text-muted-foreground" />
+                    <p className="text-sm font-medium text-muted-foreground">
                       Glisser un fichier .srt ou .json
                     </p>
-                    <p className="text-xs text-gray-400">ou cliquer pour parcourir</p>
+                    <p className="text-xs text-muted-foreground">ou cliquer pour parcourir</p>
                   </div>
                 )}
               </div>
@@ -486,11 +486,11 @@ export function DescriptionTool({
           ) : (
             <>
               {loadingTranscriptions ? (
-                <div className="flex items-center gap-2 text-sm text-gray-400">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 size={14} className="animate-spin" /> Chargement…
                 </div>
               ) : transcriptions.length === 0 ? (
-                <div className="text-sm text-gray-400 text-center py-4">
+                <div className="text-sm text-muted-foreground text-center py-4">
                   Aucune transcription terminée. <br />
                   <Link href="/transcriptions" className="text-info-700 hover:underline">
                     Lancer une transcription →
@@ -505,17 +505,17 @@ export function DescriptionTool({
                       className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-sm ${
                         transcriptionId === t.id
                           ? "border-info-200 bg-info-50 text-info-700"
-                          : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-gray-700"
+                          : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-foreground"
                       }`}
                     >
-                      <Mic size={14} className={transcriptionId === t.id ? "text-info-600" : "text-gray-300"} />
+                      <Mic size={14} className={transcriptionId === t.id ? "text-info-600" : "text-muted-foreground"} />
                       <span className="flex-1 truncate">
                         {t.inputFilename ?? "Transcription sans nom"}
                       </span>
                       {transcriptionId === t.id && (
                         <Check size={12} className="text-info-600 shrink-0" />
                       )}
-                      <span className="text-xs text-gray-400 shrink-0">{formatDate(t.createdAt)}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{formatDate(t.createdAt)}</span>
                     </button>
                   ))}
                 </div>
@@ -526,11 +526,11 @@ export function DescriptionTool({
           <div className="mt-4 border-t border-gray-100 pt-4">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-medium text-gray-700">
+                <h3 className="text-sm font-medium text-foreground">
                   Image de référence{" "}
-                  <span className="text-xs font-normal text-gray-400">(optionnel)</span>
+                  <span className="text-xs font-normal text-muted-foreground">(optionnel)</span>
                 </h3>
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Ajoutez une capture d&apos;écran ou une photo contenant des infos à intégrer. Cette image peut aussi servir de seule source si vous n&apos;avez pas de SRT ou de transcription.
                 </p>
               </div>
@@ -542,7 +542,7 @@ export function DescriptionTool({
                     setImageError(null);
                     if (imageInputRef.current) imageInputRef.current.value = "";
                   }}
-                  className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700"
+                  className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
                 >
                   Retirer
                 </button>
@@ -573,7 +573,7 @@ export function DescriptionTool({
               />
 
               {imageLoading ? (
-                <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 size={14} className="animate-spin" /> Chargement de l&apos;image…
                 </div>
               ) : referenceImage ? (
@@ -582,10 +582,10 @@ export function DescriptionTool({
                     <Check size={16} className="text-warning-700" />
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-gray-800">
+                    <p className="truncate text-sm font-medium text-foreground">
                       {referenceImage.filename}
                     </p>
-                    <p className="mt-0.5 text-xs text-gray-400">
+                    <p className="mt-0.5 text-xs text-muted-foreground">
                       {formatFileSize(referenceImage.sizeBytes)} • Cliquer pour remplacer
                     </p>
                   </div>
@@ -593,13 +593,13 @@ export function DescriptionTool({
               ) : (
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100">
-                    <ImageIcon size={16} className="text-gray-400" />
+                    <ImageIcon size={16} className="text-muted-foreground" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700">
+                    <p className="text-sm font-medium text-foreground">
                       Ajouter une image pour enrichir l&apos;analyse
                     </p>
-                    <p className="mt-0.5 text-xs text-gray-400">
+                    <p className="mt-0.5 text-xs text-muted-foreground">
                       PNG, JPG ou WEBP. Utile pour une capture d&apos;écran avec données ou visuels.
                     </p>
                   </div>
@@ -612,7 +612,7 @@ export function DescriptionTool({
                 <AlertCircle size={12} /> {imageError}
               </p>
             )}
-            <p className="mt-2 text-xs text-gray-400">
+            <p className="mt-2 text-xs text-muted-foreground">
               L&apos;image n&apos;est envoyée qu&apos;avec cette génération et n&apos;est pas stockée dans l&apos;historique.
             </p>
           </div>
@@ -622,11 +622,11 @@ export function DescriptionTool({
       {/* ── Section 2: Prompt ─────────────────────────────────────────── */}
       <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">Prompt</h2>
+          <h2 className="text-sm font-semibold text-foreground">Prompt</h2>
           {isAdmin && (
             <button
               onClick={() => setPromptModalOpen(true)}
-              className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900 font-medium transition-colors"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
             >
               <Settings size={12} /> Gérer les prompts
             </button>
@@ -634,14 +634,14 @@ export function DescriptionTool({
         </div>
         <div className="px-5 py-4">
           {prompts.length === 0 ? (
-            <div className="text-sm text-gray-400 text-center py-4">
+            <div className="text-sm text-muted-foreground text-center py-4">
               Aucun prompt disponible.
               {isAdmin && (
                 <>
                   {" "}
                   <button
                     onClick={() => setPromptModalOpen(true)}
-                    className="text-gray-700 hover:underline"
+                    className="text-foreground hover:underline"
                   >
                     En créer un →
                   </button>
@@ -657,11 +657,11 @@ export function DescriptionTool({
                   className={`text-left px-4 py-3 rounded-xl border transition-colors ${
                     selectedPromptId === p.id
                       ? "border-warning-200 bg-warning-50 text-warning-700"
-                      : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-gray-700"
+                      : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-foreground"
                   }`}
                 >
                   <p className="text-sm font-medium">{p.name}</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-2">{p.prompt}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{p.prompt}</p>
                 </button>
               ))}
             </div>
@@ -672,9 +672,9 @@ export function DescriptionTool({
       {/* ── Section 3: Personnalisation ───────────────────────────────── */}
       <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-gray-700">
+          <h2 className="text-sm font-semibold text-foreground">
             Personnalisation{" "}
-            <span className="text-xs font-normal text-gray-400">(optionnel)</span>
+            <span className="text-xs font-normal text-muted-foreground">(optionnel)</span>
           </h2>
         </div>
         <div className="px-5 py-4 space-y-1">
@@ -684,7 +684,7 @@ export function DescriptionTool({
             placeholder={"Ex: Contactez Bonjour Oscar au 06 12 34 56 78\nAgence Premier Immo — Paris 16e"}
             rows={3}
           />
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-muted-foreground">
             Ces informations seront injectées dans le prompt avant l&apos;analyse de la source.
           </p>
         </div>
@@ -700,9 +700,9 @@ export function DescriptionTool({
             title={!aiConfig.hasClaude ? "ANTHROPIC_API_KEY non configuré" : undefined}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               model === "claude" && aiConfig.hasClaude
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-400 cursor-not-allowed"
-            } ${aiConfig.hasClaude ? "hover:text-gray-700" : ""}`}
+                ? "bg-white text-foreground shadow-sm"
+                : "text-muted-foreground cursor-not-allowed"
+            } ${aiConfig.hasClaude ? "hover:text-foreground" : ""}`}
           >
             Claude Sonnet
           </button>
@@ -712,9 +712,9 @@ export function DescriptionTool({
             title={!aiConfig.hasGPT ? "OPENAI_API_KEY non configuré" : undefined}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               model === "gpt" && aiConfig.hasGPT
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-400 cursor-not-allowed"
-            } ${aiConfig.hasGPT ? "hover:text-gray-700" : ""}`}
+                ? "bg-white text-foreground shadow-sm"
+                : "text-muted-foreground cursor-not-allowed"
+            } ${aiConfig.hasGPT ? "hover:text-foreground" : ""}`}
           >
             ChatGPT
           </button>
@@ -744,7 +744,7 @@ export function DescriptionTool({
       {result !== null && (
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-gray-700">Description générée</h2>
+            <h2 className="text-sm font-semibold text-foreground">Description générée</h2>
             <div className="flex items-center gap-3">
               {slotIdFromUrl && (
                 <button
@@ -773,7 +773,7 @@ export function DescriptionTool({
               )}
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 transition-colors"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 {copied ? (
                   <>
@@ -807,11 +807,11 @@ export function DescriptionTool({
             className="w-full px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
             onClick={() => setHistoryOpen((v) => !v)}
           >
-            <h2 className="text-sm font-semibold text-gray-700">
+            <h2 className="text-sm font-semibold text-foreground">
               Historique{" "}
-              <span className="text-xs font-normal text-gray-400">({jobs.length})</span>
+              <span className="text-xs font-normal text-muted-foreground">({jobs.length})</span>
             </h2>
-            {historyOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+            {historyOpen ? <ChevronUp size={14} className="text-muted-foreground" /> : <ChevronDown size={14} className="text-muted-foreground" />}
           </button>
 
           {historyOpen && (
@@ -829,17 +829,17 @@ export function DescriptionTool({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-gray-900/40"
             onClick={() => setPromptModalOpen(false)}
           />
           {/* Panel */}
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[85vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">Gérer les prompts</h2>
+              <h2 className="text-base font-semibold text-foreground">Gérer les prompts</h2>
               <button
                 onClick={() => setPromptModalOpen(false)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-gray-100 transition-colors"
               >
                 <X size={16} />
               </button>

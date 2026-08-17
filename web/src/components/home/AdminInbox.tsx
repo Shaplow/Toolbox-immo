@@ -48,9 +48,19 @@ const PAGE_SIZE = 12;
 
 interface Props {
   items: InboxItemData[];
+  /** Checklist « Démarrer » (V3.3) — affichée si l'un des deux est 0. */
+  accountsCount?: number;
+  recipesCount?: number;
 }
 
-export function AdminInbox({ items }: Props) {
+const START_STEPS: { label: string; href: string; done: (a: number, r: number) => boolean }[] = [
+  { label: "Créer un client et son compte Instagram", href: "/admin/clients", done: (a) => a > 0 },
+  { label: "Construire un template vidéo dans le Studio", href: "/templates", done: () => false },
+  { label: "Créer une recette (contenu + planning)", href: "/admin/patterns", done: (_a, r) => r > 0 },
+  { label: "Générer la semaine depuis le calendrier", href: "/calendar", done: () => false },
+];
+
+export function AdminInbox({ items, accountsCount, recipesCount }: Props) {
   const [tab, setTab] = useState<TabKey>("all");
   const [page, setPage] = useState(0);
 
@@ -134,6 +144,39 @@ export function AdminInbox({ items }: Props) {
           );
         })}
       </div>
+
+      {accountsCount !== undefined &&
+        recipesCount !== undefined &&
+        (accountsCount === 0 || recipesCount === 0) && (
+          <div className="mb-3 rounded-lg border border-border bg-card px-4 py-3">
+            <p className="text-[13px] font-semibold text-foreground">Démarrer</p>
+            <p className="text-[12px] text-muted-foreground mt-0.5 mb-2">
+              La chaîne de publication a besoin d&apos;un socle — dans l&apos;ordre :
+            </p>
+            <ol className="space-y-1">
+              {START_STEPS.map((step, i) => {
+                const done = step.done(accountsCount, recipesCount);
+                return (
+                  <li key={i} className="flex items-center gap-2 text-[12.5px]">
+                    <span
+                      className={[
+                        "inline-flex h-4 w-4 items-center justify-center rounded-full border text-[10px] shrink-0",
+                        done
+                          ? "bg-success-50 border-success-200 text-success-700"
+                          : "bg-muted border-border text-muted-foreground",
+                      ].join(" ")}
+                    >
+                      {done ? "✓" : i + 1}
+                    </span>
+                    <a href={step.href} className={done ? "text-muted-foreground line-through" : "text-foreground hover:underline"}>
+                      {step.label}
+                    </a>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        )}
 
       {filtered.length === 0 ? (
         <EmptyState

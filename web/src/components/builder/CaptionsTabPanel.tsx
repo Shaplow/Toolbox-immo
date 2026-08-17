@@ -95,7 +95,7 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-foreground truncate group-hover:text-gray-900">{p.label}</span>
+                    <span className="text-xs text-foreground truncate group-hover:text-foreground">{p.label}</span>
                     {!p.isActive && (
                       <span className="text-[9px] px-1 rounded bg-muted text-muted-foreground border border-border shrink-0">
                         inactif

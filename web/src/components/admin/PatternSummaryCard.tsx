@@ -232,7 +232,7 @@ function MetaRow({
         <Icon size={11} className="text-muted-foreground" />
         {label}
       </span>
-      <span className="text-[12px] text-gray-800 truncate text-right">
+      <span className="text-[12px] text-foreground truncate text-right">
         {value}
       </span>
     </div>

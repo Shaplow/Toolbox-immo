@@ -254,7 +254,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <div className="rounded-xl border border-border bg-white p-4">
           <p className="text-xs text-muted-foreground mb-1">Total actifs</p>
-          <p className="text-2xl font-semibold text-gray-900">{stats.total}</p>
+          <p className="text-2xl font-semibold text-foreground">{stats.total}</p>
         </div>
         <div className="rounded-xl border border-warning-200 bg-warning-50 p-4">
           <p className="text-xs text-warning-700 mb-1 flex items-center gap-1">
@@ -320,7 +320,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       {/* Table */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-sm text-muted-foreground">
-          <RotateCw size={32} className="text-gray-200 mx-auto mb-3" />
+          <RotateCw size={32} className="text-muted-foreground mx-auto mb-3" />
           {allRows.length === 0
             ? "Aucun job actif. Pipeline sain."
             : `Aucun job correspondant aux filtres (${allRows.length} jobs au total).`}

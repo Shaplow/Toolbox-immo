@@ -167,13 +167,13 @@ export function TrimPlayer({
       />
 
       {/* Trim timeline */}
-      <div className="px-4 py-3 border-t border-white/40 bg-white/20 backdrop-blur-[8px]">
+      <div className="px-4 py-3 border-t border-border bg-muted">
         <div className="relative h-8 mb-2">
           {/* Track */}
           <div className="absolute inset-y-1/2 left-0 right-0 h-2 -translate-y-1/2 rounded-full bg-gray-200/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(15,23,42,0.06)]" />
           {/* Selected range */}
           <div
-            className="absolute inset-y-1/2 h-2 -translate-y-1/2 rounded-full bg-gradient-to-r from-primary/70 to-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]"
+            className="absolute inset-y-1/2 h-2 -translate-y-1/2 rounded-full bg-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]"
             style={{ left: `${startPct}%`, right: `${100 - endPct}%` }}
           />
           {/* Playhead */}
@@ -190,7 +190,7 @@ export function TrimPlayer({
             step={1 / fps}
             value={trimStart}
             onChange={(e) => updateStart(Number(e.target.value))}
-            className="absolute inset-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-md [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-white [&::-webkit-slider-thumb]:to-white/85 [&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.18)] [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-grab"
+            className="absolute inset-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-md [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.18)] [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-grab"
             aria-label="Début du trim"
           />
           {/* End handle */}
@@ -201,18 +201,18 @@ export function TrimPlayer({
             step={1 / fps}
             value={trimEnd}
             onChange={(e) => updateEnd(Number(e.target.value))}
-            className="absolute inset-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-md [&::-webkit-slider-thumb]:bg-gradient-to-b [&::-webkit-slider-thumb]:from-white [&::-webkit-slider-thumb]:to-white/85 [&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.18)] [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-grab"
+            className="absolute inset-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-md [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.18)] [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-grab"
             aria-label="Fin du trim"
           />
         </div>
 
         {/* Controls row : timecode + nudge + transport */}
-        <div className="flex items-center justify-between gap-3 text-[11px] font-mono text-gray-700 flex-wrap">
+        <div className="flex items-center justify-between gap-3 text-[11px] font-mono text-foreground flex-wrap">
           {/* Start TC + nudge */}
           <div className="inline-flex items-center gap-1">
-            <span className="uppercase tracking-widest font-sans text-[10px] text-gray-500 mr-1">Début</span>
+            <span className="uppercase tracking-widest font-sans text-[10px] text-muted-foreground mr-1">Début</span>
             <ButtonIcon icon={Minus} label="-1 frame début" variant="ghost" size="sm" onClick={() => nudge("start", -1)} />
-            <span className="tabular-nums text-gray-950 font-semibold min-w-[7rem] text-center">{formatTC(trimStart, fps)}</span>
+            <span className="tabular-nums text-foreground font-semibold min-w-[7rem] text-center">{formatTC(trimStart, fps)}</span>
             <ButtonIcon icon={Plus} label="+1 frame début" variant="ghost" size="sm" onClick={() => nudge("start", 1)} />
           </div>
 
@@ -235,16 +235,16 @@ export function TrimPlayer({
               />
             )}
             <ButtonIcon icon={SkipForward} label="Aller à la fin du trim" variant="ghost" size="sm" onClick={() => seek(trimEnd - 1 / fps)} />
-            <span className="ml-2 text-gray-500 tabular-nums">
-              Durée <span className="text-gray-950 font-semibold">{formatTC(trimDuration, fps)}</span>
+            <span className="ml-2 text-muted-foreground tabular-nums">
+              Durée <span className="text-foreground font-semibold">{formatTC(trimDuration, fps)}</span>
             </span>
           </div>
 
           {/* End TC + nudge */}
           <div className="inline-flex items-center gap-1">
-            <span className="uppercase tracking-widest font-sans text-[10px] text-gray-500 mr-1">Fin</span>
+            <span className="uppercase tracking-widest font-sans text-[10px] text-muted-foreground mr-1">Fin</span>
             <ButtonIcon icon={Minus} label="-1 frame fin" variant="ghost" size="sm" onClick={() => nudge("end", -1)} />
-            <span className="tabular-nums text-gray-950 font-semibold min-w-[7rem] text-center">{formatTC(trimEnd, fps)}</span>
+            <span className="tabular-nums text-foreground font-semibold min-w-[7rem] text-center">{formatTC(trimEnd, fps)}</span>
             <ButtonIcon icon={Plus} label="+1 frame fin" variant="ghost" size="sm" onClick={() => nudge("end", 1)} />
           </div>
         </div>

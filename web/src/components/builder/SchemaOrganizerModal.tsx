@@ -505,8 +505,8 @@ export function SchemaOrganizerModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[2000] bg-slate-950/45 backdrop-blur-sm p-3 md:p-6">
-      <div className="mx-auto flex h-full w-full max-w-[1760px] flex-col overflow-hidden rounded-[28px] border border-white/60 bg-[#f6f7fb] shadow-2xl">
+    <div className="fixed inset-0 z-[2000] bg-slate-950/45 p-3 md:p-6">
+      <div className="mx-auto flex h-full w-full max-w-[1760px] flex-col overflow-hidden rounded-[28px] border border-border bg-[#f6f7fb] shadow-2xl">
         <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 md:px-6">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Schema studio</p>
@@ -677,7 +677,7 @@ export function SchemaOrganizerModal({
                     <section
                       key={bucket.id}
                       onClick={() => setSelectedSectionId(bucket.id)}
-                      className={`rounded-[26px] border p-4 shadow-sm transition-colors ${spanClass} ${selectedBucket?.id === bucket.id ? "border-indigo-300 bg-white" : "border-slate-200 bg-white/90"}`}
+                      className={`rounded-[26px] border p-4 shadow-sm transition-colors ${spanClass} ${selectedBucket?.id === bucket.id ? "border-indigo-300 bg-white" : "border-slate-200 bg-card"}`}
                     >
                       <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
                         <div className="min-w-0">
@@ -1376,7 +1376,7 @@ function SectionMiniGridPreview({
         </div>
       </div>
       <div
-        className={`mt-2 rounded-xl border border-dashed p-2 transition-colors ${dropTarget?.sectionId === section.id && dropTarget.kind === "auto" ? "border-indigo-300 bg-indigo-50" : "border-slate-200 bg-white/70"}`}
+        className={`mt-2 rounded-xl border border-dashed p-2 transition-colors ${dropTarget?.sectionId === section.id && dropTarget.kind === "auto" ? "border-indigo-300 bg-indigo-50" : "border-slate-200 bg-muted"}`}
         onDragOver={onAutoFlowDragOver}
         onDrop={onAutoFlowDrop}
       >

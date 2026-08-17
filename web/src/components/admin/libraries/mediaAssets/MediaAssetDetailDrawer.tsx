@@ -234,7 +234,7 @@ export function MediaAssetDetailDrawer({
             listés dans le bloc « Rangement » en lecture seule. */}
         {canManageAssets && (
         <details className="group rounded-2xl bg-card border border-border  overflow-hidden" {...(asset.tags.length > 0 ? { open: true } : {})}>
-          <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:text-foreground hover:bg-white/40 select-none px-4 py-3 transition-colors">
+          <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:text-foreground hover:bg-muted select-none px-4 py-3 transition-colors">
             <Tag size={11} /> Tags & filtres
             <span className="text-[10px] text-muted-foreground font-normal normal-case tracking-normal">
               ({asset.tags.length})
@@ -276,7 +276,7 @@ export function MediaAssetDetailDrawer({
             composé de contrôles mutants : rien à montrer en lecture seule. */}
         {canManageAssets && (
         <details className="group rounded-2xl bg-card border border-border  overflow-hidden">
-          <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:text-foreground hover:bg-white/40 select-none px-4 py-3 transition-colors">
+          <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:text-foreground hover:bg-muted select-none px-4 py-3 transition-colors">
             <Info size={11} /> Avancé
             <ChevronDown size={12} className="ml-auto transition-transform group-open:rotate-180" />
           </summary>

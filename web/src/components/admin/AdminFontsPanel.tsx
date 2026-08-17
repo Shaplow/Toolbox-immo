@@ -139,20 +139,20 @@ export function AdminFontsPanel() {
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
             <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-info-600">Bibliothèque globale</p>
-            <h2 className="text-2xl font-semibold text-gray-900 mt-2">Toutes les typographies de l&apos;app au même endroit</h2>
+            <h2 className="text-2xl font-semibold text-foreground mt-2">Toutes les typographies de l&apos;app au même endroit</h2>
             <p className="text-sm text-muted-foreground mt-2">
               Cette page centralise les polices utilisées par les templates et, pour les formats compatibles, par captions.
               Les anciennes polices détectées dans public/fonts et dans le moteur captions sont rattachées ici automatiquement.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 min-w-36">
+            <div className="rounded-2xl border border-border bg-card px-4 py-3 min-w-36">
               <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Total</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">{stats.total}</p>
+              <p className="text-2xl font-semibold text-foreground mt-1">{stats.total}</p>
             </div>
-            <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 min-w-36">
+            <div className="rounded-2xl border border-border bg-card px-4 py-3 min-w-36">
               <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Captions</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">{stats.captions}</p>
+              <p className="text-2xl font-semibold text-foreground mt-1">{stats.captions}</p>
             </div>
           </div>
         </div>
@@ -216,7 +216,7 @@ export function AdminFontsPanel() {
                 <div key={font.id} className="px-5 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between hover:bg-muted/70 transition-colors">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-gray-900 truncate" style={{ fontFamily: font.family }}>
+                      <p className="text-sm font-semibold text-foreground truncate" style={{ fontFamily: font.family }}>
                         {font.family}
                       </p>
                       <span className={`text-[10px] px-2 py-0.5 rounded-full ${compatible ? "bg-success-50 text-success-700" : "bg-warning-50 text-warning-700"}`}>

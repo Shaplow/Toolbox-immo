@@ -544,7 +544,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
           type="button"
           onClick={() => setActiveTab("packs")}
           className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === "packs" ? "bg-white text-gray-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
+            activeTab === "packs" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Layers size={14} />
@@ -561,7 +561,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
           type="button"
           onClick={() => setActiveTab("manual")}
           className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === "manual" ? "bg-white text-gray-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
+            activeTab === "manual" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Upload size={14} />
@@ -573,7 +573,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
       <section className="mb-8 bg-white border border-border rounded-2xl p-5 md:p-6 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Packs automatiques</h2>
+            <h2 className="text-sm font-semibold text-foreground">Packs automatiques</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Frames préparées depuis les renders vidéo des templates activées.</p>
           </div>
           <button
@@ -672,7 +672,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                     <div className="flex-1 p-4 md:p-5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h3 className="text-sm font-semibold text-gray-900 truncate">
+                          <h3 className="text-sm font-semibold text-foreground truncate">
                             {pack.templateName}{pack.client ? ` · ${pack.client}` : ""}
                           </h3>
                           <div className="flex items-center gap-2 flex-wrap mt-1">
@@ -895,7 +895,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                               disabled={!selectedId || isBusy}
                               className="sm:ml-auto px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
                             >
-                              {isBusy ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Check size={14} />}
+                              {isBusy ? <div className="w-4 h-4 border-2 border-border border-t-white rounded-full animate-spin" /> : <Check size={14} />}
                               Valider cette cover
                             </button>
                           </div>
@@ -1123,7 +1123,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Frames par tirage :{" "}
-                  <span className="text-gray-900 font-semibold">{count}</span>
+                  <span className="text-foreground font-semibold">{count}</span>
                 </label>
                 <input
                   type="range"
@@ -1157,7 +1157,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
             >
               {loading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-border border-t-white rounded-full animate-spin" />
                   Extraction…
                 </>
               ) : (

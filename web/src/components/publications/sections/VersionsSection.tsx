@@ -290,7 +290,7 @@ function VersionCard({
                 Supprimée
               </span>
             )}
-            <span className="truncate text-sm font-medium text-gray-800">
+            <span className="truncate text-sm font-medium text-foreground">
               {version.fileName}
             </span>
           </div>
@@ -535,7 +535,7 @@ export function VersionsSection({
         {hiddenCount > 0 && (
           <Link
             href={`/publications/${slotId}/versions`}
-            className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-gray-900 transition-colors font-medium pt-1"
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-foreground transition-colors font-medium pt-1"
           >
             Voir toutes les {activeVersions.length} versions
             <ArrowRight size={11} />

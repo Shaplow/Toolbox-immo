@@ -464,7 +464,7 @@ export function CalendarView({
   function handleSlotCreated(slot: PublicationSlot) {
     setSlots((prev) => [...prev, slot]);
     setShowAdd(false);
-    toast.success("Slot créé");
+    toast.success("Publication créée");
   }
 
   // Charge les contenus banque "prêts" pour le rail latéral (vue semaine).
@@ -644,7 +644,7 @@ export function CalendarView({
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {view === "bank"
               ? `${visibleSlots.length} mission${visibleSlots.length > 1 ? "s" : ""}`
-              : `${visibleSlots.length} pub${visibleSlots.length > 1 ? "s" : ""}`}
+              : `${visibleSlots.length} publication${visibleSlots.length > 1 ? "s" : ""}`}
             {mineCount > 0 &&
               !filters.onlyMine &&
               view === "week" &&
@@ -684,7 +684,7 @@ export function CalendarView({
             {kpiFilter && (
               <Chip variant="peach" size="sm" onRemove={() => router.replace("/calendar")}>
                 {kpiFilter === "overdue" && "En retard"}
-                {kpiFilter === "no-pattern" && "Sans pattern"}
+                {kpiFilter === "no-pattern" && "Sans recette"}
                 {kpiFilter === "no-monteur" && "Sans monteur"}
                 {kpiFilter === "no-videaste" && "Sans vidéaste"}
                 <span className="ml-1 tabular-nums opacity-70">{kpiFilteredCount}</span>
@@ -764,7 +764,7 @@ export function CalendarView({
                       }}
                       title="Nouvelle publication (⌘N)"
                     >
-                      Nouvelle pub
+                      Nouvelle publication
                     </Button>
                     <Button
                       variant="secondary"
@@ -838,6 +838,22 @@ export function CalendarView({
               >
                 {loadError}
               </Alert>
+            )}
+
+            {/* Empty state semaine (V3.3) — la grille reste affichée (cliquer
+                un jour crée une publication), le bandeau guide l'admin. */}
+            {!loading && !loadError && view !== "bank" && visibleSlots.length === 0 && (
+              <div className="rounded-lg border border-border bg-card px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-[13px] text-muted-foreground">
+                  Aucune publication cette semaine. Crée-en une, ou clique un
+                  jour de la grille pour partir d&apos;une date.
+                </p>
+                {isAdmin && (
+                  <Button size="sm" onClick={() => setShowAdd(true)}>
+                    Nouvelle publication
+                  </Button>
+                )}
+              </div>
             )}
 
             {view === "bank" ? (

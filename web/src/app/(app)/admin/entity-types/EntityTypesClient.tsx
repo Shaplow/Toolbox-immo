@@ -1,5 +1,7 @@
 "use client";
 
+import { ENTITY_TYPE_ICON_KEYS } from "@/components/entities/entityTypeIcons";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileStack, Plus, Lock } from "lucide-react";
@@ -61,9 +63,9 @@ function toDraft(t: EntityTypeRow | null): Draft {
 }
 
 const CAPABILITIES: { key: keyof Draft; label: string; help: string }[] = [
-  { key: "hasPlanning", label: "Planning", help: "Date planifiée, statut (à tourner/tourné/terminé)." },
+  { key: "hasPlanning", label: "Planning", help: "Date planifiée + statut (Planifié / Réalisé / Terminé)." },
   { key: "hasAccount", label: "Compte Instagram", help: "Rattaché à un compte cible." },
-  { key: "hasRushes", label: "Rushs", help: "Upload de rushs partagés, transition auto vers « Tourné »." },
+  { key: "hasRushes", label: "Rushs", help: "Upload de rushs partagés, transition auto vers « Réalisé »." },
   { key: "hasAssignees", label: "Assignés", help: "Vidéaste, monteur et CM par défaut." },
 ];
 
@@ -217,6 +219,10 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
     <>
       <div className="flex items-center justify-between gap-4 mb-6">
         <div>
+          <Breadcrumb
+            className="mb-2"
+            items={[{ href: "/fiches", label: "Fiches" }, { label: "Types de fiches" }]}
+          />
           <h1 className="text-xl font-semibold text-foreground leading-tight">Types de fiches</h1>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
             Configure les capacités et les champs custom des types de fiches (« Bien », « Tournage »…).
@@ -260,7 +266,10 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
               placeholder="Ex : Biens"
             />
           </FormField>
-          <FormField label="Icône" help="Nom d'icône Lucide (ex : home, clapperboard).">
+          <FormField
+            label="Icône"
+            help={`Affichée dans les tabs et sur la fiche. Valeurs : ${ENTITY_TYPE_ICON_KEYS.join(", ")}.`}
+          >
             <Input value={draft.icon} onChange={(v) => setDraft((d) => ({ ...d, icon: v }))} placeholder="home" />
           </FormField>
 
@@ -287,7 +296,10 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
             />
           </FormField>
 
-          <FormField label="Capacités">
+          <FormField
+            label="Capacités"
+            help="Planning + Rushs ⇒ la fiche fonctionne en mode « reel » (un tournage alimente le montage). Sinon, mode « missions » (N recettes lancées d'un coup depuis la fiche)."
+          >
             <div className="space-y-1.5">
               {CAPABILITIES.map((c) => (
                 <div key={c.key} className="flex items-start gap-2.5 py-1">

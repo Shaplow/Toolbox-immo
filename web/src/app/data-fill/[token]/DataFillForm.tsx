@@ -97,7 +97,7 @@ export function DataFillForm({ token, fieldsSchema }: Props) {
 
   if (success) {
     return (
-      <div className="rounded-3xl bg-gradient-to-b from-success-50/85 to-success-50/55 p-6 sm:p-8  text-center">
+      <div className="rounded-xl bg-success-50 p-6 sm:p-8  text-center">
         <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-success-100 text-success-700 mb-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
           <Check size={22} />
         </div>

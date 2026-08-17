@@ -256,7 +256,7 @@ export function DescriptionPromptsPanel({
               <div className={`px-4 py-3 flex items-start gap-3 ${p.isActive ? "" : "opacity-60 bg-muted/50"}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                    <p className="text-sm font-medium text-foreground">{p.name}</p>
                     {!p.isActive && (
                       <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-200 text-muted-foreground border border-border">
                         Inactif

@@ -55,7 +55,7 @@ export function FontFamilyPicker({
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p
-                className="truncate text-sm text-gray-900"
+                className="truncate text-sm text-foreground"
                 style={value ? { fontFamily: value } : undefined}
               >
                 {value || "Choisir une typographie"}
@@ -120,7 +120,7 @@ export function FontFamilyPicker({
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <p
-                            className="truncate text-base text-gray-900"
+                            className="truncate text-base text-foreground"
                             style={{ fontFamily: font.family }}
                           >
                             {font.family}

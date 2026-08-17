@@ -480,7 +480,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
                 {/* Expanded panel */}
                 {isExpanded && (
-                  <div className="border-t border-white/40 bg-card border border-border divide-y divide-white/30">
+                  <div className="border-t border-border bg-card border border-border divide-y divide-white/30">
                     {/* Edit account section */}
                     <div className="px-5 py-4">
                       {editingId === user.id ? (
@@ -605,7 +605,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                       ? "bg-warning-50/60 "
                                       : active
                                       ? "bg-info-50/60 "
-                                      : "bg-white/50 ",
+                                      : "bg-muted ",
                                   ].join(" ")}
                                   title={
                                     isBlocked
@@ -692,7 +692,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                     key={t.id}
                                     type="button"
                                     onClick={() => void handleGrantTemplate(user.id, t.id)}
-                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-muted-foreground bg-white/50 hover:bg-card border border-border  hover: transition-all"
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-muted-foreground bg-muted hover:bg-card border border-border  hover: transition-all"
                                   >
                                     <Plus size={10} />
                                     {t.name}
@@ -749,7 +749,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                       key={p.id}
                                       type="button"
                                       onClick={() => void handleGrantPreset(user.id, p.id)}
-                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-muted-foreground bg-white/50 hover:bg-card border border-border  hover: transition-all"
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-muted-foreground bg-muted hover:bg-card border border-border  hover: transition-all"
                                     >
                                       <Plus size={10} />
                                       {p.name}

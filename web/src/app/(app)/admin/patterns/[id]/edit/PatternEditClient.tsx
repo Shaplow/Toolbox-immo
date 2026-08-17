@@ -97,7 +97,7 @@ export function PatternEditClient({
             <div>
               <Link
                 href="/admin/patterns"
-                className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-gray-900 transition-colors font-medium"
+                className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors font-medium"
               >
                 <ArrowLeft size={13} />
                 Catalogue de recettes
@@ -107,7 +107,7 @@ export function PatternEditClient({
               </p>
             </div>
 
-            <div className="rounded-3xl bg-card border border-border  overflow-hidden">
+            <div className="rounded-xl bg-card border border-border  overflow-hidden">
               <PatternTemplateForm
                 initial={initial}
                 templateId={templateId}

@@ -77,6 +77,10 @@ export interface PublicationSlot {
     needsBrief?: boolean;
     // Phase 5 — coverMode hérité du pattern (pour comparaison à coverModeOverride)
     coverMode?: string;
+    /** Type de fiche exigé par la recette (null = aucun). */
+    requiresEntityTypeId?: string | null;
+    /** Legacy — true sans requiresEntityTypeId ⇒ type « Bien ». */
+    requiresProperty?: boolean;
   } | null;
   assigneeVideasteId?: string | null;
   assigneeMonteur?: { id: string; name: string | null } | null;

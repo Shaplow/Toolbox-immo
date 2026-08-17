@@ -129,7 +129,7 @@ export function DescriptionPromptsManager({
 
       {/* List */}
       {prompts.length === 0 && !creating && (
-        <p className="text-sm text-gray-400 text-center py-6">Aucun prompt. Créez-en un pour commencer.</p>
+        <p className="text-sm text-muted-foreground text-center py-6">Aucun prompt. Créez-en un pour commencer.</p>
       )}
       <div className="space-y-2">
         {prompts.map((p) => (
@@ -151,20 +151,20 @@ export function DescriptionPromptsManager({
             ) : (
               <div className="px-4 py-3 flex items-start gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{p.name}</p>
-                  <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 whitespace-pre-line">{p.prompt}</p>
+                  <p className="text-sm font-medium text-foreground">{p.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 whitespace-pre-line">{p.prompt}</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => openEdit(p)}
-                    className="p-1.5 text-gray-400 hover:text-info-600 rounded-lg hover:bg-info-50 transition-colors"
+                    className="p-1.5 text-muted-foreground hover:text-info-600 rounded-lg hover:bg-info-50 transition-colors"
                     title="Modifier"
                   >
                     <Pencil size={13} />
                   </button>
                   <button
                     onClick={() => void handleDelete(p.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                    className="p-1.5 text-muted-foreground hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
                     title="Supprimer"
                   >
                     <Trash2 size={13} />
@@ -194,7 +194,7 @@ function PromptInlineForm({
   return (
     <div className="bg-info-50/60 border border-info-100 rounded-xl p-4 space-y-3">
       <div>
-        <label className="text-xs font-medium text-gray-700 block mb-1">Nom</label>
+        <label className="text-xs font-medium text-foreground block mb-1">Nom</label>
         <input
           type="text"
           value={name}
@@ -204,7 +204,7 @@ function PromptInlineForm({
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-gray-700 block mb-1">Instructions</label>
+        <label className="text-xs font-medium text-foreground block mb-1">Instructions</label>
         <textarea
           value={prompt}
           onChange={(e) => onPrompt(e.target.value)}
@@ -225,7 +225,7 @@ function PromptInlineForm({
         </button>
         <button
           onClick={onCancel}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-muted-foreground text-xs font-medium hover:bg-gray-50 transition-colors"
         >
           <X size={12} /> Annuler
         </button>

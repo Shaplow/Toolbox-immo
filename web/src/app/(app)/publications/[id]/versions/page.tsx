@@ -102,7 +102,7 @@ export default async function PublicationVersionsPage({ params }: PageProps) {
               Versions livrées
             </h1>
             <p className="mt-2 text-[13px] text-muted-foreground">
-              Historique complet des montages livrés pour ce slot.
+              Historique complet des montages livrés pour cette publication.
             </p>
           </div>
         </div>

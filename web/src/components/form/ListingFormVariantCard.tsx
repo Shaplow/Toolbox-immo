@@ -30,7 +30,7 @@ interface Props {
 export function ListingFormVariantCard({ variant: v }: Props) {
   return (
     <div className="rounded-2xl bg-card border border-border  overflow-hidden">
-      <div className="px-3 py-2 border-b border-white/40 flex items-center justify-between bg-card border border-border">
+      <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-card border border-border">
         <p className="text-[11.5px] font-semibold text-foreground">Variante {v.num}</p>
         {v.status === "done" && (
           <a
@@ -99,7 +99,7 @@ export function ListingFormVariantCard({ variant: v }: Props) {
               <a
                 href={v.videoUrl}
                 download
-                className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold py-1.5 rounded-lg bg-gradient-to-b from-gray-800 to-gray-950  text-white hover:from-gray-900 hover:to-gray-950 transition-all"
+                className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-950 transition-all"
               >
                 <Download size={11} />
                 MP4
@@ -109,7 +109,7 @@ export function ListingFormVariantCard({ variant: v }: Props) {
               <a
                 href={v.imageUrl}
                 download
-                className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold py-1.5 rounded-lg bg-card border border-border  text-foreground hover:bg-white/85 hover:text-foreground transition-all"
+                className="flex-1 inline-flex items-center justify-center gap-1 text-[11px] font-semibold py-1.5 rounded-lg bg-card border border-border  text-foreground hover:bg-muted hover:text-foreground transition-all"
               >
                 <Download size={11} />
                 PNG

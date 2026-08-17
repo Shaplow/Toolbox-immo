@@ -96,7 +96,7 @@ export function ClientsListAdmin({ initialClients }: Props) {
         className="mx-auto max-w-[1400px] px-6 py-8"
       >
         {/* Header Control Center */}
-        <div className="rounded-t-3xl overflow-hidden">
+        <div className="rounded-t-xl overflow-hidden">
           <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-2">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="min-w-0 flex-1">
@@ -268,8 +268,8 @@ function ClientCard({
     <div className="group relative flex flex-col gap-4 p-5 rounded-2xl bg-card border border-border  hover: hover:-translate-y-0.5 transition-all">
       {/* Header */}
       <div className="flex items-start gap-3">
-        <div className="h-12 w-12 rounded-full bg-gradient-to-br from-danger-200 to-warning-200 inline-flex items-center justify-center shrink-0 ">
-          <span className="text-[18px] font-semibold text-gray-800">{initial}</span>
+        <div className="h-12 w-12 rounded-full bg-warning-200 inline-flex items-center justify-center shrink-0 ">
+          <span className="text-[18px] font-semibold text-foreground">{initial}</span>
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-semibold text-foreground truncate leading-tight">
@@ -320,7 +320,7 @@ function ClientCard({
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-2 pt-3 border-t border-white/40 mt-auto">
+      <div className="flex items-center gap-2 pt-3 border-t border-border mt-auto">
         <Link
           href={`/admin/clients/${client.id}`}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium text-foreground hover:text-foreground bg-card border border-border  hover: transition-all"

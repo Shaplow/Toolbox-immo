@@ -44,14 +44,20 @@ export function EntityCard({ entity }: { entity: EntitySummary }) {
           {ENTITY_STATUS_LABELS[status]}
         </span>
       </div>
-      <div className="mt-1 flex items-center gap-3 pl-3.5 text-[10.5px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <Film size={11} /> {entity._count.shootSlots} reel{entity._count.shootSlots > 1 ? "s" : ""}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Clapperboard size={11} /> {entity._count.rushes} rush{entity._count.rushes > 1 ? "s" : ""}
-        </span>
-      </div>
+      {/* Compteurs conditionnés aux capacités du type (V3.2) — un type sans
+          rushs n'affiche pas « 0 rush ». */}
+      {(entity.type.hasRushes || entity._count.shootSlots > 0) && (
+        <div className="mt-1 flex items-center gap-3 pl-3.5 text-[10.5px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <Film size={11} /> {entity._count.shootSlots} reel{entity._count.shootSlots > 1 ? "s" : ""}
+          </span>
+          {entity.type.hasRushes && (
+            <span className="inline-flex items-center gap-1">
+              <Clapperboard size={11} /> {entity._count.rushes} rush{entity._count.rushes > 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+      )}
     </button>
   );
 }

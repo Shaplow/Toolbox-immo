@@ -35,7 +35,7 @@ export function EditTemplateInfoButton({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="text-xs text-gray-400 hover:text-info-700 transition-colors"
+        className="text-xs text-muted-foreground hover:text-info-700 transition-colors"
         title="Renommer"
       >
         ✎
@@ -64,7 +64,7 @@ export function EditTemplateInfoButton({
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="flex-1 text-xs border border-gray-200 rounded-lg py-1 text-gray-500 hover:bg-gray-50"
+          className="flex-1 text-xs border border-gray-200 rounded-lg py-1 text-muted-foreground hover:bg-gray-50"
         >
           Annuler
         </button>

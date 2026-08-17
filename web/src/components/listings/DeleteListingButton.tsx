@@ -71,7 +71,7 @@ export function DeleteListingButton({ listingId, onDeleted }: Props) {
           disabled={loading}
           title="Annuler"
           aria-label="Annuler"
-          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all focus-ring"
         >
           <X size={13} />
         </button>
@@ -88,7 +88,7 @@ export function DeleteListingButton({ listingId, onDeleted }: Props) {
       }}
       title="Supprimer (admin)"
       aria-label="Supprimer cette génération"
-      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-danger-600 hover:bg-white/70 transition-all focus-ring"
+      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-danger-600 hover:bg-muted transition-all focus-ring"
     >
       <X size={13} />
     </button>

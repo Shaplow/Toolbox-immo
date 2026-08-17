@@ -103,7 +103,7 @@ export function GroupPropertiesPanel({
             value={group.name}
             onChange={(e) => updateGroup(group.id, { name: e.target.value })}
             placeholder="Groupe sans nom"
-            className="w-full text-sm font-semibold text-gray-900 bg-transparent border-0 outline-none focus:bg-muted focus:ring-2 focus:ring-indigo-300 rounded px-1 -mx-1"
+            className="w-full text-sm font-semibold text-foreground bg-transparent border-0 outline-none focus:bg-muted focus:ring-2 focus:ring-indigo-300 rounded px-1 -mx-1"
             title="Cliquer pour renommer le groupe"
           />
         </div>

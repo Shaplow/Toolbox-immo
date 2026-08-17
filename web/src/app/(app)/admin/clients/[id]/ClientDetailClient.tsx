@@ -226,7 +226,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
               <ChevronLeft size={12} /> Clients
             </Link>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900 truncate">{client.name}</h1>
+          <h1 className="text-xl font-semibold text-foreground truncate">{client.name}</h1>
         </div>
       </div>
 
@@ -236,7 +236,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
           onClick={() => setActiveTab("info")}
           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
             activeTab === "info"
-              ? "bg-white text-gray-900 shadow-sm"
+              ? "bg-white text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
@@ -246,7 +246,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
           onClick={() => setActiveTab("accounts")}
           className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
             activeTab === "accounts"
-              ? "bg-white text-gray-900 shadow-sm"
+              ? "bg-white text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >

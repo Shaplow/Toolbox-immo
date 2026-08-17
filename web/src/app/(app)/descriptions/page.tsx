@@ -116,7 +116,7 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
             {slotForBanner && slotId && (
               // V5.B.3 — Banner peach INTÉRIEUR au wrapper pastel (sinon
               // border-b cassait le rounded-3xl). Palette Coastal Studio.
-              <div className="rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3 ">
+              <div className="rounded-xl bg-warning-50 px-4 py-3 ">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2 min-w-0 text-sm">
                     <Info size={14} className="text-warning-700 shrink-0" />

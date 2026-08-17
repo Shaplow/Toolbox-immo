@@ -169,6 +169,19 @@ export default async function PublicationPage({ params }: PageProps) {
   // s'affiche vide et la RenderSection est masquée.
   const patternView = resolveSlotEffectivePattern(slot);
 
+  // Nom du type de fiche exigé par la recette — titre dynamique de la section
+  // « Fiche » (ex-« Bien » hardcodé) + filtre du sélecteur SlotEntitySelect.
+  const requiredTypeIdForFiche =
+    patternView?.requiresEntityTypeId ?? (patternView?.requiresProperty ? "etype_bien" : null);
+  const requiredEntityTypeName = requiredTypeIdForFiche
+    ? ((
+        await prisma.entityType.findUnique({
+          where: { id: requiredTypeIdForFiche },
+          select: { name: true },
+        })
+      )?.name ?? null)
+    : null;
+
   // Rattrapage opportuniste : si le render existe (PROCESSING/DONE) mais le
   // slot est resté en TO_DO/IN_PROGRESS, on applique la bonne transition.
   // Couvre les slots créés avant l'intro des auto-transitions pipeline.
@@ -521,6 +534,7 @@ export default async function PublicationPage({ params }: PageProps) {
 
   return (
     <PublicationFiche
+      requiredEntityTypeName={requiredEntityTypeName}
       slot={{
         id: slot.id,
         title: slot.title,
@@ -562,6 +576,8 @@ export default async function PublicationPage({ params }: PageProps) {
               // FK presets/prompts — pré-remplissent les modals IA / captions de la fiche
               captionPresetId: patternView?.captionPresetId ?? null,
               descriptionPromptId: patternView?.descriptionPromptId ?? null,
+              requiresEntityTypeId: patternView?.requiresEntityTypeId ?? null,
+              requiresProperty: patternView?.requiresProperty ?? false,
             }
           : null
       }

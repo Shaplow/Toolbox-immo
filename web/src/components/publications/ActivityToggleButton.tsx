@@ -35,7 +35,7 @@ export function ActivityToggleButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border  hover:bg-white/85 transition-colors text-[12.5px] text-foreground focus-ring"
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border  hover:bg-muted transition-colors text-[12.5px] text-foreground focus-ring"
         title="Voir l'activité"
       >
         <Activity size={14} className="text-muted-foreground shrink-0" />

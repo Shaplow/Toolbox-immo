@@ -80,12 +80,10 @@ const GROUPS: Group[] = [
 ];
 
 const GROUP_BG: Record<Group["variant"], string> = {
-  ready:
-    "bg-gradient-to-b from-info-50/80 to-white/40 ",
-  review:
-    "bg-gradient-to-b from-warning-50/80 to-white/40 ",
-  wip: "bg-gradient-to-b from-stone-50/80 to-white/40 ",
-  todo: "bg-gradient-to-b from-white/60 to-white/30 ",
+  ready: "bg-info-50 ",
+  review: "bg-warning-50 ",
+  wip: "bg-stone-50 ",
+  todo: "bg-muted ",
 };
 
 interface PartitionedGroups {
@@ -136,7 +134,7 @@ export function BankView({
         {[1, 2].map((i) => (
           <div
             key={i}
-            className="rounded-2xl bg-white/40 p-6 h-32 animate-pulse "
+            className="rounded-2xl bg-muted p-6 h-32 animate-pulse "
           />
         ))}
       </div>

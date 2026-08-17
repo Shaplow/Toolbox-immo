@@ -169,8 +169,8 @@ export function MediaAssetsVideoCard({
                 onClick={() => setPreviewId(asset.id)}
                 className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity"
               >
-                <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow">
-                  <Play size={14} className="text-gray-800 ml-0.5" />
+                <div className="w-8 h-8 bg-card rounded-full flex items-center justify-center shadow">
+                  <Play size={14} className="text-foreground ml-0.5" />
                 </div>
               </button>
             )}
@@ -314,7 +314,7 @@ export function MediaAssetsVideoCard({
             </button>
           )}
         </div>
-        <p className="text-xs font-medium text-gray-800 truncate mb-2" title={asset.filename}>{asset.filename}</p>
+        <p className="text-xs font-medium text-foreground truncate mb-2" title={asset.filename}>{asset.filename}</p>
 
         {/* Tags */}
         {editingTagsId === asset.id ? (
@@ -520,21 +520,21 @@ export function MediaAssetsVideoCard({
         <>
           <button
             onClick={(e) => { e.stopPropagation(); void handleDelete(asset); }}
-            className="absolute top-1.5 left-1.5 w-6 h-6 bg-white/80 hover:bg-red-50 text-muted-foreground hover:text-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-1.5 left-1.5 w-6 h-6 bg-card hover:bg-red-50 text-muted-foreground hover:text-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title="Supprimer"
           >
             <Trash2 size={11} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onEditAsset(asset); }}
-            className="absolute top-8 left-1.5 w-6 h-6 bg-white/80 hover:bg-danger-50 text-muted-foreground hover:text-danger-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-8 left-1.5 w-6 h-6 bg-card hover:bg-danger-50 text-muted-foreground hover:text-danger-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title="Éditer (trim, audio)"
           >
             <Scissors size={11} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); void handleToggleDisabled(asset); }}
-            className={`absolute top-14.5 left-1.5 w-6 h-6 bg-white/80 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow ${
+            className={`absolute top-14.5 left-1.5 w-6 h-6 bg-card rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow ${
               asset.disabled
                 ? "text-warning-700 hover:text-warning-700 hover:bg-warning-50"
                 : "text-muted-foreground hover:text-warning-700 hover:bg-warning-50"
@@ -545,7 +545,7 @@ export function MediaAssetsVideoCard({
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); void handleResetAssetUsage(asset); }}
-            className="absolute top-1.5 right-1.5 w-6 h-6 bg-white/80 hover:bg-warning-50 text-muted-foreground hover:text-warning-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-1.5 right-1.5 w-6 h-6 bg-card hover:bg-warning-50 text-muted-foreground hover:text-warning-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
           >
             <RotateCcw size={11} />
@@ -562,7 +562,7 @@ export function MediaAssetsVideoCard({
             e.stopPropagation();
             void downloadAsset({ id: asset.id, filename: asset.filename });
           }}
-          className={`absolute ${canManageAssets ? "top-8" : "top-1.5"} right-1.5 w-6 h-6 bg-white/80 hover:bg-info-50 text-muted-foreground hover:text-info-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow`}
+          className={`absolute ${canManageAssets ? "top-8" : "top-1.5"} right-1.5 w-6 h-6 bg-card hover:bg-info-50 text-muted-foreground hover:text-info-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow`}
           title="Télécharger"
         >
           <Download size={11} />

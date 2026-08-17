@@ -45,7 +45,7 @@ export function CaptionsSourceStatus({
           {selectedTranscriptionId ? <Mic size={14} className="text-danger-600" /> : <FileText size={14} className="text-danger-600" />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-800">
+          <p className="text-sm font-medium text-foreground">
             {selectedTranscriptionId
               ? (transcriptions.find((t) => t.id === selectedTranscriptionId)?.inputFilename ?? "Transcription")
               : (subsFile?.name ?? "Segments pré-chargés")}
@@ -64,7 +64,7 @@ export function CaptionsSourceStatus({
           <Check size={14} className="text-danger-600" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-800">{captionsCount} lignes</p>
+          <p className="text-sm font-medium text-foreground">{captionsCount} lignes</p>
           <p className="text-xs text-muted-foreground">
             {selectedTranscriptionId
               ? (transcriptions.find((t) => t.id === selectedTranscriptionId)?.inputFilename ?? "Transcription")
@@ -82,7 +82,7 @@ export function CaptionsSourceStatus({
         <div className="w-8 h-8 bg-danger-100 rounded-lg flex shrink-0 items-center justify-center">
           <FileText size={14} className="text-danger-600" />
         </div>
-        <p className="text-sm font-medium text-gray-800 truncate">{subsFile.name}</p>
+        <p className="text-sm font-medium text-foreground truncate">{subsFile.name}</p>
       </div>
     );
   }

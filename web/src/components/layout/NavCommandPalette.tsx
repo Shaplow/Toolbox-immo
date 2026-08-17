@@ -199,7 +199,7 @@ export function NavCommandPalette({ user }: Props) {
                               "shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md ",
                               isFocused
                                 ? "bg-info-100/70 text-info-700 "
-                                : "bg-white/60 text-gray-600 ",
+                                : "bg-muted text-muted-foreground ",
                             ].join(" ")}
                           >
                             <Icon size={14} />

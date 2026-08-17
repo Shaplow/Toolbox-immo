@@ -134,10 +134,10 @@ export function TemplatesGallery({ templates, isAdmin }: Props) {
                   <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                     {group.label}
                   </p>
-                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-medium tabular-nums bg-white/70 text-foreground ">
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-medium tabular-nums bg-muted text-foreground ">
                     {group.items.length}
                   </span>
-                  <div className="flex-1 border-t border-white/40" />
+                  <div className="flex-1 border-t border-border" />
                 </div>
               )}
 
@@ -179,7 +179,7 @@ function TemplateCard({
             {template.name}
           </p>
           {showClient && template.client && (
-            <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 mt-1">
+            <p className="text-[10.5px] uppercase tracking-widest font-medium text-muted-foreground mt-1">
               {template.client}
             </p>
           )}
@@ -216,7 +216,7 @@ function TemplateCard({
       </p>
 
       {/* Actions */}
-      <div className="flex items-center gap-1.5 pt-3 border-t border-white/40">
+      <div className="flex items-center gap-1.5 pt-3 border-t border-border">
         {isAdmin && (
           <Link
             href={`/templates/${template.id}/edit`}
@@ -228,7 +228,7 @@ function TemplateCard({
         )}
         <Link
           href={`/generate/${template.id}`}
-          className="inline-flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium text-white bg-gradient-to-b from-gray-700 to-gray-900  hover:from-gray-600 hover:to-gray-800 hover: transition-all"
+          className="inline-flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium text-white bg-gray-800  hover:bg-gray-700 hover: transition-all"
         >
           <Wand2 size={11} />
           Générer

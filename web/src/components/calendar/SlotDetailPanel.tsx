@@ -50,7 +50,7 @@ import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { FormField } from "@/components/ui/FormField";
-import { SlotPropertySelect } from "@/components/publications/SlotPropertySelect";
+import { SlotEntitySelect } from "@/components/publications/SlotEntitySelect";
 import { Textarea } from "@/components/ui/Textarea";
 import { Combobox } from "@/components/ui/Combobox";
 import { DatePicker } from "@/components/ui/DatePicker";
@@ -781,8 +781,15 @@ export function SlotDetailPanel({
                 />
               </FormField>
 
-              <FormField label="Bien" help="Fiche partagée (adresse, prix…) qui préremplit la génération. Éditée une fois, propagée.">
-                <SlotPropertySelect slotId={slot.id} initialPropertyId={slot.propertyId} />
+              <FormField label="Fiche" help="Fiche partagée (adresse, prix…) qui préremplit la génération. Éditée une fois, propagée.">
+                <SlotEntitySelect
+                  slotId={slot.id}
+                  initialPropertyId={slot.propertyId}
+                  requiredEntityTypeId={
+                    slot.pattern?.requiresEntityTypeId ??
+                    (slot.pattern?.requiresProperty ? "etype_bien" : null)
+                  }
+                />
               </FormField>
 
               <FormField label="Notes internes" help="Visible uniquement par l'équipe interne. Auto-sauvegardé.">
@@ -913,16 +920,16 @@ export function SlotDetailPanel({
               </CollapsibleSection>
 
               <CollapsibleSection
-                title="Ajustements · overrides du pattern"
+                title="Ajustements de la recette"
                 defaultOpen={false}
                 storageKey="slot-panel:overrides"
               >
                 <div className="rounded-lg bg-card border border-border px-4 py-3 mt-1 ">
                   <p className="text-[11px] text-foreground leading-relaxed">
-                    Ajuste pour ce slot uniquement les valeurs héritées du
-                    pattern. Tant qu&apos;un champ reste « hérité », il suivra le
-                    pattern à chaque modification. La validation client se gère
-                    dans la fiche publication.
+                    Ajuste pour cette publication uniquement les valeurs
+                    héritées de la recette. Tant qu&apos;un champ reste
+                    « hérité », il suivra la recette à chaque modification. La
+                    validation client se gère dans la fiche publication.
                   </p>
                 </div>
 
@@ -976,7 +983,7 @@ export function SlotDetailPanel({
                 (needsCaptionsModeOverride === null &&
                   slot.pattern?.needsCaptionsMode === "auto")) &&
                 captionPresets.length > 0 && (
-                  <FormField label="Preset captions (override)" help="Hérité du pattern si non choisi.">
+                  <FormField label="Preset captions (ajustement)" help="Hérité de la recette si non choisi.">
                     <Combobox
                       value={captionPresetIdOverride ?? ""}
                       onChange={(v) => setCaptionPresetIdOverride(v === "" ? null : v)}
@@ -1011,7 +1018,7 @@ export function SlotDetailPanel({
                 (needsDescriptionOverride === null &&
                   slot.pattern?.needsDescription === "autoGenerate")) &&
                 descriptionPrompts.length > 0 && (
-                  <FormField label="Prompt IA description (override)" help="Hérité du pattern si non choisi.">
+                  <FormField label="Prompt IA description (ajustement)" help="Hérité de la recette si non choisi.">
                     <Combobox
                       value={descriptionPromptIdOverride ?? ""}
                       onChange={(v) => setDescriptionPromptIdOverride(v === "" ? null : v)}

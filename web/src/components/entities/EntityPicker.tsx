@@ -16,7 +16,7 @@ export interface EntityPickerProps {
 
 /**
  * EntityPicker — sélecteur de fiche (Entity) générique. Remplace
- * `SlotPropertySelect` et les selects de biens ad hoc d'AddSlotModal /
+ * `SlotEntitySelect` et les selects de fiches ad hoc d'AddSlotModal /
  * MissionForm / CreateEventModal : un seul composant, un seul fetch
  * `/api/entities?typeId=`.
  */

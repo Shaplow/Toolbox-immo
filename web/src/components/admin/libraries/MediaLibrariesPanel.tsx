@@ -524,8 +524,8 @@ function MediaLibraryCard({
           className={[
             "absolute inset-0",
             isVideo
-              ? "bg-gradient-to-br from-info-100 via-info-50 to-white"
-              : "bg-gradient-to-br from-success-100 via-success-50 to-white",
+              ? "bg-info-50"
+              : "bg-success-50",
           ].join(" ")}
         >
           <div className="absolute inset-0 flex items-center justify-center opacity-30">

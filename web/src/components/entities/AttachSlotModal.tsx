@@ -1,5 +1,6 @@
 "use client";
 
+import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Clapperboard } from "lucide-react";
@@ -216,12 +217,7 @@ export function AttachSlotModal({
               </FormField>
 
               <FormField label="Date de publication (optionnel)" help="Vide = reel en banque (à planifier plus tard).">
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  className="w-full h-8 rounded-md bg-card border border-input px-2.5 text-[13px] text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none"
-                />
+                <DateTimeField value={scheduledAt} onChange={setScheduledAt} />
               </FormField>
             </>
           )}

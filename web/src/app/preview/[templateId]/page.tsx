@@ -52,7 +52,7 @@ export default async function TemplatePreviewPage({ params, searchParams }: Prop
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-neutral-950 text-white">
-      <div className="shrink-0 flex items-center justify-between gap-4 px-4 py-3 border-b border-white/10 bg-black/30 backdrop-blur">
+      <div className="shrink-0 flex items-center justify-between gap-4 px-4 py-3 border-b border-border bg-black/30">
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.18em] text-white/45">{layoutDebug ? "Debug layout" : "Aperçu du template"}</p>
           <h1 className="text-sm font-medium truncate">{title}</h1>
@@ -60,13 +60,13 @@ export default async function TemplatePreviewPage({ params, searchParams }: Prop
         <div className="flex items-center gap-2">
           <Link
             href="/templates"
-            className="text-xs px-3 py-1.5 rounded-lg border border-white/15 text-white/60 hover:bg-white/10 transition-colors"
+            className="text-xs px-3 py-1.5 rounded-lg border border-border text-white/60 hover:bg-white/10 transition-colors"
           >
             ← Galerie templates
           </Link>
           <a
             href={`/templates/${templateId}/edit`}
-            className="text-xs px-3 py-1.5 rounded-lg border border-white/15 text-white/80 hover:bg-white/10 transition-colors"
+            className="text-xs px-3 py-1.5 rounded-lg border border-border text-white/80 hover:bg-white/10 transition-colors"
           >
             Retour à l&apos;éditeur
           </a>

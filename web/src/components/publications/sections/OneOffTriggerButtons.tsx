@@ -114,7 +114,7 @@ export function OneOffTriggerButtons({
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-foreground">
-            Slot one-off — Lancer la production manuellement
+            Publication one-off — Lancer la production manuellement
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             La vidéo a été uploadée manuellement (pas de render auto).
@@ -124,7 +124,7 @@ export function OneOffTriggerButtons({
       </div>
       <div className="flex flex-wrap gap-2 mt-3">
         {showCoverButton && (
-          <span title={coverDisabled ? "Aucun preset cover défini (override slot ou pattern)" : undefined}>
+          <span title={coverDisabled ? "Aucun preset cover défini (ajustement ou recette)" : undefined}>
             <Button
               variant="secondary"
               size="sm"
@@ -137,7 +137,7 @@ export function OneOffTriggerButtons({
           </span>
         )}
         {showCaptionsButton && (
-          <span title={captionsDisabled ? "Aucun preset captions défini (override slot ou pattern)" : undefined}>
+          <span title={captionsDisabled ? "Aucun preset captions défini (ajustement ou recette)" : undefined}>
             <Button
               variant="secondary"
               size="sm"
@@ -153,8 +153,8 @@ export function OneOffTriggerButtons({
       {(coverDisabled && showCoverButton) || (captionsDisabled && showCaptionsButton) ? (
         <p className="text-[10px] text-warning-700 mt-2 inline-flex items-center gap-1">
           <AlertTriangle size={10} className="text-warning-600 shrink-0" />
-          Configurez le preset manquant dans le SlotDetailPanel ou le pattern parent
-          pour activer le bouton.
+          Configurez le preset manquant dans le panneau de la publication ou la
+          recette parente pour activer le bouton.
         </p>
       ) : null}
     </section>

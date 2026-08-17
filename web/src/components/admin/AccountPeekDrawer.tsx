@@ -104,18 +104,18 @@ function SkeletonAccount() {
   return (
     <div className="space-y-4 animate-pulse">
       <div className="flex items-center gap-3">
-        <div className="h-14 w-14 rounded-full bg-white/50" />
+        <div className="h-14 w-14 rounded-full bg-muted" />
         <div className="flex-1 space-y-2">
-          <div className="h-3 w-32 rounded bg-white/50" />
-          <div className="h-2.5 w-24 rounded bg-white/40" />
+          <div className="h-3 w-32 rounded bg-muted" />
+          <div className="h-2.5 w-24 rounded bg-muted" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-14 rounded-xl bg-white/40" />
+          <div key={i} className="h-14 rounded-xl bg-muted" />
         ))}
       </div>
-      <div className="h-20 rounded-xl bg-white/40" />
+      <div className="h-20 rounded-xl bg-muted" />
     </div>
   );
 }

@@ -41,7 +41,7 @@ export function PropertiesPanel({
       <aside className="w-64 bg-white border-l border-border flex flex-col shrink-0 overflow-y-auto">
         <div className="p-4 border-b border-border space-y-4">
           <div className="space-y-1">
-            <p className="text-sm font-medium text-gray-800">Aucune sélection</p>
+            <p className="text-sm font-medium text-foreground">Aucune sélection</p>
             <p className="text-xs text-muted-foreground leading-5">
               Sélectionne un bloc ou un groupe pour éditer ses propriétés. Tu
               peux aussi naviguer plus vite dans le canvas avec les raccourcis

@@ -116,7 +116,7 @@ export default async function ValidatePage({ params }: PageProps) {
       <header className="bg-white border-b border-border px-6 py-4">
         <div className="max-w-3xl mx-auto">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Validation publication</p>
-          <h1 className="text-lg font-semibold text-gray-900 mt-0.5">
+          <h1 className="text-lg font-semibold text-foreground mt-0.5">
             {slot.account?.client?.name ?? slot.account?.name ?? "Sans compte"} ·{" "}
             <span className="text-muted-foreground">{slot.account ? `@${slot.account.handle}` : "Sans compte"}</span>
           </h1>

@@ -106,7 +106,7 @@ export function RenderQuickView({
       <Modal.Body className="px-5 py-4">
         {/* Stage media — fond neutre glass, media object-contain pour respecter
             le format quel qu'il soit (vertical 9:16, carré, paysage). */}
-        <div className="relative rounded-2xl bg-gradient-to-b from-gray-50/80 to-gray-100/60  overflow-hidden">
+        <div className="relative rounded-2xl bg-muted  overflow-hidden">
           <div className="flex items-center justify-center min-h-[40vh] max-h-[55vh]">
             {current.videoUrl ? (
               <video
@@ -195,7 +195,7 @@ export function RenderQuickView({
           <a
             href={dl.url}
             download
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium bg-gradient-to-b from-gray-700 to-gray-900 text-white  hover:from-gray-600 hover:to-gray-800 transition-all focus-ring"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium bg-gray-800 text-white  hover:bg-gray-700 transition-all focus-ring"
           >
             <Download size={14} />
             Télécharger {dl.ext.toUpperCase()}

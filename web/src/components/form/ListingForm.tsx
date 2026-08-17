@@ -598,14 +598,14 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           <p className="text-[13px] text-muted-foreground">Génération automatique en cours…</p>
         </div>
       ) : autoSubmit && submitErrors.length > 0 ? (
-        <div className="md:col-span-4 rounded-2xl bg-gradient-to-b from-danger-50/85 to-danger-50/55  p-5 space-y-2">
+        <div className="md:col-span-4 rounded-2xl bg-danger-50  p-5 space-y-2">
           {submitErrors.map((e) => (
             <p key={e} className="text-[13px] text-danger-700">{e}</p>
           ))}
           <button
             type="button"
             onClick={() => { autoSubmitFiredRef.current = false; formRef.current?.requestSubmit(); }}
-            className="mt-2 px-4 py-2 rounded-lg bg-gradient-to-b from-danger-600 to-danger-700  text-white text-[13px] font-medium hover:from-danger-700 hover:to-danger-700 transition-all"
+            className="mt-2 px-4 py-2 rounded-lg bg-danger-600 text-white text-[13px] font-medium hover:bg-danger-700 transition-all"
           >
             Réessayer
           </button>
@@ -637,7 +637,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                   value: a.id,
                   label: `@${a.handle}${a.name ? ` · ${a.name}` : ""}`,
                 }))}
-                variant="glass"
+                variant="default"
               />
               {prefillLoading && (
                 <p className="text-[11.5px] text-warning-700 flex items-center gap-2">
@@ -650,7 +650,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         )}
         {/* Sélecteur "changer de compte" : visible quand prefill déjà chargé */}
         {instagramAccounts.length > 0 && libraryPrefillContext && (
-          <div className="relative z-30 rounded-2xl bg-gradient-to-b from-info-50/85 to-info-50/55  p-3 flex items-center gap-3">
+          <div className="relative z-30 rounded-2xl bg-info-50  p-3 flex items-center gap-3">
             <span className="text-[12.5px] font-semibold text-info-700 shrink-0">Compte Instagram</span>
             <Select
               value={selectedAccountId || libraryPrefillContext.selectedAccountId || ""}
@@ -665,7 +665,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                 value: a.id,
                 label: `@${a.handle}${a.name ? ` · ${a.name}` : ""}`,
               }))}
-              variant="glass"
+              variant="default"
               className="flex-1"
             />
             {prefillLoading && (
@@ -678,7 +678,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         )}
 
         {submitErrors.length > 0 && (
-          <div className="rounded-2xl bg-gradient-to-b from-danger-50/85 to-danger-50/55  p-4 space-y-1">
+          <div className="rounded-2xl bg-danger-50  p-4 space-y-1">
             {submitErrors.map((e) => (
               <p key={e} className="text-[12.5px] text-danger-700">{e}</p>
             ))}
@@ -692,7 +692,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                 key={section.id}
                 type="button"
                 onClick={() => scrollToSection(section.id)}
-                className="px-3 py-1.5 rounded-full bg-card border border-border  text-[11.5px] text-muted-foreground hover:text-foreground hover:bg-white/80 transition-all"
+                className="px-3 py-1.5 rounded-full bg-card border border-border  text-[11.5px] text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
               >
                 {section.title}
               </button>
@@ -771,7 +771,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         </div>
 
         <div className="sticky bottom-4 z-10">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-t from-white/95 to-white/75  px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-card  px-4 py-3">
             <div className="text-[12.5px]">
               {remainingRequiredFields.length > 0 ? (
                 <p className="font-medium text-warning-700">
@@ -788,7 +788,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
               <button
                 type="button"
                 onClick={() => router.back()}
-                className="px-3.5 py-1.5 rounded-lg bg-card border border-border  text-[12.5px] text-foreground hover:bg-white/80 hover:text-foreground transition-all"
+                className="px-3.5 py-1.5 rounded-lg bg-card border border-border  text-[12.5px] text-foreground hover:bg-muted hover:text-foreground transition-all"
               >
                 ← Retour
               </button>
@@ -796,7 +796,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                 type="submit"
                 disabled={generating || prefillLoading || (templateNeedsAccount && !libraryPrefillContext)}
                 title={templateNeedsAccount && !libraryPrefillContext ? "Sélectionne un compte Instagram pour charger les suggestions" : undefined}
-                className="px-5 py-1.5 rounded-lg bg-gradient-to-b from-gray-800 to-gray-950  text-[12.5px] font-semibold text-white hover:from-gray-900 hover:to-gray-950 disabled:opacity-60 transition-all"
+                className="px-5 py-1.5 rounded-lg bg-gray-900 text-[12.5px] font-semibold text-white hover:bg-gray-950 disabled:opacity-60 transition-all"
               >
                 {generating ? "Génération…" : prefillLoading ? "Chargement…" : variants.length === 0 ? "Générer" : "Générer une variante"}
               </button>
@@ -820,14 +820,14 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                     key={section.id}
                     type="button"
                     onClick={() => scrollToSection(section.id)}
-                    className="w-full text-left px-3 py-2 rounded-xl bg-card border border-border  hover:bg-white/75 hover: transition-all"
+                    className="w-full text-left px-3 py-2 rounded-xl bg-card border border-border  hover:bg-muted hover: transition-all"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12.5px] font-medium text-gray-800">{section.title}</span>
+                      <span className="text-[12.5px] font-medium text-foreground">{section.title}</span>
                       {sectionErrorCount > 0 ? (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-danger-50/70 text-danger-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.22)]">{sectionErrorCount} err.</span>
                       ) : (
-                        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-white/60 text-muted-foreground shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]">{filledCount}/{section.fields.length}</span>
+                        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]">{filledCount}/{section.fields.length}</span>
                       )}
                     </div>
                     <p className="text-[10.5px] text-muted-foreground mt-0.5">{requiredCount > 0 ? `${requiredCount} champ${requiredCount > 1 ? "s" : ""} requis` : `${section.fields.length} champ${section.fields.length > 1 ? "s" : ""}`}</p>
@@ -839,7 +839,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         ) : null}
 
         {doneVariants.length > 0 && (
-          <div className="rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55  px-3 py-2 flex items-center justify-between">
+          <div className="rounded-xl bg-warning-50  px-3 py-2 flex items-center justify-between">
             <p className="text-[11.5px] font-semibold text-warning-700">{doneVariants.length} variante{doneVariants.length > 1 ? "s" : ""} générée{doneVariants.length > 1 ? "s" : ""}</p>
             <a
               href="/listings"

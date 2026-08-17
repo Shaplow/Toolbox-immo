@@ -141,7 +141,7 @@ export function BulkScheduleModal({ slotIds, onScheduled, onClose }: Props) {
               className="mt-0.5 h-4 w-4 rounded border-gray-300 text-info-600"
             />
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-medium text-gray-900">
+              <p className="text-[13px] font-medium text-foreground">
                 Étaler sur plusieurs jours
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -177,7 +177,7 @@ export function BulkScheduleModal({ slotIds, onScheduled, onClose }: Props) {
               className="mt-0.5 h-4 w-4 rounded border-gray-300 text-info-600"
             />
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-medium text-gray-900">
+              <p className="text-[13px] font-medium text-foreground">
                 Garder l&apos;heure de chaque recette
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">

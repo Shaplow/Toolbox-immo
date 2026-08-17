@@ -363,7 +363,7 @@ export function BuilderClient({
         )}
 
         {/* Template name */}
-        <span className="font-semibold text-gray-900 text-sm truncate max-w-[220px]" title={templateName}>
+        <span className="font-semibold text-foreground text-sm truncate max-w-[220px]" title={templateName}>
           {templateName}
         </span>
 

@@ -75,7 +75,7 @@ export default async function AdminPromptsPage() {
             {/* Caption prompts */}
             <section>
               <div className="mb-5">
-                <h2 className="text-base font-semibold text-gray-900">Sous-titres</h2>
+                <h2 className="text-base font-semibold text-foreground">Sous-titres</h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Prompts de correction IA disponibles dans l&apos;outil sous-titres.
                 </p>
@@ -83,12 +83,12 @@ export default async function AdminPromptsPage() {
               <CaptionPromptsPanel initialPrompts={captionPrompts} />
             </section>
 
-            <div className="border-t border-white/40" />
+            <div className="border-t border-border" />
 
             {/* Description prompts */}
             <section>
               <div className="mb-5">
-                <h2 className="text-base font-semibold text-gray-900">Descriptions</h2>
+                <h2 className="text-base font-semibold text-foreground">Descriptions</h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Prompts de génération disponibles dans l&apos;outil de descriptions.
                 </p>
@@ -96,12 +96,12 @@ export default async function AdminPromptsPage() {
               <DescriptionPromptsPanel initialPrompts={descriptionPrompts} />
             </section>
 
-            <div className="border-t border-white/40" />
+            <div className="border-t border-border" />
 
             {/* Brief prompts */}
             <section>
               <div className="mb-5">
-                <h2 className="text-base font-semibold text-gray-900">Briefs monteur</h2>
+                <h2 className="text-base font-semibold text-foreground">Briefs monteur</h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Prompts de génération disponibles dans l&apos;outil Briefs monteur. Ces prompts
                   n&apos;apparaissent pas dans l&apos;outil de descriptions.

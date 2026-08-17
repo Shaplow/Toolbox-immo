@@ -80,7 +80,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-800 truncate">
+                    <p className="text-xs font-medium text-foreground truncate">
                       {job.videoName} · {job.createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
                     </p>
                     <p className={`text-[10px] mt-0.5 ${

@@ -263,7 +263,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
   const busy        = jobStatus === "submitting" || jobStatus === "processing";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
       <div
         className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
@@ -275,7 +275,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
               <Scissors size={15} className="text-danger-700" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Éditer le rush</h2>
+              <h2 className="text-sm font-semibold text-foreground">Éditer le rush</h2>
               <p className="text-[11px] text-muted-foreground truncate max-w-[380px]">{asset.filename}</p>
             </div>
           </div>
@@ -430,7 +430,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
             {/* Gain */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm text-gray-800 font-medium">Volume</label>
+                <label className="text-sm text-foreground font-medium">Volume</label>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -489,7 +489,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                   className="mt-0.5 w-4 h-4 rounded border-border text-danger-700 focus:ring-danger-200"
                 />
                 <div>
-                  <p className="text-sm font-medium text-gray-800 leading-tight">Mix mono</p>
+                  <p className="text-sm font-medium text-foreground leading-tight">Mix mono</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">Fusionne L+R — utile si le micro est sur un seul canal.</p>
                 </div>
               </label>
@@ -501,7 +501,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                   className="mt-0.5 w-4 h-4 rounded border-border text-danger-700 focus:ring-danger-200"
                 />
                 <div>
-                  <p className="text-sm font-medium text-gray-800 leading-tight">Normaliser</p>
+                  <p className="text-sm font-medium text-foreground leading-tight">Normaliser</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">loudnorm EBU R128 — I = −16 LUFS.</p>
                 </div>
               </label>

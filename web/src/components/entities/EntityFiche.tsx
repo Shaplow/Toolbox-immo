@@ -7,11 +7,13 @@
  * hasRushes/hasAssignees) — cf. `.claude` plan simplification Phase 5.
  */
 
+import { entityTypeIcon } from "@/components/entities/entityTypeIcons";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Film,
   Clapperboard,
   Download,
@@ -87,6 +89,8 @@ export interface EntityFicheData {
   typeId: string;
   typeName: string;
   typeNamePlural: string | null;
+  /** Icône du type (clé du registry entityTypeIcons). */
+  typeIcon: string | null;
   hasPlanning: boolean;
   hasAccount: boolean;
   hasRushes: boolean;
@@ -137,7 +141,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   STATUS_CHANGED: "Statut changé",
   RUSHES_UPLOADED: "Rush ajouté",
   RUSHES_DELETED: "Rush supprimé",
-  SHOT: "Tournage réalisé",
+  SHOT: "Marquée réalisée",
   SLOT_ATTACHED: "Reel ajouté",
   CANCELLED: "Fiche annulée",
   DONE: "Fiche terminée",
@@ -160,6 +164,7 @@ export function EntityFiche({
   backHref,
 }: EntityFicheProps) {
   const router = useRouter();
+  const TypeIcon = entityTypeIcon(entity.typeIcon);
   const [attachOpen, setAttachOpen] = useState(false);
 
   // ─── Label (header, inline edit) ──────────────────────────────────────
@@ -282,7 +287,7 @@ export function EntityFiche({
         toast.error(data.error ?? "Échec du changement de statut.");
         return;
       }
-      toast.success("Fiche marquée « Tourné ».");
+      toast.success("Fiche marquée « Réalisé ».");
       router.refresh();
     } catch {
       toast.error("Erreur réseau.");
@@ -331,12 +336,14 @@ export function EntityFiche({
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground transition-colors mb-3 focus-ring"
-        >
-          <ArrowLeft size={14} /> {entity.typeNamePlural ?? "Fiches"}
-        </Link>
+        <Breadcrumb
+          className="mb-3"
+          items={[
+            { href: "/fiches", label: "Fiches" },
+            { href: backHref, label: entity.typeNamePlural ?? entity.typeName },
+            { label: entity.label },
+          ]}
+        />
         <div className="flex items-start gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
             {editingLabel ? (
@@ -371,6 +378,7 @@ export function EntityFiche({
               </div>
             ) : (
               <h1 className="text-xl font-semibold tracking-tight text-foreground inline-flex items-center gap-2 group">
+                <TypeIcon size={17} className="text-muted-foreground shrink-0" />
                 {entity.label}
                 {isAdmin && (
                   <button
@@ -413,7 +421,7 @@ export function EntityFiche({
             <div className="ml-auto shrink-0 flex items-center gap-2">
               {canMarkShot && status === "PLANNED" && (
                 <Button size="sm" variant="secondary" onClick={() => void markShot()} disabled={markingShot}>
-                  {markingShot ? "…" : "Marquer tourné"}
+                  {markingShot ? "…" : "Marquer réalisé"}
                 </Button>
               )}
               <span
@@ -473,14 +481,12 @@ export function EntityFiche({
         <Section title="Planning & équipe" icon={CalendarClock}>
           <div className="space-y-3">
             <FormField label="Date et heure">
-              <input
-                type="datetime-local"
+              <DateTimeField
                 value={scheduledAt}
-                onChange={(e) => {
-                  setScheduledAt(e.target.value);
+                onChange={(v) => {
+                  setScheduledAt(v);
                   setPlanningDirty(true);
                 }}
-                className="w-full h-8 rounded-md bg-card border border-input px-2.5 text-[13px] text-foreground focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none"
               />
             </FormField>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

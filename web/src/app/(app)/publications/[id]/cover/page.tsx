@@ -88,7 +88,7 @@ export default async function PublicationCoverPage({ params }: Props) {
             {/* Header contextuel glass — sticky pour rester visible pendant la
                 sélection. V5.B.5 : aligné au pattern Liquid Glass des autres
                 tools (peach card pour signaler "Cover pour une publication"). */}
-            <div className="sticky top-4 z-10 rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3 ">
+            <div className="sticky top-4 z-10 rounded-xl bg-warning-50 px-4 py-3 ">
               <Link
                 href={backHref}
                 className="inline-flex items-center gap-1 text-xs text-warning-700 hover:text-warning-700 transition-colors"

@@ -277,7 +277,7 @@ export function CoverTabPanel({ templateId }: Props) {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-foreground truncate group-hover:text-gray-900">
+                    <span className="text-xs text-foreground truncate group-hover:text-foreground">
                       {p.label}
                     </span>
                     {!p.isActive && (

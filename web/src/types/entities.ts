@@ -60,9 +60,11 @@ export interface EntitySummary {
   _count: { slots: number; shootSlots: number; rushes: number };
 }
 
+// Libellés neutres (V3.2) : le métaobjet sert aussi des types sans tournage
+// (agence de mode, fleuriste…) — « À tourner / Tourné » ne généralise pas.
 export const ENTITY_STATUS_LABELS: Record<EntityStatus, string> = {
-  PLANNED: "À tourner",
-  SHOT: "Tourné",
+  PLANNED: "Planifié",
+  SHOT: "Réalisé",
   DONE: "Terminé",
   CANCELLED: "Annulé",
 };

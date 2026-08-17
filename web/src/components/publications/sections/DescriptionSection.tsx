@@ -642,7 +642,7 @@ function DescriptionSectionInner({
           <>
             {isPreFilled && (
               <p className="text-[11px] text-muted-foreground">
-                Légende pré-remplie depuis le bien rattaché — réécrite à chaque
+                Légende pré-remplie depuis la fiche rattachée — réécrite à chaque
                 changement de bien. Tu peux l&apos;ajuster librement ici.
               </p>
             )}

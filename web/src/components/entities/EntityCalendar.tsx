@@ -44,9 +44,9 @@ function addDays(d: Date, n: number): Date {
 
 /**
  * EntityCalendar — vue planning hebdomadaire d'un type de fiche à planning
- * (ex-EventsCalendar « Tournage »). Port généralisé : plus de filtrage
- * dateFrom/dateTo côté serveur (listEntities n'en a pas — take 500), le
- * filtrage par semaine se fait client-side après un fetch unique par type.
+ * (ex-EventsCalendar « Tournage »). V3.2 : fetch par plage de semaine
+ * (scheduledFrom/scheduledTo côté serveur) au lieu d'un fetch global 500
+ * fiches filtré client-side.
  */
 export function EntityCalendar({ type, isAdmin, accounts, videastes, monteurs, cms }: EntityCalendarProps) {
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
@@ -63,7 +63,12 @@ export function EntityCalendar({ type, isAdmin, accounts, videastes, monteurs, c
     const seq = ++reqSeqRef.current;
     setLoading(true);
     try {
-      const res = await fetch(`/api/entities?typeId=${type.id}`, { signal: controller.signal });
+      const from = weekStart.toISOString();
+      const to = addDays(weekStart, 7).toISOString();
+      const res = await fetch(
+        `/api/entities?typeId=${type.id}&scheduledFrom=${encodeURIComponent(from)}&scheduledTo=${encodeURIComponent(to)}`,
+        { signal: controller.signal },
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { entities: EntitySummary[] };
       if (seq === reqSeqRef.current) setEntities(data.entities);
@@ -73,7 +78,7 @@ export function EntityCalendar({ type, isAdmin, accounts, videastes, monteurs, c
     } finally {
       if (seq === reqSeqRef.current) setLoading(false);
     }
-  }, [type.id]);
+  }, [type.id, weekStart]);
 
   useEffect(() => {
     void load();
@@ -139,10 +144,16 @@ export function EntityCalendar({ type, isAdmin, accounts, videastes, monteurs, c
       </div>
 
       {entities.length === 0 && !loading ? (
+        // Fetch par semaine (V3.2) : vide = rien CETTE semaine, pas « aucune
+        // fiche du tout » — le message et le CTA restent utiles dans les deux cas.
         <EmptyState
           icon={<CalendarClock size={20} className="text-muted-foreground" />}
-          title={`Aucune fiche « ${type.name} »`}
-          description={isAdmin ? "Créez une fiche pour lancer une mission." : "Aucune fiche planifiée."}
+          title={`Aucune fiche « ${type.name} » cette semaine`}
+          description={
+            isAdmin
+              ? "Navigue entre les semaines, ou crée une fiche planifiée."
+              : "Navigue entre les semaines — rien ne t'est assigné sur celle-ci."
+          }
           {...(isAdmin ? { cta: { label: "Nouvelle fiche", onClick: () => setCreateOpen(true) } } : {})}
         />
       ) : (

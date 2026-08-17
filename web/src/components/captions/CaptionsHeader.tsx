@@ -35,7 +35,7 @@ export function CaptionsHeader({ presetName, isRegen }: Props) {
           <Film size={18} className="text-danger-600" />
         </div>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">{presetName}</h1>
+          <h1 className="text-xl font-semibold text-foreground">{presetName}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {isRegen
               ? "Sous-titres pré-chargés depuis la génération précédente"

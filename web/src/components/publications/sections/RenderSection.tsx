@@ -244,7 +244,7 @@ export function RenderSection({
           <EmptyState
             icon={AlertCircle}
             title="Template manquant"
-            description="Ce pattern n'a pas de template associé — configure-le pour pouvoir lancer le rendu."
+            description="Cette recette n'a pas de template associé — configure-la pour pouvoir lancer le rendu."
             cta={{
               label: "Configurer un template",
               onClick: () => window.open("/admin/accounts", "_blank", "noopener,noreferrer"),

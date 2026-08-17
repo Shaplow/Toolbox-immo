@@ -489,7 +489,7 @@ export default function CaptionsApp({
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
             {backUrl && (
-              <Link href={backUrl} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-gray-900 transition-colors mr-1">
+              <Link href={backUrl} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mr-1">
                 <ChevronLeft size={14}/>Retour
               </Link>
             )}
@@ -497,7 +497,7 @@ export default function CaptionsApp({
               <Film size={20}/>
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-gray-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 {loadedPresetName ?? (initialPresetId ? 'Modifier le preset' : 'Nouveau preset')}
               </h1>
               <p className="text-sm text-muted-foreground mt-0.5">Réglez la typo, les effets et le placement des sous-titres</p>

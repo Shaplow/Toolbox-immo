@@ -33,7 +33,7 @@ export function CaptionsVideoUploadBar({ videoFile, setVideoFile }: Props) {
         <Upload size={15} className={videoFile ? "text-danger-600" : "text-muted-foreground"} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-800">Vidéo</p>
+        <p className="text-sm font-medium text-foreground">Vidéo</p>
         {videoFile ? (
           <p className="text-xs text-danger-600 mt-0.5 truncate">{videoFile.name}</p>
         ) : (

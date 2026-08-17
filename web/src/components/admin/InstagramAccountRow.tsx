@@ -51,7 +51,7 @@ export function InstagramAccountRow({ account, onUpdated }: InstagramAccountRowP
           <Link
             href={`/admin/accounts/${account.id}`}
             className="inline-flex items-center gap-1 rounded-md border border-info-200 bg-info-50 px-2.5 py-1 text-xs font-medium text-info-700 hover:bg-info-100 transition-colors"
-            title="Configurer les patterns de publication"
+            title="Configurer les recettes de publication"
           >
             <Settings2 className="h-3.5 w-3.5" />
             Configurer

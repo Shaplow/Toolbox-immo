@@ -427,7 +427,7 @@ function TaxonomyList({
               key={item.value}
               className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card border border-border  group/tax"
             >
-              <span className="flex-1 min-w-0 text-[11.5px] text-gray-800 truncate">{item.value}</span>
+              <span className="flex-1 min-w-0 text-[11.5px] text-foreground truncate">{item.value}</span>
               <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{item.count}</span>
               <button
                 type="button"

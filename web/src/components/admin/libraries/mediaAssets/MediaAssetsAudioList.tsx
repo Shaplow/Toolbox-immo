@@ -70,7 +70,7 @@ export function MediaAssetsAudioList({
             <Music2 size={16} className="text-info-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-800 truncate">{asset.filename}</p>
+            <p className="text-sm font-medium text-foreground truncate">{asset.filename}</p>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
               {asset.duration ? <span>{formatDuration(asset.duration)}</span> : null}
               {editingUsageId === asset.id ? (

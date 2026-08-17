@@ -33,7 +33,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-danger-50 overflow-hidden">
+    <div className="relative min-h-screen flex items-center justify-center bg-muted overflow-hidden">
       {/* Halo décoratif discret */}
       <div
         aria-hidden="true"
@@ -92,7 +92,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-danger-600 hover:from-indigo-700 hover:to-danger-700 text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-60 shadow-sm shadow-indigo-200/40"
+            className="w-full py-2.5 bg-primary hover:bg-primary/90 text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-60 shadow-sm"
           >
             {loading ? "Connexion…" : "Se connecter"}
           </button>

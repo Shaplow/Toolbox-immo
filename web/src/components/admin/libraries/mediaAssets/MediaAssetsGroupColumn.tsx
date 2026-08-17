@@ -83,7 +83,7 @@ export function MediaAssetsGroupColumn({
         {setTag ? (
           <div className="flex items-center gap-1.5">
             <Layers size={11} className="text-danger-200 shrink-0" />
-            <span className="text-xs font-semibold text-gray-800 truncate" title={setTag}>{setTag}</span>
+            <span className="text-xs font-semibold text-foreground truncate" title={setTag}>{setTag}</span>
           </div>
         ) : (
           <span className="text-xs font-medium text-muted-foreground italic">(sans dossier)</span>

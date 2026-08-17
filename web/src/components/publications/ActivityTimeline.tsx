@@ -371,7 +371,7 @@ export function ActivityTimeline({
               <li key={item.id} className="flex gap-3 items-start text-sm">
                 <ActivityIcon type={item.type} />
                 <div className="flex-1 min-w-0">
-                  <span className="text-gray-800">
+                  <span className="text-foreground">
                     <span className="font-medium">{actorName}</span>{" "}
                     {label}
                     {publishedUrl && (

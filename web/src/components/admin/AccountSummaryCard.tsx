@@ -32,18 +32,18 @@ function handleInitials(handle: string): string {
   return handle.replace(/^@/, "").slice(0, 2).toUpperCase();
 }
 
-function avatarGradient(handle: string): string {
-  const gradients = [
-    "from-warning-200 to-danger-200",
-    "from-success-200 to-info-200",
-    "from-info-200 to-warning-200",
-    "from-danger-200 to-warning-200",
-    "from-success-200 to-warning-200",
-    "from-info-200 to-danger-200",
+function avatarBg(handle: string): string {
+  const backgrounds = [
+    "bg-warning-200",
+    "bg-success-200",
+    "bg-info-200",
+    "bg-danger-200",
+    "bg-success-200",
+    "bg-info-200",
   ];
   let h = 0;
   for (let i = 0; i < handle.length; i++) h = (h * 31 + handle.charCodeAt(i)) >>> 0;
-  return gradients[h % gradients.length];
+  return backgrounds[h % backgrounds.length];
 }
 
 function formatDate(iso: string | null): string {
@@ -84,7 +84,7 @@ const ACTIVE_PIPELINE_STATUSES = [
 ];
 
 export function AccountSummaryCard({ data }: { data: AccountPeekData }) {
-  const gradient = avatarGradient(data.handle);
+  const avatarBgClass = avatarBg(data.handle);
   const inFlight = ACTIVE_PIPELINE_STATUSES.reduce(
     (acc, status) => acc + (data.statsByStatus[status] ?? 0),
     0,
@@ -98,12 +98,12 @@ export function AccountSummaryCard({ data }: { data: AccountPeekData }) {
       <div className="flex items-center gap-3">
         <div
           className={[
-            "relative h-14 w-14 rounded-full inline-flex items-center justify-center shrink-0 bg-gradient-to-br",
-            gradient,
+            "relative h-14 w-14 rounded-full inline-flex items-center justify-center shrink-0",
+            avatarBgClass,
             "",
           ].join(" ")}
         >
-          <span className="text-[16px] font-semibold text-gray-800 tracking-tight">
+          <span className="text-[16px] font-semibold text-foreground tracking-tight">
             {handleInitials(data.handle)}
           </span>
           <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-white inline-flex items-center justify-center ">

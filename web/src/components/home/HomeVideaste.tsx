@@ -107,7 +107,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
           <EmptyState
             icon={<Video size={20} className="text-muted-foreground" />}
             title="Rien à tourner"
-            description="Aucun événement de tournage ne vous est assigné pour l'instant."
+            description="Aucun tournage ne vous est assigné pour l'instant."
           />
         ) : (
           <>

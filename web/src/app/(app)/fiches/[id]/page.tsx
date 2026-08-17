@@ -135,6 +135,7 @@ export default async function EntityDetailPage({ params }: Params) {
     id: entity.id,
     typeId: entity.typeId,
     typeName: entity.type.name,
+    typeIcon: entity.type.icon,
     typeNamePlural: entity.type.namePlural,
     hasPlanning: entity.type.hasPlanning,
     hasAccount: entity.type.hasAccount,

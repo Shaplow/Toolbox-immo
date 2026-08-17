@@ -216,7 +216,7 @@ export function CoverSection({
   // ── Branche monteurUpload : dropzone pour le monteur ───────────────────────
   if (mode === "monteurUpload") {
     const monteurBadge = (
-      <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground bg-card border border-border border border-white/50 rounded-full px-2 py-0.5 font-medium ">
+      <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground bg-card border border-border border border-border rounded-full px-2 py-0.5 font-medium ">
         Monteur
       </span>
     );
@@ -304,7 +304,7 @@ export function CoverSection({
   }
 
   const linkedBadge = currentVersion ? (
-    <span className="text-[11px] text-muted-foreground bg-card border border-border border border-white/50 px-2 py-0.5 rounded-full font-medium ">
+    <span className="text-[11px] text-muted-foreground bg-card border border-border border border-border px-2 py-0.5 rounded-full font-medium ">
       Lié à V{currentVersion.versionNumber}
     </span>
   ) : null;

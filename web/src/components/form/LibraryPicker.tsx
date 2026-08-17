@@ -86,7 +86,7 @@ export function LibraryPickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
       onClick={onClose}
     >
       <div
@@ -96,7 +96,7 @@ export function LibraryPickerModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div>
-            <p className="font-semibold text-gray-900 text-base">
+            <p className="font-semibold text-foreground text-base">
               {isVideo ? "Choisir une vidéo" : "Choisir une musique"}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -241,7 +241,7 @@ export function LibraryPickerModal({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{asset.filename}</p>
+                      <p className="text-sm font-medium text-foreground truncate">{asset.filename}</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
                         {asset.duration ? fmtDuration(asset.duration) : ""}
                         {asset.duration && asset.usageCount > 0 ? " · " : ""}
@@ -319,7 +319,7 @@ export function LibraryFieldInput({
               />
             </div>
             <div className="flex-1 min-w-0 py-0.5">
-              <p className="text-sm font-medium text-gray-800 truncate">
+              <p className="text-sm font-medium text-foreground truncate">
                 {currentSelection.filename.replace(/\.[^.]+$/, "")}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">Vidéo sélectionnée</p>
@@ -338,7 +338,7 @@ export function LibraryFieldInput({
               <Music2 size={16} className="text-info-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{currentSelection.filename}</p>
+              <p className="text-sm font-medium text-foreground truncate">{currentSelection.filename}</p>
             </div>
             <button
               type="button"

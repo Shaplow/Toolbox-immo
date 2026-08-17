@@ -17,7 +17,7 @@ import { PublicationHeader } from "@/components/publications/PublicationHeader";
 import { PublicationLiveRefresh } from "@/components/publications/PublicationLiveRefresh";
 import { NextActionBanner } from "@/components/publications/NextActionBanner";
 import { ProductionChain } from "@/components/publications/ProductionChain";
-import { SlotPropertySelect } from "@/components/publications/SlotPropertySelect";
+import { SlotEntitySelect } from "@/components/publications/SlotEntitySelect";
 import { RenderSection } from "@/components/publications/sections/RenderSection";
 import { getSlotFinalVideoUrl, isFinalVideoCaptioned } from "@/lib/publications/finalVideo";
 import { CoverSection } from "@/components/publications/sections/CoverSection";
@@ -147,6 +147,10 @@ interface PatternInfo {
   needsBrief: boolean;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
+  /** Type de fiche exigé par la recette (null = aucun). */
+  requiresEntityTypeId?: string | null;
+  /** Legacy — true sans requiresEntityTypeId ⇒ type « Bien ». */
+  requiresProperty?: boolean;
 }
 
 interface RushItem {
@@ -230,6 +234,8 @@ export interface PublicationFicheProps {
   account: AccountInfo | null;
   listing: { id: string } | null;
   pattern: PatternInfo | null;
+  /** Nom du type de fiche exigé par la recette (titre de la section Fiche). */
+  requiredEntityTypeName?: string | null;
   render: RenderInfo | null;
   coverPack: CoverPackInfo | null;
   coverConfigError: CoverConfigError | null;
@@ -326,6 +332,7 @@ export function PublicationFiche({
   account,
   listing,
   pattern,
+  requiredEntityTypeName,
   render,
   coverPack,
   coverConfigError,
@@ -485,17 +492,26 @@ export function PublicationFiche({
           <ProductionChain steps={steps} viewerRole={currentUserRole} />
         </div>
 
-        {/* Biens — rattacher/changer la fiche partagée (admin + CM). */}
+        {/* Fiche liée — rattacher/changer la fiche partagée (admin + CM). */}
         {(currentUserRole === "ADMIN" || currentUserRole === "CM") && (
           <div className="mt-4 p-4 rounded-lg bg-card border border-border flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-foreground">Bien</p>
+              <p className="text-[13px] font-semibold text-foreground">
+                {requiredEntityTypeName ?? "Fiche"}
+              </p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Fiche partagée (adresse, prix…) qui préremplit la génération.
               </p>
             </div>
             <div className="w-64 shrink-0">
-              <SlotPropertySelect slotId={slot.id} initialPropertyId={slot.propertyId ?? null} />
+              <SlotEntitySelect
+                slotId={slot.id}
+                initialPropertyId={slot.propertyId ?? null}
+                requiredEntityTypeId={
+                  pattern?.requiresEntityTypeId ??
+                  (pattern?.requiresProperty ? "etype_bien" : null)
+                }
+              />
             </div>
           </div>
         )}
@@ -553,7 +569,7 @@ export function PublicationFiche({
                   canUploadRushes={false}
                   canManageRushes={false}
                   readOnly
-                  title="Rushs du tournage (événement)"
+                  title="Rushs du tournage"
                   currentUserId={currentUserId}
                   sectionId="event-rushes"
                   storageKey={`pub-event-rushes:${slot.id}`}

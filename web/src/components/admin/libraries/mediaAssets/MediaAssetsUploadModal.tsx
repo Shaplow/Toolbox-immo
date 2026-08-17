@@ -413,7 +413,7 @@ export function MediaAssetsUploadModal({
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <h2 className="text-base font-semibold text-gray-900">Uploader des fichiers</h2>
+          <h2 className="text-base font-semibold text-foreground">Uploader des fichiers</h2>
           <button
             onClick={() => {
               if (!modalUploading) onClose();
@@ -472,7 +472,7 @@ export function MediaAssetsUploadModal({
           <div className="flex flex-col gap-3.5">
             {/* Phase γ — Destination (comptes IG) en haut, visuel et multi-select. */}
             {accounts.length > 0 && (
-              <div className="rounded-xl bg-gradient-to-b from-info-50/55 to-white/45 p-3  space-y-2">
+              <div className="rounded-xl bg-info-50 p-3  space-y-2">
                 <p className="text-[11px] uppercase tracking-widest font-semibold text-info-700">
                   Destination
                 </p>

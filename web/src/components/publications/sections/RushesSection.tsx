@@ -219,7 +219,7 @@ export function RushesSection({
             <button
               type="button"
               onClick={() => void downloadAllRushes()}
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-gray-900 transition-colors"
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               title="Télécharger tous les rushes"
               aria-label="Télécharger tous les rushes"
             >
@@ -240,7 +240,7 @@ export function RushesSection({
                 <li key={rush.id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0 group">
                   <Clapperboard size={12} className="text-muted-foreground shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] text-gray-800 leading-tight">{rush.fileName}</p>
+                    <p className="truncate text-[13px] text-foreground leading-tight">{rush.fileName}</p>
                     <p className="text-[10.5px] text-muted-foreground mt-0.5 truncate">
                       {rush.sizeBytes !== null && formatBytes(rush.sizeBytes)}
                       {isVideo(rush.mimeType) && rush.durationSec !== null && ` · ${formatDuration(rush.durationSec)}`}
@@ -255,7 +255,7 @@ export function RushesSection({
                       type="button"
                       onClick={() => void downloadRush(rush)}
                       disabled={downloadingId === rush.id}
-                      className="p-1 text-muted-foreground hover:text-gray-900 transition-colors"
+                      className="p-1 text-muted-foreground hover:text-foreground transition-colors"
                       title="Télécharger"
                       aria-label="Télécharger"
                     >

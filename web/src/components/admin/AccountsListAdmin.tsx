@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Instagram, Layers, Calendar, Eye } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -65,6 +66,7 @@ function avatarGradient(handle: string): string {
 }
 
 export function AccountsListAdmin({ accounts }: Props) {
+  const router = useRouter();
   // Phase polish 2026-05-30 — filtre/recherche retiré temporairement (à
   // réintégrer si besoin de recherche transverse multi-clients). On affiche
   // la liste brute des comptes triés par leur ordre serveur.
@@ -112,7 +114,8 @@ export function AccountsListAdmin({ accounts }: Props) {
               <EmptyState
                 icon={Instagram}
                 title="Aucun compte configuré"
-                description="Aucun compte Instagram configuré pour le moment."
+                description="Les comptes Instagram se créent depuis la fiche d'un client — commence par en ouvrir (ou créer) un."
+                cta={{ label: "Aller aux clients", onClick: () => router.push("/admin/clients") }}
               />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -216,11 +219,11 @@ function AccountCard({ account, onPeek }: AccountCardProps) {
       <div className="flex flex-col gap-1.5 mt-auto items-start">
         {isInactive ? (
           <Chip variant="peach" icon={Layers} className="whitespace-nowrap">
-            Sans pattern
+            Sans recette
           </Chip>
         ) : (
           <Chip variant="sage" icon={Layers} className="whitespace-nowrap">
-            {account.activePatternCount} pattern
+            {account.activePatternCount} recette
             {account.activePatternCount > 1 ? "s" : ""}
           </Chip>
         )}

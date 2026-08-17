@@ -574,8 +574,8 @@ export function PatternTemplateForm({
           </FormField>
           {needsDescription === "preFilled" && (
             <FormField
-              label="Champ du bien qui pré-remplit la légende"
-              help="La légende démarre avec la valeur de ce champ du bien rattaché. Écrasée à chaque changement de bien."
+              label="Champ de la fiche qui pré-remplit la légende"
+              help="La légende démarre avec la valeur de ce champ de la fiche rattachée. Écrasée à chaque changement de fiche."
             >
               <Combobox
                 value={descriptionSourceFieldKey}

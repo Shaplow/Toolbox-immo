@@ -122,19 +122,19 @@ function SkeletonPattern() {
     <div className="space-y-4 animate-pulse">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 space-y-2">
-          <div className="h-4 w-40 rounded bg-white/50" />
-          <div className="h-3 w-24 rounded bg-white/40" />
+          <div className="h-4 w-40 rounded bg-muted" />
+          <div className="h-3 w-24 rounded bg-muted" />
         </div>
-        <div className="h-10 w-10 rounded bg-white/40" />
+        <div className="h-10 w-10 rounded bg-muted" />
       </div>
       <div className="space-y-2">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-5 rounded bg-white/40" />
+          <div key={i} className="h-5 rounded bg-muted" />
         ))}
       </div>
       <div className="space-y-1.5">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-10 rounded-lg bg-white/40" />
+          <div key={i} className="h-10 rounded-lg bg-muted" />
         ))}
       </div>
     </div>

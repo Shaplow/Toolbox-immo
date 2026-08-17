@@ -111,7 +111,7 @@ export function RevertRenderButton({ renderId, onReverted }: Props) {
           disabled={loading}
           title="Annuler"
           aria-label="Annuler"
-          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all focus-ring"
         >
           <X size={13} />
         </button>
@@ -128,7 +128,7 @@ export function RevertRenderButton({ renderId, onReverted }: Props) {
       }}
       title="Annuler l'impact rotation de cette génération (admin)"
       aria-label="Annuler l'impact rotation"
-      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-warning-700 hover:bg-white/70 transition-all focus-ring"
+      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-warning-700 hover:bg-muted transition-all focus-ring"
     >
       <Undo2 size={13} />
     </button>

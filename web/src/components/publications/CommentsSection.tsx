@@ -138,7 +138,7 @@ export function CommentsSection({
         <button
           type="button"
           onClick={() => setAllModalOpen(true)}
-          className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-gray-900 transition-colors font-medium pt-2"
+          className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-foreground transition-colors font-medium pt-2"
         >
           Voir tous les {activeCount} commentaires
           <ArrowRight size={11} />

@@ -1009,7 +1009,7 @@ export default function CaptionsGenerateForm({
             le SSE listener ci-dessus refresh quand le job termine et les
             segments arrivent automatiquement (initialSegments pré-rempli). */}
         {pendingTranscription && (
-          <div className="mb-3 rounded-xl bg-gradient-to-b from-info-50/85 to-info-50/55 px-4 py-3 ">
+          <div className="mb-3 rounded-xl bg-info-50 px-4 py-3 ">
             <p className="text-[13px] font-semibold text-info-700 flex items-center gap-2">
               <span className="inline-block h-2 w-2 rounded-full bg-info-600 animate-pulse" />
               Transcription en cours…
@@ -1021,7 +1021,7 @@ export default function CaptionsGenerateForm({
           </div>
         )}
         {transcriptionEmpty && slotId && !pendingTranscription && (
-          <div className="mb-3 rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3">
+          <div className="mb-3 rounded-xl bg-warning-50 px-4 py-3">
             <p className="text-[13px] font-semibold text-warning-700">
               Aucune parole détectée dans le montage
             </p>
@@ -1042,7 +1042,7 @@ export default function CaptionsGenerateForm({
           </div>
         )}
         {transcriptionUnavailable && !transcriptionEmpty && slotId && !pendingTranscription && (
-          <div className="mb-3 rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3">
+          <div className="mb-3 rounded-xl bg-warning-50 px-4 py-3">
             <p className="text-[13px] font-semibold text-warning-700">
               Transcription indisponible
             </p>
@@ -1062,7 +1062,7 @@ export default function CaptionsGenerateForm({
           </div>
         )}
         {transcriptionBlocker && (
-          <div className="mb-3 rounded-xl bg-gradient-to-b from-danger-50/85 to-danger-50/55 px-4 py-3 ">
+          <div className="mb-3 rounded-xl bg-danger-50 px-4 py-3 ">
             <p className="text-[13px] font-semibold text-danger-700">
               Impossible de pré-charger une transcription
             </p>
@@ -1090,8 +1090,8 @@ export default function CaptionsGenerateForm({
         )}
 
         {/* Source card — Sous-titres */}
-        <div className="bg-card border border-border border border-white/50 rounded-2xl  overflow-hidden mb-3">
-          <div className="px-4 py-3 border-b border-white/40 flex items-center justify-between">
+        <div className="bg-card border border-border border border-border rounded-2xl  overflow-hidden mb-3">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">Sous-titres</h2>
             {(captions.length > 0 || showTrimEditor || subsFile) && (
               <button
@@ -1144,8 +1144,8 @@ export default function CaptionsGenerateForm({
         {bilingualStatus !== "none" && selectedTranscriptionId && (
           <div className={`mb-3 rounded-2xl px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1)] ${
             bilingualStatus === "translated"
-              ? "bg-gradient-to-b from-emerald-50/85 to-emerald-50/55 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.40)]"
-              : "bg-gradient-to-b from-info-50/85 to-info-50/55 shadow-[inset_0_0_0_1px_rgba(125,180,210,0.32)]"
+              ? "bg-emerald-50 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.40)]"
+              : "bg-info-50 shadow-[inset_0_0_0_1px_rgba(125,180,210,0.32)]"
           }`}>
             <div className="flex items-start gap-3">
               <Languages className={`h-5 w-5 mt-0.5 shrink-0 ${
@@ -1225,11 +1225,11 @@ export default function CaptionsGenerateForm({
 
         {/* Highlight editor + AI corrector — shown after SRT parsed */}
         {!showTrimEditor && captions.length > 0 && (
-          <div className="bg-card border border-border border border-white/50 rounded-2xl  p-5 mb-3">
+          <div className="bg-card border border-border border border-border rounded-2xl  p-5 mb-3">
             {/* Editor header */}
             <div className="flex items-center justify-between mb-3">
               <div>
-                <p className="text-sm font-medium text-gray-900">Mots à surligner</p>
+                <p className="text-sm font-medium text-foreground">Mots à surligner</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Cliquez sur les mots pour les mettre en valeur
                 </p>
@@ -1287,9 +1287,9 @@ export default function CaptionsGenerateForm({
         {/* Décalage vertical — override per-génération du preset (sans modifier
             le preset partagé). Visible dès qu'un SRT est chargé. */}
         {!showTrimEditor && captions.length > 0 && (
-          <div className="bg-card border border-border border border-white/50 rounded-2xl  p-4 mb-3">
+          <div className="bg-card border border-border border border-border rounded-2xl  p-4 mb-3">
             <div className="flex items-center justify-between gap-3 mb-2">
-              <label className="text-sm font-medium text-gray-900">
+              <label className="text-sm font-medium text-foreground">
                 Décalage vertical
                 <span className="ml-2 text-[11px] font-mono text-muted-foreground tabular-nums">
                   {effectiveVerticalOffset === 0
@@ -1301,7 +1301,7 @@ export default function CaptionsGenerateForm({
                 <button
                   type="button"
                   onClick={() => setVerticalOffsetOverride(null)}
-                  className="text-[11px] text-muted-foreground hover:text-gray-800"
+                  className="text-[11px] text-muted-foreground hover:text-foreground"
                 >
                   Réinitialiser (preset : {presetVerticalOffset === 0 ? "centre" : `${presetVerticalOffset > 0 ? "+" : ""}${Math.round(presetVerticalOffset * 100)}%`})
                 </button>

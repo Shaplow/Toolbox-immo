@@ -31,7 +31,7 @@ export function LibraryPreviewThumbs({ type, previewAssets }: Props) {
 
   if (!isVideo) {
     return (
-      <div className="aspect-[16/9] rounded-lg overflow-hidden bg-gradient-to-br from-success-100/60 to-success-50/40 flex items-center justify-center ">
+      <div className="aspect-[16/9] rounded-lg overflow-hidden bg-success-50 flex items-center justify-center ">
         {previewAssets.length === 0 ? (
           <div className="flex flex-col items-center gap-1 text-success-600/60">
             <Music2 size={22} />
@@ -51,7 +51,7 @@ export function LibraryPreviewThumbs({ type, previewAssets }: Props) {
 
   if (previewAssets.length === 0) {
     return (
-      <div className="aspect-[16/9] rounded-lg overflow-hidden bg-gradient-to-br from-info-50/60 to-info-100/40 flex items-center justify-center ">
+      <div className="aspect-[16/9] rounded-lg overflow-hidden bg-info-50 flex items-center justify-center ">
         <div className="flex flex-col items-center gap-1 text-info-600/60">
           <VideoIcon size={22} />
           <span className="text-[9.5px] uppercase tracking-widest font-medium">vide</span>
@@ -76,7 +76,7 @@ export function LibraryPreviewThumbs({ type, previewAssets }: Props) {
         ) : (
           <div
             key={`empty-${idx}`}
-            className="bg-gradient-to-br from-gray-100 to-gray-50"
+            className="bg-gray-100"
           />
         ),
       )}

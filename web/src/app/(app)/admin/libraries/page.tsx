@@ -88,7 +88,7 @@ export default async function LibrariesHubPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Link
               href="/admin/libraries/fonts"
-              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-card border border-border  hover:bg-white/85 transition-colors text-[12.5px] text-foreground group"
+              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-card border border-border  hover:bg-muted transition-colors text-[12.5px] text-foreground group"
             >
               <Type size={14} className="text-danger-700 shrink-0" />
               <span className="flex-1">Typographies</span>
@@ -100,7 +100,7 @@ export default async function LibrariesHubPage() {
             </Link>
             <Link
               href="/admin/prompts"
-              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-card border border-border  hover:bg-white/85 transition-colors text-[12.5px] text-foreground group"
+              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-card border border-border  hover:bg-muted transition-colors text-[12.5px] text-foreground group"
             >
               <Sparkles size={14} className="text-warning-700 shrink-0" />
               <span className="flex-1">Prompts IA</span>

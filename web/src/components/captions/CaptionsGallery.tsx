@@ -175,10 +175,10 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
             <div className="max-w-5xl mx-auto">
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white/55 rounded-xl animate-pulse" />
+                  <div className="w-10 h-10 bg-muted rounded-xl animate-pulse" />
                   <div>
-                    <div className="h-6 w-32 bg-white/55 rounded-lg animate-pulse" />
-                    <div className="h-4 w-16 bg-white/40 rounded mt-1.5 animate-pulse" />
+                    <div className="h-6 w-32 bg-muted rounded-lg animate-pulse" />
+                    <div className="h-4 w-16 bg-muted rounded mt-1.5 animate-pulse" />
                   </div>
                 </div>
               </div>
@@ -186,11 +186,11 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div
                     key={i}
-                    className="bg-white/55 rounded-xl overflow-hidden "
+                    className="bg-muted rounded-xl overflow-hidden "
                   >
                     <div className="p-4 space-y-2">
-                      <div className="h-5 w-3/4 bg-white/40 rounded animate-pulse" />
-                      <div className="h-4 w-16 bg-white/40 rounded animate-pulse" />
+                      <div className="h-5 w-3/4 bg-muted rounded animate-pulse" />
+                      <div className="h-4 w-16 bg-muted rounded animate-pulse" />
                     </div>
                   </div>
                 ))}
@@ -227,7 +227,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
           sur TranscriptionList V2.5). Sans ça, l'admin ouvrait la gallery preset
           sans savoir s'il était toujours dans le contexte d'un slot. */}
       {slotContext && (
-        <div className="mb-4 rounded-xl bg-gradient-to-b from-info-50/85 to-info-50/55 px-4 py-3 ">
+        <div className="mb-4 rounded-xl bg-info-50 px-4 py-3 ">
           <p className="text-[10px] uppercase tracking-widest font-semibold text-info-700">
             Sous-titres pour une publication
           </p>
@@ -267,7 +267,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
       {isAdmin && showCreateForm && (
         <>
           <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            className="fixed inset-0 bg-black/60 z-40"
             onClick={() => {
               setShowCreateForm(false);
               setCreateName("");
@@ -288,7 +288,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
               }}
               className="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto p-6"
             >
-              <h2 id="create-preset-title" className="text-base font-semibold text-gray-900 mb-1">
+              <h2 id="create-preset-title" className="text-base font-semibold text-foreground mb-1">
                 Nouveau preset
               </h2>
               <p className="text-sm text-muted-foreground mb-4">
@@ -303,7 +303,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                   value={createName}
                   onChange={(event) => setCreateName(event.target.value)}
                   placeholder="Ex. Premium doré"
-                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gray-500"
                 />
               </label>
               {createError && (
@@ -416,7 +416,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                   </form>
                 ) : (
                   <div className="flex items-center gap-1.5">
-                    <h3 className="font-medium text-gray-900 truncate flex-1 text-sm">{preset.name}</h3>
+                    <h3 className="font-medium text-foreground truncate flex-1 text-sm">{preset.name}</h3>
                     {isAdmin && (
                       <button
                         onClick={() => { setEditingId(preset.id); setEditName(preset.name); }}

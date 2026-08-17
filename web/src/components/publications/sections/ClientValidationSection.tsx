@@ -324,7 +324,7 @@ export function ClientValidationSection({
           réservé ADMIN) afin que le rôle responsable comprenne pourquoi le
           bouton est grisé / invisible. */}
       {!canSendValidation && !isResolved && (
-        <div className="mb-4 rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3 ">
+        <div className="mb-4 rounded-xl bg-warning-50 px-4 py-3 ">
           <p className="text-[13px] font-semibold text-warning-700 flex items-center gap-2">
             <AlertTriangle size={14} className="flex-shrink-0" />
             Envoi bloqué

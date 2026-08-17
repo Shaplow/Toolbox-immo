@@ -264,7 +264,7 @@ function StatusBadge({ status }: { status: string }) {
     ? "bg-success-50/70 text-success-700 shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)]"
     : isError
     ? "bg-danger-50/70 text-danger-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.28)]"
-    : "bg-white/60 text-muted-foreground shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]";
+    : "bg-muted text-muted-foreground shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]";
 
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium ${cls}`}>
@@ -343,7 +343,7 @@ function TimelineRow({
                   }}
                   title="Vue rapide"
                   aria-label="Vue rapide"
-                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all focus-ring"
                 >
                   <Eye size={13} />
                 </button>
@@ -359,7 +359,7 @@ function TimelineRow({
                   }}
                   title="Régénérer"
                   aria-label="Régénérer"
-                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-warning-700 hover:bg-white/70 transition-all focus-ring"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-warning-700 hover:bg-muted transition-all focus-ring"
                 >
                   <RotateCw size={13} />
                 </button>
@@ -371,7 +371,7 @@ function TimelineRow({
                   onClick={(e) => e.stopPropagation()}
                   title={`Télécharger ${actions!.downloadExt?.toUpperCase() ?? ""}`}
                   aria-label="Télécharger"
-                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all focus-ring"
                 >
                   <Download size={13} />
                 </a>
@@ -836,7 +836,7 @@ export function ListingsClient({
         <div className="flex items-center gap-1 flex-wrap">
           {tabs.map((t) => {
             const active = tab === t.id;
-            const badgeBg = active ? TAB_BADGE_ACTIVE[t.tone] : "bg-white/60 text-muted-foreground";
+            const badgeBg = active ? TAB_BADGE_ACTIVE[t.tone] : "bg-muted text-muted-foreground";
             return (
               <button
                 key={t.id}
@@ -845,7 +845,7 @@ export function ListingsClient({
                 className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12.5px] font-medium transition-all ${
                   active
                     ? "bg-card border border-border text-foreground "
-                    : "text-muted-foreground hover:text-gray-900 hover:bg-white/50"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
               >
                 {t.label}
@@ -928,7 +928,7 @@ export function ListingsClient({
                 {group}
                 <span className="tabular-nums text-muted-foreground">({activeGroups[group]!.length})</span>
               </h2>
-              <div className="flex-1 border-t border-white/40" />
+              <div className="flex-1 border-t border-border" />
             </div>
             <div className="space-y-2">
               {activeGroups[group]!.map((entry) => (

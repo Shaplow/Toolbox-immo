@@ -139,7 +139,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
       <button
         type="button"
         onClick={() => router.push("/transcriptions")}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-gray-900"
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="w-4 h-4" />
         Retour
@@ -152,7 +152,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
             <Mic2 className="w-5 h-5 text-info-700" />
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-gray-900 truncate">
+            <h1 className="font-semibold text-foreground truncate">
               {job.inputFilename ?? "Transcription"}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">

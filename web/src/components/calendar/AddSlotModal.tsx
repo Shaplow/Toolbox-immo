@@ -74,7 +74,7 @@ interface AddSlotModalProps {
 const DAYS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 const COVER_MODE_OPTIONS = [
-  { value: "", label: "Hérite du pattern" },
+  { value: "", label: "Hérite de la recette" },
   { value: "none", label: "Pas de cover" },
   { value: "manualSelect", label: "Sélection libre (CM)" },
   { value: "autoPack", label: "Pack auto → sélection (CM)" },
@@ -344,7 +344,7 @@ export function AddSlotModal({
       return;
     }
     if (!canSubmit()) {
-      setError(isPatternMode ? "Sélectionne un pattern." : "Renseigne au moins un titre.");
+      setError(isPatternMode ? "Sélectionne une recette." : "Renseigne au moins un titre.");
       return;
     }
     setSaving(true);
@@ -398,7 +398,7 @@ export function AddSlotModal({
         assigneeVideasteName: slot.assigneeVideaste?.name ?? null,
       });
       toast.success(
-        nextActionLine ? `Slot créé — ${nextActionLine}` : "Slot créé",
+        nextActionLine ? `Publication créée — ${nextActionLine}` : "Publication créée",
       );
 
       onCreated(slot);
@@ -443,7 +443,7 @@ export function AddSlotModal({
 
   return (
     <Modal open onClose={onClose} size="lg">
-      <Modal.Header onClose={onClose}>Nouveau slot</Modal.Header>
+      <Modal.Header onClose={onClose}>Nouvelle publication</Modal.Header>
 
       <form
         onSubmit={(e) => {
@@ -561,7 +561,7 @@ export function AddSlotModal({
           {/* Fiche (ex-Bien) — requise si la recette l'exige, optionnelle sinon */}
           {isPatternMode && selectedPattern && (
             <FormField
-              label="Bien"
+              label="Fiche"
               required={!!(selectedPattern.requiresEntityTypeId || selectedPattern.requiresProperty)}
               help={
                 selectedPattern.requiresEntityTypeId || selectedPattern.requiresProperty
@@ -573,8 +573,8 @@ export function AddSlotModal({
                 typeId={selectedPattern.requiresEntityTypeId ?? "etype_bien"}
                 value={propertyId}
                 onChange={setPropertyId}
-                placeholder="Aucun bien"
-                emptyLabel="Aucun bien"
+                placeholder="Aucune fiche"
+                emptyLabel="Aucune fiche"
               />
             </FormField>
           )}
@@ -583,7 +583,7 @@ export function AddSlotModal({
           {isPatternMode && (selectedPattern?.requiresEntityTypeId || selectedPattern?.requiresProperty) && !propertyId && (
             <div className="flex items-start gap-2 text-[11px] text-warning-700 bg-warning-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
               <AlertCircle size={12} className="mt-0.5 shrink-0" />
-              Cette recette nécessite un bien. Sélectionnez-en un pour continuer.
+              Cette recette nécessite une fiche. Sélectionnez-en une pour continuer.
             </div>
           )}
 
@@ -592,7 +592,7 @@ export function AddSlotModal({
             <div className="flex items-start gap-2 rounded-xl bg-warning-50/70 px-3 py-2.5 text-[12px] text-warning-700 ">
               <AlertCircle size={14} className="mt-0.5 shrink-0" />
               <span>
-                Pas de pattern actif sur ce compte. Tu peux créer un slot manuel, ou{" "}
+                Pas de recette active sur ce compte. Tu peux créer une publication manuelle, ou{" "}
                 <Link
                   href={`/admin/accounts/${accountId}`}
                   target="_blank"
@@ -643,7 +643,7 @@ export function AddSlotModal({
             time !== selectedPattern.publishTime && (
               <div className="rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3 ">
                 <p className="text-[12px] text-warning-700">
-                  <span className="font-semibold">Heure différente du pattern</span>{" "}
+                  <span className="font-semibold">Heure différente de la recette</span>{" "}
                   ({selectedPattern.publishTime}). Le slot sera créé à {time}. Si tu génères
                   la semaine plus tard, un autre slot pourrait être ajouté à{" "}
                   {selectedPattern.publishTime}.
@@ -657,8 +657,8 @@ export function AddSlotModal({
             required={!isPatternMode}
             help={
               isPatternMode
-                ? "Optionnel : surcharge le label du pattern."
-                : "Nom du bien, propriétaire, sujet…"
+                ? "Optionnel : surcharge le label de la recette."
+                : "Nom de la fiche, propriétaire, sujet…"
             }
           >
             <Input
@@ -686,7 +686,7 @@ export function AddSlotModal({
           <CollapsibleSection
             title={
               isPatternMode
-                ? "Équipe assignée · pré-remplie depuis le pattern"
+                ? "Équipe assignée · pré-remplie depuis la recette"
                 : "Équipe assignée"
             }
             defaultOpen={!teamPrefilledFromPattern}

@@ -205,7 +205,7 @@ export function CaptionPromptsPanel({
               <div className="px-5 py-4 flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                    <p className="text-sm font-medium text-foreground">{p.name}</p>
                     {p.autoHighlight.enabled && (
                       <span className="rounded-full bg-danger-100 px-2 py-0.5 text-[11px] font-medium text-danger-700">
                         {formatAutoHighlightModeLabel(p.autoHighlight.mode)}

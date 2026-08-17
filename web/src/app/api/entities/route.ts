@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
       {
         typeId: searchParams.get("typeId"),
         includeArchived: searchParams.get("includeArchived") === "true",
+        scheduledFrom: searchParams.get("scheduledFrom"),
+        scheduledTo: searchParams.get("scheduledTo"),
       },
       userContext,
     );

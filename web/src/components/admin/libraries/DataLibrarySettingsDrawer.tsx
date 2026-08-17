@@ -305,11 +305,11 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
             Champs des fiches
           </h3>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Définis les colonnes attendues dans une fiche (ex : <code className="text-[10.5px] bg-white/60 px-1 rounded">titre</code>, <code className="text-[10.5px] bg-white/60 px-1 rounded">prix</code>, <code className="text-[10.5px] bg-white/60 px-1 rounded">surface</code>). Ces champs servent à&nbsp;:
+            Définis les colonnes attendues dans une fiche (ex : <code className="text-[10.5px] bg-muted px-1 rounded">titre</code>, <code className="text-[10.5px] bg-muted px-1 rounded">prix</code>, <code className="text-[10.5px] bg-muted px-1 rounded">surface</code>). Ces champs servent à&nbsp;:
             <br />— générer un modèle CSV propre (même sans fiche existante),
             <br />— construire le formulaire « Nouvelle fiche »,
             <br />— valider les imports.
-            <br />La colonne <code className="text-[10.5px] bg-white/60 px-1 rounded">set_tag</code> est ajoutée automatiquement.
+            <br />La colonne <code className="text-[10.5px] bg-muted px-1 rounded">set_tag</code> est ajoutée automatiquement.
           </p>
           {fields.length > 0 && (
             <p className="text-[10.5px] text-muted-foreground">

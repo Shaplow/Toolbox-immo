@@ -73,7 +73,7 @@ export function CaptionsSourcePicker({
           type="button"
           onClick={() => setSourceTab("transcription")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            sourceTab === "transcription" ? "bg-muted text-gray-900" : "text-muted-foreground hover:text-foreground"
+            sourceTab === "transcription" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Mic size={12} /> Transcriptions
@@ -82,7 +82,7 @@ export function CaptionsSourcePicker({
           type="button"
           onClick={() => setSourceTab("upload")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            sourceTab === "upload" ? "bg-muted text-gray-900" : "text-muted-foreground hover:text-foreground"
+            sourceTab === "upload" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Upload size={12} /> Uploader un fichier

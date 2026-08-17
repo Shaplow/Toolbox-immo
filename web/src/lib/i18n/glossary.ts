@@ -61,7 +61,7 @@ export const COVER_MODE_LABELS_FR: Record<string, string> = {
 export const NEEDS_DESCRIPTION_LABELS_FR: Record<string, string> = {
   none: "Aucune",
   manualWrite: "Manuelle",
-  preFilled: "Pré-remplie par bien",
+  preFilled: "Pré-remplie par fiche",
   fixed: "Texte fixe",
   autoGenerate: "Auto-générée",
 };

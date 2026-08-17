@@ -1,9 +1,14 @@
+import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 import Link from "next/link";
 import { CalendarDays, AlertTriangle, FileQuestion, ArrowRight, Building2, Instagram } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import type { SlotStatus } from "@/types/roles";
 import { TERMINAL_STATUSES } from "@/types/worklist";
 import { getInboxItems } from "@/lib/services/inbox/getInboxItems";
+import { MiniWeekCalendar, type MiniCalItem } from "./MiniWeekCalendar";
+import { getCurrentWeekMonday, getCurrentWeekSunday } from "@/types/worklist";
+import { STATUS_DOT } from "@/lib/slots/statusLabels";
+import { timeFr } from "@/lib/date/formatFr";
 import { AdminInbox } from "./AdminInbox";
 
 const ACTIVE_STATUSES: SlotStatus[] = [
@@ -32,7 +37,7 @@ interface HomeAdminProps {
 export async function HomeAdmin({ userName }: HomeAdminProps) {
   const now = new Date();
 
-  const [overdueCount, noPatternCount, inboxItems] = await Promise.all([
+  const [overdueCount, noPatternCount, inboxItems, accountsCount, recipesCount, weekSlots] = await Promise.all([
     prisma.publicationSlot.count({
       where: {
         scheduledAt: { lt: now, not: null },
@@ -52,6 +57,26 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
       },
     }),
     getInboxItems(),
+    // Checklist « Démarrer » (V3.3) — affichée tant que la base n'est pas posée.
+    prisma.instagramAccount.count({ where: { id: { notIn: [...SHARED_SENTINEL_IDS] } } }),
+    prisma.patternTemplate.count({ where: { isArchived: false } }),
+    // « Ma semaine » (V3.3) — l'admin était le seul rôle sans vue semaine sur
+    // son accueil.
+    prisma.publicationSlot.findMany({
+      where: {
+        scheduledAt: { gte: getCurrentWeekMonday(), lte: getCurrentWeekSunday() },
+        status: { notIn: [...TERMINAL_STATUSES] },
+      },
+      orderBy: { scheduledAt: "asc" },
+      take: 60,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        scheduledAt: true,
+        account: { select: { handle: true } },
+      },
+    }),
   ]);
 
   const todayLabel = now.toLocaleDateString("fr-FR", {
@@ -92,7 +117,27 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
           </Link>
         </div>
 
-        <AdminInbox items={inboxItems} />
+        <AdminInbox items={inboxItems} accountsCount={accountsCount} recipesCount={recipesCount} />
+
+        <div>
+          <h2 className="text-[13px] font-semibold tracking-tight text-foreground mb-2">
+            La semaine
+          </h2>
+          <MiniWeekCalendar
+            items={weekSlots
+              .filter((s) => s.scheduledAt)
+              .map((s): MiniCalItem => ({
+                id: s.id,
+                href: `/publications/${s.id}`,
+                title: s.title ?? (s.account ? `@${s.account.handle}` : "Sans titre"),
+                dateIso: (s.scheduledAt as Date).toISOString(),
+                timeLabel: timeFr(s.scheduledAt as Date),
+                dotClass: STATUS_DOT[s.status as SlotStatus] ?? "bg-gray-400",
+                subtitle: s.account ? `@${s.account.handle}` : undefined,
+              }))}
+            weekStartIso={getCurrentWeekMonday().toISOString()}
+          />
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Link

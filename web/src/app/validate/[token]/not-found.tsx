@@ -17,7 +17,7 @@ export default function ValidateNotFound() {
     <div className="min-h-screen flex items-center justify-center bg-muted p-6">
       <div className="max-w-md w-full text-center space-y-4">
         <div className="text-6xl">🔗</div>
-        <h1 className="text-2xl font-semibold text-gray-900">Ce lien n&apos;est plus valide</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Ce lien n&apos;est plus valide</h1>
         <p className="text-[14px] text-muted-foreground leading-relaxed">
           Le lien de validation que tu as utilisé est expiré, révoqué ou la publication a déjà été
           traitée. Demande à ton interlocuteur Toolbox de te renvoyer un lien à jour.

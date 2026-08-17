@@ -393,7 +393,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   // ── Rendu vue sélection ───────────────────────────────────────────────────
   if (view === "select") {
     return (
-      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+      <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto">
         <div
           className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mt-8 mb-8 flex flex-col"
           onClick={(e) => e.stopPropagation()}
@@ -402,7 +402,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
           <div className="flex items-center justify-between px-6 py-4 border-b border-border">
             <div className="flex items-center gap-2">
               <Wand2 size={18} className="text-danger-700" />
-              <h2 className="text-base font-semibold text-gray-900">Atelier Autocut</h2>
+              <h2 className="text-base font-semibold text-foreground">Atelier Autocut</h2>
               <span className="text-xs text-muted-foreground">— {library.name}</span>
             </div>
             <div className="flex items-center gap-2">
@@ -437,7 +437,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
           <div className="px-6 py-3 flex items-center gap-3 border-b border-gray-50">
             <button
               onClick={toggleAll}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-gray-900"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
             >
               {selectedIds.size === selectableCount && selectableCount > 0
                 ? <CheckSquare size={14} className="text-info-700" />
@@ -532,7 +532,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
                       ) : (
                         <span className="w-[15px] flex-shrink-0" />
                       )}
-                      <span className={`text-sm flex-1 truncate ${isCut ? "text-muted-foreground" : "text-gray-800"}`}>
+                      <span className={`text-sm flex-1 truncate ${isCut ? "text-muted-foreground" : "text-foreground"}`}>
                         {asset.filename}
                       </span>
                       {asset.duration !== null && (
@@ -557,7 +557,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   const totalPages = Math.max(1, Math.ceil(reviewTotal / pageSize));
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto">
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mt-8 mb-8 flex flex-col max-h-[calc(100vh-4rem)]"
         onClick={(e) => e.stopPropagation()}
@@ -571,7 +571,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
             >
               <ArrowLeft size={16} />
             </button>
-            <h2 className="text-base font-semibold text-gray-900">
+            <h2 className="text-base font-semibold text-foreground">
               Review — {reviewTotal} à valider
             </h2>
           </div>

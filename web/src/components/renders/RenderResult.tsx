@@ -138,7 +138,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
 
       {/* Error message — carte glass rose */}
       {status === "ERROR" && errorMsg && !isWarningPayload && (
-        <div className="rounded-2xl bg-gradient-to-b from-danger-50/85 to-danger-50/55  px-4 py-3">
+        <div className="rounded-2xl bg-danger-50  px-4 py-3">
           <p className="text-[13px] text-danger-700">{errorMsg}</p>
         </div>
       )}
@@ -147,16 +147,16 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
       {(stage || statusDetail || typeof progress === "number") && status !== "DONE" && (
         <div className="rounded-2xl bg-card border border-border  px-4 py-3 space-y-2">
           {stage && (
-            <p className="text-[12.5px] font-medium text-gray-800">
+            <p className="text-[12.5px] font-medium text-foreground">
               Étape : {getRenderStageLabel(stage)}
             </p>
           )}
           {statusDetail && <p className="text-[12px] text-muted-foreground">{statusDetail}</p>}
           {typeof progress === "number" && (
             <div className="space-y-1">
-              <div className="w-full bg-white/60 rounded-full h-1.5 overflow-hidden shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]">
                 <div
-                  className="bg-gradient-to-r from-warning-200 to-warning-600 h-1.5 rounded-full transition-all duration-500"
+                  className="bg-warning-600 h-1.5 rounded-full transition-all duration-500"
                   style={{ width: `${Math.max(3, Math.round(progress * 100))}%` }}
                 />
               </div>
@@ -170,7 +170,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
 
       {/* Avertissements résolution (DONE + WARNINGS:) */}
       {warningList && (
-        <div className="rounded-2xl bg-gradient-to-b from-info-50/85 to-info-50/55  px-4 py-3">
+        <div className="rounded-2xl bg-info-50  px-4 py-3">
           <p className="text-[12.5px] font-medium text-info-700 mb-1.5">
             Avertissements résolution
           </p>
@@ -187,7 +187,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
       {/* Preview — carte glass, media contenu à max-h-[60vh] pour rentrer
           dans l'écran avec le footer actions visible */}
       {status === "DONE" && (videoUrl || pngUrl) && (
-        <div className="rounded-2xl bg-gradient-to-b from-gray-50/80 to-gray-100/60  overflow-hidden">
+        <div className="rounded-2xl bg-muted  overflow-hidden">
           <div className="flex items-center justify-center min-h-[35vh] max-h-[60vh] p-3">
             {videoUrl ? (
               <video
@@ -227,7 +227,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
             <a
               href={downloadUrl}
               download
-              className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium bg-gradient-to-b from-gray-700 to-gray-900 text-white  hover:from-gray-600 hover:to-gray-800 transition-all focus-ring"
+              className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium bg-gray-800 text-white  hover:bg-gray-700 transition-all focus-ring"
             >
               <Download size={14} />
               Télécharger {downloadExt}
@@ -248,10 +248,10 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
       )}
 
       {/* Liens secondaires — back + nouveau visuel from scratch */}
-      <div className="flex items-center gap-4 pt-3 border-t border-white/40 text-[12px]">
+      <div className="flex items-center gap-4 pt-3 border-t border-border text-[12px]">
         <Link
           href="/listings"
-          className="text-muted-foreground hover:text-gray-900 transition-colors font-medium"
+          className="text-muted-foreground hover:text-foreground transition-colors font-medium"
         >
           ← Mes générations
         </Link>

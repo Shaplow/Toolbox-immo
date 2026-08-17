@@ -8,7 +8,7 @@
  * MediaAssetEditModal, AutocutReviewCard, validate/[token]…).
  *
  * Doctrine Liquid Glass v2 :
- * - Chrome glass (controls) optionnel — bandeau bas backdrop-blur + ring inset.
+ * - Chrome glass (controls) optionnel — bandeau bas + ring inset.
  * - Play button center : FAB rond glass-strong avec halo extérieur.
  * - Progress bar : track ring inset + fill gradient color + thumb spéculaire.
  * - Caption layer : badge glass tinted bas (au-dessus des controls).
@@ -285,7 +285,7 @@ export function VideoPlayer({
           <p
             className={[
               "px-3 py-1.5 rounded-md text-[13px] font-medium text-white text-center leading-tight",
-              "bg-gray-950/55 backdrop-blur-[8px] backdrop-saturate-150",
+              "bg-gray-950/55",
               "shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_4px_12px_-2px_rgba(0,0,0,0.32)]",
             ].join(" ")}
           >
@@ -321,7 +321,7 @@ export function VideoPlayer({
             <div className="relative shrink-0">
               {volumeOpen && (
                 <div
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-2.5 rounded-xl bg-gray-950/55 backdrop-blur-[16px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.08),0_8px_24px_-4px_rgba(0,0,0,0.4)]"
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-2.5 rounded-xl bg-gray-950/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.08),0_8px_24px_-4px_rgba(0,0,0,0.4)]"
                   onMouseLeave={() => setVolumeOpen(false)}
                 >
                   <input

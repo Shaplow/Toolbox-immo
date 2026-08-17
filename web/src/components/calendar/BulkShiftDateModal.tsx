@@ -105,7 +105,7 @@ export function BulkShiftDateModal({ slotIds, onPatched, onClose }: Props) {
             className={`px-3 py-2 rounded-lg text-[12px] font-medium transition ${
               mode === "relative"
                 ? "bg-gray-900 text-white"
-                : "bg-white/55 text-foreground"
+                : "bg-muted text-foreground"
             }`}
           >
             Rapide
@@ -116,7 +116,7 @@ export function BulkShiftDateModal({ slotIds, onPatched, onClose }: Props) {
             className={`px-3 py-2 rounded-lg text-[12px] font-medium transition ${
               mode === "absolute"
                 ? "bg-gray-900 text-white"
-                : "bg-white/55 text-foreground"
+                : "bg-muted text-foreground"
             }`}
           >
             Date précise

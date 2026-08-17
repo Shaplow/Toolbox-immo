@@ -441,7 +441,7 @@ export function FieldInput({
   const helperText = field.description || (isConditional
     ? `Affiché après le choix ${field.showIf?.field} = ${field.showIf?.equals}`
     : "");
-  const controlClassName = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-info-200";
+  const controlClassName = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-info-200";
 
   return (
     <div>

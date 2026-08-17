@@ -52,11 +52,11 @@ export function DescriptionHistoryItem({ job }: Props) {
           onClick={() => setOpen((v) => !v)}
           className="flex-1 text-left flex items-center gap-2 min-w-0"
         >
-          <span className="text-sm font-medium text-gray-800 truncate">
+          <span className="text-sm font-medium text-foreground truncate">
             {job.inputFilename ?? "Sans nom"}
           </span>
           {job.prompt && (
-            <span className="text-[10px] text-gray-400 shrink-0">— {job.prompt.name}</span>
+            <span className="text-[10px] text-muted-foreground shrink-0">— {job.prompt.name}</span>
           )}
           <span
             className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
@@ -66,26 +66,26 @@ export function DescriptionHistoryItem({ job }: Props) {
                   ? "bg-green-50 text-green-600"
                   : isFailed
                     ? "bg-red-50 text-red-500"
-                    : "bg-gray-100 text-gray-500"
+                    : "bg-gray-100 text-muted-foreground"
             }`}
             title={notApplied ? (job.errorMsg ?? undefined) : undefined}
           >
             {notApplied ? "Non appliquée" : isDone ? "OK" : isFailed ? "Erreur" : job.status}
           </span>
         </button>
-        <span className="text-[11px] text-gray-400 shrink-0">
+        <span className="text-[11px] text-muted-foreground shrink-0">
           {new Date(job.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
         </span>
         {isDone && job.result && (
           <button
             onClick={handleCopy}
-            className="shrink-0 text-gray-400 hover:text-gray-700 transition-colors"
+            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
             title="Copier"
           >
             {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
           </button>
         )}
-        <button onClick={() => setOpen((v) => !v)} className="shrink-0 text-gray-300 hover:text-gray-500">
+        <button onClick={() => setOpen((v) => !v)} className="shrink-0 text-muted-foreground hover:text-muted-foreground">
           {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
       </div>
@@ -97,7 +97,7 @@ export function DescriptionHistoryItem({ job }: Props) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="mt-1 block text-left w-full text-[11px] text-gray-500 line-clamp-2 hover:text-gray-700 transition-colors"
+          className="mt-1 block text-left w-full text-[11px] text-muted-foreground line-clamp-2 hover:text-foreground transition-colors"
         >
           {excerpt}
         </button>
@@ -111,7 +111,7 @@ export function DescriptionHistoryItem({ job }: Props) {
             </p>
           )}
           {isDone && job.result ? (
-            <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed bg-gray-50 rounded-lg px-3 py-2">
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed bg-gray-50 rounded-lg px-3 py-2">
               {job.result}
             </p>
           ) : isFailed ? (

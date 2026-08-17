@@ -197,7 +197,7 @@ export function SegmentTrimEditor({ segments, videoFile, videoSrcUrl = null, onC
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div>
-          <p className="text-sm font-semibold text-gray-900">Révision des sous-titres</p>
+          <p className="text-sm font-semibold text-foreground">Révision des sous-titres</p>
           <p className="text-xs text-muted-foreground mt-0.5">
             {includedCount}/{segments.length} segments actifs
           </p>

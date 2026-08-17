@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { FileStack, Plus, Settings2, List, CalendarClock } from "lucide-react";
+import { FileStack, Plus, Search, Settings2, List, CalendarClock } from "lucide-react";
+import { Input } from "@/components/ui/Input";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { entityTypeIcon } from "@/components/entities/entityTypeIcons";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Table, type TableColumn } from "@/components/ui/Table";
@@ -52,6 +55,7 @@ export function FichesListClient({
   const [entities, setEntities] = useState<EntitySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async (typeId: string) => {
     if (!typeId) return;
@@ -114,8 +118,9 @@ export function FichesListClient({
       });
     }
     cols.push({
+      // Somme reels + missions — « Publications » couvre les deux (V3.2).
       id: "linked",
-      label: activeType?.hasRushes ? "Reels" : "Missions",
+      label: "Publications",
       align: "center",
       cell: (row) => (
         <span className="text-muted-foreground text-xs">{row._count.slots + row._count.shootSlots}</span>
@@ -139,6 +144,16 @@ export function FichesListClient({
   }, [activeType]);
 
   const typeNamePlural = activeType?.namePlural ?? activeType?.name ?? "Fiches";
+
+  const filteredEntities = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return entities;
+    return entities.filter(
+      (e) =>
+        e.label.toLowerCase().includes(q) ||
+        Object.values(e.fields).some((v) => v.toLowerCase().includes(q)),
+    );
+  }, [entities, search]);
 
   return (
     <>
@@ -174,7 +189,7 @@ export function FichesListClient({
             variant="line"
             value={activeType?.id ?? ""}
             onChange={selectType}
-            items={types.map((t) => ({ id: t.id, label: t.namePlural ?? t.name }))}
+            items={types.map((t) => ({ id: t.id, label: t.namePlural ?? t.name, icon: entityTypeIcon(t.icon) }))}
             className="mb-4"
           />
 
@@ -182,28 +197,16 @@ export function FichesListClient({
             <>
               <div className="flex items-center justify-between gap-3 mb-4">
                 {activeType.hasPlanning ? (
-                  <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setView("planning")}
-                      className={[
-                        "inline-flex items-center gap-1.5 px-2.5 h-7 rounded text-[12px] font-medium transition-colors",
-                        view === "planning" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground",
-                      ].join(" ")}
-                    >
-                      <CalendarClock size={13} /> Planning
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setView("list")}
-                      className={[
-                        "inline-flex items-center gap-1.5 px-2.5 h-7 rounded text-[12px] font-medium transition-colors",
-                        view === "list" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground",
-                      ].join(" ")}
-                    >
-                      <List size={13} /> Liste
-                    </button>
-                  </div>
+                  <Tabs
+                    variant="pill"
+                    size="sm"
+                    value={view}
+                    onChange={(v) => setView(v as "list" | "planning")}
+                    items={[
+                      { id: "planning", label: "Planning", icon: CalendarClock },
+                      { id: "list", label: "Liste", icon: List },
+                    ]}
+                  />
                 ) : (
                   <span />
                 )}
@@ -215,6 +218,18 @@ export function FichesListClient({
                 )}
               </div>
 
+              {view === "list" && (
+                <div className="mb-3 max-w-xs">
+                  <Input
+                    value={search}
+                    onChange={setSearch}
+                    placeholder={`Rechercher dans ${typeNamePlural.toLowerCase()}…`}
+                    icon={Search}
+                    aria-label="Rechercher une fiche"
+                  />
+                </div>
+              )}
+
               {view === "planning" && activeType.hasPlanning ? (
                 <EntityCalendar
                   type={activeType}
@@ -225,18 +240,30 @@ export function FichesListClient({
                   cms={cms}
                 />
               ) : loading ? (
-                <p className="text-[12.5px] text-muted-foreground py-8 text-center">Chargement…</p>
-              ) : entities.length === 0 ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-10 rounded-md" />
+                  ))}
+                </div>
+              ) : filteredEntities.length === 0 ? (
                 <EmptyState
                   icon={FileStack}
-                  title={`Aucune fiche « ${activeType.name} »`}
-                  description={`Créez une fiche pour la réutiliser dans ${typeNamePlural.toLowerCase()}.`}
-                  cta={isAdmin ? { label: "Créer une fiche", onClick: () => setCreateOpen(true) } : undefined}
+                  title={
+                    search.trim()
+                      ? "Aucune fiche ne correspond à la recherche"
+                      : `Aucune fiche « ${activeType.name} »`
+                  }
+                  description={
+                    search.trim()
+                      ? "Essaie un autre terme, ou efface la recherche."
+                      : `Créez une fiche pour la réutiliser dans ${typeNamePlural.toLowerCase()}.`
+                  }
+                  cta={isAdmin && !search.trim() ? { label: "Créer une fiche", onClick: () => setCreateOpen(true) } : undefined}
                 />
               ) : (
                 <Table
                   columns={columns}
-                  rows={entities}
+                  rows={filteredEntities}
                   rowKey={(r) => r.id}
                   onRowClick={(row) => router.push(`/fiches/${row.id}`)}
                 />

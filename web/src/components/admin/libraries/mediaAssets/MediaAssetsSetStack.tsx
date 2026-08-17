@@ -60,9 +60,9 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
         {/* Couche arrière fake : 2 décalages discrets pour suggérer une pile (uniquement si N > 1). */}
         {total > 1 && (
           <>
-            <div className="absolute top-1 right-1 bottom-1 left-1 rounded-xl bg-white/80 shadow-[0_1px_2px_rgba(15,23,42,0.08),inset_0_0_0_1px_rgba(15,23,42,0.05)] -z-10" aria-hidden />
+            <div className="absolute top-1 right-1 bottom-1 left-1 rounded-xl bg-card shadow-[0_1px_2px_rgba(15,23,42,0.08),inset_0_0_0_1px_rgba(15,23,42,0.05)] -z-10" aria-hidden />
             {total > 2 && (
-              <div className="absolute top-2 right-2 bottom-2 left-2 rounded-xl bg-white/60 shadow-[0_1px_2px_rgba(15,23,42,0.06),inset_0_0_0_1px_rgba(15,23,42,0.04)] -z-20" aria-hidden />
+              <div className="absolute top-2 right-2 bottom-2 left-2 rounded-xl bg-card shadow-[0_1px_2px_rgba(15,23,42,0.06),inset_0_0_0_1px_rgba(15,23,42,0.04)] -z-20" aria-hidden />
             )}
           </>
         )}
@@ -70,12 +70,12 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
         {/* Play overlay au hover (lance le 1er asset implicitement). */}
         <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover/stack:bg-black/20 transition-colors pointer-events-none">
           <span className="opacity-0 group-hover/stack:opacity-100 transition-opacity inline-flex h-9 w-9 rounded-full bg-card border border-border items-center justify-center shadow-[0_2px_4px_rgba(15,23,42,0.12),0_8px_24px_-4px_rgba(15,23,42,0.18)]">
-            <Play size={14} className="text-gray-900 ml-0.5" fill="currentColor" />
+            <Play size={14} className="text-foreground ml-0.5" fill="currentColor" />
           </span>
         </div>
         {/* Badge +N en haut-right si plusieurs assets. */}
         {total > 1 && (
-          <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-card border border-border text-[10px] font-semibold text-gray-900 ">
+          <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-card border border-border text-[10px] font-semibold text-foreground ">
             <Layers size={9} className="text-muted-foreground" />+{total - 1}
           </span>
         )}

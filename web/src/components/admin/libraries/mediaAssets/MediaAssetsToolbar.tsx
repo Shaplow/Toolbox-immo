@@ -130,7 +130,7 @@ export function MediaAssetsToolbar({
             </Button>
             {autocutPendingCount > 0 && (
               <span
-                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-gradient-to-b from-warning-600 to-warning-600 text-white text-[10px] font-semibold leading-none shadow-[0_0_0_2px_rgba(255,255,255,1),0_2px_4px_rgba(245,158,107,0.4)]"
+                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-warning-600 text-white text-[10px] font-semibold leading-none shadow-[0_0_0_2px_rgba(255,255,255,1),0_2px_4px_rgba(245,158,107,0.4)]"
                 title={`${autocutPendingCount} analyse${autocutPendingCount > 1 ? "s" : ""} à valider`}
               >
                 {autocutPendingCount > 99 ? "99+" : autocutPendingCount}
@@ -148,7 +148,7 @@ export function MediaAssetsToolbar({
 
       {/* Reset error */}
       {resetError && (
-        <div className="rounded-2xl bg-gradient-to-b from-danger-50/85 via-danger-50/55 to-white/55 p-3 ">
+        <div className="rounded-2xl bg-danger-50 p-3 ">
           <p className="text-[12.5px] text-danger-700">{resetError}</p>
         </div>
       )}

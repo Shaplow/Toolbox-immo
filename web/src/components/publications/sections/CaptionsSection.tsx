@@ -187,7 +187,7 @@ export function CaptionsSection({
   const canRegenerate = isDone || isError;
 
   const linkedBadge = currentVersion ? (
-    <span className="text-[11px] text-muted-foreground bg-card border border-border border border-white/50 px-2 py-0.5 rounded-full font-medium ">
+    <span className="text-[11px] text-muted-foreground bg-card border border-border border border-border px-2 py-0.5 rounded-full font-medium ">
       Lié à V{currentVersion.versionNumber}
     </span>
   ) : null;
@@ -207,7 +207,7 @@ export function CaptionsSection({
         defaultOpen={defaultOpen}
         collapsible={collapsible}
         actions={
-          <span className="text-[11px] text-muted-foreground bg-card border border-border border border-white/50 px-2 py-0.5 rounded-full font-medium ">
+          <span className="text-[11px] text-muted-foreground bg-card border border-border border border-border px-2 py-0.5 rounded-full font-medium ">
             Mode manuel
           </span>
         }

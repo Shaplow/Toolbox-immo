@@ -54,6 +54,9 @@ export interface CreateEntityInput {
 export interface ListEntitiesFilters {
   typeId?: string | null;
   includeArchived?: boolean;
+  /** Plage sur scheduledAt (ISO) — V3.2 : fetch par semaine du planning. */
+  scheduledFrom?: string | null;
+  scheduledTo?: string | null;
 }
 
 export interface UpdateEntityInput {
@@ -415,6 +418,14 @@ export async function listEntities(filters: ListEntitiesFilters, ctx: UserContex
       ...scope,
       ...(filters.typeId ? { typeId: filters.typeId } : {}),
       ...(filters.includeArchived ? {} : { isArchived: false }),
+      ...(filters.scheduledFrom || filters.scheduledTo
+        ? {
+            scheduledAt: {
+              ...(filters.scheduledFrom ? { gte: new Date(filters.scheduledFrom) } : {}),
+              ...(filters.scheduledTo ? { lt: new Date(filters.scheduledTo) } : {}),
+            },
+          }
+        : {}),
     },
     orderBy,
     take: 500,

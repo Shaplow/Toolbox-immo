@@ -421,7 +421,7 @@ export function DataEntriesPanel({ libraryId, libraryName = "bibliotheque", fiel
     >
       {pageDragOver && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-info-600/10 pointer-events-none">
-          <div className="rounded-xl bg-gradient-to-b from-white to-white/85  px-6 py-4 text-[13px] font-medium text-gray-800">
+          <div className="rounded-xl bg-card  px-6 py-4 text-[13px] font-medium text-foreground">
             Déposez le CSV ou Excel pour importer dans{" "}
             <span className="font-semibold">cette bibliothèque</span>
           </div>
@@ -589,7 +589,7 @@ export function DataEntriesPanel({ libraryId, libraryName = "bibliotheque", fiel
             </Button>
           </div>
           <p className="text-[10.5px] text-muted-foreground mb-1">
-            Colonne réservée : <code className="bg-white/60 px-1.5 py-0.5 rounded shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] font-mono">set_tag</code>
+            Colonne réservée : <code className="bg-muted px-1.5 py-0.5 rounded shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] font-mono">set_tag</code>
           </p>
           <p className="text-[10.5px] text-muted-foreground">
             Astuce : générez le modèle CSV depuis le builder (onglet Paramètres) pour obtenir automatiquement

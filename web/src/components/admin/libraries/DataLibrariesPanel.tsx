@@ -347,7 +347,7 @@ function DataLibraryCard({
 
       {/* Compteur fiches — plan simplification Phase 4 : plus de wrapper
           campagne, on compte directement les DataEntry de la lib. */}
-      <div className="rounded-xl bg-gradient-to-b from-success-50/85 to-success-50/45 px-2.5 py-2 ">
+      <div className="rounded-xl bg-success-50 px-2.5 py-2 ">
         <p className="text-[18px] font-semibold text-success-700 tabular-nums leading-tight">
           {lib._count.entries}
         </p>

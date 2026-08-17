@@ -61,7 +61,7 @@ export function UserCaptionsMode({
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+            <h1 className="text-xl font-semibold text-foreground flex items-center gap-2">
               <Film size={18} className="text-danger-600" /> Captions
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">Brûlez des sous-titres dans votre vidéo</p>
@@ -96,7 +96,7 @@ export function UserCaptionsMode({
                     selectedPresetId === p.id ? "bg-danger-600 border-danger-600" : "border-border"
                   }`} />
                   <div>
-                    <p className={`text-sm font-medium ${selectedPresetId === p.id ? "text-danger-700" : "text-gray-800"}`}>
+                    <p className={`text-sm font-medium ${selectedPresetId === p.id ? "text-danger-700" : "text-foreground"}`}>
                       {p.name}
                     </p>
                     {p.isBuiltin && (
@@ -210,7 +210,7 @@ function StepCard({ number, title, children }: { number: number; title: string; 
         <span className="w-6 h-6 rounded-full bg-danger-100 text-danger-700 text-xs font-bold flex items-center justify-center shrink-0">
           {number}
         </span>
-        <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
       </div>
       {children}
     </div>

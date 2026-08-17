@@ -105,7 +105,7 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
             type="button"
             onClick={() => void handleExport()}
             disabled={loading !== null}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-muted-foreground hover:bg-muted hover:text-gray-900 disabled:opacity-50 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
           >
             <Download size={13} />
             {loading === "export" ? "Export..." : "Exporter"}
@@ -114,7 +114,7 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
             type="button"
             onClick={() => void handleDuplicate()}
             disabled={loading !== null}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-muted-foreground hover:bg-muted hover:text-gray-900 disabled:opacity-50 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
           >
             <Copy size={13} />
             {loading === "duplicate" ? "..." : "Dupliquer"}

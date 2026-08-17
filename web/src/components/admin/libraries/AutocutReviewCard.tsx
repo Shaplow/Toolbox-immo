@@ -547,7 +547,7 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
     <div className="border border-border rounded-xl bg-white">
       {/* Filename + toggle rush */}
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-900 truncate max-w-sm">{asset.filename}</span>
+        <span className="text-sm font-medium text-foreground truncate max-w-sm">{asset.filename}</span>
         <div className="flex items-center gap-2 flex-shrink-0">
           {duration > 0 && <span className="text-xs text-muted-foreground">{fmt(duration)}</span>}
           <button

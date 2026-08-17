@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import { PageShell } from "@/components/ui/PageShell";
 import { prisma } from "@/lib/prisma";
 import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow, type CoverPackRow } from "@/components/listings/ListingsClient";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
@@ -304,13 +305,9 @@ export default async function ListingsPage({ searchParams }: PageProps) {
   if (inProgressCount > 0) subtitleParts.push(`${inProgressCount} en cours`);
 
   return (
-    <div className="min-h-screen">
-      <div
-        className="mx-auto max-w-[1400px] px-6 py-8"
-
-      >
+    <PageShell variant="wide">
         {/* Header (icône + titre + subtitle + actions) */}
-        <div className="rounded-t-3xl overflow-hidden">
+        <div className="rounded-t-xl overflow-hidden">
           <div className="px-6 sm:px-8 pt-6 pb-2">
             <ToolPageHeader
               icon={History}
@@ -331,7 +328,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
         {/* Banner filtre slot (glass v2 sky) */}
         {slotBannerContext && (
           <div className="px-6 sm:px-8 pb-3">
-            <div className="rounded-2xl bg-gradient-to-b from-info-50/85 to-info-50/55  px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+            <div className="rounded-2xl bg-info-50  px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2 min-w-0 text-[12.5px]">
                 <Info size={13} className="text-info-600 shrink-0" />
                 <span className="text-info-700">
@@ -377,7 +374,6 @@ export default async function ListingsPage({ searchParams }: PageProps) {
             hasCovers={hasCovers}
           />
         </div>
-      </div>
-    </div>
+    </PageShell>
   );
 }
