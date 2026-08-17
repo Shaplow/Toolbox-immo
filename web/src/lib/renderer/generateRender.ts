@@ -15,6 +15,7 @@ import { expandGroupIdsWithChildren } from "@/lib/groupLayout";
 import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
+import { computeOverlayPlan, type OverlayPlan } from "./overlayPlan";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
 import { selectAndClaimMediaAsset, selectMediaAssetFromFolder, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
 import { triggerAutoTranscriptionLocal } from "@/lib/triggerAutoTranscriptionLocal";
@@ -344,100 +345,9 @@ export async function generateRender(renderId: string): Promise<void> {
 // ─── Pipeline vidéo (RunPod ou local) ────────────────────────────────────────
 
 // ── Timed overlay helpers ──────────────────────────────────────────────────────
-
-interface SegmentMeta {
-  /** Index into the unique overlay states array (= position in overlay_paths list). */
-  index: number;
-  start: number;
-  end: number | null;
-}
-
-interface OverlayPlan {
-  /** Unique overlay states: each entry lists the block IDs to hide when rendering that PNG. */
-  states: { hiddenBlockIds: string[] }[];
-  segments: SegmentMeta[];
-}
-
-/**
- * Computes a timed overlay plan from template blocks.
- *
- * When `slotId` is provided, per-slot timing overrides (`block.slotTimings[slotId]`)
- * take priority over the global `appearAt`/`hideAt` fields.
- *
- * Returns `null` when no block has timing fields → single-overlay fast path,
- * 100% backward compatible with existing behaviour.
- */
-function computeOverlayPlan(blocks: AnyBlock[], slotId?: string): OverlayPlan | null {
-  // Resolve effective timing for a block (per-slot override takes priority)
-  function timing(b: AnyBlock) {
-    const ov = slotId ? b.slotTimings?.[slotId] : undefined;
-    return {
-      appearAt: ov?.appearAt ?? b.appearAt,
-      hideAt: ov?.hideAt ?? b.hideAt,
-    };
-  }
-
-  const hasAnyTiming = blocks.some((b) => {
-    const { appearAt, hideAt } = timing(b);
-    return (appearAt !== undefined && appearAt > 0) || hideAt !== undefined;
-  });
-  if (!hasAnyTiming) return null;
-
-  // Collect all time breakpoints
-  const bpSet = new Set<number>([0]);
-  for (const b of blocks) {
-    const { appearAt, hideAt } = timing(b);
-    if (appearAt !== undefined && appearAt > 0) bpSet.add(appearAt);
-    if (hideAt !== undefined) bpSet.add(hideAt);
-  }
-  const breakpoints = Array.from(bpSet).sort((a, b) => a - b);
-
-  // For each interval, determine which blocks are hidden
-  const intervals: { start: number; end: number | null; hiddenBlockIds: string[] }[] = [];
-  for (let i = 0; i < breakpoints.length; i++) {
-    const intervalStart = breakpoints[i];
-    const intervalEnd = i + 1 < breakpoints.length ? breakpoints[i + 1] : null;
-    const hidden = blocks
-      .filter((b) => {
-        const { appearAt, hideAt } = timing(b);
-        const ap = appearAt ?? 0;
-        const hp = hideAt;
-        return !(intervalStart >= ap && (hp === undefined || intervalStart < hp));
-      })
-      .map((b) => b.id);
-    intervals.push({ start: intervalStart, end: intervalEnd, hiddenBlockIds: hidden });
-  }
-
-  // Deduplicate identical visibility states
-  const stateKey = (ids: string[]) => JSON.stringify([...ids].sort());
-  const stateMap = new Map<string, number>();
-  const states: { hiddenBlockIds: string[] }[] = [];
-  const rawSegments: SegmentMeta[] = [];
-
-  for (const interval of intervals) {
-    const key = stateKey(interval.hiddenBlockIds);
-    let idx = stateMap.get(key);
-    if (idx === undefined) {
-      idx = states.length;
-      states.push({ hiddenBlockIds: interval.hiddenBlockIds });
-      stateMap.set(key, idx);
-    }
-    rawSegments.push({ index: idx, start: interval.start, end: interval.end });
-  }
-
-  // Merge consecutive segments that share the same overlay index
-  const segments: SegmentMeta[] = [];
-  for (const seg of rawSegments) {
-    const last = segments[segments.length - 1];
-    if (last && last.index === seg.index && last.end === seg.start) {
-      segments[segments.length - 1] = { ...last, end: seg.end };
-    } else {
-      segments.push(seg);
-    }
-  }
-
-  return { states, segments };
-}
+// computeOverlayPlan / SegmentMeta / OverlayPlan vivent dans ./overlayPlan
+// (fichier pur, testable en Vitest). Les bornes ancrées fin de clip y sont
+// sérialisées en floats négatifs, résolus côté render engine.
 
 /**
  * Resolves the first music block and its audio URL.
@@ -1128,6 +1038,13 @@ async function generateVideoRenderLocal(
       isBlockVisibleForListing(b, enrichedListingData)
     );
     const overlayPlan = computeOverlayPlan(visibleBlocksForPlan);
+    // Le chemin local clip-unique est capé à 8 états (params overlay_0..overlay_7
+    // côté render-engine/api.py) — fail loud plutôt qu'un « overlay_8 manquant » cryptique.
+    if (overlayPlan && overlayPlan.states.length > 8) {
+      throw new Error(
+        `Trop d'états d'overlay (${overlayPlan.states.length}, max 8 en rendu local) — réduire le nombre de timings distincts sur les blocs`
+      );
+    }
 
     let overlayBuffers: Buffer[];
     if (overlayPlan === null) {

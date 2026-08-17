@@ -4,6 +4,7 @@ import {
   ensureVideoSequence,
   isBlockVisibleInSlot,
   resolveBlockTimingInSlot,
+  resolveBlockTimingRefs,
 } from "@/lib/videoSequenceUtils";
 import type { TemplateJSON, TextBlock, VideoBlock, VideoSequenceSlot } from "@/types/template";
 
@@ -202,13 +203,18 @@ describe("isBlockVisibleInSlot", () => {
 
 describe("resolveBlockTimingInSlot", () => {
   it("aucun override → 0 / slotDuration", () => {
-    expect(resolveBlockTimingInSlot(mkBlock(), "s1", 2)).toEqual({ appearAt: 0, hideAt: 2 });
+    expect(resolveBlockTimingInSlot(mkBlock(), "s1", 2)).toEqual({
+      appearAt: 0,
+      hideAt: 2,
+      appearAnchor: "start",
+      hideAnchor: "start",
+    });
   });
 
   it("appearAt/hideAt globaux → utilisés", () => {
     expect(
       resolveBlockTimingInSlot(mkBlock({ appearAt: 0.5, hideAt: 1.5 }), "s1", 2),
-    ).toEqual({ appearAt: 0.5, hideAt: 1.5 });
+    ).toMatchObject({ appearAt: 0.5, hideAt: 1.5 });
   });
 
   it("slotTimings prioritaire sur global", () => {
@@ -217,7 +223,63 @@ describe("resolveBlockTimingInSlot", () => {
       hideAt: 1.5,
       slotTimings: { s1: { appearAt: 0.2, hideAt: 1.0 } },
     });
-    expect(resolveBlockTimingInSlot(block, "s1", 2)).toEqual({ appearAt: 0.2, hideAt: 1.0 });
+    expect(resolveBlockTimingInSlot(block, "s1", 2)).toMatchObject({ appearAt: 0.2, hideAt: 1.0 });
+  });
+
+  it("ancre fin → position résolue à l'échelle du slot", () => {
+    const block = mkBlock({ slotTimings: { s1: { appearAt: 3, appearAnchor: "end" } } });
+    expect(resolveBlockTimingInSlot(block, "s1", 10)).toEqual({
+      appearAt: 7,
+      hideAt: 10,
+      appearAnchor: "end",
+      hideAnchor: "start",
+    });
+  });
+
+  it("ancre fin plus grande que le slot → clamp à 0", () => {
+    const block = mkBlock({ slotTimings: { s1: { appearAt: 15, appearAnchor: "end" } } });
+    expect(resolveBlockTimingInSlot(block, "s1", 10)).toMatchObject({ appearAt: 0 });
+  });
+
+  it("hideAt résolu jamais avant appearAt (clamp)", () => {
+    const block = mkBlock({
+      slotTimings: { s1: { appearAt: 6, hideAt: 8, hideAnchor: "end" } },
+    });
+    // hideAt = 10 − 8 = 2 < appearAt 6 → clampé à 6
+    expect(resolveBlockTimingInSlot(block, "s1", 10)).toMatchObject({ appearAt: 6, hideAt: 6 });
+  });
+});
+
+// ─── resolveBlockTimingRefs ──────────────────────────────────────────────────
+
+describe("resolveBlockTimingRefs", () => {
+  it("résolution par paire : ancre slot sans valeur slot → global utilisé avec SON ancre", () => {
+    const block = mkBlock({
+      appearAt: 2,
+      appearAnchor: "end",
+      slotTimings: { s1: { hideAt: 4 } },
+    });
+    expect(resolveBlockTimingRefs(block, "s1")).toEqual({
+      appear: { anchor: "end", value: 2 },
+      hide: { anchor: "start", value: 4 },
+    });
+  });
+
+  it("l'ancre globale ne contamine pas la valeur du slot", () => {
+    const block = mkBlock({
+      appearAt: 2,
+      appearAnchor: "end",
+      slotTimings: { s1: { appearAt: 1 } },
+    });
+    expect(resolveBlockTimingRefs(block, "s1").appear).toEqual({ anchor: "start", value: 1 });
+  });
+
+  it("sans slotId → globaux seulement", () => {
+    const block = mkBlock({ hideAt: 3, hideAnchor: "end", slotTimings: { s1: { appearAt: 1 } } });
+    expect(resolveBlockTimingRefs(block)).toEqual({
+      appear: null,
+      hide: { anchor: "end", value: 3 },
+    });
   });
 });
 

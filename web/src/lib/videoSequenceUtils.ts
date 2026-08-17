@@ -1,4 +1,4 @@
-import type { AnyBlock, TemplateJSON, VideoBlock, VideoSequenceSlot } from "@/types/template";
+import type { AnyBlock, TemplateJSON, TimingAnchor, VideoBlock, VideoSequenceSlot } from "@/types/template";
 import { expandGroupIdsWithChildren, type GroupNode } from "@/lib/groupLayout";
 
 /** Résume la source vidéo d'un slot en une chaîne lisible. */
@@ -101,18 +101,68 @@ export function isBlockVisibleInSlot(block: AnyBlock, slot: VideoSequenceSlot, g
 }
 
 /**
- * Timing effectif d'un bloc dans un slot donné. Priorité :
- *   slotTimings[slot.id] > appearAt/hideAt globaux > défauts (0 / fin du slot)
+ * Borne de timing symbolique : une valeur en secondes + son ancre.
+ * anchor "end" → la valeur compte à rebours depuis la fin du clip (X s avant la fin).
+ */
+export interface TimingRef {
+  anchor: TimingAnchor;
+  value: number;
+}
+
+/**
+ * Bornes de timing effectives d'un bloc (symboliques, non résolues).
+ * Priorité par paire : slotTimings[slotId] > appearAt/hideAt globaux > null.
+ * L'ancre voyage avec sa valeur — l'ancre d'un niveau ne s'applique jamais
+ * à la valeur de l'autre niveau.
+ */
+export function resolveBlockTimingRefs(
+  block: AnyBlock,
+  slotId?: string,
+): { appear: TimingRef | null; hide: TimingRef | null } {
+  const ov = slotId ? block.slotTimings?.[slotId] : undefined;
+
+  let appear: TimingRef | null = null;
+  if (ov?.appearAt !== undefined) {
+    appear = { anchor: ov.appearAnchor ?? "start", value: ov.appearAt };
+  } else if (block.appearAt !== undefined) {
+    appear = { anchor: block.appearAnchor ?? "start", value: block.appearAt };
+  }
+
+  let hide: TimingRef | null = null;
+  if (ov?.hideAt !== undefined) {
+    hide = { anchor: ov.hideAnchor ?? "start", value: ov.hideAt };
+  } else if (block.hideAt !== undefined) {
+    hide = { anchor: block.hideAnchor ?? "start", value: block.hideAt };
+  }
+
+  return { appear, hide };
+}
+
+/** Résout une borne symbolique en position absolue à l'échelle d'un clip de durée connue. */
+export function resolveTimingRef(ref: TimingRef, duration: number): number {
+  const absolute = ref.anchor === "end" ? duration - ref.value : ref.value;
+  return Math.min(Math.max(absolute, 0), duration);
+}
+
+/**
+ * Timing effectif d'un bloc dans un slot donné, résolu à l'échelle du slot.
+ * Priorité : slotTimings[slot.id] > appearAt/hideAt globaux > défauts (0 / fin du slot).
+ * Les ancres "end" sont résolues contre `slotDuration` (indicatif pour un slot
+ * en durée auto — la vraie résolution se fait au render).
  */
 export function resolveBlockTimingInSlot(
   block: AnyBlock,
   slotId: string,
   slotDuration: number,
-): { appearAt: number; hideAt: number } {
-  const ov = block.slotTimings?.[slotId];
+): { appearAt: number; hideAt: number; appearAnchor: TimingAnchor; hideAnchor: TimingAnchor } {
+  const { appear, hide } = resolveBlockTimingRefs(block, slotId);
+  const appearAt = appear ? resolveTimingRef(appear, slotDuration) : 0;
+  const hideAt = hide ? resolveTimingRef(hide, slotDuration) : slotDuration;
   return {
-    appearAt: ov?.appearAt ?? block.appearAt ?? 0,
-    hideAt: ov?.hideAt ?? block.hideAt ?? slotDuration,
+    appearAt,
+    hideAt: Math.max(hideAt, appearAt),
+    appearAnchor: appear?.anchor ?? "start",
+    hideAnchor: hide?.anchor ?? "start",
   };
 }
 
