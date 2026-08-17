@@ -59,11 +59,23 @@ export function resolveZone(
   let startSec: number | undefined;
   let endSec: number | undefined;
 
+  // Les blocs ancrés « fin de clip » ont un appearAt relatif à la fin (position
+  // absolue inconnaissable ici) — on les écarte du calcul de zone.
+  const withStartAnchoredAppearAt = (candidates: AnyBlock[]) => {
+    const endAnchored = candidates.filter((b) => b.appearAt !== undefined && b.appearAnchor === "end");
+    if (endAnchored.length > 0) {
+      console.warn(
+        `[autoCaption] Zone "${zone.label}" (${zone.id}): ${endAnchored.length} bloc(s) ancré(s) fin de clip écarté(s) du calcul (appearAt relatif à la fin)`,
+      );
+    }
+    return candidates.filter((b) => b.appearAt !== undefined && b.appearAnchor !== "end");
+  };
+
   if (zone.startGroupId) {
     const startGroupIds = expandGroupIdsWithChildren([zone.startGroupId], groups);
     const groupBlocks = blocks.filter((b) => b.groupId && startGroupIds.has(b.groupId));
     if (groupBlocks.length > 0) {
-      const withAppearAt = groupBlocks.filter((b) => b.appearAt !== undefined);
+      const withAppearAt = withStartAnchoredAppearAt(groupBlocks);
       if (withAppearAt.length === 0) {
         console.warn(
           `[autoCaption] Zone "${zone.label}" (${zone.id}): aucun bloc du groupe startGroupId="${zone.startGroupId}" n'a de appearAt — zone ignorée`,
@@ -85,7 +97,7 @@ export function resolveZone(
     const endGroupIds = expandGroupIdsWithChildren([zone.endGroupId], groups);
     const groupBlocks = blocks.filter((b) => b.groupId && endGroupIds.has(b.groupId));
     if (groupBlocks.length > 0) {
-      const withAppearAt = groupBlocks.filter((b) => b.appearAt !== undefined);
+      const withAppearAt = withStartAnchoredAppearAt(groupBlocks);
       if (withAppearAt.length === 0) {
         console.warn(
           `[autoCaption] Zone "${zone.label}" (${zone.id}): aucun bloc du groupe endGroupId="${zone.endGroupId}" n'a de appearAt — fin de zone indéterminée, traitée comme fin de vidéo`,
