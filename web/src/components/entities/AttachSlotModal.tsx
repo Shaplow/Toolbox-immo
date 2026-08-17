@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/Input";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { FormField } from "@/components/ui/FormField";
 import { toast } from "@/components/ui/Toast";
-import { SOURCE_LABELS_FR } from "@/lib/i18n/entityLabels";
+import { SOURCE_LABELS_FR } from "@/lib/i18n/glossary";
 
 export interface AttachRecipeOption {
   id: string;

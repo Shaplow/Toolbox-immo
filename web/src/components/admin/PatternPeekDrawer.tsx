@@ -24,15 +24,15 @@ import {
 
 interface PatternPeekDrawerProps {
   open: boolean;
-  patternId: string | null;
+  patternTemplateId: string | null;
   onClose: () => void;
   /** Si fourni, le drawer affiche un bouton "Éditer" qui appelle ce callback. */
-  onOpenEdit?: (patternId: string) => void;
+  onOpenEdit?: (patternTemplateId: string) => void;
 }
 
 export function PatternPeekDrawer({
   open,
-  patternId,
+  patternTemplateId,
   onClose,
   onOpenEdit,
 }: PatternPeekDrawerProps) {
@@ -41,7 +41,7 @@ export function PatternPeekDrawer({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!open || !patternId) {
+    if (!open || !patternTemplateId) {
       setData(null);
       return;
     }
@@ -49,7 +49,7 @@ export function PatternPeekDrawer({
     setLoading(true);
     void (async () => {
       try {
-        const res = await fetch(`/api/admin/patterns/${patternId}/peek`);
+        const res = await fetch(`/api/admin/patterns/${patternTemplateId}/peek`);
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(body.error ?? `Erreur ${res.status}`);
@@ -68,7 +68,7 @@ export function PatternPeekDrawer({
     return () => {
       cancelled = true;
     };
-  }, [open, patternId, onClose]);
+  }, [open, patternTemplateId, onClose]);
 
   function goToCatalog() {
     router.push("/admin/patterns");
@@ -76,8 +76,8 @@ export function PatternPeekDrawer({
   }
 
   function triggerEdit() {
-    if (!patternId || !onOpenEdit) return;
-    onOpenEdit(patternId);
+    if (!patternTemplateId || !onOpenEdit) return;
+    onOpenEdit(patternTemplateId);
     onClose();
   }
 
@@ -97,7 +97,7 @@ export function PatternPeekDrawer({
             size="sm"
             icon={Edit}
             onClick={triggerEdit}
-            disabled={!patternId}
+            disabled={!patternTemplateId}
           >
             Éditer
           </Button>

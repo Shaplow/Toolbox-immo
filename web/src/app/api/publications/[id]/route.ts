@@ -19,7 +19,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { computePublicationSteps } from "@/lib/publications/steps";
-import { toLegacyPatternShape } from "@/lib/services/pattern/resolveEffective";
+import { toPatternView } from "@/lib/services/pattern/resolveEffective";
 import { toUserRole } from "@/lib/permissions/role";
 import { safeJSON } from "@/lib/utils/json";
 
@@ -89,7 +89,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   // Pattern effectif : recette PatternBinding (G.3). Sans lui, les steps sont
   // invisibles (render/cover/description/validation cachés).
-  const effPattern = slot.patternBinding ? toLegacyPatternShape(slot.patternBinding) : null;
+  const effPattern = slot.patternBinding ? toPatternView(slot.patternBinding) : null;
 
   // Calcul des steps côté serveur pour que le client n'ait pas à les dériver.
   const steps = computePublicationSteps({

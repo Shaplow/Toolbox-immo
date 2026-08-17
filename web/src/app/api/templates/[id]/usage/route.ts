@@ -5,12 +5,9 @@
  * template (templateId = id), pour rendre visible dans le builder l'impact
  * d'un changement de config Auto Captions / Auto Cover sur les publications.
  *
- * Retour :
- *   { patterns: Array<{
- *       id, label, isActive, accountId, accountHandle, accountName,
- *       captionPresetId | null,
- *       coverPresetName | null,  // résolu depuis coverConfig.coverPresetName
- *     }> }
+ * Retour : { patterns: TemplateUsagePattern[] } (cf. types/patternUsage.ts).
+ * `kind` discrimine les lignes binding (id = PatternBinding.id) des lignes
+ * « recette globale » sans binding (id = PatternTemplate.id).
  *
  * Sécurité :
  *  - Admin uniquement (les non-admins n'ont pas besoin de cette info dans
@@ -21,6 +18,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import type { TemplateUsagePattern } from "@/types/patternUsage";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -57,7 +55,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   // Une ligne par binding (recette appliquée à un compte) ; une ligne « globale »
   // sans compte pour les recettes catalogue sans binding.
-  const result = templates.flatMap((t) => {
+  const result: TemplateUsagePattern[] = templates.flatMap((t): TemplateUsagePattern[] => {
     const cfg = (t.coverConfig as { enabled?: boolean; coverPresetName?: string } | null) ?? {};
     const base = {
       captionPresetId: t.captionPresetId,
@@ -67,6 +65,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (t.bindings.length === 0) {
       return [
         {
+          kind: "template" as const,
           id: t.id,
           label: t.label,
           isActive: true,
@@ -78,6 +77,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ];
     }
     return t.bindings.map((b) => ({
+      kind: "binding" as const,
       id: b.id,
       label: b.customLabel ?? t.label,
       isActive: b.isActive,

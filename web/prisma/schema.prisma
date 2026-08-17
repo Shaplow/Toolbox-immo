@@ -470,15 +470,15 @@ model MediaLibrary {
   /// JSON string[] — tags de type template : ["RPI","RTIPS","RPOD"]
   tags             String                 @default("[]")
   description      String?
-  /// JSON string[] — ordre explicite des setTags pour la rotation : ["tenue1-set1","tenue2-set1","tenue1-set2"]
+  /// MORT (simplification Phase 3, 16/08) — mode « ordre fixe » décommissionné,
+  /// plus aucune lecture/écriture côté code. Colonne droppée en N+1
+  /// (pending-drops/phase3-4-drops.sql).
   setSequence      String                 @default("[]")
-  /// JSON Record<string,string> — setTag → famille : {"tenue1-set1":"tenue1","tenue1-set2":"tenue1","tenue2-set1":"tenue2"}
-  /// En mode auto, tous les setTags d'une même famille sont exclus ensemble après utilisation.
-  /// Portée de la rotation :
-  /// - "per_account" (défaut) : curseur et usages séparés par compte. Chaque négociateur avance
-  ///   dans la bibliothèque indépendamment des autres.
-  /// - "shared" : un seul curseur partagé entre tous les comptes. Tous les comptes voient le
-  ///   même contenu à chaque génération (utile pour une bibliothèque commune).
+  /// Portée du tirage par dossier (MediaAssetUsage) :
+  /// - "per_account" (défaut) : usages séparés par compte — chaque compte tire
+  ///   indépendamment dans la bibliothèque.
+  /// - "shared" : usages globaux keyed par la sentinelle `__shared__` — tous
+  ///   les comptes partagent le même ordre least-recently-used.
   rotationScope    String                 @default("per_account")
   /// JSON { key: string; label: string; type: "text" | "textarea" | "number" | "url" }[] — champs de
   /// métadonnées structurées pouvant être remplis sur chaque asset de cette bibliothèque.
@@ -490,13 +490,13 @@ model MediaLibrary {
   /// - `per_account` : N usages MAX par compte (MediaAssetUsage.usageCount par (asset, account))
   /// - `shared`      : N usages MAX au total tous comptes confondus (MediaAsset.usageCount global)
   maxUsageCount    Int?
-  /// Mode de rotation explicite :
-  /// - `"auto"` (défaut) : least-used round-robin (déduit aussi de setSequence vide en legacy).
-  /// - `"override"` : ordre fixe défini par setSequence.
-  /// - `"none"` : pas de rotation auto. La sélection se fait via `selectMediaAssetByMetadataValue`
-  ///   (champ formulaire du builder). selectMediaAsset() et selectMediaAssetBySetSequence()
-  ///   retournent null directement pour cette lib.
-  /// - `null` : back-compat — comportement déduit du contenu de setSequence (vide=auto, rempli=override).
+  /// Mode de tirage (source unique : lib/rotation/rotationMode.ts) :
+  /// - `"auto"` (défaut) : tirage « dossier simple » least-recently-used
+  ///   (selectMediaAssetFromFolder), zéro état.
+  /// - `"none"` : pas de tirage — sélection par champ metadata
+  ///   (selectMediaAssetByMetadataValue) ou manuelle.
+  /// - `"override"` / `null` : valeurs legacy, normalisées en "auto" à la
+  ///   lecture (migration 20260816200000 a normalisé la base).
   rotationMode     String?
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
@@ -802,8 +802,10 @@ model MediaAssetUsage {
   @@index([accountId])
 }
 
-/// Curseur de position dans la séquence de thèmes d'une bibliothèque, par compte Instagram.
-/// Clé composite unique (accountId, libraryId) — chaque compte avance indépendamment.
+/// MORT (simplification Phase 3, 16/08) — le moteur de rotation à curseurs est
+/// décommissionné (tirage « dossier simple » sans état). Plus aucune
+/// lecture/écriture côté code ; table droppée en N+1
+/// (pending-drops/phase3-4-drops.sql).
 model AccountLibraryCursor {
   id               String           @id @default(cuid())
   accountId        String
@@ -823,9 +825,8 @@ model AccountLibraryCursor {
   @@unique([accountId, libraryId])
 }
 
-/// Curseur de rotation par compte pour une DataLibrary (mirror simplifié de AccountLibraryCursor).
-/// Garde la dernière catégorie et le dernier setTag utilisés pour permettre l'exclusion consécutive
-/// en mode auto. Pas de `cursor` Int (DataLibrary n'a pas encore de setSequence/mode override).
+/// MORT (simplification Phase 3, 16/08) — même sort qu'AccountLibraryCursor :
+/// plus aucune lecture/écriture côté code, table droppée en N+1.
 model AccountDataLibraryCursor {
   id               String           @id @default(cuid())
   accountId        String

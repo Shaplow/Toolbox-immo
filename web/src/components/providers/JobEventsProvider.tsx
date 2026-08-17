@@ -33,7 +33,7 @@ export function JobEventsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!shouldSubscribe) return;
 
-    const es = new EventSource("/api/events/jobs");
+    const es = new EventSource("/api/sse/jobs");
 
     es.onmessage = (e) => {
       try {

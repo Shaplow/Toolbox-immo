@@ -28,8 +28,3 @@ export function resolveRotationMode(
 ): ResolvedRotation {
   return { mode: lib.rotationMode === "none" ? "none" : "auto" };
 }
-
-/** Mode déclaré — identique au mode résolu depuis la suppression d'override. */
-export function declaredRotationMode(lib: RotationModeSource): RotationMode {
-  return lib.rotationMode === "none" ? "none" : "auto";
-}

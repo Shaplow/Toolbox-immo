@@ -32,7 +32,7 @@ import { toast } from "@/components/ui/Toast";
 import { RecipeForm, type RecipeFormInitial, type RecipeFormValues } from "./RecipeForm";
 import { BulkReplaceAssigneeModal } from "./BulkReplaceAssigneeModal";
 import { PatternPeekDrawer } from "./PatternPeekDrawer";
-import { SOURCE_LABELS_FR, SOURCE_VARIANT } from "@/lib/i18n/entityLabels";
+import { SOURCE_LABELS_FR, SOURCE_VARIANT } from "@/lib/i18n/glossary";
 
 const DAYS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
@@ -414,7 +414,7 @@ export function AccountRecipesList({
 
       <PatternPeekDrawer
         open={peekTemplateId !== null}
-        patternId={peekTemplateId}
+        patternTemplateId={peekTemplateId}
         onClose={() => setPeekTemplateId(null)}
       />
 

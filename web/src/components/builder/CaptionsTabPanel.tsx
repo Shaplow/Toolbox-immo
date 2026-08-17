@@ -5,15 +5,7 @@ import { Plus, X, Link2 } from "lucide-react";
 import Link from "next/link";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type { CaptionExcludeZone } from "@/types/template";
-
-interface LinkedPattern {
-  id: string;
-  label: string;
-  isActive: boolean;
-  accountId: string;
-  accountHandle: string;
-  captionPresetId: string | null;
-}
+import type { TemplateUsagePattern } from "@/types/patternUsage";
 
 /**
  * Onglet "Sous-titres auto" du builder.
@@ -33,15 +25,15 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
   const [loadingPresets, setLoadingPresets] = useState(true);
   const [captionPrompts, setCaptionPrompts] = useState<{ id: string; name: string }[]>([]);
   const [loadingPrompts, setLoadingPrompts] = useState(true);
-  const [linkedPatterns, setLinkedPatterns] = useState<LinkedPattern[]>([]);
+  const [linkedPatterns, setTemplateUsagePatterns] = useState<TemplateUsagePattern[]>([]);
 
   // Charge les patterns qui utilisent ce template — surface l'impact du changement.
   useEffect(() => {
     if (!templateId) return;
     let active = true;
     fetch(`/api/templates/${templateId}/usage`)
-      .then((r) => (r.ok ? (r.json() as Promise<{ patterns: LinkedPattern[] }>) : { patterns: [] }))
-      .then((data) => { if (active) setLinkedPatterns(data.patterns); })
+      .then((r) => (r.ok ? (r.json() as Promise<{ patterns: TemplateUsagePattern[] }>) : { patterns: [] }))
+      .then((data) => { if (active) setTemplateUsagePatterns(data.patterns); })
       .catch(() => {});
     return () => { active = false; };
   }, [templateId]);

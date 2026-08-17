@@ -35,7 +35,7 @@ Toolbox/
 │   ├── src/components/         #   composants UI (primitives, panels admin, builder, fiche publication...)
 │   ├── src/lib/                #   helpers métier (permissions, captions, render, publications)
 │   ├── prisma/                 #   schéma + migrations
-│   └── scripts/                #   db:backup, db:backfill-*, deploy-app, deploy-remote, seed-*
+│   └── scripts/                #   db:backup, deploy-app, deploy-remote, seed-*
 ├── render-engine/              # FastAPI + worker RunPod (Python)
 │   ├── api.py                  #   FastAPI local
 │   ├── runpod_worker.py        #   handler RunPod serverless
@@ -82,9 +82,10 @@ cd web && npx tsx scripts/seed-presets.ts
 | Rôle | Accès |
 |---|---|
 | **ADMIN** | Tout : configuration (recettes, plans, bibliothèques, utilisateurs), calendrier global, supervision |
+| **VIDEASTE** | Sa worklist (missions de tournage), upload des rushes, fiche publication assignée |
 | **MONTEUR** | Sa worklist (publications à monter), captions, transcription, fiche publication assignée |
 | **CM** | Sa worklist (publications à préparer/publier), description, cover, captions, transcription, fiche publication assignée |
-| **USER** | Outils standalone selon permissions individuelles (legacy) |
+| **EXTERNAL_GENERATOR** | Client externe : accès limité (templates + covers) selon permissions individuelles |
 | **Client** *(non-User)* | Validation via magic link sans compte (Phase 2) |
 
 Filtrage backend strict : un monteur ne voit que les publications où `assigneeMonteurId = lui`, un CM idem avec `assigneeCmId`.
@@ -110,7 +111,6 @@ npm run lint              # ESLint
 npm run db:generate       # régénère le client Prisma
 npm run db:migrate        # crée + applique migration (local interactif)
 npm run db:backup         # pg_dump dans web/backups/ (rotation auto à 20)
-npm run db:backfill-plans # backfill AccountPlan depuis OfferScheduleRule
 
 # Tests automatisés
 npm run test:unit         # Vitest — helpers purs (permissions, scoping)

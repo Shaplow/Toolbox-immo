@@ -12,10 +12,11 @@ import { Sparkles, FileText, Image, Users, ShieldCheck } from "lucide-react";
 import { Chip } from "@/components/ui/Chip";
 import {
   SOURCE_LABELS_FR,
+  SOURCE_VARIANT,
   COVER_MODE_LABELS_FR,
   NEEDS_DESCRIPTION_LABELS_FR,
   CAPTIONS_MODE_LABELS_FR,
-} from "@/lib/i18n/entityLabels";
+} from "@/lib/i18n/glossary";
 
 export interface PatternPeekData {
   id: string;
@@ -48,12 +49,6 @@ export interface PatternPeekData {
   updatedAt: string;
   updatedBy: { name: string | null } | null;
 }
-
-const SOURCE_VARIANT: Record<string, "default" | "sky" | "peach" | "sage"> = {
-  auto_template: "sky",
-  manual_rushes: "peach",
-  external_upload: "sage",
-};
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("fr-FR", {

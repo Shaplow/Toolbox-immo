@@ -4,21 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link2 } from "lucide-react";
 import Link from "next/link";
 import { useBuilderStore } from "@/lib/store/builderStore";
+import type { TemplateUsagePattern } from "@/types/patternUsage";
 import { GroupSelectList } from "@/components/builder/shared/GroupSelectList";
 import { toast } from "@/components/ui/Toast";
 
 interface Props {
   templateId?: string;
-}
-
-interface LinkedPattern {
-  id: string;
-  label: string;
-  isActive: boolean;
-  accountId: string;
-  accountHandle: string;
-  coverPresetName: string | null;
-  coverEnabled: boolean;
 }
 
 // ─── Config locale ────────────────────────────────────────────────────────────
@@ -96,7 +87,7 @@ export function CoverTabPanel({ templateId }: Props) {
   const [config, setConfig] = useState<CoverConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [linkedPatterns, setLinkedPatterns] = useState<LinkedPattern[]>([]);
+  const [linkedPatterns, setTemplateUsagePatterns] = useState<TemplateUsagePattern[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Fetch preset par défaut + patterns liés ────────────────────────────────
@@ -134,10 +125,10 @@ export function CoverTabPanel({ templateId }: Props) {
     let active = true;
     fetch(`/api/templates/${templateId}/usage`)
       .then((r) =>
-        r.ok ? (r.json() as Promise<{ patterns: LinkedPattern[] }>) : { patterns: [] },
+        r.ok ? (r.json() as Promise<{ patterns: TemplateUsagePattern[] }>) : { patterns: [] },
       )
       .then((data) => {
-        if (active) setLinkedPatterns(data.patterns);
+        if (active) setTemplateUsagePatterns(data.patterns);
       })
       .catch(() => {});
     return () => {

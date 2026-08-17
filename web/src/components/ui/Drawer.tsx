@@ -23,15 +23,12 @@ import { useRegisterDialog } from "./useDialogStack";
 
 type Side = "right" | "left" | "bottom";
 type Size = "sm" | "md" | "lg" | "xl" | "full";
-type Variant = "default" | "solid";
 
 interface DrawerProps {
   open: boolean;
   onClose: () => void;
   side?: Side;
   size?: Size;
-  /** @deprecated v3 — toujours flat solid désormais. Conservé pour compat. */
-  variant?: Variant;
   dismissOnBackdrop?: boolean;
   className?: string;
   children?: ReactNode;

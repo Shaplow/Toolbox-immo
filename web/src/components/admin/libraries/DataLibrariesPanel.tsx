@@ -18,7 +18,7 @@ import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { Chip } from "@/components/ui/Chip";
-import { rotationScopeLabel } from "@/lib/i18n/entityLabels";
+import { rotationScopeLabel } from "@/lib/i18n/glossary";
 import { DataLibrarySettingsDrawer } from "./DataLibrarySettingsDrawer";
 
 interface DataLibrary {

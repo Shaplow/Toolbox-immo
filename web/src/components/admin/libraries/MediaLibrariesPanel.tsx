@@ -34,20 +34,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MediaAssetsUploadModal } from "./mediaAssets/MediaAssetsUploadModal";
 import { MediaLibrarySettingsDrawer } from "./MediaLibrarySettingsDrawer";
 import { type PreviewAsset } from "./LibraryPreviewThumbs";
+import type { MediaLibrary } from "./mediaAssets/types";
 import { LazyVideoThumb } from "./mediaAssets/LazyVideoThumb";
-import { rotationScopeLabel } from "@/lib/i18n/entityLabels";
+import { rotationScopeLabel } from "@/lib/i18n/glossary";
 
-interface MediaLibrary {
-  id: string;
-  name: string;
-  type: "video" | "audio";
+/** Ligne du listing — noyau partagé (mediaAssets/types) + champs de liste. */
+interface MediaLibraryRow extends MediaLibrary {
   tags: string;
-  rotationScope?: string;
-  /** Mode rotation : "auto" | "override" | "none" | null (back-compat). */
-  rotationMode?: string | null;
-  metadataSchema?: string;
-  /** Burn-once : null = rotation infinie, N ≥ 1 = consommation max par asset. */
-  maxUsageCount?: number | null;
   description: string | null;
   createdAt: string;
   _count: { assets: number };
@@ -73,10 +66,10 @@ export function MediaLibrariesPanel({
   // Phase 2 médiathèque — drop-zone par card : quand l'user drag-drop des
   // fichiers sur une LibraryCard, on monte un MediaAssetsUploadModal pré-rempli
   // qui auto-upload via initialFiles. Après succès, navigate vers la lib.
-  const [dropTarget, setDropTarget] = useState<{ lib: MediaLibrary; files: File[] } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ lib: MediaLibraryRow; files: File[] } | null>(null);
   // Phase 4 — drawer réglages lib (remplace l'édition inline JSON par une UI structurée).
-  const [settingsLib, setSettingsLib] = useState<MediaLibrary | null>(null);
-  const [libraries, setLibraries] = useState<MediaLibrary[]>([]);
+  const [settingsLib, setSettingsLib] = useState<MediaLibraryRow | null>(null);
+  const [libraries, setLibraries] = useState<MediaLibraryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -101,7 +94,7 @@ export function MediaLibrariesPanel({
       const qs = forcedType ? `?type=${forcedType}` : "";
       const res = await fetch(`/api/admin/libraries/media${qs}`);
       if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status})`);
-      const data = (await res.json()) as MediaLibrary[];
+      const data = (await res.json()) as MediaLibraryRow[];
       setLibraries(data);
     } catch (err) {
       console.error("[MediaLibrariesPanel] load error:", err);
@@ -447,7 +440,7 @@ function MediaLibraryCard({
   onFilesDropped,
   onOpenSettings,
 }: {
-  lib: MediaLibrary;
+  lib: MediaLibraryRow;
   /** Phase β — href dynamique selon type (/admin/libraries/media/[id] ou /admin/libraries/audio/[id]). */
   detailHref: string;
   /** Actions library-level (réglages / suppression). Masquées si false (ex: VIDEASTE). */

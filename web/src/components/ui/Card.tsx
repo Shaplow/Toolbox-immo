@@ -9,15 +9,9 @@ import type { ReactNode } from "react";
  * - `default` (recommandé) : white + border zinc-200 + shadow-sm rounded-lg.
  * - `outline` : white + border zinc-200, pas de shadow (plus discret).
  *
- * Backward compat : les anciens variants `solid`/`glass`/`frosted`/`tinted`
- * et la prop `tint` sont conservés en TYPE mais mappés vers `default` —
- * aucun call site n'est à mettre à jour en urgence, le visual sera
- * neutralisé proprement. Le sweep Phase D du big bang supprimera les
- * aliases morts au fur et à mesure.
  */
 
-type CardVariant = "default" | "outline" | "solid" | "glass" | "frosted" | "tinted";
-type CardTint = "peach" | "sage" | "sky" | "rose";
+type CardVariant = "default" | "outline";
 
 interface CardProps {
   children: ReactNode;
@@ -25,13 +19,7 @@ interface CardProps {
   padded?: boolean;
   border?: boolean;
   variant?: CardVariant;
-  /** @deprecated v3 — ignoré, conservé pour compat call sites V2. */
-  tint?: CardTint;
   className?: string;
-}
-
-function resolveVariant(v: CardVariant): "default" | "outline" {
-  return v === "outline" ? "outline" : "default";
 }
 
 export function Card({
@@ -42,7 +30,7 @@ export function Card({
   variant = "default",
   className,
 }: CardProps) {
-  const v = resolveVariant(variant);
+  const v = variant;
 
   const base = [
     "bg-card text-card-foreground rounded-lg overflow-hidden",

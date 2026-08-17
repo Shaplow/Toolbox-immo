@@ -8,12 +8,12 @@
  * étaient déclarées 1700 lignes l'une de l'autre dans contentLibraryResolver.ts —
  * un typo dans un raw SQL aurait routé vers un cursor inexistant sans erreur.
  */
-export const SHARED_CURSOR_ACCOUNT_ID = "__shared__";
-export const SHARED_DATA_CURSOR_ACCOUNT_ID = "__shared__data__";
+export const SHARED_USAGE_ACCOUNT_ID = "__shared__";
+export const SHARED_DATA_USAGE_ACCOUNT_ID = "__shared__data__";
 
 export const ROTATION_SENTINELS = {
-  SHARED_MEDIA: SHARED_CURSOR_ACCOUNT_ID,
-  SHARED_DATA: SHARED_DATA_CURSOR_ACCOUNT_ID,
+  SHARED_MEDIA: SHARED_USAGE_ACCOUNT_ID,
+  SHARED_DATA: SHARED_DATA_USAGE_ACCOUNT_ID,
 } as const;
 
 /**
@@ -22,12 +22,12 @@ export const ROTATION_SENTINELS = {
  * les comptes virtuels (listings admin, pickers UI, search palette…).
  */
 export const SHARED_SENTINEL_IDS: readonly string[] = [
-  SHARED_CURSOR_ACCOUNT_ID,
-  SHARED_DATA_CURSOR_ACCOUNT_ID,
+  SHARED_USAGE_ACCOUNT_ID,
+  SHARED_DATA_USAGE_ACCOUNT_ID,
 ];
 
 export function isSharedSentinel(accountId: string): boolean {
-  return accountId === SHARED_CURSOR_ACCOUNT_ID || accountId === SHARED_DATA_CURSOR_ACCOUNT_ID;
+  return accountId === SHARED_USAGE_ACCOUNT_ID || accountId === SHARED_DATA_USAGE_ACCOUNT_ID;
 }
 
 /**

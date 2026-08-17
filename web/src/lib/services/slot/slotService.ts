@@ -1109,7 +1109,7 @@ export async function patchSlot(
     assigneeMonteurId,
     assigneeCmId,
     assigneeVideasteId,
-    patternId,
+    patternBindingId,
     currentVersionId,
     isAuto,
     needsAdminValidationOverride,
@@ -1253,7 +1253,7 @@ export async function patchSlot(
     await assertAssigneeRole(assigneeVideasteId, ["VIDEASTE", "ADMIN"], "Vidéaste assignee");
   }
 
-  // Si patternId change, on doit :
+  // Si patternBindingId change, on doit :
   //   1. Vérifier que le nouveau pattern appartient au MÊME compte que le slot
   //      (cross-account leak : un pattern de compte B pour un slot de compte A
   //      casse toute la résolution needs*/cover/assignees aval).
@@ -1262,8 +1262,8 @@ export async function patchSlot(
   //      changer le pattern + activer needsCaptionsOverride en un seul PATCH
   //      valide la cohérence contre l'ancien pattern → la nouvelle config
   //      peut être incohérente sans alerte.
-  // NB : le payload de patchSlot utilise `patternId` comme nom de clé API,
-  // mais la valeur est un id de PatternBinding (canonique).
+  // NB : clé API `patternBindingId` (ex-`patternId`, renommée V1 17/08) —
+  // la valeur est un id de PatternBinding (canonique).
   let effectivePattern: {
     captionPresetId: string | null;
     descriptionPromptId: string | null;
@@ -1284,9 +1284,9 @@ export async function patchSlot(
       coverConfig: t.coverConfig,
     };
   }
-  if (typeof patternId === "string" && patternId !== "") {
+  if (typeof patternBindingId === "string" && patternBindingId !== "") {
     const binding = await prisma.patternBinding.findUnique({
-      where: { id: patternId },
+      where: { id: patternBindingId },
       include: { patternTemplate: true },
     });
     if (!binding) {
@@ -1312,8 +1312,8 @@ export async function patchSlot(
       coverConfig: t.coverConfig,
     };
   }
-  // patternId="" / null : reset l'effective pattern à null pour la validation.
-  if (patternId === null || patternId === "") {
+  // patternBindingId="" / null : reset l'effective pattern à null pour la validation.
+  if (patternBindingId === null || patternBindingId === "") {
     effectivePattern = null;
   }
 
@@ -1482,11 +1482,12 @@ export async function patchSlot(
         const raw = FIELD_VALUES[field];
         if (raw !== undefined) updateData[field] = transformer(raw);
       }
-      // Clé API `patternId` (valeur = id de PatternBinding) → colonne
-      // patternBindingId. "" / null = détacher la recette.
-      if (patternId !== undefined) {
+      // "" / null = détacher la recette.
+      if (patternBindingId !== undefined) {
         updateData.patternBindingId =
-          patternId === "" || patternId === null ? null : (patternId as string);
+          patternBindingId === "" || patternBindingId === null
+            ? null
+            : (patternBindingId as string);
       }
       // Phase 5 — clé API `propertyId` (valeur = id d'Entity) → colonne
       // entityId. null = détacher la fiche.
@@ -1591,7 +1592,7 @@ export async function patchSlot(
 export interface ListSlotsFilters {
   accountId?: string;
   status?: string;
-  patternId?: string;
+  patternBindingId?: string;
   monteurId?: string;
   cmId?: string;
   videasteId?: string;
@@ -1650,8 +1651,7 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
         bankClause,
         filters.accountId ? { accountId: filters.accountId } : {},
         filters.status ? { status: filters.status } : {},
-        // `patternId` (nom de clé API conservé) filtre par PatternBinding.
-        filters.patternId ? { patternBindingId: filters.patternId } : {},
+        filters.patternBindingId ? { patternBindingId: filters.patternBindingId } : {},
         filters.monteurId ? { assigneeMonteurId: filters.monteurId } : {},
         filters.cmId ? { assigneeCmId: filters.cmId } : {},
         filters.videasteId ? { assigneeVideasteId: filters.videasteId } : {},

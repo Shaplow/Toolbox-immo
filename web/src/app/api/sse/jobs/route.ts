@@ -1,5 +1,5 @@
 /**
- * GET /api/events/jobs
+ * GET /api/sse/jobs
  *
  * Server-Sent Events endpoint. Opens a long-lived stream scoped to the
  * authenticated user. The server pushes a job event whenever a RunPod

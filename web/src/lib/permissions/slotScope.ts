@@ -180,7 +180,7 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "assigneeMonteurId",
       "assigneeCmId",
       "assigneeVideasteId",
-      "patternId",
+      "patternBindingId",
       "currentVersionId",
       "isAuto",
       // Biens — rattacher/changer la fiche bien partagée d'une mission existante.

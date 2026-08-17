@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       {
         accountId: searchParams.get("accountId") ?? undefined,
         status: searchParams.get("status") ?? undefined,
-        patternId: searchParams.get("patternId") ?? undefined,
+        patternBindingId: searchParams.get("patternBindingId") ?? undefined,
         monteurId: searchParams.get("monteurId") ?? undefined,
         cmId: searchParams.get("cmId") ?? undefined,
         videasteId: searchParams.get("videasteId") ?? undefined,

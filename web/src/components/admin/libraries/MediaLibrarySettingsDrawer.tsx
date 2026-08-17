@@ -24,7 +24,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
 import { useConfirm } from "@/components/ui/useConfirm";
-import { declaredRotationMode } from "@/lib/rotation/rotationMode";
+import { resolveRotationMode } from "@/lib/rotation/rotationMode";
 import { toast } from "@/components/ui/Toast";
 import {
   FolderOpen,
@@ -45,7 +45,7 @@ interface LibrarySettings {
   name: string;
   description: string | null;
   tags: string;            // JSON string[]
-  rotationScope?: string;  // "per_account" | "shared"
+  rotationScope?: string | null;  // "per_account" | "shared"
   rotationMode?: string | null; // "auto" | "none" | legacy ("override"/null → auto)
   metadataSchema?: string; // JSON MetadataField[]
   maxUsageCount?: number | null; // null = rotation infinie, N ≥ 1 = burn-once
@@ -76,7 +76,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
   const [description, setDescription] = useState(library?.description ?? "");
   const [tagsCsv, setTagsCsv] = useState(initialTags.join(", "));
   const [rotationMode, setRotationMode] = useState<"auto" | "none">(
-    declaredRotationMode({ rotationMode: library?.rotationMode ?? null }),
+    resolveRotationMode({ rotationMode: library?.rotationMode ?? null }).mode,
   );
   const [rotationScope, setRotationScope] = useState<"per_account" | "shared">(
     library?.rotationScope === "shared" ? "shared" : "per_account",
@@ -154,7 +154,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
       setDescription(library.description ?? "");
       const t = parseStringArray(library.tags);
       setTagsCsv(t.join(", "));
-      setRotationMode(declaredRotationMode({ rotationMode: library.rotationMode ?? null }));
+      setRotationMode(resolveRotationMode({ rotationMode: library.rotationMode ?? null }).mode);
       setRotationScope(library.rotationScope === "shared" ? "shared" : "per_account");
       setMetadataFields(normalizeCustomFields(library.metadataSchema));
       setMaxUsageCount(library.maxUsageCount != null ? String(library.maxUsageCount) : "");

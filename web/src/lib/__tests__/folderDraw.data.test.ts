@@ -35,7 +35,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import { selectDataEntry, advanceDataUsageOnSubmit } from "@/lib/contentLibraryResolver";
-import { SHARED_DATA_CURSOR_ACCOUNT_ID } from "@/lib/rotation/sentinels";
+import { SHARED_DATA_USAGE_ACCOUNT_ID } from "@/lib/rotation/sentinels";
 
 function sqlTextOfCall(callIndex: number): string {
   const arg = mockQueryRaw.mock.calls[callIndex]?.[0] as { strings?: string[] } | undefined;
@@ -118,7 +118,7 @@ describe("selectDataEntry — tirage dossier", () => {
     expect(sql).toContain('de."usageCount" <');
     // La clé d'usage est la sentinelle, pas le compte réel.
     const params = (mockQueryRaw.mock.calls[0]?.[0] as { values?: unknown[] })?.values ?? [];
-    expect(params).toContain(SHARED_DATA_CURSOR_ACCOUNT_ID);
+    expect(params).toContain(SHARED_DATA_USAGE_ACCOUNT_ID);
   });
 
   it("burn-once per_account : filtre sur DataEntryUsage du compte réel", async () => {
@@ -157,7 +157,7 @@ describe("advanceDataUsageOnSubmit — claim au submit", () => {
     });
     mockUsageFindUnique.mockResolvedValue(null);
     const r = await advanceDataUsageOnSubmit("e1", "acc-1");
-    expect(r?.prevDataUsageState.accountId).toBe(SHARED_DATA_CURSOR_ACCOUNT_ID);
+    expect(r?.prevDataUsageState.accountId).toBe(SHARED_DATA_USAGE_ACCOUNT_ID);
     expect(r?.prevDataUsageState.prevLastUsedAt).toBeNull();
   });
 

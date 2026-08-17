@@ -83,7 +83,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
   // ─── SSE — stop polling immediately when webhook fires ───────────────────
   useEffect(() => {
     if (isTerminal(status)) return;
-    const source = new EventSource("/api/events/jobs");
+    const source = new EventSource("/api/sse/jobs");
     source.addEventListener("job", (e) => {
       try {
         const event = JSON.parse(e.data) as JobEventPayload;

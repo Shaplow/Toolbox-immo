@@ -1,29 +1,7 @@
-// New granular pipeline statuses + legacy aliases kept until DB backfill (Phase 1.2)
-export type SlotStatus =
-  // ── New pipeline statuses ──────────────────────────────────────────────
-  | "DRAFT"
-  | "PLANNED"
-  | "RUSHES_EXPECTED"
-  | "RUSHES_RECEIVED"
-  | "IN_EDIT"
-  | "EDIT_REVIEW"
-  | "EDIT_APPROVED"
-  | "CAPTIONS_PENDING"
-  | "READY_FOR_CM"
-  | "AWAITING_CLIENT"
-  | "CLIENT_REVISION"
-  | "SCHEDULED"
-  | "PUBLISHED"
-  | "REJECTED"
-  | "CANCELLED"
-  | "BLOCKED"
-  | "ARCHIVED"
-  // ── Legacy aliases (kept until DB backfill — Phase 1.2) ───────────────
-  | "TO_DO"
-  | "IN_PROGRESS"
-  | "READY"
-  | "CHECKING"
-  | "DONE";
+// Source unique : types/roles.ts (dédup V1 — la copie locale divergeait
+// silencieusement à chaque évolution de la matrice de statuts).
+import type { SlotStatus } from "@/types/roles";
+export type { SlotStatus };
 
 export interface PublicationSlot {
   id: string;

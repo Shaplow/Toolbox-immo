@@ -8,7 +8,7 @@
  * DO NOT remove the legacy entries until the backfill migration has run.
  */
 
-import type { SlotStatus } from "@/types/calendar";
+import type { SlotStatus } from "@/types/roles";
 
 // ---------------------------------------------------------------------------
 // Labels

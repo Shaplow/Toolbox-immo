@@ -4,8 +4,8 @@
  *
  *  1. canTransition est enforced côté service (pas seulement côté UI)
  *  2. PATCH status=PUBLISHED est bloqué même pour ADMIN (forcer /mark-published)
- *  3. patternId d'un autre compte refusé
- *  4. cross-field validation utilise le NOUVEAU pattern quand patternId change
+ *  3. patternBindingId d'un autre compte refusé
+ *  4. cross-field validation utilise le NOUVEAU pattern quand patternBindingId change
  *  5. assigneeVideasteId loggué dans ASSIGNEE_CHANGED
  *
  * Prisma est mocké au niveau module — tests vitest unit purs, pas de DB.
@@ -268,9 +268,9 @@ describe("patchSlot — PUBLISHED bypass /mark-published", () => {
   });
 });
 
-// ─── Invariant 3 : patternId (binding) cross-account refusé ─────────────────
+// ─── Invariant 3 : patternBindingId (binding) cross-account refusé ─────────────────
 
-describe("patchSlot — patternId cross-account guard", () => {
+describe("patchSlot — patternBindingId cross-account guard", () => {
   it("ADMIN ne peut pas attribuer une recette d'un autre compte", async () => {
     mockSlotFindUnique
       .mockResolvedValueOnce(makeSlot({ accountId: "account-A" }))
@@ -281,20 +281,20 @@ describe("patchSlot — patternId cross-account guard", () => {
     );
 
     await expect(
-      patchSlot("slot-1", { patternId: "binding-B" }, makeUserCtx("ADMIN")),
+      patchSlot("slot-1", { patternBindingId: "binding-B" }, makeUserCtx("ADMIN")),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("patternId d'une recette inexistante rejeté", async () => {
+  it("patternBindingId d'une recette inexistante rejeté", async () => {
     mockSlotFindUnique.mockResolvedValueOnce(makeSlot());
     mockBindingFindUnique.mockResolvedValueOnce(null);
 
     await expect(
-      patchSlot("slot-1", { patternId: "binding-ghost" }, makeUserCtx("ADMIN")),
+      patchSlot("slot-1", { patternBindingId: "binding-ghost" }, makeUserCtx("ADMIN")),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("patternId du même compte accepté", async () => {
+  it("patternBindingId du même compte accepté", async () => {
     mockSlotFindUnique
       .mockResolvedValueOnce(makeSlot({ accountId: "account-A" }))
       .mockResolvedValueOnce({ accountId: "account-A" });
@@ -302,7 +302,7 @@ describe("patchSlot — patternId cross-account guard", () => {
 
     const result = await patchSlot(
       "slot-1",
-      { patternId: "binding-A" },
+      { patternBindingId: "binding-A" },
       makeUserCtx("ADMIN"),
     );
     expect(result).toBeDefined();
@@ -312,7 +312,7 @@ describe("patchSlot — patternId cross-account guard", () => {
 // ─── Invariant 4 : cross-field validation utilise NOUVEAU pattern ──────────
 
 describe("patchSlot — cross-field validation post-update pattern", () => {
-  it("change patternId vers une recette sans captionPresetId + active needsCaptionsOverride → rejet", async () => {
+  it("change patternBindingId vers une recette sans captionPresetId + active needsCaptionsOverride → rejet", async () => {
     mockSlotFindUnique
       .mockResolvedValueOnce(
         makeSlot({
@@ -339,13 +339,13 @@ describe("patchSlot — cross-field validation post-update pattern", () => {
     await expect(
       patchSlot(
         "slot-1",
-        { patternId: "binding-new", needsCaptionsOverride: true },
+        { patternBindingId: "binding-new", needsCaptionsOverride: true },
         makeUserCtx("ADMIN"),
       ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("change patternId vers une recette AVEC captionPresetId + needsCaptionsOverride → accepté", async () => {
+  it("change patternBindingId vers une recette AVEC captionPresetId + needsCaptionsOverride → accepté", async () => {
     mockSlotFindUnique
       .mockResolvedValueOnce(
         makeSlot({
@@ -371,7 +371,7 @@ describe("patchSlot — cross-field validation post-update pattern", () => {
 
     const result = await patchSlot(
       "slot-1",
-      { patternId: "binding-new", needsCaptionsOverride: true },
+      { patternBindingId: "binding-new", needsCaptionsOverride: true },
       makeUserCtx("ADMIN"),
     );
     expect(result).toBeDefined();

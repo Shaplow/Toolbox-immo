@@ -9,7 +9,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-import { SHARED_CURSOR_ACCOUNT_ID, SHARED_DATA_CURSOR_ACCOUNT_ID } from "@/lib/contentLibraryResolver";
+import { SHARED_USAGE_ACCOUNT_ID, SHARED_DATA_USAGE_ACCOUNT_ID } from "@/lib/rotation/sentinels";
 
 /**
  * Forme du JSON stocké dans `Render.usedAssets`. Exportée pour permettre aux
@@ -214,14 +214,14 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
         }
         // Pour les DataLibrary en `shared` scope, mirror exactement le pattern
         // MediaAsset — on écrit AUSSI une DataEntryUsage row keyed par
-        // SHARED_DATA_CURSOR_ACCOUNT_ID. Sans ça, selectDataEntry qui ordonne
+        // SHARED_DATA_USAGE_ACCOUNT_ID. Sans ça, selectDataEntry qui ordonne
         // par LEFT JOIN DataEntryUsage avec effectiveCursorId = sentinel ne
         // voit jamais d'usage et re-pioche toujours les mêmes entries.
         if (isShared) {
           await tx.dataEntryUsage.upsert({
-            where: { entryId_accountId: { entryId: dataEntryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID } },
+            where: { entryId_accountId: { entryId: dataEntryId, accountId: SHARED_DATA_USAGE_ACCOUNT_ID } },
             update: { usageCount: { increment: 1 }, lastUsedAt: now },
-            create: { entryId: dataEntryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
+            create: { entryId: dataEntryId, accountId: SHARED_DATA_USAGE_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
           });
         }
       });
@@ -235,9 +235,9 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
   // selectMediaAssetBySetSequence (SELECT FOR UPDATE, serialized across concurrent
   // generations). Here we only stamp lastAdvancedAt to mark render completion.
   //
-  // For shared-scope libraries the cursor row is keyed by SHARED_CURSOR_ACCOUNT_ID
+  // For shared-scope libraries the cursor row is keyed by SHARED_USAGE_ACCOUNT_ID
   // rather than the real accountId; we also write MediaAssetUsage rows keyed by
-  // SHARED_CURSOR_ACCOUNT_ID so pickFromGroup can rotate within groups globally.
+  // SHARED_USAGE_ACCOUNT_ID so pickFromGroup can rotate within groups globally.
   const seqLibraryIds = usedAssets.setSequencedLibraryIds ?? [];
   if (seqLibraryIds.length > 0) {
     // Plan simplification Phase 3 : plus d'AccountLibraryCursor à stamper —
@@ -249,7 +249,7 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
     const sharedSeqLibIds = new Set(libs.filter((l) => l.rotationScope === "shared").map((l) => l.id));
 
     // For video assets from shared-scope folder-draw libraries, write a MediaAssetUsage row
-    // keyed by SHARED_CURSOR_ACCOUNT_ID so within-folder ordering is globally shared.
+    // keyed by SHARED_USAGE_ACCOUNT_ID so within-folder ordering is globally shared.
     if (sharedSeqLibIds.size > 0 && videoAssetIds.length > 0) {
       const assetLibraries = await prisma.mediaAsset.findMany({
         where: { id: { in: videoAssetIds } },
@@ -261,9 +261,9 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
       for (const assetId of sharedAssetIds) {
         await prisma.mediaAssetUsage
           .upsert({
-            where: { assetId_accountId: { assetId, accountId: SHARED_CURSOR_ACCOUNT_ID } },
+            where: { assetId_accountId: { assetId, accountId: SHARED_USAGE_ACCOUNT_ID } },
             update: { usageCount: { increment: 1 }, lastUsedAt: now },
-            create: { assetId, accountId: SHARED_CURSOR_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
+            create: { assetId, accountId: SHARED_USAGE_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
           })
           .catch((err: unknown) =>
             console.error(`[recordLibraryUsage] shared asset usage upsert failed assetId=${assetId}:`, err),
@@ -460,7 +460,7 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
           if (lib?.campaign?.library?.rotationScope === "shared") {
             const sharedUsage = await prisma.dataEntryUsage.findUnique({
               where: {
-                entryId_accountId: { entryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID },
+                entryId_accountId: { entryId, accountId: SHARED_DATA_USAGE_ACCOUNT_ID },
               },
               select: { usageCount: true },
             });
@@ -468,7 +468,7 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
               const newSharedCount = Math.max(0, sharedUsage.usageCount - 1);
               await prisma.dataEntryUsage.update({
                 where: {
-                  entryId_accountId: { entryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID },
+                  entryId_accountId: { entryId, accountId: SHARED_DATA_USAGE_ACCOUNT_ID },
                 },
                 data: {
                   usageCount: newSharedCount,
@@ -498,7 +498,7 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
     for (const [libraryId, state] of Object.entries(prevStateMap)) {
       try {
         // Use the cursorAccountId stored at prefill time (handles shared libs that use
-        // SHARED_CURSOR_ACCOUNT_ID as their cursor key instead of the real accountId).
+        // SHARED_USAGE_ACCOUNT_ID as their cursor key instead of the real accountId).
         const cursorAccountId = state.cursorAccountId ?? accountId;
         // Phase 6 : ajout lastUsedSetTag dans SET + condition CAS.
         // Évite d'écraser un prefill concurrent qui aurait modifié uniquement
@@ -552,7 +552,7 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
   if (dataLibState) {
     try {
       // L'accountId vient du snapshot (effectiveCursorId au submit) : vrai
-      // accountId, ou SHARED_DATA_CURSOR_ACCOUNT_ID pour les libs en scope
+      // accountId, ou SHARED_DATA_USAGE_ACCOUNT_ID pour les libs en scope
       // shared. On ne se base donc PAS sur render.accountId ici.
       const updated = await prisma.$executeRaw(Prisma.sql`
         UPDATE "AccountDataLibraryCursor"
@@ -633,7 +633,7 @@ export async function revertLibraryCursors(renderId: string): Promise<void> {
       Object.entries(prevStateMap).map(async ([libraryId, state]) => {
         try {
           // Use the cursorAccountId stored at prefill time (handles shared libs that use
-          // SHARED_CURSOR_ACCOUNT_ID as their cursor key instead of the real accountId).
+          // SHARED_USAGE_ACCOUNT_ID as their cursor key instead of the real accountId).
           const cursorAccountId = state.cursorAccountId ?? accountId;
           // Conditional revert: only apply if the cursor row still reflects exactly what
           // this generation wrote.  If a concurrent or later generation has since advanced

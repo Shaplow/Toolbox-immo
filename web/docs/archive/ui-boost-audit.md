@@ -1,5 +1,7 @@
 # UI Boost — Audit Phase 2
 
+> Archivé (2026-08-17) — audit historique de la v1 ui-boost, antérieur à la DA v3 flat shadcn.
+
 Audit hot/cold UX produit par 4 agents `ux-auditor` en parallèle (2026-05-29). Synthèse pour piloter la migration des surfaces (Phase 3+).
 
 ## Constat global — patterns transversaux

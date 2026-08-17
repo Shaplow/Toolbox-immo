@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
-import { declaredRotationMode } from "@/lib/rotation/rotationMode";
+import { resolveRotationMode } from "@/lib/rotation/rotationMode";
 
 import { toast } from "@/components/ui/Toast";
 import { Copy, Link2, RefreshCw, RotateCw, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
@@ -55,7 +55,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
   const [name, setName] = useState(library?.name ?? "");
   const [description, setDescription] = useState(library?.description ?? "");
   const [rotationMode, setRotationMode] = useState<"auto" | "none">(
-    declaredRotationMode({ rotationMode: library?.rotationMode ?? null }),
+    resolveRotationMode({ rotationMode: library?.rotationMode ?? null }).mode,
   );
   const [rotationScope, setRotationScope] = useState<"per_account" | "shared">(
     library?.rotationScope === "shared" ? "shared" : "per_account",
@@ -77,7 +77,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
     if (!library) return;
     setName(library.name);
     setDescription(library.description ?? "");
-    setRotationMode(declaredRotationMode({ rotationMode: library.rotationMode ?? null }));
+    setRotationMode(resolveRotationMode({ rotationMode: library.rotationMode ?? null }).mode);
     setRotationScope(library.rotationScope === "shared" ? "shared" : "per_account");
     setMaxUsageCount(library.maxUsageCount != null ? String(library.maxUsageCount) : "");
     setFields(normalizeCustomFields(library.fieldsSchema));

@@ -39,7 +39,7 @@ import {
   selectMediaAssetFromFolder,
   advanceMediaUsageOnSubmit,
 } from "@/lib/contentLibraryResolver";
-import { SHARED_CURSOR_ACCOUNT_ID, isReservedSetTag } from "@/lib/rotation/sentinels";
+import { SHARED_USAGE_ACCOUNT_ID, isReservedSetTag } from "@/lib/rotation/sentinels";
 
 function makeAssetRow(id: string) {
   return { id, url: `https://r2.test/${id}.mp4`, filename: `${id}.mp4` };
@@ -165,7 +165,7 @@ describe("selectMediaAssetFromFolder — flux de tirage", () => {
       rotationMode: "auto",
     });
     mockQueryRaw.mockResolvedValueOnce([]);
-    await selectMediaAssetFromFolder("lib-1", "acc-1", undefined, undefined, undefined, SHARED_CURSOR_ACCOUNT_ID);
+    await selectMediaAssetFromFolder("lib-1", "acc-1", undefined, undefined, undefined, SHARED_USAGE_ACCOUNT_ID);
     expect(sqlTextOfCall(0)).toContain('ma."usageCount" <');
   });
 
@@ -201,7 +201,7 @@ describe("advanceMediaUsageOnSubmit — claim au submit", () => {
     ]);
     mockUsageFindUnique.mockResolvedValue(null);
     const r = await advanceMediaUsageOnSubmit(["a1"], "acc-1");
-    expect(r.prevMediaUsageStates[0]!.accountId).toBe(SHARED_CURSOR_ACCOUNT_ID);
+    expect(r.prevMediaUsageStates[0]!.accountId).toBe(SHARED_USAGE_ACCOUNT_ID);
     expect(r.prevMediaUsageStates[0]!.prevLastUsedAt).toBeNull();
   });
 

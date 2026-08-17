@@ -33,7 +33,7 @@ import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { toast } from "@/components/ui/Toast";
 import { EntityPicker } from "@/components/entities/EntityPicker";
 import { formatNextActionLine } from "@/lib/publications/nextActionLabel";
-import { SOURCE_LABELS_FR } from "@/lib/i18n/entityLabels";
+import { SOURCE_LABELS_FR } from "@/lib/i18n/glossary";
 
 interface Account {
   id: string;

@@ -1,14 +1,28 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+/**
+ * POST /api/upload-file — upload générique image/vidéo (R2 si configuré,
+ * sinon public/uploads local).
+ *
+ * Migré du Pages Router (src/pages/api/upload-file.ts, dernier survivant) en
+ * V1 17/08 : même URL, même contrat de réponse `{ url } | { error }`, même
+ * streaming Busboy (pas de buffering en mémoire). L'auth passe désormais par
+ * getUserContext() (règle du repo) au lieu d'un fetch HTTP vers
+ * /api/auth/session. NB : aucun consommateur dans le repo au moment de la
+ * migration — conservée pour d'éventuels appels hors repo.
+ */
+import { NextRequest, NextResponse } from "next/server";
 import Busboy from "busboy";
+import { Readable } from "stream";
+import type { ReadableStream as WebReadableStream } from "stream/web";
 import { createReadStream, createWriteStream } from "fs";
 import { mkdir, rename, stat, unlink } from "fs/promises";
 import path from "path";
 
+import { getUserContext } from "@/lib/userContext";
 import { r2Configured, uploadToR2 } from "@/lib/r2";
 import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
-// Chemin traversant le serveur (Pages Router) : plafonds bornés par nginx.
+// Chemin traversant le serveur : plafonds bornés par nginx.
 const MAX_IMAGE_SIZE = UPLOAD_LIMITS.IMAGE_MAX_BYTES;
 const MAX_VIDEO_SIZE = UPLOAD_LIMITS.VIDEO_ASSET_MAX_BYTES;
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -25,69 +39,32 @@ const MIME_TO_EXT: Record<string, string> = {
   "video/webm": "webm",
 };
 
-export const config = {
-  api: {
-    bodyParser: false,
-    responseLimit: false,
-  },
-};
-
 type UploadResponse = {
   url?: string;
   error?: string;
 };
 
-async function hasAuthenticatedUser(req: NextApiRequest): Promise<boolean> {
-  const cookie = req.headers.cookie;
-  if (!cookie) {
-    return false;
+export async function POST(req: NextRequest): Promise<NextResponse<UploadResponse>> {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const baseUrl = process.env.NEXTAUTH_URL_INTERNAL
-    ?? process.env.NEXTAUTH_URL
-    ?? "http://127.0.0.1:3000";
-
-  try {
-    const response = await fetch(`${baseUrl}/api/auth/session`, {
-      headers: {
-        cookie,
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!response.ok) {
-      return false;
-    }
-
-    const session = await response.json() as { user?: { id?: string | null } | null };
-    return Boolean(session.user?.id);
-  } catch (error) {
-    console.error("[upload-file] session check failed:", error);
-    return false;
-  }
-}
-
-export default async function handler(req: NextApiRequest, res: NextApiResponse<UploadResponse>) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ error: "Méthode non autorisée" });
-  }
-
-  const isAuthenticated = await hasAuthenticatedUser(req);
-  if (!isAuthenticated) {
-    return res.status(401).json({ error: "Non autorisé" });
-  }
-
-  const contentType = req.headers["content-type"] ?? "";
+  const contentType = req.headers.get("content-type") ?? "";
   if (!contentType.includes("multipart/form-data")) {
-    return res.status(400).json({ error: "Requête multipart attendue" });
+    return NextResponse.json({ error: "Requête multipart attendue" }, { status: 400 });
+  }
+  if (!req.body) {
+    return NextResponse.json({ error: "Fichier manquant" }, { status: 400 });
   }
 
   await mkdir(UPLOAD_DIR, { recursive: true });
 
-  await new Promise<void>((resolve) => {
-    const bb = Busboy({ headers: req.headers });
+  // Busboy attend un stream Node — on adapte le ReadableStream web du body.
+  const nodeStream = Readable.fromWeb(req.body as WebReadableStream);
+
+  return new Promise<NextResponse<UploadResponse>>((resolve) => {
+    const bb = Busboy({ headers: { "content-type": contentType } });
     let hasFile = false;
     let responded = false;
 
@@ -96,8 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         return;
       }
       responded = true;
-      res.status(status).json(payload);
-      resolve();
+      resolve(NextResponse.json(payload, { status }));
     };
 
     bb.on("file", (_fieldName, fileStream, info) => {
@@ -189,13 +165,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       }
     });
 
-    req.on("aborted", () => {
-      if (!responded) {
-        responded = true;
-        resolve();
-      }
+    // Client parti en cours d'upload : la réponse ne sera jamais lue, mais la
+    // Promise doit se résoudre pour libérer le worker.
+    nodeStream.on("error", (error) => {
+      console.error("[upload-file] request stream error:", error);
+      send(400, { error: "Upload interrompu" });
     });
 
-    req.pipe(bb);
+    nodeStream.pipe(bb);
   });
 }

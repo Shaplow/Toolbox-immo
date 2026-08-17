@@ -110,14 +110,13 @@ export function resolveEffectivePattern(
 }
 
 /**
- * Convenience : reflète la shape d'AccountPattern pour que les consommateurs
- * existants (qui lisent `pattern.captionPresetId`, etc.) puissent rester
- * inchangés en phase de transition.
- *
- * On expose les champs sous le même nom que le legacy AccountPattern pour
- * minimiser les diff dans la couche service / UI.
+ * Vue « à plat » d'un binding + template résolu — les consommateurs lisent
+ * `pattern.captionPresetId`, etc. sans connaître la séparation
+ * PatternTemplate / PatternBinding. (Ex-toLegacyPatternShape : les noms de
+ * champs viennent du défunt AccountPattern, la shape reste la lingua franca
+ * de la couche service / UI.)
  */
-export interface LegacyPatternShape {
+export interface PatternView {
   id: string;
   accountId: string;
   label: string;
@@ -143,9 +142,9 @@ export interface LegacyPatternShape {
   defaultAssigneeVideasteId: string | null;
 }
 
-export function toLegacyPatternShape(
+export function toPatternView(
   binding: BindingWithTemplate,
-): LegacyPatternShape {
+): PatternView {
   const e = resolveEffectivePattern(binding);
   return {
     id: e.bindingId,

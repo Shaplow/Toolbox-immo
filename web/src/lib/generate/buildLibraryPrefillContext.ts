@@ -209,7 +209,7 @@ export async function buildLibraryPrefillContext({
 
   // Fetch Instagram accounts if needed (for theme_sequence blocks).
   // Exclut les sentinels (curseurs partagés) — la rotation scope "shared"
-  // utilise directement SHARED_CURSOR_ACCOUNT_ID sans passer par cette liste.
+  // utilise directement SHARED_USAGE_ACCOUNT_ID sans passer par cette liste.
   const instagramAccounts = hasThemeSequenceBlocks
     ? await prisma.instagramAccount.findMany({
         where: { id: { notIn: [...SHARED_SENTINEL_IDS] } },

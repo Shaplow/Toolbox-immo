@@ -25,14 +25,11 @@ import { ButtonIcon } from "./ButtonIcon";
 import { useRegisterDialog } from "./useDialogStack";
 
 type Size = "sm" | "md" | "lg" | "xl" | "full";
-type Variant = "default" | "solid";
 
 interface ModalProps {
   open: boolean;
   onClose: () => void;
   size?: Size;
-  /** @deprecated v3 — toujours flat solid désormais. Conservé pour compat. */
-  variant?: Variant;
   /** Désactive la fermeture au click sur le backdrop. */
   dismissOnBackdrop?: boolean;
   className?: string;

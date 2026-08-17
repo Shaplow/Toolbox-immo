@@ -17,8 +17,8 @@ import type {
   MediaSelectionRule, MediaSelectionRuleConfig,
 } from "@/types/template";
 import {
-  SHARED_CURSOR_ACCOUNT_ID as SHARED_CURSOR_ACCOUNT_ID_FROM_SENTINELS,
-  SHARED_DATA_CURSOR_ACCOUNT_ID as SHARED_DATA_CURSOR_ACCOUNT_ID_FROM_SENTINELS,
+  SHARED_USAGE_ACCOUNT_ID,
+  SHARED_DATA_USAGE_ACCOUNT_ID,
 } from "@/lib/rotation/sentinels";
 
 /** Minimal Prisma client interface accepted by selectMediaAsset — satisfied by both the
@@ -252,15 +252,6 @@ async function selectMediaAssetWithLock(args: {
   try { metadata = JSON.parse(rows[0].metadata ?? "{}") as Record<string, string | number | null>; } catch { /* keep empty */ }
   return { id: rows[0].id, url: rows[0].url, filename: rows[0].filename, metadata };
 }
-
-/**
- * Account ID sentinel used as cursor/usage key for shared-scope libraries.
- * A single virtual "account" represents all real accounts collectively so
- * the rotation cursor is shared and concurrent generations serialize on it.
- */
-// Re-export depuis lib/rotation/sentinels.ts (source unique W3.3).
-export const SHARED_CURSOR_ACCOUNT_ID = SHARED_CURSOR_ACCOUNT_ID_FROM_SENTINELS;
-export const SHARED_DATA_CURSOR_ACCOUNT_ID = SHARED_DATA_CURSOR_ACCOUNT_ID_FROM_SENTINELS;
 
 /** Normalize a MediaSelectionRule (legacy string or structured object) into a config. */
 export function normalizeRule(rule: MediaSelectionRule | undefined): MediaSelectionRuleConfig {
@@ -551,7 +542,7 @@ export async function selectMediaAssetFromFolder(
   pinnedSetTag?: string | null,
   ruleConfig?: MediaSelectionRuleConfig,
   /** MediaAssetUsage ordering key. Defaults to accountId.
-   *  Set to SHARED_CURSOR_ACCOUNT_ID for shared-scope libraries so all accounts
+   *  Set to SHARED_USAGE_ACCOUNT_ID for shared-scope libraries so all accounts
    *  share the same recency state. */
   usageAccountId?: string,
   /** Filtre les assets dont la durée est inférieure à minDuration (NULL permis). */
@@ -700,12 +691,12 @@ export async function resolveLibraryPrefill(
 
   /**
    * Returns the cursor/usage-ordering account ID:
-   * - shared libraries → SHARED_CURSOR_ACCOUNT_ID so all accounts advance the same cursor
+   * - shared libraries → SHARED_USAGE_ACCOUNT_ID so all accounts advance the same cursor
    * - per-account libraries → real accountId
    * - no accountId at all → undefined (admin preview, no cursor)
    */
   function effectiveCursorAccountId(libId: string): string | undefined {
-    return libScopeMap.get(libId) === "shared" ? SHARED_CURSOR_ACCOUNT_ID : accountId;
+    return libScopeMap.get(libId) === "shared" ? SHARED_USAGE_ACCOUNT_ID : accountId;
   }
 
   // Regular blocks: group by libraryId and resolve serially within each group so that
@@ -1021,7 +1012,7 @@ export async function advanceMediaUsageOnSubmit(
 
   for (const asset of assets) {
     const usageAccountId =
-      asset.library.rotationScope === "shared" ? SHARED_CURSOR_ACCOUNT_ID : accountId;
+      asset.library.rotationScope === "shared" ? SHARED_USAGE_ACCOUNT_ID : accountId;
     try {
       let prevLastUsedAt: string | null = null;
       await prisma.$transaction(async (tx) => {
@@ -1080,7 +1071,7 @@ export async function advanceDataUsageOnSubmit(
   if (entry.library.rotationMode === "none") return null;
 
   const usageAccountId =
-    entry.library.rotationScope === "shared" ? SHARED_DATA_CURSOR_ACCOUNT_ID : accountId;
+    entry.library.rotationScope === "shared" ? SHARED_DATA_USAGE_ACCOUNT_ID : accountId;
   if (!usageAccountId) return null;
 
   const now = new Date();
@@ -1209,7 +1200,7 @@ export async function selectDataEntry(
   if (library.rotationMode === "none") return null;
 
   const isShared = library.rotationScope === "shared";
-  const usageAccountId = isShared ? SHARED_DATA_CURSOR_ACCOUNT_ID : accountId;
+  const usageAccountId = isShared ? SHARED_DATA_USAGE_ACCOUNT_ID : accountId;
   const accessFilter = buildDataAccessFilter(accountId);
 
   // Burn-once : per_account → usage par clé ; shared → compteur global de l'entry.

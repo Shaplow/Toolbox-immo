@@ -144,7 +144,7 @@ describe("ALLOWED_PATCH_FIELDS_BY_ROLE — security invariants", () => {
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeMonteurId");
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeCmId");
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeVideasteId");
-    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("patternId");
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("patternBindingId");
   });
 
   it("ADMIN can modify Phase 5 one-off overrides (cover/captions/description presets)", () => {

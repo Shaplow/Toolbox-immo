@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import {
   resolveEffectivePattern,
-  toLegacyPatternShape,
+  toPatternView,
 } from "@/lib/services/pattern/resolveEffective";
 
 function makeTemplate(overrides: Partial<Record<string, unknown>> = {}) {
@@ -155,10 +155,10 @@ describe("resolveEffectivePattern", () => {
   });
 });
 
-describe("toLegacyPatternShape", () => {
+describe("toPatternView", () => {
   it("Projette les valeurs résolues sur l'ancien contrat AccountPattern", () => {
 
-    const legacy = toLegacyPatternShape(
+    const legacy = toPatternView(
       makeBinding({
         customLabel: "Variante",
         captionPresetIdOverride: "cap-B",

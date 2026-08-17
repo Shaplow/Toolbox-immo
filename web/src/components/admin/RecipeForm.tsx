@@ -35,7 +35,7 @@ import {
   NEEDS_DESCRIPTION_LABELS_FR,
   SOURCE_HELP,
   SOURCE_LABELS_FR,
-} from "@/lib/i18n/entityLabels";
+} from "@/lib/i18n/glossary";
 
 const DAYS = [
   { value: 1, label: "Lun" },

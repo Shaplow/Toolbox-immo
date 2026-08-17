@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { canViewMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
-import { SHARED_CURSOR_ACCOUNT_ID, SHARED_DATA_CURSOR_ACCOUNT_ID } from "@/lib/contentLibraryResolver";
+import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 
 // Sentinels de curseur partagé (rotationScope="shared") — exclus des listings UI.
-const SENTINEL_ACCOUNT_IDS = [SHARED_CURSOR_ACCOUNT_ID, SHARED_DATA_CURSOR_ACCOUNT_ID];
 
 /**
  * GET /api/admin/libraries/media/accounts
@@ -31,7 +30,7 @@ export async function GET() {
 
   try {
     const accounts = await prisma.instagramAccount.findMany({
-      where: { id: { notIn: SENTINEL_ACCOUNT_IDS } },
+      where: { id: { notIn: [...SHARED_SENTINEL_IDS] } },
       select: { id: true, name: true, handle: true },
       orderBy: { name: "asc" },
     });

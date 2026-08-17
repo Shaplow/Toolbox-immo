@@ -37,7 +37,7 @@ import { toast } from "@/components/ui/Toast";
 import { DeployTemplateModal } from "./DeployTemplateModal";
 import { PatternTemplateForm, type PatternTemplateFormValues } from "./PatternTemplateForm";
 import { PatternPeekDrawer } from "./PatternPeekDrawer";
-import { SOURCE_LABELS_FR, SOURCE_VARIANT } from "@/lib/i18n/entityLabels";
+import { SOURCE_LABELS_FR, SOURCE_VARIANT } from "@/lib/i18n/glossary";
 
 export interface CatalogItem {
   id: string;
@@ -300,7 +300,7 @@ export function PatternsCatalogClient({
 
       <PatternPeekDrawer
         open={peekTemplateId !== null}
-        patternId={peekTemplateId}
+        patternTemplateId={peekTemplateId}
         onClose={() => setPeekTemplateId(null)}
         onOpenEdit={(id) => router.push(`/admin/patterns/${id}/edit`)}
       />

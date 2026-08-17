@@ -210,7 +210,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   const startPolling = useCallback((renderId: string) => {
     // Open SSE once for the whole session
     if (!sseSourceRef.current) {
-      const source = new EventSource("/api/events/jobs");
+      const source = new EventSource("/api/sse/jobs");
       sseSourceRef.current = source;
       source.addEventListener("job", (e) => {
         try {
