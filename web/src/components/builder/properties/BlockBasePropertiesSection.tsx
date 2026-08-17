@@ -5,10 +5,11 @@ import { extractTemplateVars } from "@/lib/textTemplate";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type {
   AnyBlock, TextBlock, ImageBlock, VideoBlock, DPEBlock,
-  ShapeBlock, SchemaField,
+  ShapeBlock, SchemaField, TimingAnchor,
 } from "@/types/template";
 import { type BuilderFontEntry } from "@/lib/builderFonts";
 import { Slider } from "@/components/ui/Slider";
+import { Tabs } from "@/components/ui/Tabs";
 import { Section } from "./Section";
 import { buildAnchoredSizeChange } from "./utils";
 import { BlockConditionalRulesSection } from "./BlockConditionalRulesSection";
@@ -318,9 +319,11 @@ function BlockTimingSection({ block }: { block: AnyBlock }) {
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Apparaît à (s)</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              {(block.appearAnchor ?? "start") === "end" ? "Apparaît (s avant la fin)" : "Apparaît à (s)"}
+            </span>
             <input
-              type="number" min={0} step={0.5} placeholder="0"
+              type="number" min={(block.appearAnchor ?? "start") === "end" ? 0.5 : 0} step={0.5} placeholder="0"
               value={block.appearAt ?? ""}
               onChange={(e) => {
                 const raw = e.target.value;
@@ -330,11 +333,27 @@ function BlockTimingSection({ block }: { block: AnyBlock }) {
               }}
               className="border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
             />
+            <Tabs
+              variant="pill"
+              size="sm"
+              items={[
+                { id: "start", label: "début" },
+                { id: "end", label: "avant la fin" },
+              ]}
+              value={block.appearAnchor ?? "start"}
+              onChange={(id) =>
+                updateBlock(block.id, {
+                  appearAnchor: id === "end" ? ("end" as TimingAnchor) : undefined,
+                } as Partial<AnyBlock>)
+              }
+            />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Disparaît à (s)</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              {(block.hideAnchor ?? "start") === "end" ? "Disparaît (s avant la fin)" : "Disparaît à (s)"}
+            </span>
             <input
-              type="number" min={0} step={0.5} placeholder="fin"
+              type="number" min={(block.hideAnchor ?? "start") === "end" ? 0.5 : 0} step={0.5} placeholder="fin"
               value={block.hideAt ?? ""}
               onChange={(e) => {
                 const raw = e.target.value;
@@ -344,11 +363,27 @@ function BlockTimingSection({ block }: { block: AnyBlock }) {
               }}
               className="border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
             />
+            <Tabs
+              variant="pill"
+              size="sm"
+              items={[
+                { id: "start", label: "début" },
+                { id: "end", label: "avant la fin" },
+              ]}
+              value={block.hideAnchor ?? "start"}
+              onChange={(id) =>
+                updateBlock(block.id, {
+                  hideAnchor: id === "end" ? ("end" as TimingAnchor) : undefined,
+                } as Partial<AnyBlock>)
+              }
+            />
           </label>
         </div>
         <p className="text-[10px] text-muted-foreground leading-snug">
           Vide = valeur par défaut (0 s / fin de chaque clip). S&apos;applique à
-          tous les clips où le bloc est visible.
+          tous les clips où le bloc est visible. Ancrage «&nbsp;avant la fin&nbsp;» :
+          la valeur compte à rebours depuis la fin réelle de chaque clip (durées
+          auto incluses).
         </p>
         {hasSequence && (
           <p className="text-[10px] text-info-600 leading-snug">

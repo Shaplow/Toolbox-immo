@@ -5,8 +5,10 @@ import { useBuilderStore } from "@/lib/store/builderStore";
 import {
   isBlockVisibleInSlot as visibleInSlot,
   resolveBlockTimingInSlot as effectiveTiming,
+  resolveBlockTimingRefs,
+  type TimingRef,
 } from "@/lib/videoSequenceUtils";
-import type { AnyBlock, MusicBlock, VideoSequenceSlot } from "@/types/template";
+import type { AnyBlock, MusicBlock, TimingAnchor, VideoSequenceSlot } from "@/types/template";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -34,8 +36,18 @@ interface SlotLayout {
 
 interface TrackSpan {
   slotIndex: number;
+  /** Positions résolues à l'échelle du slot (ancres fin déjà converties). */
   appearAt: number;
   hideAt: number;
+  hideAnchor: TimingAnchor;
+  /** Libellé lisible de la fenêtre, ex. « 2s → fin » ou « fin−3s → fin ». */
+  label: string;
+}
+
+function formatTimingRef(ref: TimingRef | null, fallback: string): string {
+  if (ref === null) return fallback;
+  if (ref.anchor === "end") return ref.value === 0 ? "fin" : `fin−${ref.value}s`;
+  return `${ref.value}s`;
 }
 
 interface BlockTrack {
@@ -77,8 +89,10 @@ export function SequenceTimeline() {
       const spans: TrackSpan[] = [];
       for (const layout of slotLayouts) {
         if (!visibleInSlot(block, layout.slot, groups)) continue;
-        const { appearAt, hideAt } = effectiveTiming(block, layout.slot.id, layout.duration);
-        spans.push({ slotIndex: layout.index, appearAt, hideAt });
+        const { appearAt, hideAt, hideAnchor } = effectiveTiming(block, layout.slot.id, layout.duration);
+        const refs = resolveBlockTimingRefs(block, layout.slot.id);
+        const label = `${formatTimingRef(refs.appear, "0s")} → ${formatTimingRef(refs.hide, "fin")}`;
+        spans.push({ slotIndex: layout.index, appearAt, hideAt, hideAnchor, label });
       }
       if (spans.length === 0) continue;
       tracks.push({ blockId: block.id, label: block.binding ?? block.name ?? block.type, spans });
@@ -437,6 +451,48 @@ export function SequenceTimeline() {
                       } as Partial<AnyBlock>);
                     }
 
+                    // Helper: toggle the anchor (début ↔ fin) of one bound
+                    function setSlotAnchor(field: "appearAnchor" | "hideAnchor", anchor: TimingAnchor) {
+                      const block = blocks.find((b) => b.id === track.blockId);
+                      if (!block) return;
+                      const current = block.slotTimings ?? {};
+                      updateBlock(track.blockId, {
+                        slotTimings: {
+                          ...current,
+                          [layout.slot.id]: {
+                            ...current[layout.slot.id],
+                            [field]: anchor === "end" ? "end" : undefined,
+                          },
+                        },
+                      } as Partial<AnyBlock>);
+                    }
+
+                    const slotEntry = blocks.find((b) => b.id === track.blockId)?.slotTimings?.[layout.slot.id];
+                    const appearAnchorUi: TimingAnchor = slotEntry?.appearAnchor ?? "start";
+                    const hideAnchorUi: TimingAnchor = slotEntry?.hideAnchor ?? "start";
+
+                    const anchorToggle = (field: "appearAnchor" | "hideAnchor", anchor: TimingAnchor) => (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSlotAnchor(field, anchor === "end" ? "start" : "end");
+                        }}
+                        className={`shrink-0 w-[18px] h-[14px] rounded border text-[7px] leading-none ${
+                          anchor === "end"
+                            ? "bg-indigo-600 border-indigo-600 text-white"
+                            : "bg-white border-border text-muted-foreground hover:border-indigo-300"
+                        }`}
+                        title={
+                          anchor === "end"
+                            ? "Ancré à la fin : la valeur compte à rebours depuis la fin du clip (X s avant la fin). Cliquer pour ancrer au début."
+                            : "Ancré au début : la valeur compte depuis le début du clip. Cliquer pour ancrer à la fin."
+                        }
+                      >
+                        {anchor === "end" ? "fin" : "déb"}
+                      </button>
+                    );
+
                     return (
                       <td
                         key={layout.slot.id}
@@ -460,28 +516,30 @@ export function SequenceTimeline() {
                         {isEditMode ? (
                           /* Inline timing editor */
                           <div className="flex items-center gap-0.5 px-1 h-full">
+                            {anchorToggle("appearAnchor", appearAnchorUi)}
                             <input
                               type="number"
-                              min={0}
+                              min={appearAnchorUi === "end" ? 0.5 : 0}
                               step={0.5}
                               placeholder="0"
-                              value={(blocks.find((b) => b.id === track.blockId)?.slotTimings?.[layout.slot.id]?.appearAt) ?? ""}
+                              value={slotEntry?.appearAt ?? ""}
                               onChange={(e) => setSlotTiming("appearAt", e.target.value)}
                               onClick={(e) => e.stopPropagation()}
-                              className="w-[34px] border border-indigo-300 rounded px-1 py-0 text-[8px] focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white text-center"
-                              title="Apparaît à (s)"
+                              className="w-[30px] border border-indigo-300 rounded px-1 py-0 text-[8px] focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white text-center"
+                              title={appearAnchorUi === "end" ? "Apparaît (s avant la fin)" : "Apparaît à (s)"}
                             />
                             <span className="text-[7px] text-muted-foreground shrink-0">→</span>
+                            {anchorToggle("hideAnchor", hideAnchorUi)}
                             <input
                               type="number"
-                              min={0}
+                              min={hideAnchorUi === "end" ? 0.5 : 0}
                               step={0.5}
                               placeholder="fin"
-                              value={(blocks.find((b) => b.id === track.blockId)?.slotTimings?.[layout.slot.id]?.hideAt) ?? ""}
+                              value={slotEntry?.hideAt ?? ""}
                               onChange={(e) => setSlotTiming("hideAt", e.target.value)}
                               onClick={(e) => e.stopPropagation()}
-                              className="w-[34px] border border-indigo-300 rounded px-1 py-0 text-[8px] focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white text-center"
-                              title="Disparaît à (s)"
+                              className="w-[30px] border border-indigo-300 rounded px-1 py-0 text-[8px] focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white text-center"
+                              title={hideAnchorUi === "end" ? "Disparaît (s avant la fin)" : "Disparaît à (s)"}
                             />
                           </div>
                         ) : span ? (
@@ -491,11 +549,11 @@ export function SequenceTimeline() {
                               e.stopPropagation();
                               selectBoth(track.blockId, layout.slot.id);
                             }}
-                            title={`${track.label} · ${layout.slot.label ?? `Clip ${layout.index + 1}`} · ${span.appearAt}s → ${span.hideAt}s — cliquer pour éditer`}
+                            title={`${track.label} · ${layout.slot.label ?? `Clip ${layout.index + 1}`} · ${span.label} — cliquer pour éditer`}
                             className="absolute inset-y-[3px] rounded cursor-pointer"
                             style={{
-                              left: `calc(${(span.appearAt / layout.duration) * 100}% + 1px)`,
-                              right: `calc(${((layout.duration - span.hideAt) / layout.duration) * 100}% + 1px)`,
+                              left: `calc(${(Math.min(Math.max(span.appearAt, 0), layout.duration) / layout.duration) * 100}% + 1px)`,
+                              right: `calc(${((layout.duration - Math.min(Math.max(span.hideAt, 0), layout.duration)) / layout.duration) * 100}% + 1px)`,
                               minWidth: "3px",
                             }}
                           >
@@ -507,7 +565,8 @@ export function SequenceTimeline() {
                             {/* Dot when per-slot timing overrides block defaults */}
                             {(() => {
                               const block = blocks.find((b) => b.id === track.blockId);
-                              const hasOverride = !!(block?.slotTimings?.[layout.slot.id]);
+                              const entry = block?.slotTimings?.[layout.slot.id];
+                              const hasOverride = !!entry && Object.values(entry).some((v) => v !== undefined);
                               return hasOverride ? (
                                 <span
                                   className="absolute top-[1px] right-[1px] w-[5px] h-[5px] rounded-full bg-white border border-indigo-400"
