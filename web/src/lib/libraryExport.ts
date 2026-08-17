@@ -32,7 +32,10 @@ export interface ExportResult {
 export type LibraryExportManifest = MediaLibraryManifest | DataLibraryManifest;
 
 interface MediaLibraryManifest {
-  version: 1;
+  /** v2 (plan simplification Phase 3) : drop de `setSequence` (lib) et
+   *  `category` (assets). L'import accepte encore les manifests v1 en
+   *  ignorant ces champs. */
+  version: 2;
   exportedAt: string;
   libraryType: "media";
   library: {
@@ -41,7 +44,6 @@ interface MediaLibraryManifest {
     type: string;
     tags: string[];
     description: string | null;
-    setSequence: string[];
     rotationScope: string;
   };
   assets: ExportedMediaAsset[];
@@ -56,7 +58,6 @@ interface ExportedMediaAsset {
   duration: number | null;
   tags: string[];
   setTag: string | null;
-  category: string | null;
   usageCount: number;
   lastUsedAt: string | null;
   accessAccountHandles: string[];
@@ -166,7 +167,6 @@ async function buildMediaExport(
       duration: asset.duration ?? null,
       tags: safeJsonParse<string[]>(asset.tags, []),
       setTag: asset.setTag ?? null,
-      category: asset.category ?? null,
       usageCount: options.includeUsage ? asset.usageCount : 0,
       lastUsedAt: options.includeUsage ? (asset.lastUsedAt?.toISOString() ?? null) : null,
       accessAccountHandles: asset.accesses.map((a) => a.account.handle),
@@ -175,7 +175,7 @@ async function buildMediaExport(
   }
 
   const manifest: MediaLibraryManifest = {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     libraryType: "media",
     library: {
@@ -184,7 +184,6 @@ async function buildMediaExport(
       type: library.type,
       tags: safeJsonParse<string[]>(library.tags, []),
       description: library.description ?? null,
-      setSequence: safeJsonParse<string[]>(library.setSequence, []),
       rotationScope: library.rotationScope,
     },
     assets: exportedAssets,

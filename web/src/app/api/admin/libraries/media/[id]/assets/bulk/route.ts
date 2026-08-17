@@ -7,6 +7,7 @@ import {
   isBulkParseError,
   parseBulkAccessBody,
 } from "@/lib/admin/libraryBulkHelpers";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -30,15 +31,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   const { ids: assetIds, action: accessAction, accountIds: accessAccountIds } = parsed;
 
-  // H.2 — Le prefix `pack_` est réservé aux groupes auto-générés.
-  // Bloque toute tentative manuelle d'écrire un setTag avec ce prefix.
-  if (
-    "setTag" in body &&
-    typeof body.setTag === "string" &&
-    body.setTag.startsWith("pack_")
-  ) {
+  // H.2 — Le prefix `pack_` est réservé aux dossiers auto-générés (feature
+  // supprimée). Bloque toute tentative manuelle d'écrire un setTag avec ce prefix.
+  if ("setTag" in body && typeof body.setTag === "string" && isReservedSetTag(body.setTag)) {
     return NextResponse.json(
-      { error: "Le préfixe « pack_ » est réservé. Choisis un autre nom de groupe." },
+      { error: "Le préfixe « pack_ » est réservé. Choisis un autre nom de dossier." },
       { status: 400 },
     );
   }

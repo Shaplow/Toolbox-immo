@@ -5,11 +5,12 @@
  * actions bulk (add account, remove_all) sur les DataEntry.
  *
  * Mirror fonctionnel de useBulkEdit (mediaAssets/) : accès comptes + bulk
- * Set / catégorie (handleBulkApplyFields). Les tags ne sont pas gérés en bulk
- * côté data (pas de champ tags sur DataEntry).
+ * Dossier (handleBulkApplyFields). Les tags ne sont pas gérés en bulk côté
+ * data (pas de champ tags sur DataEntry). `category` retiré (plan
+ * simplification Phase 4 — concept catégorie décommissionné).
  *
  * Le hook isole l'état de sélection + les handlers async qui appellent
- * POST /api/admin/libraries/data/campaigns/[campaignId]/entries/bulk.
+ * PATCH /api/admin/libraries/data/[libraryId]/entries/bulk.
  * Après chaque mutation, refetch via `reload` (callback passé par le panel).
  */
 
@@ -18,7 +19,7 @@ import { toast } from "@/components/ui/Toast";
 import type { InstagramAccount } from "@/components/admin/libraries/DataEntriesPanel";
 
 interface UseBulkEditDataEntriesArgs {
-  campaignId: string;
+  libraryId: string;
   /** Liste des comptes IG disponibles — pour afficher le @handle dans les toasts. */
   accounts: InstagramAccount[];
   /** Callback pour refetch les entries après mutation. */
@@ -36,12 +37,12 @@ export interface UseBulkEditDataEntriesResult {
   // Bulk apply
   bulkApplying: boolean;
   handleBulkApplyAccess: (action: "add" | "remove_all", accountId?: string) => Promise<void>;
-  /** Bulk Set / catégorie : valeur vide ("") → null (efface le champ). */
-  handleBulkApplyFields: (patch: { setTag?: string | null; category?: string | null }) => Promise<void>;
+  /** Bulk Dossier : valeur vide ("") → null (efface le champ). */
+  handleBulkApplyFields: (patch: { setTag?: string | null }) => Promise<void>;
 }
 
 export function useBulkEditDataEntries({
-  campaignId,
+  libraryId,
   accounts,
   reload,
 }: UseBulkEditDataEntriesArgs): UseBulkEditDataEntriesResult {
@@ -78,7 +79,7 @@ export function useBulkEditDataEntries({
 
       try {
         const res = await fetch(
-          `/api/admin/libraries/data/campaigns/${campaignId}/entries/bulk`,
+          `/api/admin/libraries/data/${libraryId}/entries/bulk`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -111,17 +112,17 @@ export function useBulkEditDataEntries({
         setBulkApplying(false);
       }
     },
-    [accounts, campaignId, reload, selectedIds],
+    [accounts, libraryId, reload, selectedIds],
   );
 
   const handleBulkApplyFields = useCallback(
-    async (patch: { setTag?: string | null; category?: string | null }) => {
+    async (patch: { setTag?: string | null }) => {
       if (selectedIds.size === 0) return;
-      if (patch.setTag === undefined && patch.category === undefined) return;
+      if (patch.setTag === undefined) return;
       setBulkApplying(true);
       try {
         const res = await fetch(
-          `/api/admin/libraries/data/campaigns/${campaignId}/entries/bulk`,
+          `/api/admin/libraries/data/${libraryId}/entries/bulk`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -137,14 +138,8 @@ export function useBulkEditDataEntries({
           return;
         }
         const d = (await res.json()) as { updated: number };
-        const label =
-          patch.setTag !== undefined && patch.category !== undefined
-            ? "Set + catégorie"
-            : patch.setTag !== undefined
-              ? "Set"
-              : "Catégorie";
         toast.success(
-          `${label} appliqué — ${d.updated} fiche${d.updated !== 1 ? "s" : ""}`,
+          `Dossier appliqué — ${d.updated} fiche${d.updated !== 1 ? "s" : ""}`,
         );
         reload();
       } catch {
@@ -153,7 +148,7 @@ export function useBulkEditDataEntries({
         setBulkApplying(false);
       }
     },
-    [campaignId, reload, selectedIds],
+    [libraryId, reload, selectedIds],
   );
 
   return {

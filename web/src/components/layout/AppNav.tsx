@@ -11,7 +11,6 @@ import {
   Library,
   LogOut,
   CalendarDays,
-  CalendarClock,
   Building2,
   Clapperboard,
   Instagram,
@@ -26,7 +25,7 @@ import {
   Hammer,
   History,
   MoreHorizontal,
-  MapPin,
+  FileStack,
 } from "lucide-react";
 import { KbdChord } from "@/components/ui/Kbd";
 import type { AppUserIdentity } from "@/lib/userContext";
@@ -126,10 +125,9 @@ export function AppNav({
         title: "Planification",
         items: [
           { href: "/calendar", label: "Calendrier", icon: <CalendarDays size={14} /> },
-          { href: "/events", label: "Événements", icon: <CalendarClock size={14} /> },
+          { href: "/fiches", label: "Fiches", icon: <FileStack size={14} /> },
           { href: "/admin/accounts", label: "Comptes Instagram", icon: <Instagram size={14} /> },
           { href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> },
-          { href: "/biens", label: "Biens", icon: <MapPin size={14} /> },
         ],
       },
       {
@@ -145,6 +143,7 @@ export function AppNav({
         collapsible: { key: "admin", defaultOpen: false },
         items: [
           { href: "/admin/patterns", label: "Recettes", icon: <Sparkles size={14} /> },
+          { href: "/admin/entity-types", label: "Types de fiches", icon: <FileStack size={14} /> },
           { href: "/admin/clients", label: "Clients", icon: <Building2 size={14} /> },
           { href: "/admin/users", label: "Utilisateurs", icon: <Users size={14} /> },
           { href: "/admin/jobs", label: "Jobs actifs", icon: <RotateCw size={14} /> },
@@ -165,9 +164,9 @@ export function AppNav({
       {
         items: [
           { href: "/home", label: "Accueil", icon: <Home size={14} /> },
-          // Événements : le vidéaste y voit ses tournages ; le monteur/CM y
-          // accèdent pour ajouter des reels à un événement (scope serveur-side).
-          { href: "/events", label: "Événements", icon: <CalendarClock size={14} /> },
+          // Fiches : le vidéaste y voit ses tournages ; le monteur/CM y
+          // accèdent pour ajouter des reels à une fiche (scope serveur-side).
+          { href: "/fiches", label: "Fiches", icon: <FileStack size={14} /> },
           // Médiathèque : le VIDEASTE gère les assets, le MONTEUR consulte et
           // télécharge (lecture seule). Reste cachée au CM.
           ...(canViewMediaLibrary(navUser.role)

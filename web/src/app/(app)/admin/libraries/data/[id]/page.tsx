@@ -12,6 +12,9 @@ type Props = { params: Promise<{ id: string }> };
  *
  * Shell minimal : strip 40px (breadcrumb + nom) → spreadsheet plein écran.
  * Pas de big header de 180px.
+ *
+ * Plan simplification Phase 4 : plus de wrapper DataCampaign — les fiches
+ * sont rattachées directement à la bibliothèque (DataEntry.libraryId).
  */
 export default async function DataLibraryDetailPage({ params }: Props) {
   const userContext = await getUserContext();
@@ -28,32 +31,10 @@ export default async function DataLibraryDetailPage({ params }: Props) {
       templateType: true,
       description: true,
       fieldsSchema: true,
-      campaigns: {
-        where: { isActive: true },
-        select: { id: true },
-        take: 1,
-      },
-      _count: { select: { campaigns: true } },
-      rotationScope: true,
+      rotationMode: true,
     },
   });
   if (!library) notFound();
-
-  // Migration douce : libs créées avant Phase 1.x peuvent ne pas avoir de
-  // campagne active. On en crée une silencieusement au premier accès.
-  let activeCampaignId = library.campaigns[0]?.id;
-  if (!activeCampaignId) {
-    const created = await prisma.dataCampaign.create({
-      data: {
-        libraryId: library.id,
-        name: "Default",
-        isActive: true,
-        usagePolicy: "unlimited",
-      },
-      select: { id: true },
-    });
-    activeCampaignId = created.id;
-  }
 
   return (
     <div className="flex flex-col h-full">
@@ -86,12 +67,11 @@ export default async function DataLibraryDetailPage({ params }: Props) {
 
       <div className="flex-1 overflow-y-auto">
         <DataEntriesPanel
-          campaignId={activeCampaignId}
           libraryId={library.id}
+          libraryName={library.name}
           fieldsSchema={library.fieldsSchema}
+          rotationMode={library.rotationMode}
         />
-        {/* Curseurs de rotation : gérés désormais à un seul endroit — le drawer
-            « Curseurs » de la fiche compte (vue cross-bibliothèques). */}
       </div>
     </div>
   );

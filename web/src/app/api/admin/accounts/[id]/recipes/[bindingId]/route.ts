@@ -38,6 +38,8 @@ interface TemplatePatch {
   allowsClientRevision?: boolean;
   needsBrief?: boolean;
   requiresProperty?: boolean;
+  /** Phase 5 (métaobjet) — remplace requiresProperty. */
+  requiresEntityTypeId?: string | null;
   notes?: string | null;
 }
 
@@ -134,6 +136,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const bndErr = validateBinding(bnd);
   if (bndErr) return NextResponse.json({ error: bndErr }, { status: 400 });
 
+  if (tpl?.requiresEntityTypeId) {
+    const type = await prisma.entityType.findUnique({
+      where: { id: tpl.requiresEntityTypeId },
+      select: { id: true },
+    });
+    if (!type) {
+      return NextResponse.json(
+        { error: "template.requiresEntityTypeId : type de fiche introuvable" },
+        { status: 400 },
+      );
+    }
+  }
+
   const binding = await prisma.patternBinding.findUnique({
     where: { id: bindingId },
     include: { patternTemplate: true },
@@ -172,6 +187,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ...(tpl.allowsClientRevision !== undefined && { allowsClientRevision: tpl.allowsClientRevision }),
           ...(tpl.needsBrief !== undefined && { needsBrief: tpl.needsBrief }),
           ...(tpl.requiresProperty !== undefined && { requiresProperty: tpl.requiresProperty }),
+          ...(tpl.requiresEntityTypeId !== undefined && {
+            requiresEntityTypeId: tpl.requiresEntityTypeId,
+          }),
           ...(tpl.notes !== undefined && { notes: tpl.notes }),
           updatedByUserId: ctx.actualUser.id,
         },

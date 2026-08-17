@@ -29,6 +29,8 @@ type PatchBody = {
   allowsClientRevision?: boolean;
   needsBrief?: boolean;
   requiresProperty?: boolean;
+  /** Phase 5 (métaobjet) — remplace requiresProperty. */
+  requiresEntityTypeId?: string | null;
   notes?: string | null;
   isArchived?: boolean;
   autoSaveToLibraryId?: string | null;
@@ -92,6 +94,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.coverMode !== undefined && !VALID_COVER_MODES.includes(body.coverMode)) {
     return NextResponse.json({ error: "coverMode invalide" }, { status: 400 });
   }
+  // Valide requiresEntityTypeId si fourni (non null).
+  if (body.requiresEntityTypeId) {
+    const type = await prisma.entityType.findUnique({
+      where: { id: body.requiresEntityTypeId },
+      select: { id: true },
+    });
+    if (!type) {
+      return NextResponse.json({ error: "requiresEntityTypeId : type de fiche introuvable" }, { status: 400 });
+    }
+  }
+
   // Valide autoSaveToLibraryId si fourni (non null).
   if (body.autoSaveToLibraryId) {
     const lib = await prisma.mediaLibrary.findUnique({
@@ -139,6 +152,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(body.allowsClientRevision !== undefined ? { allowsClientRevision: body.allowsClientRevision } : {}),
       ...(body.needsBrief !== undefined ? { needsBrief: body.needsBrief } : {}),
       ...(body.requiresProperty !== undefined ? { requiresProperty: body.requiresProperty } : {}),
+      ...(body.requiresEntityTypeId !== undefined
+        ? { requiresEntityTypeId: body.requiresEntityTypeId }
+        : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
       ...(body.isArchived !== undefined ? { isArchived: body.isArchived } : {}),
       ...(body.autoSaveToLibraryId !== undefined

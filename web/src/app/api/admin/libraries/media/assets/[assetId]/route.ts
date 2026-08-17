@@ -3,6 +3,7 @@ import { getUserContext } from "@/lib/userContext";
 import { canViewMediaLibrary, canManageMediaAssets } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, createPresignedDownloadUrl, r2Configured } from "@/lib/r2";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
 
 type Params = { params: Promise<{ assetId: string }> };
 
@@ -121,16 +122,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     metadata?: Record<string, string | number | null>;
   };
 
-  // H.2 — Le prefix `pack_` est réservé aux groupes auto-générés à l'upload.
-  // L'admin ne doit jamais pouvoir créer un setTag manuel avec ce prefix
-  // (sinon il apparaîtra invisible dans l'UI qui filtre les pack_*).
-  if (
-    "setTag" in body &&
-    typeof body.setTag === "string" &&
-    body.setTag.startsWith("pack_")
-  ) {
+  // H.2 — Le prefix `pack_` est réservé aux dossiers auto-générés à l'upload
+  // (feature supprimée). L'admin ne doit jamais pouvoir créer un setTag manuel
+  // avec ce prefix (sinon il apparaîtra invisible dans l'UI qui filtre les pack_*).
+  if ("setTag" in body && typeof body.setTag === "string" && isReservedSetTag(body.setTag)) {
     return NextResponse.json(
-      { error: "Le préfixe « pack_ » est réservé. Choisis un autre nom de groupe." },
+      { error: "Le préfixe « pack_ » est réservé. Choisis un autre nom de dossier." },
       { status: 400 },
     );
   }

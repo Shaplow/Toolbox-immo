@@ -91,6 +91,7 @@ export async function buildLibraryPrefillContext({
   const hasLibraryBindings =
     json.blocks.some((b) => (b.type === "video" || b.type === "music") && b.libraryId) ||
     (json.videoSequence ?? []).some((s) => !!s.libraryId) ||
+    !!json.contentLibrary?.dataLibraryId ||
     !!json.contentLibrary?.dataCampaignId;
 
   if (!hasLibraryBindings) {
@@ -220,20 +221,10 @@ export async function buildLibraryPrefillContext({
   let setSequencedLibraryIds: string[] = [];
   let usedSetTagByLibrary: Record<string, string> | undefined;
   let usedCategoryByLibrary: Record<string, string> | undefined;
-  let prevDataEntryState:
-    | {
-        entryId: string;
-        campaignId: string;
-        usagePolicy: string;
-        claimType: "usedInCycle" | "perAccountUsage";
-        accountId?: string;
-      }
-    | undefined;
   let dataSuggestion: {
     entryId: string;
     fields: Record<string, string>;
     resolvedSetTag?: string | null;
-    resolvedCategory?: string | null;
   } | null = null;
 
   if (listingId) {
@@ -267,11 +258,10 @@ export async function buildLibraryPrefillContext({
       prefill.usedSetTagByLibrary && Object.keys(prefill.usedSetTagByLibrary).length > 0
         ? prefill.usedSetTagByLibrary
         : undefined;
-    usedCategoryByLibrary =
-      prefill.usedCategoryByLibrary && Object.keys(prefill.usedCategoryByLibrary).length > 0
-        ? prefill.usedCategoryByLibrary
-        : undefined;
-    prevDataEntryState = prefill.prevDataEntryState ?? undefined;
+    // usedCategoryByLibrary : plus produit par le prefill depuis la suppression
+    // des catégories (plan simplification Phase 3). Champ de trace conservé
+    // dans les types le temps du drop N+1 — toujours undefined désormais.
+    usedCategoryByLibrary = undefined;
 
     for (const block of json.blocks) {
       if (block.type === "video" && block.binding && block.libraryId) {
@@ -391,7 +381,6 @@ export async function buildLibraryPrefillContext({
             entryId: prefill.dataSuggestion.entryId,
             fields: prefill.dataSuggestion.fields,
             resolvedSetTag: prefill.dataSuggestion.resolvedSetTag,
-            resolvedCategory: prefill.dataSuggestion.resolvedCategory,
           }
         : null;
     }
@@ -405,7 +394,6 @@ export async function buildLibraryPrefillContext({
     setSequencedLibraryIds,
     usedSetTagByLibrary,
     usedCategoryByLibrary,
-    prevDataEntryState,
     instagramAccounts,
     selectedAccountId: accountId ?? undefined,
     slotId: slotId ?? undefined,

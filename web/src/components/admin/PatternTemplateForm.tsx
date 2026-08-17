@@ -60,6 +60,8 @@ export interface PatternTemplateInitial {
   allowsClientRevision: boolean;
   needsBrief: boolean;
   requiresProperty?: boolean;
+  /** Phase 5 (métaobjet) — remplace requiresProperty. */
+  requiresEntityTypeId?: string | null;
   notes: string | null;
   bindingCount?: number;
   /** Bibliothèque vidéo cible pour l'auto-save de la sortie. null = désactivé. */
@@ -82,6 +84,7 @@ export interface PatternTemplateFormValues {
   allowsClientRevision: boolean;
   needsBrief: boolean;
   requiresProperty: boolean;
+  requiresEntityTypeId: string | null;
   notes: string | null;
   autoSaveToLibraryId: string | null;
 }
@@ -153,15 +156,43 @@ export function PatternTemplateForm({
   const [descriptionFixedText, setDescriptionFixedText] = useState<string>(
     initial?.descriptionFixedText ?? "",
   );
-  // Clés de champs de bien suggérées (mode preFilled). Chargées à la volée ;
-  // saisie libre autorisée via allowCustom (un bien peut ne pas exister encore).
-  const [propertyFieldKeys, setPropertyFieldKeys] = useState<{ key: string; label: string }[]>([]);
+  // Phase 5 (métaobjet) — « Exige une fiche » : select de type au lieu d'un
+  // toggle booléen. Compat : requiresProperty=true sans requiresEntityTypeId
+  // (recette pas encore migrée) affiche « Bien » sélectionné.
+  const [requiresEntityTypeId, setRequiresEntityTypeId] = useState(
+    initial?.requiresEntityTypeId ?? (initial?.requiresProperty ? "etype_bien" : ""),
+  );
+  const [entityTypes, setEntityTypes] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
-    if (needsDescription !== "preFilled" || propertyFieldKeys.length > 0) return;
     let cancelled = false;
     void (async () => {
       try {
-        const r = await fetch("/api/properties/field-keys");
+        const r = await fetch("/api/entity-types");
+        if (!r.ok) return;
+        const data = (await r.json()) as { types: { id: string; name: string }[] };
+        if (!cancelled) setEntityTypes(data.types);
+      } catch {
+        /* liste indisponible — le select reste vide */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Clés de champs de fiche suggérées (mode preFilled) — chargées à la volée
+  // depuis le type de fiche sélectionné (fallback « Bien » si aucun type
+  // requis). Saisie libre autorisée via allowCustom (la fiche peut ne pas
+  // exister encore).
+  const [propertyFieldKeys, setPropertyFieldKeys] = useState<{ key: string; label: string }[]>([]);
+  const fieldKeysTypeId = requiresEntityTypeId || "etype_bien";
+  useEffect(() => {
+    if (needsDescription !== "preFilled") return;
+    let cancelled = false;
+    void (async () => {
+      setPropertyFieldKeys([]);
+      try {
+        const r = await fetch(`/api/entity-types/${fieldKeysTypeId}/field-keys`);
         if (!r.ok) return;
         const data = (await r.json()) as { key: string; label: string }[];
         if (!cancelled) setPropertyFieldKeys(data);
@@ -172,7 +203,7 @@ export function PatternTemplateForm({
     return () => {
       cancelled = true;
     };
-  }, [needsDescription, propertyFieldKeys.length]);
+  }, [needsDescription, fieldKeysTypeId]);
   const [needsAdminValidation, setNeedsAdminValidation] = useState(
     initial?.needsAdminValidation ?? false,
   );
@@ -183,7 +214,6 @@ export function PatternTemplateForm({
     initial?.allowsClientRevision ?? false,
   );
   const [needsBrief, setNeedsBrief] = useState(initial?.needsBrief ?? false);
-  const [requiresProperty, setRequiresProperty] = useState(initial?.requiresProperty ?? false);
   const [notes, setNotes] = useState<string>(initial?.notes ?? "");
   // Missions — bibliothèque vidéo cible pour l'auto-save. "" = null (désactivé).
   const [autoSaveLibraryId, setAutoSaveLibraryId] = useState<string>(
@@ -219,6 +249,7 @@ export function PatternTemplateForm({
     notes?: string | null;
     needsBrief?: boolean;
     requiresProperty?: boolean;
+    requiresEntityTypeId?: string | null;
     needsAdminValidation?: boolean;
     needsClientValidation?: boolean;
     allowsClientRevision?: boolean;
@@ -256,9 +287,11 @@ export function PatternTemplateForm({
     setNeedsBrief(v);
     if (templateId) autoSave.enqueue({ needsBrief: v });
   }
-  function setRequiresPropertyWithAutoSave(v: boolean) {
-    setRequiresProperty(v);
-    if (templateId) autoSave.enqueue({ requiresProperty: v });
+  function setRequiresEntityTypeIdWithAutoSave(v: string) {
+    setRequiresEntityTypeId(v);
+    if (templateId) {
+      autoSave.enqueue({ requiresProperty: !!v, requiresEntityTypeId: v || null });
+    }
   }
   function setNeedsAdminValidationWithAutoSave(v: boolean) {
     setNeedsAdminValidation(v);
@@ -381,7 +414,8 @@ export function PatternTemplateForm({
       needsClientValidation,
       allowsClientRevision: needsClientValidation && allowsClientRevision,
       needsBrief,
-      requiresProperty,
+      requiresProperty: !!requiresEntityTypeId,
+      requiresEntityTypeId: requiresEntityTypeId || null,
       notes: notes.trim() || null,
       autoSaveToLibraryId: autoSaveLibraryId || null,
     };
@@ -607,6 +641,19 @@ export function PatternTemplateForm({
               />
             </FormField>
           )}
+          <FormField
+            label="Exige une fiche"
+            help="Une fiche de ce type doit être rattachée pour créer un slot ou une mission depuis cette recette."
+          >
+            <Combobox
+              value={requiresEntityTypeId}
+              onChange={setRequiresEntityTypeIdWithAutoSave}
+              options={[
+                { value: "", label: "Aucune" },
+                ...entityTypes.map((t) => ({ value: t.id, label: t.name })),
+              ]}
+            />
+          </FormField>
         </section>
 
         {/* Workflow */}
@@ -619,12 +666,6 @@ export function PatternTemplateForm({
             description="Champ Brief à remplir avant production."
             checked={needsBrief}
             onChange={setNeedsBriefWithAutoSave}
-          />
-          <WorkflowToggle
-            label="Nécessite un bien"
-            description="Un bien doit être rattaché pour créer un slot ou une mission depuis cette recette."
-            checked={requiresProperty}
-            onChange={setRequiresPropertyWithAutoSave}
           />
           <WorkflowToggle
             label="Validation admin du montage"

@@ -101,10 +101,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!lib) {
     return NextResponse.json({ error: "Lien invalide ou révoqué" }, { status: 404 });
   }
-  const campaignId = lib.campaigns[0]?.id;
-  if (!campaignId) {
-    return NextResponse.json({ error: "Bibliothèque mal configurée (pas de campagne active)" }, { status: 500 });
-  }
+  // Phase 4 : rattachement direct à la bibliothèque (campagne legacy posée
+  // en trace tant que la table existe — drop N+1).
+  const campaignId = lib.campaigns[0]?.id ?? null;
 
   type EntryPayload = { setTag?: string | null; category?: string | null; fields: Record<string, string> };
   const body = (await req.json()) as { entries?: EntryPayload[] };
@@ -154,9 +153,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const created = await prisma.dataEntry.createMany({
       data: body.entries.map((e) => ({
+        libraryId: lib.id,
         campaignId,
         setTag: e.setTag?.trim() || null,
-        category: e.category?.trim() || null,
         fields: JSON.stringify(e.fields),
       })),
     });

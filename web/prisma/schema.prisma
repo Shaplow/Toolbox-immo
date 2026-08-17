@@ -52,6 +52,11 @@ model User {
   defaultCmForEvents            ShootEvent[]            @relation("EventDefaultCm")
   shootEventsCreated            ShootEvent[]            @relation("EventCreatedBy")
   shootEventActivities          ShootEventActivity[]    @relation("ShootEventActivityActor")
+  assignedAsEntityVideaste      Entity[]                @relation("EntityVideaste")
+  defaultMonteurForEntities     Entity[]                @relation("EntityDefaultMonteur")
+  defaultCmForEntities          Entity[]                @relation("EntityDefaultCm")
+  entitiesCreated               Entity[]                @relation("EntityCreatedBy")
+  entityActivities              EntityActivity[]        @relation("EntityActivityActor")
 }
 
 // (Les inverses de PatternBinding pour User sont déclarées plus haut dans
@@ -636,10 +641,9 @@ model DataLibrary {
   /// Identifiant métier du type : "RPI" | "RTIPS" | "RPOD" | etc.
   templateType    String
   description     String?
-  /// Mode de rotation explicite (mirror MediaLibrary) :
-  /// - "auto"     : least-used round-robin (défaut).
-  /// - "override" : ordre fixe (TODO V2 : nécessitera DataEntry.position).
-  /// - "none"     : pas de rotation auto, sélection manuelle uniquement.
+  /// Mode de tirage (mirror MediaLibrary, plan simplification Phase 4) :
+  /// - "auto" : tirage par dossier (least-recently-used, défaut).
+  /// - "none" : pas de tirage auto, sélection manuelle uniquement.
   rotationMode    String                     @default("auto")
   /// Portée de la rotation (mirror MediaLibrary) :
   /// - "shared" (défaut)  : pool partagé entre tous les comptes (compteur global DataEntry.usageCount).
@@ -662,7 +666,9 @@ model DataLibrary {
   publicFillToken String?                    @unique
   createdAt       DateTime                   @default(now())
   updatedAt       DateTime                   @updatedAt
+  /// @deprecated Phase 4 — wrapper décommissionné. Drop N+1.
   campaigns       DataCampaign[]
+  entries         DataEntry[]                @relation("DataLibraryEntries")
   cursors         AccountDataLibraryCursor[]
 }
 
@@ -694,22 +700,29 @@ model DataCampaign {
 /// Une fiche de données texte (une ligne de l'Excel d'origine).
 model DataEntry {
   id          String            @id @default(cuid())
-  campaignId  String
-  campaign    DataCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  /// Lien direct vers la bibliothèque (plan simplification Phase 4 — le
+  /// wrapper DataCampaign est décommissionné).
+  libraryId   String
+  library     DataLibrary       @relation("DataLibraryEntries", fields: [libraryId], references: [id], onDelete: Cascade)
+  /// @deprecated Phase 4 — wrapper DataCampaign décommissionné, plus écrit. Drop N+1.
+  campaignId  String?
+  campaign    DataCampaign?     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   /// JSON — champs libres selon le templateType (ex: {quartier, prix_m2, evo_5ans_pct})
   fields      String            @default("{}")
-  /// Identifiant de set (regroupe les fiches d'un même thème/lot).
+  /// Dossier (regroupe les fiches d'un même thème/lot). UI : « Dossier ».
   setTag      String?
-  /// Famille de sets — utilisé pour l'exclusion consécutive en rotation auto.
+  /// @deprecated Phase 4 — exclusion famille décommissionnée, plus lue. Drop N+1.
   category    String?
   usageCount  Int               @default(0)
   lastUsedAt  DateTime?
-  /// Remis à false au reset de cycle. Permet la règle "pas encore utilisé ce cycle".
+  /// @deprecated Phase 4 — cycles décommissionnés, plus lu. Drop N+1.
   usedInCycle Boolean           @default(false)
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   accesses    DataEntryAccess[]
   usages      DataEntryUsage[]
+
+  @@index([libraryId])
 }
 
 /// Compte Instagram client géré par l'admin (pas de login propre dans l'app).
@@ -733,6 +746,7 @@ model InstagramAccount {
   accountPatterns  AccountPattern[]
   patternBindings  PatternBinding[]
   shootEvents      ShootEvent[]
+  entities         Entity[]                   @relation("EntityAccount")
 
   @@index([clientId])
 }
@@ -901,6 +915,12 @@ model PublicationSlot {
   /// missions) n'ont pas d'événement.
   eventId            String?
   event              ShootEvent?       @relation("EventSlots", fields: [eventId], references: [id], onDelete: SetNull)
+  /// Phase 5 (métaobjet) — fiche source de données (ex-propertyId, ids repris).
+  entityId           String?
+  entity             Entity?           @relation("SlotEntity", fields: [entityId], references: [id], onDelete: SetNull)
+  /// Phase 5 (métaobjet) — fiche tournage (ex-eventId, ids repris).
+  shootEntityId      String?
+  shootEntity        Entity?           @relation("SlotShootEntity", fields: [shootEntityId], references: [id], onDelete: SetNull)
 
   /// Override per-slot de needsAdminValidation du pattern. null = hérite.
   /// Phase 2.3 : permet d'activer la validation admin du montage (status
@@ -987,6 +1007,8 @@ model PublicationSlot {
   @@index([patternTemplateId])
   @@index([propertyId])
   @@index([eventId])
+  @@index([entityId])
+  @@index([shootEntityId])
 }
 
 /// Bien immobilier (UI = « Bien ») — fiche de données PARTAGÉE, référencée par
@@ -1014,6 +1036,113 @@ model Property {
   shootEvents     ShootEvent[]
 
   @@index([isArchived, label])
+}
+
+/// Type de fiche configurable (plan simplification Phase 5 — métaobjet).
+/// Remplace les concepts codés en dur « Bien » (Property) et « Tournage »
+/// (ShootEvent) : chaque type porte son schéma de champs custom
+/// (lib/customFields.ts) et active des capacités structurelles.
+/// Types système seedés : « Bien » (admin, capacités off) et « Tournage »
+/// (team, planning+compte+rushs+assignés).
+model EntityType {
+  id           String   @id @default(cuid())
+  name         String
+  namePlural   String?
+  /// Nom d'icône lucide optionnel (ex: "home", "clapperboard").
+  icon         String?
+  /// JSON CustomField[] — schéma des champs custom des fiches de ce type.
+  fieldSchema  String   @default("[]")
+  /// Capacités structurelles activables par type.
+  hasPlanning  Boolean  @default(false)
+  hasAccount   Boolean  @default(false)
+  hasRushes    Boolean  @default(false)
+  hasAssignees Boolean  @default(false)
+  /// "admin" : CRUD strictement admin (fiches data, ex-Property).
+  /// "team"  : scoping par rôle via lib/permissions/entityScope.ts (ex-ShootEvent).
+  ///           Garde-fou : un type team DOIT avoir hasAssignees=true.
+  visibility   String   @default("admin")
+  /// Ordre d'affichage des tabs sur /fiches.
+  position     Int      @default(0)
+  /// Types seedés (« Bien », « Tournage ») — non supprimables.
+  isSystem     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  entities           Entity[]
+  requiredByPatterns PatternTemplate[] @relation("PatternRequiredEntityType")
+}
+
+/// Fiche (métaobjet) — fusion de Property (« Bien ») et ShootEvent
+/// (« Tournage »). Les colonnes structurelles sont nullable et actives selon
+/// les capacités du type. Migration id-preserving : les fiches reprennent les
+/// ids des Property/ShootEvent d'origine.
+model Entity {
+  id         String     @id @default(cuid())
+  typeId     String
+  type       EntityType @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  /// Ex Property.label / ShootEvent.title.
+  label      String
+  /// JSON Record<string,string> — valeurs des champs custom du type.
+  fields     String     @default("{}")
+  isArchived Boolean    @default(false)
+
+  // ── Structurel (type.hasAccount / hasPlanning) ──
+  accountId   String?
+  account     InstagramAccount? @relation("EntityAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  scheduledAt DateTime?
+  endAt       DateTime?
+  shotAt      DateTime?
+  /// "PLANNED" | "SHOT" | "DONE" | "CANCELLED" (type.hasPlanning).
+  status      String?
+
+  // ── Structurel (type.hasAssignees) ──
+  assigneeVideasteId       String?
+  assigneeVideaste         User?   @relation("EntityVideaste", fields: [assigneeVideasteId], references: [id], onDelete: SetNull)
+  defaultAssigneeMonteurId String?
+  defaultAssigneeMonteur   User?   @relation("EntityDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
+  defaultAssigneeCmId      String?
+  defaultAssigneeCm        User?   @relation("EntityDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
+
+  notes String?
+  brief String?
+
+  /// Fiche liée (ex ShootEvent.propertyId : le tournage pointe le bien).
+  relatedEntityId String?
+  related         Entity?  @relation("EntityRelated", fields: [relatedEntityId], references: [id], onDelete: SetNull)
+  relatedOf       Entity[] @relation("EntityRelated")
+
+  createdByUserId String?
+  createdBy       User?    @relation("EntityCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  /// Reels/missions dont cette fiche est la source de données (ex-propertyId).
+  slots      PublicationSlot[] @relation("SlotEntity")
+  /// Reels rattachés à cette fiche comme tournage (ex-eventId).
+  shootSlots PublicationSlot[] @relation("SlotShootEntity")
+  rushes     PublicationRush[] @relation("EntityRushes")
+  activities EntityActivity[]
+
+  @@index([typeId, isArchived, label])
+  @@index([accountId, scheduledAt])
+  @@index([status, scheduledAt])
+  @@index([assigneeVideasteId])
+  @@index([relatedEntityId])
+}
+
+/// Journal d'activité d'une fiche (remplace ShootEventActivity —
+/// PublicationActivity reste dédiée aux slots, chemin chaud).
+model EntityActivity {
+  id        String   @id @default(cuid())
+  entityId  String
+  entity    Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?    @relation("EntityActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  type      String
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([entityId, createdAt])
 }
 
 model PublicationComment {
@@ -1154,7 +1283,7 @@ model PatternTemplate {
   coverMode   String @default("none")
   coverConfig Json?
 
-  needsDescription          String  @default("none")
+  needsDescription          String      @default("none")
   /// Mode "preFilled" uniquement : clé du champ personnalisé du Bien (Property.fields[key])
   /// dont la valeur pré-remplit la légende Instagram (slot.description) au rattachement
   /// d'un bien. null = feature inactive (fallback textarea vide, aucune régression).
@@ -1164,16 +1293,20 @@ model PatternTemplate {
   /// null = pas de texte fixe. Copie one-shot, jamais re-synchronisée.
   descriptionFixedText      String?
   /// @deprecated V8 — utiliser needsCaptionsMode.
-  needsCaptions             Boolean @default(false)
+  needsCaptions             Boolean     @default(false)
   /// "none" | "auto" | "manual"
-  needsCaptionsMode         String  @default("none")
-  needsAdminValidation      Boolean @default(false)
-  needsClientValidation     Boolean @default(false)
-  allowsClientRevision      Boolean @default(false)
-  needsBrief                Boolean @default(false)
+  needsCaptionsMode         String      @default("none")
+  needsAdminValidation      Boolean     @default(false)
+  needsClientValidation     Boolean     @default(false)
+  allowsClientRevision      Boolean     @default(false)
+  needsBrief                Boolean     @default(false)
   /// Biens — la création d'un slot/mission depuis cette recette EXIGE un bien
   /// (propertyId). Validé dans createSlot ; bloque le submit côté UI.
-  requiresProperty          Boolean @default(false)
+  requiresProperty          Boolean     @default(false)
+  /// Phase 5 (métaobjet) — « cette recette exige une fiche de type X ».
+  /// Remplace requiresProperty (migré : true → type « Bien »).
+  requiresEntityTypeId      String?
+  requiredEntityType        EntityType? @relation("PatternRequiredEntityType", fields: [requiresEntityTypeId], references: [id], onDelete: SetNull)
 
   captionPresetId     String?
   captionPreset       CaptionPreset?     @relation("PatternTemplateCaptionPreset", fields: [captionPresetId], references: [id], onDelete: SetNull)
@@ -1449,6 +1582,9 @@ model PublicationRush {
   slot             PublicationSlot? @relation(fields: [slotId], references: [id], onDelete: Cascade)
   eventId          String?
   event            ShootEvent?      @relation("EventRushes", fields: [eventId], references: [id], onDelete: Cascade)
+  /// Phase 5 (métaobjet) — rush d'une fiche tournage (ex-eventId, ids repris).
+  entityId         String?
+  entity           Entity?          @relation("EntityRushes", fields: [entityId], references: [id], onDelete: Cascade)
   r2Key            String           @unique
   fileName         String
   mimeType         String
@@ -1461,6 +1597,7 @@ model PublicationRush {
 
   @@index([slotId, deletedAt])
   @@index([eventId, deletedAt])
+  @@index([entityId, deletedAt])
 }
 
 // ─── Pod On-Demand state ─────────────────────────────────────────────────────

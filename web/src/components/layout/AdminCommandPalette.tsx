@@ -42,7 +42,7 @@ type Kind =
   | "slot"
   | "mediaLibrary"
   | "dataLibrary"
-  | "dataCampaign";
+  | "entity";
 
 interface SearchResultItem {
   kind: Kind;
@@ -60,7 +60,7 @@ const KIND_ICON: Record<Kind, LucideIcon> = {
   slot: FileText,
   mediaLibrary: Library,
   dataLibrary: Database,
-  dataCampaign: Layers,
+  entity: FileText,
 };
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -71,7 +71,7 @@ const KIND_LABEL: Record<Kind, string> = {
   slot: "Publications",
   mediaLibrary: "Bibliothèques médias",
   dataLibrary: "Bibliothèques données",
-  dataCampaign: "Campagnes",
+  entity: "Fiches",
 };
 
 const KIND_ORDER: Kind[] = [
@@ -82,7 +82,7 @@ const KIND_ORDER: Kind[] = [
   "preset",
   "mediaLibrary",
   "dataLibrary",
-  "dataCampaign",
+  "entity",
 ];
 
 export function AdminCommandPalette() {

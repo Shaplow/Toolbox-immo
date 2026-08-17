@@ -63,22 +63,16 @@ export type SortKey =
   | "name_asc";
 
 /**
- * Groupe d'assets partageant un même `(category, setTag)`. Produit par
- * le useMemo `groupedBySetTag` du panel — utilisé par les vues "rotation"
- * et "grouped" pour afficher la rotation simulée + les colonnes de pool.
+ * Dossier — assets partageant un même `setTag`. Produit par le useMemo
+ * `groupedBySetTag` du panel — utilisé par la vue "grouped" (grille de
+ * dossiers) pour afficher un bloc par dossier + un bloc « (sans dossier) ».
  */
 export interface SetGroup {
-  /** `${category ?? "__none__"}::${setTag ?? "__none__"}` */
+  /** `setTag ?? "__none__"` */
   key: string;
   setTag: string | null;
-  category: string | null;
   groupAssets: MediaAsset[];
   accessibleCount: number;
   lastUsed: string | null;
-  groupCreatedAt?: string | null;
-  /** Rang de prochaine génération (1 = next), null si pas dans la rotation. */
-  autoRank: number | null;
-  /** Taille du cycle de rotation (nombre de groupes participants). */
-  cycleSize: number | null;
   isAccessible: boolean;
 }

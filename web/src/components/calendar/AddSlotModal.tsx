@@ -31,6 +31,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { TimePicker } from "@/components/ui/TimePicker";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { toast } from "@/components/ui/Toast";
+import { EntityPicker } from "@/components/entities/EntityPicker";
 import { formatNextActionLine } from "@/lib/publications/nextActionLabel";
 import { SOURCE_LABELS_FR } from "@/lib/i18n/entityLabels";
 
@@ -49,14 +50,11 @@ interface PatternOption {
   isActive: boolean;
   source?: string;
   requiresProperty?: boolean;
+  /** Phase 5 (métaobjet) — remplace requiresProperty. */
+  requiresEntityTypeId?: string | null;
   defaultAssigneeMonteur: { id: string; name: string } | null;
   defaultAssigneeCm: { id: string; name: string } | null;
   defaultAssigneeVideaste?: { id: string; name: string } | null;
-}
-
-interface PropertyOption {
-  id: string;
-  label: string;
 }
 
 interface UserOption {
@@ -137,7 +135,6 @@ export function AddSlotModal({
   const [coverPresets, setCoverPresets] = useState<Array<{ id: string; name: string }>>([]);
 
   const [propertyId, setPropertyId] = useState<string>("");
-  const [properties, setProperties] = useState<PropertyOption[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,11 +144,10 @@ export function AddSlotModal({
     let cancelled = false;
     async function load() {
       try {
-        const [usersRes, presetsRes, promptsRes, propertiesRes] = await Promise.all([
+        const [usersRes, presetsRes, promptsRes] = await Promise.all([
           fetch("/api/admin/users"),
           fetch("/api/caption-presets"),
           fetch("/api/description/prompts"),
-          fetch("/api/properties"),
         ]);
         if (cancelled) return;
         if (usersRes.ok) {
@@ -167,10 +163,6 @@ export function AddSlotModal({
             isActive: boolean;
           }>;
           setDescriptionPrompts(prompts.filter((p) => p.isActive));
-        }
-        if (propertiesRes.ok) {
-          const props = (await propertiesRes.json()) as Array<{ id: string; label: string }>;
-          setProperties(props);
         }
       } catch {
         // silencieux
@@ -194,9 +186,8 @@ export function AddSlotModal({
     setAssigneeCmId("");
     setAssigneeVideasteId("");
 
-    // P2 — Fetch bindings au lieu de AccountPattern legacy. Le shim de compat
-    // côté createSlot accepte encore patternId, mais l'UI envoie maintenant
-    // l'id du binding (canonique) → moins de résolution implicite côté serveur.
+    // Fetch des PatternBinding (recettes appliquées au compte) — l'UI envoie
+    // l'id du binding (canonique) à createSlot via patternBindingId.
     type BindingResponse = {
       id: string;
       customLabel: string | null;
@@ -213,6 +204,7 @@ export function AddSlotModal({
         source: string;
         templateId: string | null;
         requiresProperty: boolean;
+        requiresEntityTypeId: string | null;
       };
     };
     // Au changement de compte, re-lock l'heure : on charge un nouveau pattern
@@ -233,6 +225,7 @@ export function AddSlotModal({
             isActive: b.isActive,
             source: b.patternTemplate.source,
             requiresProperty: b.patternTemplate.requiresProperty,
+            requiresEntityTypeId: b.patternTemplate.requiresEntityTypeId,
             defaultAssigneeMonteur: b.defaultAssigneeMonteur,
             defaultAssigneeCm: b.defaultAssigneeCm,
             defaultAssigneeVideaste: b.defaultAssigneeVideaste,
@@ -317,9 +310,9 @@ export function AddSlotModal({
     if (!accountId) return false;
     if (isPatternMode) {
       if (!selectedPatternId) return false;
-      // Recette qui exige un bien : bloquer si aucun bien sélectionné.
+      // Recette qui exige une fiche : bloquer si aucune fiche sélectionnée.
       const pattern = patterns.find((p) => p.id === selectedPatternId);
-      if (pattern?.requiresProperty && !propertyId) return false;
+      if ((pattern?.requiresEntityTypeId || pattern?.requiresProperty) && !propertyId) return false;
       return true;
     }
     if (!title.trim()) return false;
@@ -564,29 +557,29 @@ export function AddSlotModal({
             </FormField>
           )}
 
-          {/* Bien — requis si la recette l'exige, optionnel sinon */}
+          {/* Fiche (ex-Bien) — requise si la recette l'exige, optionnelle sinon */}
           {isPatternMode && selectedPattern && (
             <FormField
               label="Bien"
-              required={selectedPattern.requiresProperty}
-              help={selectedPattern.requiresProperty
-                ? "Cette recette nécessite un bien rattaché."
-                : "Optionnel — fiche partagée réutilisée par plusieurs slots."}
+              required={!!(selectedPattern.requiresEntityTypeId || selectedPattern.requiresProperty)}
+              help={
+                selectedPattern.requiresEntityTypeId || selectedPattern.requiresProperty
+                  ? "Cette recette nécessite une fiche rattachée."
+                  : "Optionnel — fiche partagée réutilisée par plusieurs slots."
+              }
             >
-              <Combobox
+              <EntityPicker
+                typeId={selectedPattern.requiresEntityTypeId ?? "etype_bien"}
                 value={propertyId}
                 onChange={setPropertyId}
-                options={[
-                  { value: "", label: "Aucun bien" },
-                  ...properties.map((p) => ({ value: p.id, label: p.label })),
-                ]}
                 placeholder="Aucun bien"
+                emptyLabel="Aucun bien"
               />
             </FormField>
           )}
 
-          {/* requiresProperty sans bien → avertissement */}
-          {isPatternMode && selectedPattern?.requiresProperty && !propertyId && (
+          {/* requiresEntityTypeId/requiresProperty sans fiche → avertissement */}
+          {isPatternMode && (selectedPattern?.requiresEntityTypeId || selectedPattern?.requiresProperty) && !propertyId && (
             <div className="flex items-start gap-2 text-[11px] text-warning-700 bg-warning-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
               <AlertCircle size={12} className="mt-0.5 shrink-0" />
               Cette recette nécessite un bien. Sélectionnez-en un pour continuer.

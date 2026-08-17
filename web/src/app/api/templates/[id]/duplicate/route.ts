@@ -42,7 +42,7 @@ export async function POST(
       name:        `Copie de ${source.name}`,
       client:      source.client,
       formats:     source.formats,
-      // contentType (RPI / RTIPS / ...) doit suivre la copie sinon AccountPattern
+      // contentType (RPI / RTIPS / ...) doit suivre la copie sinon la recette
       // validation casse et la pipeline éditoriale route le slot vers le mauvais
       // bucket.
       contentType: source.contentType,

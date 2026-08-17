@@ -210,7 +210,7 @@ export async function triggerAutoDescriptionForTranscription(
     return;
   }
 
-  // Config recette effective : legacy AccountPattern OU PatternBinding.
+  // Config recette effective : PatternBinding ou PatternTemplate global.
   const effPattern = resolveSlotEffectivePattern(slot);
 
   // ── 2. Skips légitimes (silencieux, AUCUN job créé) ──────────────────────

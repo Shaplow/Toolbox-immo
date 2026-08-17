@@ -383,7 +383,9 @@ export function CalendarView({
           new Date(slot.scheduledAt).getTime() < now
         );
       case "no-pattern":
-        return !slot.patternId;
+        // Sans recette = ni binding ni recette globale (fix résidu G.3 : les
+        // slots recette avaient patternId legacy null et étaient comptés à tort).
+        return !slot.patternBindingId && !slot.patternTemplateId;
       case "no-monteur":
         return !slot.assigneeMonteurId;
       case "no-videaste":

@@ -42,6 +42,7 @@ function templateUsesLibrary(json: TemplateJSON): boolean {
   return (
     json.blocks.some((b) => (b.type === "video" || b.type === "music") && !!(b as { libraryId?: string }).libraryId) ||
     (json.videoSequence ?? []).some((s) => !!(s as { libraryId?: string }).libraryId) ||
+    !!json.contentLibrary?.dataLibraryId ||
     !!json.contentLibrary?.dataCampaignId
   );
 }
@@ -85,23 +86,24 @@ export default async function GeneratePage({ params, searchParams }: Props) {
         fields: true,
         title: true,
         account: { select: { handle: true } },
-        // Biens — fiche partagée : ses valeurs servent de base, résolues LIVE.
-        property: { select: { fields: true, fieldSchema: true } },
+        // Phase 5 — fiche (Entity) rattachée : ses valeurs servent de base,
+        // résolues LIVE ; le schéma des champs vient du TYPE de la fiche.
+        entity: { select: { fields: true, type: { select: { fieldSchema: true } } } },
       },
     });
     if (slot) {
       if (!accountId) accountId = slot.accountId ?? undefined;
       slotBannerContext = { title: slot.title, handle: slot.account?.handle ?? "Sans compte" };
       try {
-        // Précédence : bien (base) < overrides mission (slot.fields) < Listing figé.
-        const propertyFields = slot.property
-          ? (JSON.parse(slot.property.fields) as Record<string, string>)
+        // Précédence : fiche (base) < overrides mission (slot.fields) < Listing figé.
+        const entityFields = slot.entity
+          ? (JSON.parse(slot.entity.fields) as Record<string, string>)
           : {};
         const slotFields = JSON.parse(slot.fields) as Record<string, string>;
-        initialValues = { ...propertyFields, ...slotFields, ...initialValues };
+        initialValues = { ...entityFields, ...slotFields, ...initialValues };
       } catch { /* ignore malformed JSON */ }
-      // Schéma des champs perso : source unique = le bien rattaché au slot.
-      customFormFields = normalizeCustomFields(slot.property?.fieldSchema);
+      // Schéma des champs perso : source unique = le type de la fiche rattachée.
+      customFormFields = normalizeCustomFields(slot.entity?.type.fieldSchema);
     }
   }
 

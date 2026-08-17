@@ -9,7 +9,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Plus, Trash2, Database, ChevronRight, Search, Pencil, Check } from "lucide-react";
+import { Plus, Trash2, Database, ChevronRight, Search, Pencil, RotateCw } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { Button } from "@/components/ui/Button";
@@ -18,6 +18,7 @@ import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { Chip } from "@/components/ui/Chip";
+import { rotationScopeLabel } from "@/lib/i18n/entityLabels";
 import { DataLibrarySettingsDrawer } from "./DataLibrarySettingsDrawer";
 
 interface DataLibrary {
@@ -25,20 +26,19 @@ interface DataLibrary {
   name: string;
   templateType: string;
   description: string | null;
-  /** Mode de rotation (Phase 1.x — mirror MediaLibrary). */
-  rotationMode: "auto" | "override" | "none";
-  /** Portée de la rotation (Phase 1.x — mirror MediaLibrary). */
+  /** Mode de rotation — plan simplification Phase 4 : "auto" | "none" (legacy "override" normalisé côté serveur). */
+  rotationMode: "auto" | "none";
+  /** Portée de la rotation. */
   rotationScope: "shared" | "per_account";
-  /** Consommation max par fiche. null = infini, 1 = strict, N>1 = soft cap V2. */
+  /** Consommation max par fiche. null = infini, N ≥ 1 = soft cap. */
   maxUsageCount: number | null;
   /** JSON FieldDef[] — schéma des champs d'une fiche (Phase 1.x). */
   fieldsSchema: string;
   /** Token public de remplissage (Phase 1.x Vague 3). Null = pas de lien actif. */
   publicFillToken: string | null;
   createdAt: string;
-  _count: { campaigns: number };
-  /** Campagne active (1 max par lib enforced backend). Null si aucune campagne active. */
-  activeCampaign: { id: string; name: string; entryCount: number } | null;
+  /** Plan simplification Phase 4 — plus de wrapper campagne : fiches directement rattachées à la lib. */
+  _count: { entries: number };
 }
 
 export function DataLibrariesPanel() {
@@ -345,19 +345,25 @@ function DataLibraryCard({
         </div>
       </div>
 
-      {/* Compteur fiches — info clé : combien de fiches tournent dans cette lib.
-          Phase 1.x : le concept campagne est invisible côté UI, on ne montre
-          plus que le compteur de fiches actives. */}
+      {/* Compteur fiches — plan simplification Phase 4 : plus de wrapper
+          campagne, on compte directement les DataEntry de la lib. */}
       <div className="rounded-xl bg-gradient-to-b from-success-50/85 to-success-50/45 px-2.5 py-2 ">
-        <p className="text-[9px] uppercase tracking-widest font-semibold text-success-700 inline-flex items-center gap-1">
-          <Check size={9} /> Active
-        </p>
-        <p className="text-[18px] font-semibold text-success-700 tabular-nums mt-0.5 leading-tight">
-          {lib.activeCampaign?.entryCount ?? 0}
+        <p className="text-[18px] font-semibold text-success-700 tabular-nums leading-tight">
+          {lib._count.entries}
         </p>
         <p className="text-[10.5px] text-success-700/80 mt-0">
-          fiche{(lib.activeCampaign?.entryCount ?? 0) !== 1 ? "s" : ""}
+          fiche{lib._count.entries !== 1 ? "s" : ""}
         </p>
+      </div>
+
+      {/* Badge de tirage — aligné sur MediaLibrariesPanel. */}
+      <div className="flex items-center gap-1.5 text-[9.5px] text-muted-foreground">
+        <span className="inline-flex items-center gap-0.5">
+          <RotateCw size={9} />
+          {lib.rotationMode === "none" ? "Tirage manuel" : "Tirage par dossier"}
+        </span>
+        <span className="text-muted-foreground/40">·</span>
+        <span>{rotationScopeLabel(lib.rotationScope)}</span>
       </div>
 
       <div className="flex items-center justify-end mt-auto pt-1">

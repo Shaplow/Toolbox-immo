@@ -78,12 +78,14 @@ const SLOT_SELECT = {
   status: true,
   scheduledAt: true,
   updatedAt: true,
-  patternId: true,
   assigneeMonteurId: true,
   assigneeVideasteId: true,
   assigneeCmId: true,
   currentVersionId: true,
-  pattern: { select: { label: true } },
+  patternBinding: {
+    select: { customLabel: true, patternTemplate: { select: { label: true } } },
+  },
+  patternTemplate: { select: { label: true } },
   account: { select: { id: true, handle: true, name: true } },
 } as const;
 
@@ -98,7 +100,11 @@ function serializeSlot(s: SlotRaw): InboxItem["slot"] {
     status: s.status,
     scheduledAt: s.scheduledAt ? s.scheduledAt.toISOString() : null,
     updatedAt: s.updatedAt.toISOString(),
-    patternLabel: s.pattern?.label ?? null,
+    patternLabel:
+      s.patternBinding?.customLabel ??
+      s.patternBinding?.patternTemplate?.label ??
+      s.patternTemplate?.label ??
+      null,
     accountHandle: s.account?.handle ?? null,
     accountName: s.account?.name ?? null,
     accountId: s.account?.id ?? null,
@@ -177,10 +183,13 @@ export async function getInboxItems(): Promise<InboxItem[]> {
       orderBy: { scheduledAt: "asc" },
       take: ITEM_LIMIT_PER_TYPE,
     }),
-    // Slots sans recette (patternId = null).
+    // Slots sans recette (ni binding, ni recette globale directe).
+    // Fix résidu G.3 : le test `patternId = null` comptait à tort les slots
+    // recette (patternBindingId non-null, patternId legacy null).
     prisma.publicationSlot.findMany({
       where: {
-        patternId: null,
+        patternBindingId: null,
+        patternTemplateId: null,
         status: { in: ACTIVE_STATUSES_FOR_OVERDUE },
       },
       select: SLOT_SELECT,

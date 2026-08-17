@@ -29,3 +29,16 @@ export const SHARED_SENTINEL_IDS: readonly string[] = [
 export function isSharedSentinel(accountId: string): boolean {
   return accountId === SHARED_CURSOR_ACCOUNT_ID || accountId === SHARED_DATA_CURSOR_ACCOUNT_ID;
 }
+
+/**
+ * Préfixe réservé des dossiers auto-générés à l'upload (feature supprimée le
+ * 2026-06-17, commit 43d1ba9). Des `setTag` historiques `pack_*` subsistent en
+ * base : l'UI les masque (label « N plans » sans nom) et les routes d'édition
+ * refusent d'en créer de nouveaux. Source unique du test — remplace les
+ * `startsWith("pack_")` dispersés (H.2).
+ */
+export const RESERVED_SET_TAG_PREFIX = "pack_";
+
+export function isReservedSetTag(setTag: string | null | undefined): boolean {
+  return typeof setTag === "string" && setTag.startsWith(RESERVED_SET_TAG_PREFIX);
+}

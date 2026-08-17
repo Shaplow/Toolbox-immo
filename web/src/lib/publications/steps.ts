@@ -8,7 +8,6 @@
 
 import type {
   PublicationSlot,
-  AccountPattern,
   Render,
   CoverFramePack,
   CaptionJob,
@@ -211,17 +210,17 @@ function descriptionJobStatus(
  */
 export function computePublicationSteps(input: {
   slot: Pick<PublicationSlot, "status" | "description">;
-  pattern?: Pick<
-    AccountPattern,
-    | "source"
-    | "coverMode"
-    | "needsCaptions"
-    | "needsCaptionsMode"
-    | "needsDescription"
-    | "needsClientValidation"
-    | "needsRushes"
-    | "needsBrief"
-  > | null;
+  /** Vue recette effective (synthétisée depuis PatternBinding/PatternTemplate). */
+  pattern?: {
+    source: string;
+    coverMode: string;
+    needsCaptions: boolean;
+    needsCaptionsMode: string;
+    needsDescription: string;
+    needsClientValidation: boolean;
+    needsRushes: boolean;
+    needsBrief: boolean;
+  } | null;
   renderJob?: Pick<Render, "status"> | null;
   coverPack?:
     | (Pick<CoverFramePack, "status" | "finalCoverUrl"> & {

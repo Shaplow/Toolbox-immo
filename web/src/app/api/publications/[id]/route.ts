@@ -46,22 +46,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
           client: { select: { name: true } },
         },
       },
-      pattern: {
-        select: {
-          id: true,
-          label: true,
-          source: true,
-          coverMode: true,
-          needsCaptions: true,
-          needsCaptionsMode: true,
-          needsDescription: true,
-          needsClientValidation: true,
-          needsRushes: true,
-          needsBrief: true,
-        },
-      },
-      // Recette par compte : binding + template pour synthétiser le pattern
-      // effectif quand le slot n'a pas d'AccountPattern legacy.
+      // Recette par compte : binding + template pour synthétiser le pattern effectif.
       patternBinding: { include: { patternTemplate: true } },
       template: { select: { id: true, name: true } },
       assigneeMonteur: { select: { id: true, name: true, email: true } },
@@ -102,11 +87,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
   }
 
-  // Pattern effectif : AccountPattern legacy OU recette PatternBinding (G.3).
-  // Sans ce fallback, les slots créés via recette (pattern legacy null) avaient
-  // des steps invisibles (render/cover/description/validation cachés).
-  const effPattern =
-    slot.pattern ?? (slot.patternBinding ? toLegacyPatternShape(slot.patternBinding) : null);
+  // Pattern effectif : recette PatternBinding (G.3). Sans lui, les steps sont
+  // invisibles (render/cover/description/validation cachés).
+  const effPattern = slot.patternBinding ? toLegacyPatternShape(slot.patternBinding) : null;
 
   // Calcul des steps côté serveur pour que le client n'ait pas à les dériver.
   const steps = computePublicationSteps({

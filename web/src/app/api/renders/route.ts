@@ -4,7 +4,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { startRenderGeneration } from "@/lib/renderer/generateRender";
-import { advanceLibraryCursorsOnSubmit, advanceAudioUsageOnSubmit, advanceDataLibraryCursorOnSubmit, advanceDataEntryClaimOnSubmit } from "@/lib/contentLibraryResolver";
+import { advanceMediaUsageOnSubmit, advanceAudioUsageOnSubmit, advanceDataUsageOnSubmit, type MediaUsageClaimState, type DataUsageClaimState } from "@/lib/contentLibraryResolver";
 import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
 
 /**
@@ -17,6 +17,12 @@ import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions
  * mais en se basant sur la state mémoire (pas sur un renderId).
  */
 async function revertAdvancesOnFailure(usedAssets: {
+  /**
+   * Snapshots legacy de curseurs (renders en vol créés avant le
+   * décommissionnement des AccountLibraryCursor, plan simplification Phase 3).
+   * Le revert est TOLÉRANT : best-effort tant que la table existe encore,
+   * silencieux après son drop. Champ à retirer au drop N+1.
+   */
   prevCursorStateByLibrary?: Record<
     string,
     {
@@ -24,12 +30,13 @@ async function revertAdvancesOnFailure(usedAssets: {
       claimedCursor: number;
       prevLastUsedCategory: string | null;
       claimedLastUsedCategory: string | null;
-      /** Phase 6 — snapshot lastUsedSetTag pour CAS revert plus strict. */
       prevLastUsedSetTag: string | null;
       claimedLastUsedSetTag: string | null;
       cursorAccountId?: string;
     }
   >;
+  /** Claims d'usage vidéo posés au submit (advanceMediaUsageOnSubmit). */
+  prevMediaUsageStates?: MediaUsageClaimState[];
   prevAudioUsageState?: {
     assetId: string;
     accountId: string;
@@ -52,7 +59,32 @@ async function revertAdvancesOnFailure(usedAssets: {
     claimType: "usedInCycle" | "perAccountUsage";
     accountId?: string;
   };
+  /** Claim d'usage DataEntry posé au submit (Phase 4) — revert CAS. */
+  prevDataUsageState?: DataUsageClaimState;
 }) {
+  // Revert du claim d'usage DataEntry (Phase 4 — même CAS que vidéo/audio).
+  if (usedAssets.prevDataUsageState) {
+    const { entryId, accountId, prevLastUsedAt, claimedLastUsedAt } = usedAssets.prevDataUsageState;
+    try {
+      if (prevLastUsedAt === null) {
+        await prisma.$executeRaw(Prisma.sql`
+          DELETE FROM "DataEntryUsage"
+          WHERE "entryId" = ${entryId} AND "accountId" = ${accountId}
+            AND "usageCount" = 0
+            AND "lastUsedAt" = ${new Date(claimedLastUsedAt)}
+        `);
+      } else {
+        await prisma.$executeRaw(Prisma.sql`
+          UPDATE "DataEntryUsage"
+          SET "lastUsedAt" = ${new Date(prevLastUsedAt)}
+          WHERE "entryId" = ${entryId} AND "accountId" = ${accountId}
+            AND "lastUsedAt" = ${new Date(claimedLastUsedAt)}
+        `);
+      }
+    } catch (err) {
+      console.error(`[revertAdvancesOnFailure] data usage revert failed entry=${entryId}:`, err);
+    }
+  }
   if (usedAssets.prevCursorStateByLibrary) {
     for (const [libraryId, state] of Object.entries(usedAssets.prevCursorStateByLibrary)) {
       const cursorAccountId = state.cursorAccountId;
@@ -76,6 +108,29 @@ async function revertAdvancesOnFailure(usedAssets: {
       } catch (err) {
         console.error(`[revertAdvancesOnFailure] cursor revert failed lib=${libraryId}:`, err);
       }
+    }
+  }
+  // Revert des claims d'usage vidéo (même CAS que l'audio ci-dessous).
+  for (const state of usedAssets.prevMediaUsageStates ?? []) {
+    const { assetId, accountId, prevLastUsedAt, claimedLastUsedAt } = state;
+    try {
+      if (prevLastUsedAt === null) {
+        await prisma.$executeRaw(Prisma.sql`
+          DELETE FROM "MediaAssetUsage"
+          WHERE "assetId" = ${assetId} AND "accountId" = ${accountId}
+            AND "usageCount" = 0
+            AND "lastUsedAt" = ${new Date(claimedLastUsedAt)}
+        `);
+      } else {
+        await prisma.$executeRaw(Prisma.sql`
+          UPDATE "MediaAssetUsage"
+          SET "lastUsedAt" = ${new Date(prevLastUsedAt)}
+          WHERE "assetId" = ${assetId} AND "accountId" = ${accountId}
+            AND "lastUsedAt" = ${new Date(claimedLastUsedAt)}
+        `);
+      }
+    } catch (err) {
+      console.error(`[revertAdvancesOnFailure] media usage revert failed asset=${assetId}:`, err);
     }
   }
   if (usedAssets.prevAudioUsageState) {
@@ -197,22 +252,17 @@ export async function POST(req: NextRequest) {
       videoAssets?: Record<string, string>;
       audioAssetId?: string;
       dataEntryId?: string;
-      /** resolvedSetTag from DataEntry group selection — drives AccountDataLibraryCursor advance. */
-      dataResolvedSetTag?: string | null;
-      /** resolvedCategory from DataEntry group selection — drives AccountDataLibraryCursor advance. */
-      dataResolvedCategory?: string | null;
       setSequencedLibraryIds?: string[];
       usedSetTagByLibrary?: Record<string, string>;
-      usedCategoryByLibrary?: Record<string, string>;
-      prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null; prevLastUsedSetTag: string | null; claimedLastUsedSetTag: string | null; cursorAccountId?: string }>;
-      prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string };
+      /** Claims d'usage vidéo posés au submit — pour revert conditionnel. */
+      prevMediaUsageStates?: MediaUsageClaimState[];
+      /** Claim d'usage DataEntry posé au submit (Phase 4) — pour revert conditionnel. */
+      prevDataUsageState?: DataUsageClaimState;
       prevAudioUsageState?: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string };
-      /** DataLibrary cursor state snapshot for failure-recovery revert. */
-      prevDataLibraryCursorState?: { libraryId: string; accountId: string; prevLastUsedSetTag: string | null; prevLastUsedCategory: string | null; claimedSetTag: string | null; claimedCategory: string | null };
     } = {};
 
     if (usedAssets && typeof usedAssets === "object") {
-    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; dataResolvedSetTag?: unknown; dataResolvedCategory?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown; usedCategoryByLibrary?: unknown; prevDataEntryState?: unknown };
+    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown };
 
       // Video assets: blockId → assetId
       if (raw.videoAssets && typeof raw.videoAssets === "object" && !Array.isArray(raw.videoAssets)) {
@@ -240,15 +290,6 @@ export async function POST(req: NextRequest) {
         if (found) sanitizedUsedAssets.dataEntryId = raw.dataEntryId;
       }
 
-      // DataLibrary cursor group hints (strings or null) — pass through for AccountDataLibraryCursor advance.
-      // Validation: only accept string or null (no arbitrary types).
-      if (raw.dataResolvedSetTag === null || typeof raw.dataResolvedSetTag === "string") {
-        sanitizedUsedAssets.dataResolvedSetTag = raw.dataResolvedSetTag ?? null;
-      }
-      if (raw.dataResolvedCategory === null || typeof raw.dataResolvedCategory === "string") {
-        sanitizedUsedAssets.dataResolvedCategory = raw.dataResolvedCategory ?? null;
-      }
-
       // Set sequenced libraries — validate each libraryId exists
       if (Array.isArray(raw.setSequencedLibraryIds)) {
         const ids = (raw.setSequencedLibraryIds as unknown[]).filter((v): v is string => typeof v === "string");
@@ -266,15 +307,6 @@ export async function POST(req: NextRequest) {
           Object.entries(map).filter(([, v]) => typeof v === "string"),
         ) as Record<string, string>;
         if (Object.keys(sanitized).length > 0) sanitizedUsedAssets.usedSetTagByLibrary = sanitized;
-      }
-
-      // usedCategoryByLibrary — pass through as-is (strings only)
-      if (raw.usedCategoryByLibrary && typeof raw.usedCategoryByLibrary === "object" && !Array.isArray(raw.usedCategoryByLibrary)) {
-        const map = raw.usedCategoryByLibrary as Record<string, unknown>;
-        const sanitized = Object.fromEntries(
-          Object.entries(map).filter(([, v]) => typeof v === "string"),
-        ) as Record<string, string>;
-        if (Object.keys(sanitized).length > 0) sanitizedUsedAssets.usedCategoryByLibrary = sanitized;
       }
 
       // Phase 8.M1 : prevDataEntryState n'est plus accepté du body client.
@@ -453,52 +485,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Advance library cursors and audio usage server-side at submission time.
-    // This replaces the prefill-time advance so abandoning the generate page no longer
-    // wastes a rotation slot.
-    if (sanitizedUsedAssets.setSequencedLibraryIds?.length && validatedAccountId) {
-      // Bug-hunter B3 + Phase W2.8 : on ne trust JAMAIS les hints client
-      // `usedSetTagByLibrary` / `usedCategoryByLibrary`. Deux cas :
-      //  - manual-mode (videoAssets non-vide) : on re-dérive depuis les assets
-      //    effectivement choisis (MediaAsset.setTag/category côté DB).
-      //  - auto-mode (videoAssets vide) : on n'a pas la source de vérité au
-      //    submit. On STRIP les hints client pour ne pas écrire de valeurs
-      //    tampered. Le cursor sera juste re-stampé `lastAdvancedAt`
-      //    (cf. early return dans la fonction si setTag+category nulls).
-      const derivedSetTag: Record<string, string> = {};
-      const derivedCategory: Record<string, string> = {};
-      if (sanitizedUsedAssets.videoAssets && Object.keys(sanitizedUsedAssets.videoAssets).length > 0) {
-        const chosenAssetIds = Array.from(new Set(Object.values(sanitizedUsedAssets.videoAssets)));
+    // Claim d'usage vidéo server-side au submit (plan simplification Phase 3 —
+    // remplace l'avance de curseur). Le stamp lastUsedAt fait redescendre le
+    // dossier servi dans la pile du tirage ; abandonner la page generate ne
+    // consomme donc toujours rien.
+    // Bug-hunter B3 : on ne trust jamais les hints client — le setTag de trace
+    // est re-dérivé depuis les assets effectivement choisis (DB).
+    if (sanitizedUsedAssets.videoAssets && Object.keys(sanitizedUsedAssets.videoAssets).length > 0 && validatedAccountId) {
+      const chosenAssetIds = Array.from(new Set(Object.values(sanitizedUsedAssets.videoAssets)));
+      if (sanitizedUsedAssets.setSequencedLibraryIds?.length) {
+        const derivedSetTag: Record<string, string> = {};
         const sequencedSet = new Set(sanitizedUsedAssets.setSequencedLibraryIds);
         const assets = await prisma.mediaAsset.findMany({
           where: { id: { in: chosenAssetIds }, libraryId: { in: sanitizedUsedAssets.setSequencedLibraryIds } },
-          select: { libraryId: true, setTag: true, category: true },
+          select: { libraryId: true, setTag: true },
         });
         for (const asset of assets) {
           if (!sequencedSet.has(asset.libraryId)) continue;
           if (asset.setTag) derivedSetTag[asset.libraryId] = asset.setTag;
-          if (asset.category) derivedCategory[asset.libraryId] = asset.category;
         }
+        sanitizedUsedAssets.usedSetTagByLibrary = derivedSetTag;
       }
-      // Note : on garde les hints client UNIQUEMENT pour les libs où on a
-      // dérivé du serveur (déjà validés DB). Pour les autres, on n'écrit pas.
-      sanitizedUsedAssets.usedSetTagByLibrary = derivedSetTag;
-      sanitizedUsedAssets.usedCategoryByLibrary = derivedCategory;
-
-      const advance = await advanceLibraryCursorsOnSubmit(
-        sanitizedUsedAssets.setSequencedLibraryIds,
-        derivedSetTag,
-        derivedCategory,
-        validatedAccountId,
-      );
-      if (Object.keys(advance.prevCursorStateByLibrary).length > 0) {
-        sanitizedUsedAssets.prevCursorStateByLibrary = advance.prevCursorStateByLibrary;
-      }
-      if (Object.keys(advance.usedSetTagByLibrary).length > 0) {
-        sanitizedUsedAssets.usedSetTagByLibrary = advance.usedSetTagByLibrary;
-      }
-      if (Object.keys(advance.usedCategoryByLibrary).length > 0) {
-        sanitizedUsedAssets.usedCategoryByLibrary = advance.usedCategoryByLibrary;
+      const claim = await advanceMediaUsageOnSubmit(chosenAssetIds, validatedAccountId);
+      if (claim.prevMediaUsageStates.length > 0) {
+        sanitizedUsedAssets.prevMediaUsageStates = claim.prevMediaUsageStates;
       }
     }
     if (sanitizedUsedAssets.audioAssetId && validatedAccountId) {
@@ -518,110 +528,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Phase 3.D — Advance AccountDataLibraryCursor for the DataLibrary if the submit
-    // contains group hints (resolvedSetTag/resolvedCategory from the prefill).
-    // Only runs when validatedAccountId is present and a dataEntryId was submitted.
-    //
-    // Phase 3.B: advanceDataLibraryCursorOnSubmit now handles both shared and per_account
-    // scope, returning the effectiveCursorId so we store it correctly in the revert snapshot.
-    //
-    // Code-reviewer C1 + M5 fix : ordre des opérations critiquissime — d'abord le
-    // CLAIM DataEntry (qui peut re-pick une autre entry), PUIS l'advance cursor
-    // DataLibrary basé sur l'entry RÉELLEMENT claim. Cela évite la désync :
-    // - Si on advance le cursor sur l'entry initiale et que le claim re-pick une
-    //   autre entry, le cursor pointe vers la mauvaise catégorie/setTag.
-    // - Si on advance après le claim, on lit la campaignId/libraryId de l'entry
-    //   définitivement claim.
-    //
-    // En bonus : on fusionne les 2 findUnique précédents (C1 + L3) en un seul
-    // include qui charge campaignId + libraryId d'un coup, après le claim.
-
-    // ── Phase 8.M1: Claim DataEntry au submit (PAS au prefill) ─────────────
-    // Mirror du flow Media : selectDataEntry est désormais readOnly au prefill,
-    // et le claim définitif (INSERT DataEntryUsage usageCount=0 ou UPDATE
-    // usedInCycle=true) se fait ICI au submit, atomiquement avec FOR UPDATE.
-    //
-    // Si l'entry suggérée n'est plus disponible (claim concurrent), la
-    // fonction fallback sur un re-pick. Best-effort : si tout échoue, le
-    // render se fait quand même mais sans claim → recordLibraryUsage au DONE
+    // ── Claim d'usage DataEntry au submit (plan simplification Phase 4) ────
+    // Remplace le claim par policy + l'avance de curseur DataLibrary : simple
+    // stamp DataEntryUsage.lastUsedAt (clé per-account ou __shared__data__),
+    // même contrat que les claims vidéo/audio ci-dessus. Best-effort : si le
+    // claim échoue, le render se fait quand même — recordLibraryUsage au DONE
     // incrémentera l'usage standard.
     if (sanitizedUsedAssets.dataEntryId) {
-      // Snapshot de l'entryId originale AVANT toute mutation (utile pour
-      // détecter un re-pick par advanceDataEntryClaimOnSubmit).
-      const originalDataEntryId: string = sanitizedUsedAssets.dataEntryId;
-      // Charge la campaignId + libraryId d'un coup pour les 2 opérations qui
-      // suivent (claim + cursor advance). Fusion C1/L3 du code-reviewer.
-      const initialEntry = await prisma.dataEntry.findUnique({
-        where: { id: originalDataEntryId },
-        select: { campaignId: true, campaign: { select: { libraryId: true } } },
-      });
-      if (initialEntry?.campaignId) {
-        // 1. Claim — peut re-pick une autre entry.
-        const dataClaim = await advanceDataEntryClaimOnSubmit(
-          initialEntry.campaignId,
-          originalDataEntryId,
-          validatedAccountId ?? undefined,
-        );
-        if (dataClaim) {
-          sanitizedUsedAssets.prevDataEntryState = {
-            entryId: dataClaim.claimState.entryId,
-            campaignId: dataClaim.claimState.campaignId,
-            usagePolicy: dataClaim.claimState.usagePolicy,
-            claimType: dataClaim.claimState.claimType,
-            accountId: dataClaim.claimState.accountId,
-          };
-          // If re-pick changed the entry, update dataEntryId so usage tracking is consistent.
-          if (dataClaim.claimState.entryId !== originalDataEntryId) {
-            sanitizedUsedAssets.dataEntryId = dataClaim.claimState.entryId;
-          }
-        }
-
-        // 2. Advance cursor DataLibrary — basé sur l'entry FINAL (après claim).
-        //    Bug-hunter B1 fix : la comparaison correcte est dataClaim.claimState.entryId
-        //    !== originalDataEntryId (l'entryId initialement soumise). Avant, on comparait
-        //    à campaignId, ce qui était TOUJOURS truthy → re-fetch déclenché à chaque submit
-        //    et si l'entry était supprimée entre temps, finalLibraryId tombait undefined →
-        //    cursor jamais avancé.
-        if (validatedAccountId &&
-            (sanitizedUsedAssets.dataResolvedSetTag !== undefined || sanitizedUsedAssets.dataResolvedCategory !== undefined)) {
-          let finalLibraryId = initialEntry.campaign?.libraryId;
-          const repickHappened = dataClaim != null && dataClaim.claimState.entryId !== originalDataEntryId;
-          // W5.15 (rotation-13) : sur re-pick, utilise les resolvedSetTag/
-          // Category retournés par advanceDataEntryClaimOnSubmit plutôt que
-          // les hints client qui réfèrent à l'entry originale.
-          const finalSetTag = repickHappened
-            ? dataClaim?.claimState.resolvedSetTag ?? null
-            : sanitizedUsedAssets.dataResolvedSetTag ?? null;
-          const finalCategory = repickHappened
-            ? dataClaim?.claimState.resolvedCategory ?? null
-            : sanitizedUsedAssets.dataResolvedCategory ?? null;
-          if (repickHappened) {
-            // L'entry a changé suite à re-pick. Re-fetch pour récupérer le bon libraryId.
-            const refetched = await prisma.dataEntry.findUnique({
-              where: { id: sanitizedUsedAssets.dataEntryId },
-              select: { campaign: { select: { libraryId: true } } },
-            });
-            if (refetched?.campaign?.libraryId) finalLibraryId = refetched.campaign.libraryId;
-          }
-          if (finalLibraryId) {
-            const dataAdvance = await advanceDataLibraryCursorOnSubmit(
-              finalLibraryId,
-              finalSetTag,
-              finalCategory,
-              validatedAccountId,
-            );
-            if (dataAdvance.prevState !== null && dataAdvance.effectiveCursorId !== null) {
-              sanitizedUsedAssets.prevDataLibraryCursorState = {
-                libraryId: finalLibraryId,
-                accountId: dataAdvance.effectiveCursorId,
-                prevLastUsedSetTag: dataAdvance.prevState.lastUsedSetTag,
-                prevLastUsedCategory: dataAdvance.prevState.lastUsedCategory,
-                claimedSetTag: finalSetTag,
-                claimedCategory: finalCategory,
-              };
-            }
-          }
-        }
+      const dataClaim = await advanceDataUsageOnSubmit(
+        sanitizedUsedAssets.dataEntryId,
+        validatedAccountId ?? undefined,
+      );
+      if (dataClaim) {
+        sanitizedUsedAssets.prevDataUsageState = dataClaim.prevDataUsageState;
       }
     }
 

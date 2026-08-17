@@ -10,7 +10,7 @@
  * - Thumbnail (LazyVideoThumb) + preview vidéo HTML5 sur click Play.
  * - Overlay select mode (CheckSquare / Square).
  * - Overlay pendingEditJob (replacement in progress) + disabled (EyeOff).
- * - Breadcrumb catégorie › pack avec inline edit (handleSaveCategory + handleSaveSetTag).
+ * - Chip Dossier avec inline edit (handleSaveSetTag).
  * - Tags inline edit (handleSaveTags).
  * - Métadonnées du bien (schemaField.type = text/number/url/textarea).
  * - Accès accounts (ajouter/retirer via handleToggleAccess).
@@ -30,7 +30,6 @@ import {
   Clock,
   Download,
   EyeOff,
-  FolderOpen,
   Globe,
   Layers,
   Loader2,
@@ -51,10 +50,10 @@ import { LazyVideoThumb } from "./LazyVideoThumb";
 import type { UseAssetInlineEditsResult } from "./useAssetInlineEdits";
 import { downloadAsset } from "./downloadAssets";
 import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
 
 interface Props {
   asset: MediaAsset;
-  assets: MediaAsset[];
   accounts: InstagramAccount[];
   accountFilter: string | null;
   metadataSchema: MetadataField[];
@@ -68,7 +67,7 @@ interface Props {
   /** Phase 3 — mode avancé : si false, l'inline edit block est remplacé
       par un mini-footer (filename + chevron). Click → onOpenDetail. */
   isAdvanced: boolean;
-  /** Mode manuel (rotation "none") : pas de chip Catégorie/Pack ni "à ranger",
+  /** Mode manuel (rotation "none") : pas de chip Dossier ni "à ranger",
       afficher metadata principales à la place. */
   isManualMode?: boolean;
   onOpenDetail?: (asset: MediaAsset) => void;
@@ -76,7 +75,6 @@ interface Props {
 
 export function MediaAssetsVideoCard({
   asset,
-  assets,
   accounts,
   accountFilter,
   metadataSchema,
@@ -94,13 +92,11 @@ export function MediaAssetsVideoCard({
   const { canManageAssets } = useMediaLibraryPermissions();
 
   const {
-    editingFamilyKey, setEditingFamilyKey: rawSetEditingFamilyKey, familyInput, setFamilyInput,
     editingSetTagId, setEditingSetTagId: rawSetEditingSetTagId, setTagValue, setSetTagValue, setTagError, setSetTagError,
     editingTagsId, setEditingTagsId: rawSetEditingTagsId, tagInput, setTagInput,
     editingUsageId, setEditingUsageId: rawSetEditingUsageId, usageInput, setUsageInput,
     editingLastUsedId, setEditingLastUsedId: rawSetEditingLastUsedId, lastUsedInput, setLastUsedInput,
     editingMetaKey, setEditingMetaKey: rawSetEditingMetaKey, metaInput, setMetaInput, savedMetaFlash, metaSaveError,
-    handleSaveCategory,
     handleSaveSetTag,
     handleSaveTags,
     handleSaveUsage,
@@ -118,7 +114,6 @@ export function MediaAssetsVideoCard({
   // peut donc s'ouvrir, et un déclencheur ajouté plus tard reste couvert.
   const noEdit = <T extends (...args: never[]) => void>(fn: T): T =>
     (canManageAssets ? fn : () => {}) as T;
-  const setEditingFamilyKey = noEdit(rawSetEditingFamilyKey);
   const setEditingSetTagId = noEdit(rawSetEditingSetTagId);
   const setEditingTagsId = noEdit(rawSetEditingTagsId);
   const setEditingUsageId = noEdit(rawSetEditingUsageId);
@@ -209,23 +204,14 @@ export function MediaAssetsVideoCard({
             </span>
           );
         })()}
-        {/* Chips Catégorie + Pack en overlay top-right (mode noob, rotation auto/override).
-            Badge "à ranger" retiré — l'absence de chip catégorie est elle-même le signal.
+        {/* Chip Dossier en overlay top-right (mode noob).
             En mode manuel (rotation "none") : pas de chip, on affiche metadata dans le footer à la place. */}
-        {!isAdvanced && !isManualMode && (asset.category || (asset.setTag && !asset.setTag.startsWith("pack_"))) && (
+        {!isAdvanced && !isManualMode && asset.setTag && !isReservedSetTag(asset.setTag) && (
           <div className="absolute top-2 right-2 flex flex-col items-end gap-1 max-w-[70%] z-10">
-            {asset.category && (
-              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-card border border-border text-foreground inline-flex items-center gap-0.5 truncate max-w-full">
-                <FolderOpen size={8} className="shrink-0" />
-                <span className="truncate">{asset.category}</span>
-              </span>
-            )}
-            {asset.setTag && !asset.setTag.startsWith("pack_") && (
-              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-primary inline-flex items-center gap-0.5 truncate max-w-full">
-                <Layers size={8} className="shrink-0" />
-                <span className="truncate">{asset.setTag}</span>
-              </span>
-            )}
+            <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-primary inline-flex items-center gap-0.5 truncate max-w-full">
+              <Layers size={8} className="shrink-0" />
+              <span className="truncate">{asset.setTag}</span>
+            </span>
           </div>
         )}
         {asset.pendingEditJob && (
@@ -287,40 +273,8 @@ export function MediaAssetsVideoCard({
         )
       ) : (
       <div className="p-2.5">
-        {/* Catégorie + Pack */}
+        {/* Dossier */}
         <div className="flex items-center gap-1 mb-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
-          {editingFamilyKey === asset.id ? (
-            <input
-              autoFocus
-              value={familyInput}
-              onChange={(e) => setFamilyInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); }
-                if (e.key === "Escape") setEditingFamilyKey(null);
-              }}
-              onBlur={() => { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); }}
-              list="group-list"
-              placeholder="Catégorie…"
-              className="w-24 text-[9px] border border-input rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/30"
-            />
-          ) : (
-            <button
-              onClick={() => { setEditingFamilyKey(asset.id); setFamilyInput(asset.category ?? ""); }}
-              className={`flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
-                asset.category
-                  ? "bg-muted text-foreground border-border hover:bg-zinc-200/70"
-                  : "bg-card text-muted-foreground border-dashed border-border hover:text-foreground hover:border-zinc-300"
-              }`}
-              title="Catégorie (thème rotation) — cliquer pour modifier"
-            >
-              <FolderOpen size={8} className="shrink-0" />
-              <span>{asset.category || "Catégorie…"}</span>
-            </button>
-          )}
-          {/* Séparateur visible seulement si un Groupe réel est affiché. */}
-          {asset.setTag && !asset.setTag.startsWith("pack_") && editingSetTagId !== asset.id && (
-            <span className="text-[9px] text-muted-foreground/60">›</span>
-          )}
           {editingSetTagId === asset.id ? (
             <div className="flex flex-col gap-0.5">
               <input
@@ -333,40 +287,30 @@ export function MediaAssetsVideoCard({
                 }}
                 onBlur={() => { void handleSaveSetTag(asset, setTagValue); }}
                 list="set-tags-list"
-                placeholder="Groupe…"
+                placeholder="Dossier…"
                 className="w-20 text-[9px] border border-primary/40 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/30"
               />
-              {setTagValue.trim() && setTagValue.trim() !== asset.setTag && (() => {
-                const existingCategories = Array.from(new Set(
-                  assets.filter((a) => a.setTag === setTagValue.trim() && a.id !== asset.id && a.category).map((a) => a.category!)
-                ));
-                return existingCategories.length > 0 ? (
-                  <span className="text-[9px] flex items-center gap-0.5 font-medium text-warning-700">
-                    <FolderOpen size={8} /> Catégorie existante&nbsp;: {existingCategories[0]}
-                  </span>
-                ) : null;
-              })()}
               {setTagError && <span className="text-[9px] text-red-500">{setTagError}</span>}
             </div>
-          ) : asset.setTag && !asset.setTag.startsWith("pack_") ? (
-            // Groupe réel → chip accent indigo (distinct de la catégorie neutre).
+          ) : asset.setTag && !isReservedSetTag(asset.setTag) ? (
+            // Dossier réel → chip accent indigo.
             <button
               onClick={() => { setEditingSetTagId(asset.id); setSetTagValue(asset.setTag ?? ""); }}
               className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 transition-colors"
-              title="Groupe — plans joués ensemble dans un même rendu"
+              title="Dossier — plans joués ensemble dans un même rendu"
             >
               <Layers size={8} className="shrink-0" />
               <span>{asset.setTag}</span>
             </button>
           ) : (
-            // Pas de Groupe réel (vide ou pack_ auto) → affordance discrète.
+            // Pas de dossier réel (vide ou pack_ auto) → affordance discrète.
             <button
               onClick={() => { setEditingSetTagId(asset.id); setSetTagValue(""); }}
               className="flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded text-muted-foreground/50 hover:text-primary transition-colors"
-              title="Grouper avec d'autres plans (joués ensemble)"
+              title="Ranger dans un dossier (plans joués ensemble)"
             >
               <Layers size={8} className="shrink-0" />
-              <span>Groupe</span>
+              <span>Dossier</span>
             </button>
           )}
         </div>

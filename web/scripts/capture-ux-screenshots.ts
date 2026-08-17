@@ -1007,17 +1007,8 @@ async function seedAdminFixtures(): Promise<void> {
         ]),
       },
     });
-    // 1 campagne active + 3 DataEntry liés
-    const campaign = await prisma.dataCampaign.upsert({
-      where: { id: "test-data-campaign" },
-      update: {},
-      create: {
-        id: "test-data-campaign",
-        libraryId: "test-data-lib",
-        name: "RPI 2026 (E2E)",
-        isActive: true,
-      },
-    });
+    // Phase 4 — 3 DataEntry à plat sur la bibliothèque (campagnes décommissionnées).
+    const campaign = { id: null as string | null, libraryId: "test-data-lib" };
     for (const [i, spec] of [
       { quartier: "Marais", prix: "12 500 €" },
       { quartier: "Belleville", prix: "8 900 €" },
@@ -1028,7 +1019,7 @@ async function seedAdminFixtures(): Promise<void> {
         update: {},
         create: {
           id: `test-data-entry-${i}`,
-          campaignId: campaign.id,
+          libraryId: campaign.libraryId,
           fields: JSON.stringify({
             quartier: spec.quartier,
             prix_m2: spec.prix,
@@ -1111,37 +1102,37 @@ async function seedPatternFixtures(): Promise<void> {
       await prisma.publicationRush.deleteMany({ where: { slotId } }).catch(() => {});
       await prisma.publicationVersion.deleteMany({ where: { slotId } });
 
-      // 2. Upsert AccountPattern.
+      // 2. Upsert PatternTemplate + PatternBinding (recette canonique — les
+      // AccountPattern sont décommissionnés, plan simplification D2).
       const p = fx.patternData;
-      await prisma.accountPattern.upsert({
+      const tplFieldsCommon = {
+        label: fx.label,
+        source: p.source,
+        coverMode: p.coverMode,
+        needsDescription: p.needsDescription,
+        needsCaptions: p.needsCaptions ?? false,
+        needsCaptionsMode: p.needsCaptionsMode ?? "none",
+        needsAdminValidation: p.needsAdminValidation ?? false,
+        needsClientValidation: p.needsClientValidation ?? false,
+        allowsClientRevision: p.allowsClientRevision ?? false,
+        needsBrief: p.needsBrief ?? false,
+      };
+      await prisma.patternTemplate.upsert({
+        where: { id: `${patternId}-tpl` },
+        update: tplFieldsCommon,
+        create: { id: `${patternId}-tpl`, ...tplFieldsCommon },
+      });
+      await prisma.patternBinding.upsert({
         where: { id: patternId },
         update: {
-          label: fx.label,
-          source: p.source,
-          coverMode: p.coverMode,
-          needsDescription: p.needsDescription,
-          needsCaptions: p.needsCaptions ?? false,
-          needsCaptionsMode: p.needsCaptionsMode ?? "none",
-          needsAdminValidation: p.needsAdminValidation ?? false,
-          needsClientValidation: p.needsClientValidation ?? false,
-          allowsClientRevision: p.allowsClientRevision ?? false,
-          needsRushes: p.needsRushes ?? false,
-          needsBrief: p.needsBrief ?? false,
+          defaultAssigneeMonteurId: monteur.id,
+          defaultAssigneeCmId: admin.id,
+          defaultAssigneeVideasteId: videaste.id,
         },
         create: {
           id: patternId,
           accountId: account.id,
-          label: fx.label,
-          source: p.source,
-          coverMode: p.coverMode,
-          needsDescription: p.needsDescription,
-          needsCaptions: p.needsCaptions ?? false,
-          needsCaptionsMode: p.needsCaptionsMode ?? "none",
-          needsAdminValidation: p.needsAdminValidation ?? false,
-          needsClientValidation: p.needsClientValidation ?? false,
-          allowsClientRevision: p.allowsClientRevision ?? false,
-          needsRushes: p.needsRushes ?? false,
-          needsBrief: p.needsBrief ?? false,
+          patternTemplateId: `${patternId}-tpl`,
           dayOfWeek: [1],
           publishTime: "09:00",
           defaultAssigneeMonteurId: monteur.id,
@@ -1156,7 +1147,7 @@ async function seedPatternFixtures(): Promise<void> {
       await prisma.publicationSlot.upsert({
         where: { id: slotId },
         update: {
-          patternId,
+          patternBindingId: patternId,
           status: fx.slot.status,
           description: fx.slot.description ?? null,
           assigneeMonteurId: monteur.id,
@@ -1166,7 +1157,7 @@ async function seedPatternFixtures(): Promise<void> {
         create: {
           id: slotId,
           accountId: account.id,
-          patternId,
+          patternBindingId: patternId,
           scheduledAt,
           status: fx.slot.status,
           title: fx.label,

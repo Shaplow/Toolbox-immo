@@ -1,10 +1,11 @@
 "use client";
 
 import { memo } from "react";
-import { CheckSquare, Square, Download, FolderOpen, Layers } from "lucide-react";
+import { CheckSquare, Square, Download, Layers } from "lucide-react";
 import { MediaThumb } from "./MediaThumb";
 import type { MediaAsset } from "../types";
 import { downloadAsset } from "../downloadAssets";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
 
 function shortDate(iso: string | null): string {
   if (!iso) return "—";
@@ -30,7 +31,7 @@ export const MediaAssetRow = memo(function MediaAssetRow({
   onToggleSelect: (id: string) => void;
   onOpenDetail: (asset: MediaAsset) => void;
 }) {
-  const realSet = asset.setTag && !asset.setTag.startsWith("pack_") ? asset.setTag : null;
+  const realSet = asset.setTag && !isReservedSetTag(asset.setTag) ? asset.setTag : null;
   const accessLabel =
     asset.accessAccountIds.length === 0
       ? "Global"
@@ -76,18 +77,7 @@ export const MediaAssetRow = memo(function MediaAssetRow({
         </p>
       </td>
 
-      {/* Catégorie (chip neutre) */}
-      <td className="px-2 py-1.5">
-        {asset.category ? (
-          <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-muted text-foreground border border-border">
-            <FolderOpen size={9} /> {asset.category}
-          </span>
-        ) : (
-          <span className="text-[11px] text-muted-foreground/50">—</span>
-        )}
-      </td>
-
-      {/* Groupe (chip accent si réel) */}
+      {/* Dossier (chip accent si réel) */}
       <td className="px-2 py-1.5">
         {realSet ? (
           <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">

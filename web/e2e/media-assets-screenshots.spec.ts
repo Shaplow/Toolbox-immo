@@ -43,18 +43,16 @@ test.describe("MediaAssetsPanel — baseline screenshots avant split C1-v2", () 
     await expect(page).toHaveScreenshot("video-lib-grid.png", SCREENSHOT_OPTS);
   });
 
-  // Note : vue "Grouped" non testée — le toggle dépend du markup interne du
-  // composant qui peut changer entre les ticket D5/D6/D9. La vue grid et la
-  // vue rotation suffisent pour valider les 2 chemins principaux. Quand le
-  // wrapper fin sera en place (D9), on pourra ajouter un test Grouped propre.
-
-  test("vue Rotation (simulation séquence + cycles)", async ({ page }) => {
+  test("vue Dossiers (groupée par setTag)", async ({ page }) => {
+    // Plan simplification Phase 3 : la vue Rotation (simulation séquence +
+    // cycles) est décommissionnée — remplacée par la vue Dossiers.
+    // Le toggle de vue n'existe qu'en mode avancé (défaut = vue table).
     await page.goto(`/admin/libraries/media/${VIDEO_LIB_ID}`);
     await expect(page.getByText("test_video_0.mp4")).toBeVisible({ timeout: 10_000 });
-    // Switch vue rotation (3e toggle dans la barre).
-    await page.getByRole("button", { name: /rotation/i }).click().catch(() => {});
+    await page.getByRole("button", { name: /avanc[ée]/i }).click({ timeout: 3_000 }).catch(() => {});
+    await page.getByRole("button", { name: /dossiers/i }).click({ timeout: 3_000 }).catch(() => {});
     await page.waitForTimeout(500);
-    await expect(page).toHaveScreenshot("video-lib-rotation.png", SCREENSHOT_OPTS);
+    await expect(page).toHaveScreenshot("video-lib-dossiers.png", SCREENSHOT_OPTS);
   });
 
   test("modale Upload ouverte (drag-drop zone + fields)", async ({ page }) => {

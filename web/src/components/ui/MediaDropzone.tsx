@@ -33,8 +33,8 @@ export type MediaDropzoneProps = {
   slotId: string;
   /**
    * Base des routes d'upload (presign / complete / abort). Défaut :
-   * `/api/publications/{slotId}`. Passer `/api/shoot-events/{eventId}` pour
-   * uploader des rushs au niveau d'un événement de tournage (lot partagé).
+   * `/api/publications/{slotId}`. Passer `/api/entities/{entityId}` pour
+   * uploader des rushs au niveau d'une fiche de tournage (lot partagé).
    */
   uploadBasePath?: string;
   kind: "rush" | "version" | "brief-attachment";

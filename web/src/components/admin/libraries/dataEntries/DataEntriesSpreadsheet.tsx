@@ -9,7 +9,7 @@
  *
  * Sticky :
  *  - thead `top-0` pendant le scroll vertical
- *  - col 0 (checkbox), col 1 (Set), col 2 (Catégorie) `left-X` pendant scroll horizontal
+ *  - col 0 (checkbox), col 1 (Dossier) `left-X` pendant scroll horizontal
  *  - dernière col (actions Trash) `right-0`
  *
  * Édition inline :
@@ -29,7 +29,7 @@ import { toast } from "@/components/ui/Toast";
 import type { DataEntry, InstagramAccount } from "@/components/admin/libraries/DataEntriesPanel";
 import type { CustomField, CustomFieldType } from "@/lib/customFields";
 
-type SortKey = "setTag" | "category" | { fieldKey: string };
+type SortKey = "setTag" | { fieldKey: string };
 type SortDir = "asc" | "desc";
 
 function sortKeyEqual(a: SortKey, b: SortKey): boolean {
@@ -42,7 +42,7 @@ export type FieldType = CustomFieldType;
 export type FieldDef = CustomField;
 
 interface Props {
-  campaignId: string;
+  libraryId: string;
   entries: DataEntry[];
   /** Setter exposé par le panel pour optimistic update + rollback. */
   onEntriesChange: (next: DataEntry[]) => void;
@@ -59,14 +59,13 @@ interface Props {
 // que le browser respecte ces largeurs (sinon le calcul auto compresse les cols
 // sans contenu à 0px et la table ne déborde pas → pas de scroll horizontal).
 const WIDTH_CHECKBOX = 44;
-const WIDTH_STICKY_CHIP = 140;   // Set & Catégorie
+const WIDTH_STICKY_CHIP = 140;   // Dossier
 const WIDTH_FIELD = 180;
 const WIDTH_ACCESS = 110;        // Avatar group (3 max + "+N") OU icône Global
 const WIDTH_ACTIONS = 44;
 
 const OFFSET_CHECKBOX = 0;
 const OFFSET_SET = WIDTH_CHECKBOX;
-const OFFSET_CATEGORY = WIDTH_CHECKBOX + WIDTH_STICKY_CHIP;
 /** Sticky-right offsets (cumulés depuis la droite). */
 const RIGHT_ACTIONS = 0;
 const RIGHT_ACCESS = WIDTH_ACTIONS;
@@ -81,7 +80,7 @@ function safeParse(json: string): Record<string, string> {
 }
 
 export function DataEntriesSpreadsheet({
-  campaignId,
+  libraryId,
   entries,
   onEntriesChange,
   schema,
@@ -121,7 +120,6 @@ export function DataEntriesSpreadsheet({
       : false;
     const valueOf = (r: typeof parsed[number]): string | number | null => {
       if (key === "setTag") return r.setTag;
-      if (key === "category") return r.category;
       const raw = r._fields[key.fieldKey] ?? "";
       if (isNumeric) {
         const n = parseFloat(raw.replace(/[^\d.,-]/g, "").replace(",", "."));
@@ -164,7 +162,7 @@ export function DataEntriesSpreadsheet({
   /** Commit value d'une cellule : optimistic update + PATCH avec fields mergés. */
   async function commitCell(
     entryId: string,
-    target: "setTag" | "category" | { fieldKey: string },
+    target: "setTag" | { fieldKey: string },
     newValue: string,
   ) {
     const entry = entries.find((e) => e.id === entryId);
@@ -183,11 +181,6 @@ export function DataEntriesSpreadsheet({
       if (trimmed === entry.setTag) return; // no-op
       optimisticEntry = { ...entry, setTag: trimmed };
       patchBody = { setTag: trimmed };
-    } else if (target === "category") {
-      const trimmed = newValue.trim() || null;
-      if (trimmed === entry.category) return;
-      optimisticEntry = { ...entry, category: trimmed };
-      patchBody = { category: trimmed };
     } else {
       const oldVal = oldFields[target.fieldKey] ?? "";
       if (newValue === oldVal) return;
@@ -201,7 +194,7 @@ export function DataEntriesSpreadsheet({
 
     try {
       const res = await fetch(
-        `/api/admin/libraries/data/campaigns/${campaignId}/entries/${entryId}`,
+        `/api/admin/libraries/data/${libraryId}/entries/${entryId}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -228,7 +221,7 @@ export function DataEntriesSpreadsheet({
     });
     if (!ok) return;
     const res = await fetch(
-      `/api/admin/libraries/data/campaigns/${campaignId}/entries/${entryId}`,
+      `/api/admin/libraries/data/${libraryId}/entries/${entryId}`,
       { method: "DELETE" },
     );
     if (!res.ok) {
@@ -283,7 +276,7 @@ export function DataEntriesSpreadsheet({
             // parent et les colonnes du schéma sont compressées / invisibles.
             width:
               WIDTH_CHECKBOX +
-              WIDTH_STICKY_CHIP * 2 +
+              WIDTH_STICKY_CHIP +
               WIDTH_FIELD * schema.length +
               WIDTH_ACCESS +
               WIDTH_ACTIONS,
@@ -293,7 +286,6 @@ export function DataEntriesSpreadsheet({
               sans contenu sont compressées à 0px et la table ne déborde jamais. */}
           <colgroup>
             <col style={{ width: WIDTH_CHECKBOX }} />
-            <col style={{ width: WIDTH_STICKY_CHIP }} />
             <col style={{ width: WIDTH_STICKY_CHIP }} />
             {schema.map((f) => (
               <col key={f.key} style={{ width: WIDTH_FIELD }} />
@@ -319,19 +311,9 @@ export function DataEntriesSpreadsheet({
                 className="sticky z-40 bg-muted/95 border-b border-r border-border/60 p-0"
               >
                 <SortableHeader
-                  label="Groupe"
+                  label="Dossier"
                   sortDir={sort && sortKeyEqual(sort.key, "setTag") ? sort.dir : null}
                   onClick={() => toggleSort("setTag")}
-                />
-              </th>
-              <th
-                style={{ left: OFFSET_CATEGORY }}
-                className="sticky z-40 bg-muted/95 border-b border-r border-border/60 p-0"
-              >
-                <SortableHeader
-                  label="Catégorie"
-                  sortDir={sort && sortKeyEqual(sort.key, "category") ? sort.dir : null}
-                  onClick={() => toggleSort("category")}
                 />
               </th>
               {schema.map((f) => (
@@ -397,23 +379,9 @@ export function DataEntriesSpreadsheet({
                   >
                     <SpreadsheetCell
                       value={r.setTag ?? ""}
-                      placeholder="set"
+                      placeholder="dossier"
                       chipVariant="sky"
                       onCommit={(v) => void commitCell(r.id, "setTag", v)}
-                    />
-                  </td>
-                  <td
-                    style={{ left: OFFSET_CATEGORY }}
-                    className={[
-                      "sticky z-20 border-b border-r border-border/40 p-0",
-                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
-                    ].join(" ")}
-                  >
-                    <SpreadsheetCell
-                      value={r.category ?? ""}
-                      placeholder="catégorie"
-                      chipVariant="sage"
-                      onCommit={(v) => void commitCell(r.id, "category", v)}
                     />
                   </td>
                   {schema.map((f) => (

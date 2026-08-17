@@ -7,7 +7,7 @@
  * - 1 CM (cm@test.local / testpass)
  * - 1 client externe (EXTERNAL_GENERATOR) avec permissions ["captions"] (user@test.local / testpass)
  * - 1 client + 1 InstagramAccount rattaché
- * - 1 AccountPattern minimale ("RPI" auto_template)
+ * - 1 recette minimale PatternTemplate + PatternBinding ("RPI" auto_template)
  * - 1 PublicationSlot assigné au monteur ET au CM (pour tester les 2 rôles)
  *
  * Idempotent : utilise upsert sur les emails uniques + cuid déterministes
@@ -138,8 +138,57 @@ async function main() {
 
   console.log(`  ✓ Client + Account : client=${client.id}, account=${account.id}`);
 
-  // ── AccountPattern minimale (remplace ContentRecipe) ────────────────────
-  const pattern = await prisma.accountPattern.upsert({
+  // ── Types de fiches système (Phase 5 métaobjet) ──────────────────────────
+  // En prod ils sont seedés par la migration entity_metaobject ; la DB de test
+  // passe par `db push` (sans migrations) → on les seed ici.
+  await prisma.entityType.upsert({
+    where: { id: "etype_bien" },
+    update: {},
+    create: {
+      id: "etype_bien",
+      name: "Bien",
+      namePlural: "Biens",
+      icon: "home",
+      visibility: "admin",
+      position: 0,
+      isSystem: true,
+    },
+  });
+  await prisma.entityType.upsert({
+    where: { id: "etype_tournage" },
+    update: {},
+    create: {
+      id: "etype_tournage",
+      name: "Tournage",
+      namePlural: "Tournages",
+      icon: "clapperboard",
+      hasPlanning: true,
+      hasAccount: true,
+      hasRushes: true,
+      hasAssignees: true,
+      visibility: "team",
+      position: 1,
+      isSystem: true,
+    },
+  });
+  console.log("  ✓ EntityTypes : etype_bien, etype_tournage");
+
+  // ── Recette canonique : PatternTemplate + PatternBinding ─────────────────
+  const patternTemplate = await prisma.patternTemplate.upsert({
+    where: { id: "test-pattern-tpl-1" },
+    update: {},
+    create: {
+      id: "test-pattern-tpl-1",
+      label: "Test Pattern (E2E fixture)",
+      source: "auto_template",
+      needsDescription: "autoGenerate",
+      needsCaptions: true,
+      needsClientValidation: false,
+      needsBrief: true,
+    },
+  });
+
+  const pattern = await prisma.patternBinding.upsert({
     where: { id: "test-pattern-1" },
     update: {
       defaultAssigneeMonteurId: monteur.id,
@@ -148,13 +197,7 @@ async function main() {
     create: {
       id: "test-pattern-1",
       accountId: account.id,
-      label: "Test Pattern (E2E fixture)",
-      source: "auto_template",
-      needsDescription: "autoGenerate",
-      needsCaptions: true,
-      needsClientValidation: false,
-      needsRushes: true,
-      needsBrief: true,
+      patternTemplateId: patternTemplate.id,
       dayOfWeek: [1],
       publishTime: "09:00",
       defaultAssigneeMonteurId: monteur.id,
@@ -162,7 +205,7 @@ async function main() {
     },
   });
 
-  console.log(`  ✓ Pattern : ${pattern.id}`);
+  console.log(`  ✓ Recette : template=${patternTemplate.id}, binding=${pattern.id}`);
 
   // ── PublicationSlot ───────────────────────────────────────────────────────
   // 1 slot ASSIGNÉ au monteur + au CM (les tests vérifient l'accès des 2)
@@ -176,13 +219,13 @@ async function main() {
       assigneeMonteurId: monteur.id,
       assigneeCmId: cm.id,
       assigneeVideasteId: videaste.id,
-      patternId: pattern.id,
+      patternBindingId: pattern.id,
       accountId: account.id,
     },
     create: {
       id: "test-slot-1",
       accountId: account.id,
-      patternId: pattern.id,
+      patternBindingId: pattern.id,
       scheduledAt,
       status: "PLANNED",
       title: "Test slot E2E",
@@ -204,7 +247,7 @@ async function main() {
     create: {
       id: "test-slot-orphan",
       accountId: account.id,
-      patternId: pattern.id,
+      patternBindingId: pattern.id,
       scheduledAt: orphanScheduled,
       status: "DRAFT",
       title: "Test slot orphelin (ne doit PAS être vu par monteur/cm de test)",
@@ -293,7 +336,23 @@ async function main() {
   // Sépare des fixtures de base (qui sont en mode auto par défaut) pour ne
   // pas casser les autres tests qui dépendent de needsCaptions=true (auto).
 
-  const patternManual = await prisma.accountPattern.upsert({
+  const patternManualTemplate = await prisma.patternTemplate.upsert({
+    where: { id: "test-pattern-v8-manual-tpl" },
+    update: {},
+    create: {
+      id: "test-pattern-v8-manual-tpl",
+      label: "V8 — Captions manuel + Cover manualSelect",
+      source: "manual_rushes",
+      coverMode: "manualSelect",
+      needsDescription: "manualWrite",
+      needsCaptions: false,
+      needsCaptionsMode: "manual",
+      needsClientValidation: false,
+      needsBrief: false,
+    },
+  });
+
+  const patternManual = await prisma.patternBinding.upsert({
     where: { id: "test-pattern-v8-manual" },
     update: {
       defaultAssigneeMonteurId: monteur.id,
@@ -302,15 +361,7 @@ async function main() {
     create: {
       id: "test-pattern-v8-manual",
       accountId: account.id,
-      label: "V8 — Captions manuel + Cover manualSelect",
-      source: "manual_rushes",
-      coverMode: "manualSelect",
-      needsDescription: "manualWrite",
-      needsCaptions: false,
-      needsCaptionsMode: "manual",
-      needsClientValidation: false,
-      needsRushes: true,
-      needsBrief: false,
+      patternTemplateId: patternManualTemplate.id,
       dayOfWeek: [2],
       publishTime: "09:00",
       defaultAssigneeMonteurId: monteur.id,
@@ -323,14 +374,14 @@ async function main() {
   const slotManual = await prisma.publicationSlot.upsert({
     where: { id: "test-slot-v8-manual" },
     update: {
-      patternId: patternManual.id,
+      patternBindingId: patternManual.id,
       assigneeMonteurId: monteur.id,
       assigneeCmId: cm.id,
     },
     create: {
       id: "test-slot-v8-manual",
       accountId: account.id,
-      patternId: patternManual.id,
+      patternBindingId: patternManual.id,
       scheduledAt: scheduledManual,
       status: "EDIT_APPROVED",
       title: "Test slot V8 manuel (E2E)",

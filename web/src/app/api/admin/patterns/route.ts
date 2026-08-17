@@ -29,6 +29,8 @@ type CreateBody = {
   allowsClientRevision?: boolean;
   needsBrief?: boolean;
   requiresProperty?: boolean;
+  /** Phase 5 (métaobjet) — remplace requiresProperty. */
+  requiresEntityTypeId?: string | null;
   notes?: string | null;
   autoSaveToLibraryId?: string | null;
 };
@@ -87,6 +89,17 @@ export async function POST(req: NextRequest) {
   const err = validateBody(body, true);
   if (err) return NextResponse.json({ error: err }, { status: 400 });
 
+  // Valide requiresEntityTypeId si fourni.
+  if (body.requiresEntityTypeId) {
+    const type = await prisma.entityType.findUnique({
+      where: { id: body.requiresEntityTypeId },
+      select: { id: true },
+    });
+    if (!type) {
+      return NextResponse.json({ error: "requiresEntityTypeId : type de fiche introuvable" }, { status: 400 });
+    }
+  }
+
   // Valide autoSaveToLibraryId si fourni.
   if (body.autoSaveToLibraryId) {
     const lib = await prisma.mediaLibrary.findUnique({
@@ -123,6 +136,7 @@ export async function POST(req: NextRequest) {
       allowsClientRevision: body.allowsClientRevision ?? false,
       needsBrief: body.needsBrief ?? false,
       requiresProperty: body.requiresProperty ?? false,
+      requiresEntityTypeId: body.requiresEntityTypeId ?? null,
       notes: body.notes ?? null,
       autoSaveToLibraryId: body.autoSaveToLibraryId ?? null,
       // Sprint D — audit log light : trace l'auteur de la création.

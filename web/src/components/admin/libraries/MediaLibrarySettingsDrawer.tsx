@@ -4,17 +4,17 @@
  * MediaLibrarySettingsDrawer — drawer side-right pour éditer une MediaLibrary
  * sans exposer le JSON.
  *
- * Phase 4 médiathèque (2026-05-30). Remplace l'édition inline volumineuse
- * (~250 LOC dans MediaLibrariesPanel) par un drawer avec sections claires :
+ * Plan simplification Phase 3 (2026-08) : le mode « Ordre fixe » (setSequence +
+ * curseurs) et les catégories sont décommissionnés. Sections restantes :
  *  1. Identité : nom, description, tags.
- *  2. Rotation : mode (auto / ordre fixe) + portée (par compte / partagé).
- *  3. Ordre des packs (si mode override) : liste reorderable avec ↑↓ et X.
- *  4. Champs personnalisés : éditeur structuré key+label+type, plus de JSON.
+ *  2. Tirage : switch auto/aucun + portée (par compte / partagé) + burn-once.
+ *  3. Champs personnalisés : éditeur structuré key+label+type.
+ *  4. Nettoyage : détacher dossiers / tags en masse.
  *
  * Save via PATCH /api/admin/libraries/media/[id] (endpoint existant inchangé).
  */
 
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
 import { Drawer } from "@/components/ui/Drawer";
 import { BackfillPostersButton } from "./BackfillPostersButton";
 import { Button } from "@/components/ui/Button";
@@ -27,12 +27,8 @@ import { useConfirm } from "@/components/ui/useConfirm";
 import { declaredRotationMode } from "@/lib/rotation/rotationMode";
 import { toast } from "@/components/ui/Toast";
 import {
-  ChevronDown,
-  ChevronUp,
   FolderOpen,
-  Layers,
   ListTree,
-  Plus,
   RotateCw,
   Settings2,
   SlidersHorizontal,
@@ -49,9 +45,8 @@ interface LibrarySettings {
   name: string;
   description: string | null;
   tags: string;            // JSON string[]
-  setSequence: string;     // JSON string[]
   rotationScope?: string;  // "per_account" | "shared"
-  rotationMode?: string | null; // "auto" | "override" | "none" | null (back-compat)
+  rotationMode?: string | null; // "auto" | "none" | legacy ("override"/null → auto)
   metadataSchema?: string; // JSON MetadataField[]
   maxUsageCount?: number | null; // null = rotation infinie, N ≥ 1 = burn-once
 }
@@ -73,42 +68,33 @@ function parseStringArray(json: string | null | undefined): string[] {
   }
 }
 
-// parseMetadataFields remplacée par normalizeCustomFields (importée depuis @/lib/customFields).
-
 export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }: Props) {
   const initialTags = useMemo(() => parseStringArray(library?.tags), [library?.tags]);
-  const initialSeq = useMemo(() => parseStringArray(library?.setSequence), [library?.setSequence]);
   const initialMeta = useMemo(() => normalizeCustomFields(library?.metadataSchema), [library?.metadataSchema]);
 
   const [name, setName] = useState(library?.name ?? "");
   const [description, setDescription] = useState(library?.description ?? "");
   const [tagsCsv, setTagsCsv] = useState(initialTags.join(", "));
-  // Mode rotation déclaré (intention). `declaredRotationMode` gère la
-  // back-compat `rotationMode === null` en la déduisant de setSequence.
-  const [rotationMode, setRotationMode] = useState<"auto" | "override" | "none">(
-    declaredRotationMode({ rotationMode: library?.rotationMode ?? null, setSequence: initialSeq }),
+  const [rotationMode, setRotationMode] = useState<"auto" | "none">(
+    declaredRotationMode({ rotationMode: library?.rotationMode ?? null }),
   );
   const [rotationScope, setRotationScope] = useState<"per_account" | "shared">(
     library?.rotationScope === "shared" ? "shared" : "per_account",
   );
-  const [sequence, setSequence] = useState<string[]>(initialSeq);
-  const [seqDraft, setSeqDraft] = useState("");
   const [metadataFields, setMetadataFields] = useState<CustomField[]>(initialMeta);
   // Burn-once : null = rotation infinie, sinon entier ≥ 1
   const [maxUsageCount, setMaxUsageCount] = useState<string>(
     library?.maxUsageCount != null ? String(library.maxUsageCount) : "",
   );
   const [saving, setSaving] = useState(false);
-  // H.4 — tabs pour décomposer le drawer 600+ LOC en sections digestes.
-  type TabKey = "identity" | "rotation" | "groups" | "fields" | "cleanup";
+  type TabKey = "identity" | "rotation" | "fields" | "cleanup";
   const [tab, setTab] = useState<TabKey>("identity");
-  // Phase ε — taxonomies (Catégories / Packs / Tags) chargées au open du drawer.
+  // Taxonomies (Dossiers / Tags) chargées au open du drawer.
   type TaxItem = { value: string; count: number };
   const [taxonomies, setTaxonomies] = useState<{ categories: TaxItem[]; packs: TaxItem[]; tags: TaxItem[] } | null>(null);
   const [taxLoading, setTaxLoading] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
 
-  // Phase ε — fetch taxonomies (Catégories/Packs/Tags + count) au open du drawer.
   const loadTaxonomies = useCallback(async () => {
     if (!library) return;
     setTaxLoading(true);
@@ -130,16 +116,15 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
     }
   }, [open, library, loadTaxonomies]);
 
-  async function handleDetach(type: "category" | "pack" | "tag", value: string, count: number) {
+  async function handleDetach(type: "pack" | "tag", value: string, count: number) {
     if (!library) return;
     const labels = {
-      category: { sing: "catégorie", plur: "catégorie" },
-      pack: { sing: "pack", plur: "pack" },
-      tag: { sing: "tag", plur: "tag" },
+      pack: { sing: "dossier" },
+      tag: { sing: "tag" },
     }[type];
     const ok = await confirm({
       title: `Supprimer le ${labels.sing} « ${value} » ?`,
-      description: `${count} asset${count > 1 ? "s" : ""} ${count > 1 ? "vont" : "va"} perdre ce ${labels.sing}. ${type === "category" ? `${count > 1 ? "Ils deviendront" : "Il deviendra"} orphelin${count > 1 ? "s" : ""} (à ranger).` : `Les assets restent intacts mais sans ce ${labels.sing}.`}`,
+      description: `${count} plan${count > 1 ? "s" : ""} ${count > 1 ? "vont" : "va"} perdre ce ${labels.sing}. Les plans restent intacts mais sans ce ${labels.sing}.`,
       confirmLabel: "Détacher",
       variant: "danger",
     });
@@ -154,7 +139,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
         toast.error(d.error ?? "Erreur lors du détachage");
         return;
       }
-      toast.success(`${labels.sing.charAt(0).toUpperCase() + labels.sing.slice(1)} « ${value} » détaché de ${count} asset${count > 1 ? "s" : ""}`);
+      toast.success(`${labels.sing.charAt(0).toUpperCase() + labels.sing.slice(1)} « ${value} » détaché de ${count} plan${count > 1 ? "s" : ""}`);
       await loadTaxonomies();
       await onUpdated();
     } catch {
@@ -169,39 +154,15 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
       setDescription(library.description ?? "");
       const t = parseStringArray(library.tags);
       setTagsCsv(t.join(", "));
-      const s = parseStringArray(library.setSequence);
-      setSequence(s);
-      setRotationMode(declaredRotationMode({ rotationMode: library.rotationMode ?? null, setSequence: s }));
+      setRotationMode(declaredRotationMode({ rotationMode: library.rotationMode ?? null }));
       setRotationScope(library.rotationScope === "shared" ? "shared" : "per_account");
       setMetadataFields(normalizeCustomFields(library.metadataSchema));
       setMaxUsageCount(library.maxUsageCount != null ? String(library.maxUsageCount) : "");
-      setSeqDraft("");
     }
   }, [library]);
 
   if (!library) return null;
 
-  function moveSeq(idx: number, dir: -1 | 1) {
-    setSequence((prev) => {
-      const next = [...prev];
-      const target = idx + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[idx], next[target]] = [next[target]!, next[idx]!];
-      return next;
-    });
-  }
-  function removeSeq(idx: number) {
-    setSequence((prev) => prev.filter((_, i) => i !== idx));
-  }
-  function addSeq() {
-    const v = seqDraft.trim();
-    if (!v || sequence.includes(v)) {
-      setSeqDraft("");
-      return;
-    }
-    setSequence((prev) => [...prev, v]);
-    setSeqDraft("");
-  }
   async function handleSave() {
     if (!library) return;
     if (!name.trim()) {
@@ -230,17 +191,12 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
     setSaving(true);
     try {
       const tagsList = tagsCsv.split(",").map((t) => t.trim()).filter(Boolean);
-      // `setSequence` est la CONFIG du mode « Ordre fixe », pas le discriminant
-      // du mode : c'est `rotationMode` qui décide (cf. resolveRotationMode).
-      // On conserve donc l'ordre saisi même en mode auto, pour qu'un retour en
-      // « Ordre fixe » retrouve la séquence de l'utilisateur.
       const payload = {
         name: name.trim(),
         description: description.trim() || null,
         // Tableaux bruts : la route les sérialise elle-même. Envoyer une string
         // ici les faisait silencieusement ignorer côté serveur.
         tags: tagsList,
-        setSequence: sequence,
         rotationScope,
         rotationMode,
         maxUsageCount: parsedMax,
@@ -284,10 +240,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
           onChange={(id) => setTab(id as TabKey)}
           items={[
             { id: "identity", label: "Identité", icon: Settings2 },
-            { id: "rotation", label: "Rotation", icon: RotateCw },
-            ...(rotationMode === "override"
-              ? [{ id: "groups" as const, label: "Groupes", icon: Layers }]
-              : []),
+            { id: "rotation", label: "Tirage", icon: RotateCw },
             { id: "fields", label: "Champs perso", icon: SlidersHorizontal },
             { id: "cleanup", label: "Nettoyage", icon: ListTree },
           ]}
@@ -313,11 +266,11 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
         {tab === "rotation" && (
         <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
           <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
-            <RotateCw size={11} /> Rotation
+            <RotateCw size={11} /> Tirage
           </h3>
-          <FormField label="Mode de rotation">
+          <FormField label="Tirage automatique">
             <div className="flex gap-1.5 flex-wrap">
-              {(["auto", "override", "none"] as const).map((m) => (
+              {(["auto", "none"] as const).map((m) => (
                 <Chip
                   key={m}
                   variant={rotationMode === m ? "sky" : "default"}
@@ -325,27 +278,15 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
                   onClick={() => setRotationMode(m)}
                   size="sm"
                 >
-                  {m === "auto" ? "Auto · moins utilisé" : m === "override" ? "Ordre fixe" : "Aucune"}
+                  {m === "auto" ? "Auto · par dossier" : "Aucun"}
                 </Chip>
               ))}
             </div>
             <p className="text-[10.5px] text-muted-foreground mt-1.5 leading-relaxed">
               {rotationMode === "auto"
-                ? "Toolbox sélectionne le groupe le moins récemment utilisé, en évitant de répéter deux fois la même catégorie de suite."
-                : rotationMode === "override"
-                  ? "Vous définissez l'ordre exact des groupes ci-dessous. Le moteur cycle dessus sans dévier."
-                  : "Pas de rotation auto. La sélection se fait via un champ du formulaire de génération (metadata) — vous choisissez vous-même quel asset utiliser."}
+                ? "Toolbox pioche dans le dossier servi le moins récemment, puis le plan le moins récemment utilisé dedans. Les plans d'un même dossier (ex : intro + outro filmées ensemble) sortent ensemble."
+                : "Pas de tirage auto. La sélection se fait via un champ du formulaire de génération (metadata) — vous choisissez vous-même quel plan utiliser."}
             </p>
-            {rotationMode === "override" && sequence.length === 0 && (
-              <p className="text-[10.5px] text-warning-700 mt-1.5 leading-relaxed">
-                Aucun groupe dans la séquence : le moteur tourne en mode Auto tant que vous n&apos;en ajoutez pas.
-              </p>
-            )}
-            {rotationMode === "auto" && sequence.length > 0 && (
-              <p className="text-[10.5px] text-muted-foreground mt-1.5 leading-relaxed">
-                L&apos;ordre fixe défini plus bas ({sequence.length} groupe{sequence.length > 1 ? "s" : ""}) est conservé mais ignoré en mode Auto.
-              </p>
-            )}
           </FormField>
           <FormField label="Comment ils tournent" help="Indépendant : chaque compte avance dans son propre cycle. Partagé : tous les comptes consomment le même.">
             <div className="flex gap-1.5">
@@ -380,59 +321,6 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
         </section>
         )}
 
-        {tab === "groups" && rotationMode === "override" && (
-          <section className="rounded-2xl bg-card border border-border p-4  space-y-2">
-            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
-              <Layers size={11} /> Ordre des groupes
-            </h3>
-            <div className="space-y-1">
-              {sequence.length === 0 && (
-                <p className="text-[11px] text-muted-foreground italic">Aucun groupe fixé pour l&apos;instant.</p>
-              )}
-              {sequence.map((s, idx) => (
-                <div key={s} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card border border-border ">
-                  <span className="text-[10px] text-muted-foreground w-5 tabular-nums">{idx + 1}.</span>
-                  <Layers size={10} className="text-danger-200 shrink-0" />
-                  <span className="flex-1 text-[12px] text-gray-800 truncate">{s}</span>
-                  <button
-                    type="button"
-                    onClick={() => moveSeq(idx, -1)}
-                    disabled={idx === 0}
-                    className="p-1 rounded hover:bg-white disabled:opacity-30"
-                  >
-                    <ChevronUp size={12} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveSeq(idx, 1)}
-                    disabled={idx === sequence.length - 1}
-                    className="p-1 rounded hover:bg-white disabled:opacity-30"
-                  >
-                    <ChevronDown size={12} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeSeq(idx)}
-                    className="p-1 text-muted-foreground hover:text-danger-600 rounded"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={seqDraft}
-                onChange={setSeqDraft}
-                placeholder="Ajouter un groupe à la séquence…"
-              />
-              <Button variant="secondary" size="sm" icon={Plus} onClick={addSeq} disabled={!seqDraft.trim()}>
-                Ajouter
-              </Button>
-            </div>
-          </section>
-        )}
-
         {tab === "fields" && (
         <section className="rounded-2xl bg-card border border-border p-4  space-y-2">
           <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
@@ -465,19 +353,13 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
             </button>
           </div>
           <p className="text-[10.5px] text-muted-foreground leading-relaxed">
-            Supprime une catégorie, un groupe ou un tag de tous les assets concernés en un clic. Les assets ne sont pas supprimés — ils perdent juste cette étiquette.
+            Supprime un dossier ou un tag de tous les plans concernés en un clic. Les plans ne sont pas supprimés — ils perdent juste cette étiquette.
           </p>
           {taxonomies && (
             <div className="space-y-2.5">
               <TaxonomyList
-                label="Catégories"
+                label="Dossiers"
                 icon={FolderOpen}
-                items={taxonomies.categories}
-                onDetach={(value, count) => void handleDetach("category", value, count)}
-              />
-              <TaxonomyList
-                label="Groupes"
-                icon={Layers}
                 items={taxonomies.packs}
                 onDetach={(value, count) => void handleDetach("pack", value, count)}
               />
@@ -551,7 +433,7 @@ function TaxonomyList({
                 type="button"
                 onClick={() => onDetach(item.value, item.count)}
                 className="p-0.5 text-muted-foreground/60 hover:text-danger-600 transition-colors opacity-0 group-hover/tax:opacity-100"
-                title="Détacher de tous les assets"
+                title="Détacher de tous les plans"
               >
                 <X size={11} />
               </button>

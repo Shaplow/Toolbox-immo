@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
-import { canUserAccessEvent } from "@/lib/permissions/eventScope";
-import { loadEventForAccess } from "@/lib/services/event/eventRushAccess";
+import { canUserAccessEntity } from "@/lib/permissions/entityScope";
+import { loadEntityForAccess } from "@/lib/services/entity/entityAccess";
 import { canMarkPublished, canMarkPublishedWithoutUrl, canUploadRushes, canEditBrief, canUploadVersion, canPromoteVersion } from "@/lib/permissions/publications";
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
@@ -27,7 +27,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     where: { id },
     select: {
       title: true,
-      pattern: { select: { label: true } },
       patternBinding: {
         select: { customLabel: true, patternTemplate: { select: { label: true } } },
       },
@@ -36,7 +35,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   });
   if (!slot) return { title: "Publication | Toolbox Immo" };
   const recipeLabel =
-    slot.pattern?.label ??
     slot.patternBinding?.customLabel ??
     slot.patternBinding?.patternTemplate?.label ??
     null;
@@ -68,32 +66,12 @@ export default async function PublicationPage({ params }: PageProps) {
           client: { select: { name: true } },
         },
       },
-      // Événement de tournage lié (si le reel en vient) — pour afficher ses
+      // Fiche tournage liée (si le reel en vient) — pour afficher ses
       // rushs partagés + un back-link sur la fiche.
-      event: { select: { id: true, title: true } },
-      pattern: {
-        select: {
-          id: true,
-          label: true,
-          source: true,
-          templateId: true,
-          coverMode: true,
-          needsCaptions: true,
-          // V8.2.2 — mode enum captions (auto/manual/none)
-          needsCaptionsMode: true,
-          needsDescription: true,
-          needsClientValidation: true,
-          allowsClientRevision: true,
-          needsRushes: true,
-          needsBrief: true,
-          captionPresetId: true,
-          descriptionPromptId: true,
-        },
-      },
-      // Recette moderne (PatternBinding → PatternTemplate). Source canonique
-      // depuis G.3 : les slots récents/générés ont un patternBinding mais PAS de
-      // patternId legacy. On synthétise `slot.pattern` depuis le binding plus bas
-      // pour que la chaîne de production s'affiche.
+      shootEntity: { select: { id: true, label: true } },
+      // Recette (PatternBinding → PatternTemplate). Source canonique depuis
+      // G.3. On synthétise une vue `pattern` depuis le binding plus bas pour
+      // que la chaîne de production s'affiche.
       patternBinding: {
         select: {
           customLabel: true,
@@ -121,7 +99,7 @@ export default async function PublicationPage({ params }: PageProps) {
         },
       },
       // Missions — recette GLOBALE directe (PatternTemplate sans binding).
-      // Synthétisée en `slot.pattern` plus bas (3e branche) pour que la chaîne
+      // Synthétisée en `patternView` plus bas (2e branche) pour que la chaîne
       // de production s'affiche sur une mission sans compte.
       patternTemplate: {
         select: {
@@ -229,54 +207,53 @@ export default async function PublicationPage({ params }: PageProps) {
     notFound();
   }
 
-  // G.3 — Si le slot n'a pas de pattern legacy (AccountPattern) mais une recette
-  // moderne (PatternBinding → PatternTemplate), on synthétise `slot.pattern`
-  // depuis le binding (overrides binding prioritaires). Sans ça, les slots créés
-  // depuis une recette moderne affichent une chaîne de production vide.
-  if (!slot.pattern && slot.patternBinding?.patternTemplate) {
-    const t = slot.patternBinding.patternTemplate;
-    const b = slot.patternBinding;
-    slot.pattern = {
-      id: t.id,
-      label: b.customLabel ?? t.label,
-      source: t.source,
-      templateId: b.templateIdOverride ?? t.templateId,
-      coverMode: b.coverModeOverride ?? t.coverMode,
-      needsCaptions: t.needsCaptions,
-      needsCaptionsMode: t.needsCaptionsMode,
-      needsDescription: t.needsDescription,
-      needsClientValidation: t.needsClientValidation,
-      allowsClientRevision: t.allowsClientRevision,
-      // PatternTemplate n'a pas de champ needsRushes : dérivé de la source.
-      needsRushes: t.source === "manual_rushes",
-      needsBrief: t.needsBrief,
-      captionPresetId: b.captionPresetIdOverride ?? t.captionPresetId,
-      descriptionPromptId: b.descriptionPromptIdOverride ?? t.descriptionPromptId,
-    };
-  }
-
-  // Missions — même synthèse depuis la recette GLOBALE directe (patternTemplate
-  // sans binding). Sans ça, une mission sans compte afficherait une chaîne vide
-  // et la RenderSection serait masquée (pattern null).
-  if (!slot.pattern && slot.patternTemplate) {
-    const t = slot.patternTemplate;
-    slot.pattern = {
-      id: t.id,
-      label: t.label,
-      source: t.source,
-      templateId: t.templateId,
-      coverMode: t.coverMode,
-      needsCaptions: t.needsCaptions,
-      needsCaptionsMode: t.needsCaptionsMode,
-      needsDescription: t.needsDescription,
-      needsClientValidation: t.needsClientValidation,
-      allowsClientRevision: t.allowsClientRevision,
-      needsRushes: t.source === "manual_rushes",
-      needsBrief: t.needsBrief,
-      captionPresetId: t.captionPresetId,
-      descriptionPromptId: t.descriptionPromptId,
-    };
-  }
+  // G.3 — Vue « pattern » synthétisée depuis la recette : PatternBinding
+  // (overrides binding prioritaires) sinon PatternTemplate global direct
+  // (missions sans compte). Sans elle, la chaîne de production s'affiche vide
+  // et la RenderSection est masquée.
+  const patternView = slot.patternBinding?.patternTemplate
+    ? (() => {
+        const t = slot.patternBinding.patternTemplate;
+        const b = slot.patternBinding;
+        return {
+          id: t.id,
+          label: b.customLabel ?? t.label,
+          source: t.source,
+          templateId: b.templateIdOverride ?? t.templateId,
+          coverMode: b.coverModeOverride ?? t.coverMode,
+          needsCaptions: t.needsCaptions,
+          needsCaptionsMode: t.needsCaptionsMode,
+          needsDescription: t.needsDescription,
+          needsClientValidation: t.needsClientValidation,
+          allowsClientRevision: t.allowsClientRevision,
+          // PatternTemplate n'a pas de champ needsRushes : dérivé de la source.
+          needsRushes: t.source === "manual_rushes",
+          needsBrief: t.needsBrief,
+          captionPresetId: b.captionPresetIdOverride ?? t.captionPresetId,
+          descriptionPromptId: b.descriptionPromptIdOverride ?? t.descriptionPromptId,
+        };
+      })()
+    : slot.patternTemplate
+      ? (() => {
+          const t = slot.patternTemplate;
+          return {
+            id: t.id,
+            label: t.label,
+            source: t.source,
+            templateId: t.templateId,
+            coverMode: t.coverMode,
+            needsCaptions: t.needsCaptions,
+            needsCaptionsMode: t.needsCaptionsMode,
+            needsDescription: t.needsDescription,
+            needsClientValidation: t.needsClientValidation,
+            allowsClientRevision: t.allowsClientRevision,
+            needsRushes: t.source === "manual_rushes",
+            needsBrief: t.needsBrief,
+            captionPresetId: t.captionPresetId,
+            descriptionPromptId: t.descriptionPromptId,
+          };
+        })()
+      : null;
 
   // Rattrapage opportuniste : si le render existe (PROCESSING/DONE) mais le
   // slot est resté en TO_DO/IN_PROGRESS, on applique la bonne transition.
@@ -285,11 +262,11 @@ export default async function PublicationPage({ params }: PageProps) {
     {
       id: slot.id,
       status: slot.status,
-      pattern: slot.pattern
+      pattern: patternView
         ? {
-            source: slot.pattern.source,
-            needsCaptions: slot.pattern.needsCaptions,
-            needsCaptionsMode: slot.pattern.needsCaptionsMode,
+            source: patternView.source,
+            needsCaptions: patternView.needsCaptions,
+            needsCaptionsMode: patternView.needsCaptionsMode,
           }
         : null,
       render: slot.render ? { status: slot.render.status } : null,
@@ -391,21 +368,21 @@ export default async function PublicationPage({ params }: PageProps) {
   });
   const rushes = rawRushes.map(mapRush);
 
-  // Rushs de l'événement de tournage lié (XOR avec les rushs slot-scopés : un
-  // reel d'event a ses rushs sur event.rushes, pas sur son slotId), affichés en
-  // lecture seule sur la fiche du reel. Gating par canUserAccessEvent — la MÊME
-  // autorité que les routes /api/shoot-events/[id]/rushes/* — et non le seul
+  // Rushs de la fiche tournage liée (XOR avec les rushs slot-scopés : un reel
+  // de tournage a ses rushs sur entity.rushes, pas sur son slotId), affichés en
+  // lecture seule sur la fiche du reel. Gating par canUserAccessEntity — la
+  // MÊME autorité que les routes rushes de la fiche — et non le seul
   // canUserAccessSlot : un vidéaste réassigné sur ce slot mais qui n'est pas le
-  // vidéaste de l'event ne doit voir ni ces rushs ni leurs métadonnées.
+  // vidéaste du tournage ne doit voir ni ces rushs ni leurs métadonnées.
   let shootEvent: { id: string; title: string } | null = null;
   let eventRushes: ReturnType<typeof mapRush>[] = [];
-  if (slot.eventId && slot.event) {
-    const accessEvent = await loadEventForAccess(slot.eventId);
-    if (accessEvent && canUserAccessEvent(accessEvent, role, userId)) {
-      shootEvent = { id: slot.event.id, title: slot.event.title };
+  if (slot.shootEntityId && slot.shootEntity) {
+    const accessEntity = await loadEntityForAccess(slot.shootEntityId);
+    if (accessEntity && canUserAccessEntity(accessEntity, role, userId)) {
+      shootEvent = { id: slot.shootEntity.id, title: slot.shootEntity.label };
       eventRushes = (
         await prisma.publicationRush.findMany({
-          where: { eventId: slot.eventId, deletedAt: null },
+          where: { entityId: slot.shootEntityId, deletedAt: null },
           orderBy: { uploadedAt: "desc" },
           include: {
             uploadedBy: { select: { id: true, name: true, email: true } },
@@ -507,14 +484,14 @@ export default async function PublicationPage({ params }: PageProps) {
       needsRushesOverride: slot.needsRushesOverride,
       needsBriefOverride: slot.needsBriefOverride,
     },
-    slot.pattern,
+    patternView,
   );
   // Pattern "effectif" : pattern parent enrichi des valeurs résolues — utilisé
   // par computePublicationSteps + sections enfant qui lisent pattern.needs*.
   // Les overrides sont ainsi transparents pour la couche d'affichage.
-  const effectivePattern = slot.pattern
+  const effectivePattern = patternView
     ? {
-        ...slot.pattern,
+        ...patternView,
         needsCaptions: resolvedConfig.needsCaptions,
         needsCaptionsMode: resolvedConfig.needsCaptionsMode,
         needsDescription: resolvedConfig.needsDescription,
@@ -587,7 +564,7 @@ export default async function PublicationPage({ params }: PageProps) {
   // version) alors que pattern.coverMode=auto, on cherche la dernière activity
   // COVER_CONFIG_ERROR pour afficher un warning contextuel dans CoverSection.
   let coverConfigError: { reason: string; presetName?: string; message: string } | null = null;
-  if (!effectiveCoverPack && slot.pattern?.coverMode === "autoPack") {
+  if (!effectiveCoverPack && patternView?.coverMode === "autoPack") {
     const lastConfigError = await prisma.publicationActivity.findFirst({
       where: { slotId: id, type: "COVER_CONFIG_ERROR" },
       orderBy: { createdAt: "desc" },
@@ -643,7 +620,7 @@ export default async function PublicationPage({ params }: PageProps) {
         notes: slot.notes,
         captionPresetIdOverride: slot.captionPresetIdOverride,
         descriptionPromptIdOverride: slot.descriptionPromptIdOverride,
-        propertyId: slot.propertyId,
+        propertyId: slot.entityId,
       }}
       account={
         slot.account
@@ -672,8 +649,8 @@ export default async function PublicationPage({ params }: PageProps) {
               needsRushes: effectivePattern.needsRushes,
               needsBrief: effectivePattern.needsBrief,
               // FK presets/prompts — pré-remplissent les modals IA / captions de la fiche
-              captionPresetId: slot.pattern?.captionPresetId ?? null,
-              descriptionPromptId: slot.pattern?.descriptionPromptId ?? null,
+              captionPresetId: patternView?.captionPresetId ?? null,
+              descriptionPromptId: patternView?.descriptionPromptId ?? null,
             }
           : null
       }

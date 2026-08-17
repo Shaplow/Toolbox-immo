@@ -48,7 +48,7 @@ const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Normalise une date vers le lundi 00:00:00 UTC de sa semaine.
- * dayOfWeek interne : 1=Lundi … 7=Dimanche (cohérent avec AccountPattern.dayOfWeek).
+ * dayOfWeek interne : 1=Lundi … 7=Dimanche (cohérent avec PatternBinding.dayOfWeek).
  */
 function toMondayUTC(d: Date): Date {
   const jsDay = d.getUTCDay(); // 0=Dim, 1=Lun, …, 6=Sam
@@ -61,12 +61,12 @@ function toMondayUTC(d: Date): Date {
 }
 
 /**
- * Génère des PublicationSlots pour la plage [dateFrom, dateTo] à partir des AccountPattern actifs.
+ * Génère des PublicationSlots pour la plage [dateFrom, dateTo] à partir des PatternBinding actifs.
  *
  * Supporte plusieurs semaines : itère sur chaque lundi entre `toMondayUTC(dateFrom)` et
  * `toMondayUTC(dateTo)` inclus, et matérialise chaque pattern actif pour ce lundi.
  *
- * Idempotence : si un slot existe déjà pour le même (accountId, scheduledAt, patternId),
+ * Idempotence : si un slot existe déjà pour le même (accountId, scheduledAt, patternBindingId),
  * il est ignoré. Implémenté via une seule requête bulk + filtrage en mémoire (pas de N+1).
  *
  * Performance : 2 requêtes DB au total (findMany existing + createMany) au lieu de 2N.
@@ -96,17 +96,18 @@ export async function generateCalendarSlots(
 
   // Adapte la shape des bindings sur l'ancien contrat utilisé plus bas.
   // Les valeurs sont déjà résolues (binding override > template). On laisse
-  // les champs avec les mêmes noms qu'AccountPattern pour ne pas casser la
+  // les champs avec les mêmes noms que l'ancien modèle pour ne pas casser la
   // suite — le bloc "targets" reste agnostique du nouveau modèle.
   const patterns = bindings
     .filter((b) => {
-      // Une recette qui EXIGE un bien (requiresProperty) ne peut pas être
-      // auto-matérialisée en masse : un slot généré n'a aucun bien rattachable.
-      // On l'exclut de l'auto-gen hebdo (cohérent avec le guard de createSlot),
-      // ces recettes passent par la création unitaire (mission / AddSlotModal).
-      if (b.patternTemplate.requiresProperty) {
+      // Une recette qui EXIGE une fiche (requiresEntityTypeId, ex-
+      // requiresProperty) ne peut pas être auto-matérialisée en masse : un
+      // slot généré n'a aucune fiche rattachable. On l'exclut de l'auto-gen
+      // hebdo (cohérent avec le guard de createSlot) ; ces recettes passent
+      // par la création unitaire (mission / AddSlotModal).
+      if (b.patternTemplate.requiresEntityTypeId || b.patternTemplate.requiresProperty) {
         console.warn(
-          `[calendarEngine] binding ${b.id} → recette « ${b.patternTemplate.label} » requiresProperty — skip auto-gen (bien obligatoire, non rattachable en lot)`,
+          `[calendarEngine] binding ${b.id} → recette « ${b.patternTemplate.label} » exige une fiche — skip auto-gen (non rattachable en lot)`,
         );
         return false;
       }

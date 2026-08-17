@@ -1,11 +1,11 @@
 /**
- * resolveSlotEffectivePattern — résolution legacy AccountPattern ↔ recette
- * PatternBinding pour les triggers auto.
+ * resolveSlotEffectivePattern — résolution recette PatternBinding /
+ * PatternTemplate pour les triggers auto.
  *
- * Régression visée (bug P2) : les slots créés via une recette ont
- * patternId=null + patternBindingId renseigné. Les triggers lisaient seulement
- * slot.pattern (legacy) → coverMode/needsDescription retombaient à "none" →
- * transcription/description/cover/transitions auto silencieusement skippées.
+ * Régression visée (bug P2) : les slots créés via une recette doivent dériver
+ * coverMode/needsDescription du binding+template — sinon les triggers auto
+ * (transcription/description/cover/transitions) sont silencieusement skippés.
+ * La branche AccountPattern legacy a été décommissionnée (D2, 2026-08).
  */
 
 import { describe, it, expect } from "vitest";
@@ -14,7 +14,6 @@ import {
   type SlotWithEffectivePattern,
 } from "@/lib/services/slot/effectivePattern";
 
-type LegacyPattern = NonNullable<SlotWithEffectivePattern["pattern"]>;
 type Binding = NonNullable<SlotWithEffectivePattern["patternBinding"]>;
 type Template = NonNullable<SlotWithEffectivePattern["patternTemplate"]>;
 
@@ -35,26 +34,6 @@ function makeTemplate(over: Partial<Template> = {}): Template {
     needsBrief: false,
     ...over,
   } as Template;
-}
-
-function makeLegacyPattern(over: Partial<LegacyPattern> = {}): LegacyPattern {
-  return {
-    source: "auto_template",
-    templateId: "tpl-legacy",
-    captionPresetId: null,
-    descriptionPromptId: "prompt-legacy",
-    coverMode: "manualSelect",
-    coverConfig: null,
-    needsCaptions: false,
-    needsCaptionsMode: "none",
-    needsDescription: "manualWrite",
-    needsAdminValidation: false,
-    needsClientValidation: false,
-    allowsClientRevision: false,
-    needsBrief: false,
-    needsRushes: false,
-    ...over,
-  } as LegacyPattern;
 }
 
 function makeBinding(
@@ -100,20 +79,8 @@ function makeBinding(
 }
 
 describe("resolveSlotEffectivePattern", () => {
-  it("legacy AccountPattern présent → renvoyé tel quel (slots historiques inchangés)", () => {
+  it("binding (recette) → dérive du template (le cœur du fix)", () => {
     const eff = resolveSlotEffectivePattern({
-      pattern: makeLegacyPattern({ coverMode: "manualSelect", needsDescription: "manualWrite" }),
-      patternBinding: null,
-      patternTemplate: null,
-    });
-    expect(eff?.coverMode).toBe("manualSelect");
-    expect(eff?.needsDescription).toBe("manualWrite");
-    expect(eff?.descriptionPromptId).toBe("prompt-legacy");
-  });
-
-  it("pattern null + binding (recette) → dérive du template (le cœur du fix)", () => {
-    const eff = resolveSlotEffectivePattern({
-      pattern: null,
       patternBinding: makeBinding(),
       patternTemplate: null,
     });
@@ -126,7 +93,6 @@ describe("resolveSlotEffectivePattern", () => {
 
   it("overrides du binding priment sur le template", () => {
     const eff = resolveSlotEffectivePattern({
-      pattern: null,
       patternBinding: makeBinding(
         { coverMode: "none", descriptionPromptId: "prompt-tpl" },
         { coverModeOverride: "autoPack", descriptionPromptIdOverride: "prompt-override" },
@@ -137,18 +103,8 @@ describe("resolveSlotEffectivePattern", () => {
     expect(eff?.descriptionPromptId).toBe("prompt-override");
   });
 
-  it("legacy prioritaire sur binding quand les deux existent", () => {
-    const eff = resolveSlotEffectivePattern({
-      pattern: makeLegacyPattern({ coverMode: "manualSelect" }),
-      patternBinding: makeBinding({ coverMode: "autoPack" }),
-      patternTemplate: null,
-    });
-    expect(eff?.coverMode).toBe("manualSelect");
-  });
-
   it("mission : patternTemplate direct (sans compte ni binding) → dérive du template", () => {
     const eff = resolveSlotEffectivePattern({
-      pattern: null,
       patternBinding: null,
       patternTemplate: makeTemplate(),
     });
@@ -162,7 +118,6 @@ describe("resolveSlotEffectivePattern", () => {
 
   it("mission : needsRushes dérivé de source === 'manual_rushes'", () => {
     const eff = resolveSlotEffectivePattern({
-      pattern: null,
       patternBinding: null,
       patternTemplate: makeTemplate({ source: "manual_rushes" }),
     });
@@ -171,16 +126,15 @@ describe("resolveSlotEffectivePattern", () => {
 
   it("binding prioritaire sur patternTemplate direct quand les deux existent", () => {
     const eff = resolveSlotEffectivePattern({
-      pattern: null,
       patternBinding: makeBinding({ coverMode: "autoPack" }),
       patternTemplate: makeTemplate({ coverMode: "manualSelect" }),
     });
     expect(eff?.coverMode).toBe("autoPack");
   });
 
-  it("ni pattern ni binding ni template → null", () => {
+  it("ni binding ni template → null", () => {
     expect(
-      resolveSlotEffectivePattern({ pattern: null, patternBinding: null, patternTemplate: null }),
+      resolveSlotEffectivePattern({ patternBinding: null, patternTemplate: null }),
     ).toBeNull();
   });
 });

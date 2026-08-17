@@ -10,7 +10,7 @@ import {
   getStartOfToday,
   getEndOfToday,
 } from "@/types/worklist";
-import { EVENT_STATUS_DOT, type ShootEventStatus } from "@/types/events";
+import { ENTITY_STATUS_DOT, type EntityStatus } from "@/types/entities";
 import { timeFr, shortDateTimeFr } from "@/lib/date/formatFr";
 
 interface HomeVideasteProps {
@@ -24,22 +24,27 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
   const startToday = getStartOfToday();
   const endToday = getEndOfToday();
 
-  // Source vidéaste = ses ÉVÉNEMENTS de tournage (shoots).
-  const events = await prisma.shootEvent.findMany({
+  // Source vidéaste = ses FICHES de tournage (shoots) — plan simplification
+  // Phase 5 (métaobjet), typeId="etype_tournage" (ex-ShootEvent).
+  const rawEntities = await prisma.entity.findMany({
     where: {
+      typeId: "etype_tournage",
       assigneeVideasteId: userId,
       status: { in: ["PLANNED", "SHOT"] },
+      scheduledAt: { not: null },
     },
     orderBy: { scheduledAt: "asc" },
     select: {
       id: true,
-      title: true,
+      label: true,
       scheduledAt: true,
       status: true,
       account: { select: { handle: true } },
       _count: { select: { rushes: { where: { deletedAt: null } } } },
     },
   });
+  // scheduledAt filtré non-null ci-dessus — narrowing manuel pour le typage.
+  const events = rawEntities.map((e) => ({ ...e, scheduledAt: e.scheduledAt as Date }));
 
   // Todo : shoots en retard (PLANNED non tourné, passé) + shoots du jour ENCORE
   // à tourner. On exclut les SHOT du bandeau « À faire » (déjà tournés) — ils
@@ -52,16 +57,16 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
   const todoItems: TodoItem[] = [
     ...overdue.map((e) => ({
       id: e.id,
-      href: `/events/${e.id}`,
-      title: e.title,
+      href: `/fiches/${e.id}`,
+      title: e.label,
       subtitle: e.account ? `@${e.account.handle}` : undefined,
       urgencyLabel: "En retard",
       tone: "danger" as const,
     })),
     ...todayShoots.map((e) => ({
       id: e.id,
-      href: `/events/${e.id}`,
-      title: e.title,
+      href: `/fiches/${e.id}`,
+      title: e.label,
       subtitle: e.account ? `@${e.account.handle}` : undefined,
       urgencyLabel: `Aujourd'hui ${timeFr(e.scheduledAt)}`,
       tone: "default" as const,
@@ -74,11 +79,11 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
   );
   const calItems: MiniCalItem[] = weekEvents.map((e) => ({
     id: e.id,
-    href: `/events/${e.id}`,
-    title: e.title,
+    href: `/fiches/${e.id}`,
+    title: e.label,
     dateIso: e.scheduledAt.toISOString(),
     timeLabel: timeFr(e.scheduledAt),
-    dotClass: EVENT_STATUS_DOT[e.status as ShootEventStatus],
+    dotClass: ENTITY_STATUS_DOT[e.status as EntityStatus],
     subtitle: e.account ? `@${e.account.handle}` : undefined,
   }));
 
@@ -124,11 +129,11 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                   {upcoming.map((e) => (
                     <li key={e.id}>
                       <Link
-                        href={`/events/${e.id}`}
+                        href={`/fiches/${e.id}`}
                         className="flex items-center justify-between gap-2 rounded-md bg-card border border-border px-4 py-2.5 hover:bg-muted transition-colors focus-ring"
                       >
                         <div className="min-w-0">
-                          <p className="text-[12.5px] font-medium text-foreground truncate">{e.title}</p>
+                          <p className="text-[12.5px] font-medium text-foreground truncate">{e.label}</p>
                           <p className="text-[11px] text-muted-foreground">
                             {e.account ? `@${e.account.handle}` : "Sans compte"}
                           </p>

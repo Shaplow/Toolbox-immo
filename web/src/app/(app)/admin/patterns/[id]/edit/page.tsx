@@ -86,6 +86,7 @@ export default async function PatternEditPage({ params }: PageProps) {
         allowsClientRevision: tpl.allowsClientRevision,
         needsBrief: tpl.needsBrief,
         requiresProperty: tpl.requiresProperty,
+        requiresEntityTypeId: tpl.requiresEntityTypeId,
         notes: tpl.notes,
         bindingCount: tpl._count.bindings,
         autoSaveToLibraryId: tpl.autoSaveToLibraryId ?? null,

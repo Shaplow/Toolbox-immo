@@ -16,7 +16,7 @@ import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/template
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
-import { selectAndClaimMediaAsset, selectMediaAssetBySetSequence, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
+import { selectAndClaimMediaAsset, selectMediaAssetFromFolder, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
 import { triggerAutoTranscriptionLocal } from "@/lib/triggerAutoTranscriptionLocal";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 import { onRenderCompleted } from "@/lib/services/slot/pipelineHooks";
@@ -1423,34 +1423,25 @@ async function resolveSlotVideoUrl(
     if (strategy === "theme_sequence") {
       // Phase 4 : passe slot.maxDuration comme minimum requis pour l'asset.
       const slotMinDuration = slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined;
-      // Le curseur a DÉJÀ été avancé au submit (advanceLibraryCursorsOnSubmit).
-      // Le groupe réclamé est réinjecté ici en `pinnedSetTag` : la branche pinned
-      // du resolver retourne sans jamais toucher au curseur. Repasser par une
-      // sélection écrivante avançait le curseur une seconde fois, et le
-      // `prevCursorState` renvoyé était jeté — l'avance devenait non revertable.
-      //
-      // `readOnly` ne couvre PAS ce cas à lui seul : le claim ayant déplacé le
-      // curseur de C à C+1, une relecture servirait `sequence[C+1]`, décalée d'un
-      // cran par rapport à ce qui a été réservé. Il ne sert que de filet quand
-      // aucun claim n'existe (rendu sans compte, chemin interne).
+      // Le dossier servi au prefill est réinjecté ici en `pinnedSetTag` : la
+      // branche pinned pioche dans ce dossier sans redécouverte — garantit la
+      // cohérence intra-génération (paire intro/outro du même dossier).
       if (!pinnedSetTag) {
         console.warn(
-          `[resolveSlotVideoUrl] slot=${slot.id} lib=${slot.libraryId} : aucun groupe réclamé au submit — sélection en lecture seule.`,
+          `[resolveSlotVideoUrl] slot=${slot.id} lib=${slot.libraryId} : aucun dossier résolu au submit — redécouverte.`,
         );
       }
-      const asset = await selectMediaAssetBySetSequence(
+      const asset = await selectMediaAssetFromFolder(
         slot.libraryId,
         accountId ?? undefined,
         undefined,
         pinnedSetTag,
-        pinnedCategory,
         ruleConfig,
-        undefined,  // cursorAccountId
-        true,       // readOnly — le claim a eu lieu au submit
+        undefined,
         slotMinDuration,
       );
       if (asset) {
-        // selectMediaAssetBySetSequence doesn't yet return metadata — fetch it separately
+        // selectMediaAssetFromFolder doesn't return metadata — fetch it separately
         let metadata: Record<string, string | number | null> = {};
         try {
           const assetRow = await prisma.mediaAsset.findUnique({ where: { id: asset.id }, select: { metadata: true } });
@@ -1460,7 +1451,7 @@ async function resolveSlotVideoUrl(
           url: asset.url,
           assetId: asset.id,
           resolvedSetTag: asset.resolvedSetTag,
-          resolvedCategory: asset.resolvedCategory,
+          resolvedCategory: null,
           metadata,
         };
       }

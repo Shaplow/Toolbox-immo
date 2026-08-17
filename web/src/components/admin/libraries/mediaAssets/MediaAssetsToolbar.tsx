@@ -12,7 +12,6 @@ import {
   CheckSquare,
   Columns3,
   LayoutGrid,
-  RotateCcw,
   Search,
   Settings2,
   Tag,
@@ -46,8 +45,8 @@ interface Props {
   setTagFilter: Dispatch<SetStateAction<string>>;
   accountFilter: string | null;
   setAccountFilter: Dispatch<SetStateAction<string | null>>;
-  viewMode: "grid" | "grouped" | "rotation";
-  setViewMode: Dispatch<SetStateAction<"grid" | "grouped" | "rotation">>;
+  viewMode: "grid" | "grouped";
+  setViewMode: Dispatch<SetStateAction<"grid" | "grouped">>;
   selectMode: boolean;
   setSelectMode: Dispatch<SetStateAction<boolean>>;
   exitSelectMode: () => void;
@@ -205,17 +204,7 @@ export function MediaAssetsToolbar({
                   size="sm"
                   testId="medialib-view-grouped"
                 >
-                  Catégories
-                </Chip>
-                <Chip
-                  variant={viewMode === "rotation" ? "sky" : "default"}
-                  selected={viewMode === "rotation"}
-                  onClick={() => setViewMode("rotation")}
-                  icon={RotateCcw}
-                  size="sm"
-                  testId="medialib-view-rotation"
-                >
-                  Rotation
+                  Dossiers
                 </Chip>
               </div>
             )}

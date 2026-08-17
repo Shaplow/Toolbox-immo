@@ -38,6 +38,7 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
         source: true,
         templateId: true,
         requiresProperty: true,
+        requiresEntityTypeId: true,
         autoSaveToLibrary: { select: { name: true } },
       },
       orderBy: { label: "asc" },
@@ -46,7 +47,8 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
       select: { id: true, name: true, handle: true },
       orderBy: { handle: "asc" },
     }),
-    prisma.property.findMany({
+    // Phase 5 — fiches (Entity) à la place des Property (ids repris).
+    prisma.entity.findMany({
       where: { isArchived: false },
       select: { id: true, label: true, fields: true },
       orderBy: { updatedAt: "desc" },
@@ -58,7 +60,7 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
     label: t.label,
     source: t.source,
     templateId: t.templateId,
-    requiresProperty: t.requiresProperty,
+    requiresProperty: t.requiresProperty || t.requiresEntityTypeId != null,
     autoSaveLibraryName: t.autoSaveToLibrary?.name ?? null,
   }));
 

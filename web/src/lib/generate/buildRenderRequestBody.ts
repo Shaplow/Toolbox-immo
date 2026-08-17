@@ -23,21 +23,9 @@ export type UsedAssetsPayload = {
   videoAssets?: Record<string, string>;
   audioAssetId?: string;
   dataEntryId?: string;
-  /** resolvedSetTag from the DataEntry group selection — drives AccountDataLibraryCursor advance. */
-  dataResolvedSetTag?: string | null;
-  /** resolvedCategory from the DataEntry group selection — drives AccountDataLibraryCursor advance. */
-  dataResolvedCategory?: string | null;
-  /** Malgré son nom, contient TOUTES les libs en règle `theme_sequence` — auto comprise. */
+  /** Malgré son nom, contient TOUTES les libs en règle `theme_sequence` (tirage dossier). */
   setSequencedLibraryIds?: string[];
   usedSetTagByLibrary?: Record<string, string>;
-  usedCategoryByLibrary?: Record<string, string>;
-  prevDataEntryState?: {
-    entryId: string;
-    campaignId: string;
-    usagePolicy: string;
-    claimType: "usedInCycle" | "perAccountUsage";
-    accountId?: string;
-  };
 };
 
 export type RenderRequestBody = {
@@ -72,14 +60,9 @@ export function buildUsedAssets(
     videoAssets: hasVideo ? videoAssets : undefined,
     audioAssetId,
     dataEntryId: ctx.dataSuggestion?.entryId,
-    dataResolvedSetTag: ctx.dataSuggestion?.resolvedSetTag,
-    dataResolvedCategory: ctx.dataSuggestion?.resolvedCategory,
     setSequencedLibraryIds: ctx.setSequencedLibraryIds?.length ? ctx.setSequencedLibraryIds : undefined,
     usedSetTagByLibrary:
       ctx.usedSetTagByLibrary && Object.keys(ctx.usedSetTagByLibrary).length > 0 ? ctx.usedSetTagByLibrary : undefined,
-    usedCategoryByLibrary:
-      ctx.usedCategoryByLibrary && Object.keys(ctx.usedCategoryByLibrary).length > 0 ? ctx.usedCategoryByLibrary : undefined,
-    prevDataEntryState: ctx.prevDataEntryState ?? undefined,
   };
 }
 

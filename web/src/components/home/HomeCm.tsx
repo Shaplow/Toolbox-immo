@@ -54,13 +54,32 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     },
     include: {
       account: { select: { id: true, handle: true, name: true } },
-      pattern: { select: { label: true, coverMode: true } },
+      patternBinding: {
+        select: {
+          customLabel: true,
+          coverModeOverride: true,
+          patternTemplate: { select: { label: true, coverMode: true } },
+        },
+      },
+      patternTemplate: { select: { label: true, coverMode: true } },
       render: {
         select: { coverFramePack: { select: { status: true, finalCoverUrl: true } } },
       },
     },
     orderBy: { scheduledAt: "asc" },
   });
+
+  // Vue recette synthétisée (binding → template global → null).
+  const patternViewOf = (s: (typeof rawSlots)[number]) =>
+    s.patternBinding?.patternTemplate
+      ? {
+          label: s.patternBinding.customLabel ?? s.patternBinding.patternTemplate.label,
+          coverMode:
+            s.patternBinding.coverModeOverride ?? s.patternBinding.patternTemplate.coverMode,
+        }
+      : s.patternTemplate
+        ? { label: s.patternTemplate.label, coverMode: s.patternTemplate.coverMode }
+        : null;
 
   const slots: WorklistSlot[] = rawSlots.map((s) => ({
     id: s.id,
@@ -70,9 +89,8 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     notes: s.notes,
     assigneeMonteurId: s.assigneeMonteurId,
     assigneeCmId: s.assigneeCmId,
-    patternId: s.patternId,
     account: s.account,
-    pattern: s.pattern,
+    pattern: patternViewOf(s),
   }));
 
   // ── Découpe en sections ────────────────────────────────────────────────
@@ -129,7 +147,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     rawSlots.map((s) => [s.id, s.render?.coverFramePack ?? null]),
   );
   const coverModeBySlot = new Map<string, string | null>(
-    rawSlots.map((s) => [s.id, s.pattern?.coverMode ?? null]),
+    rawSlots.map((s) => [s.id, patternViewOf(s)?.coverMode ?? null]),
   );
 
   function cmBadgeForSlot(slotId: string, status: string): WorklistCmBadges {

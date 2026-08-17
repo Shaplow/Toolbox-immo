@@ -95,12 +95,17 @@ export async function DELETE(
   // (DescriptionJob.promptSnapshot) reste préservé, donc pas de perte pour
   // l'audit — mais les patterns/slots en cours sont silencieusement déconnectés.
   if (!force) {
-    const [patterns, slots] = await Promise.all([
-      prisma.accountPattern.findMany({
+    const [templates, bindings, slots] = await Promise.all([
+      prisma.patternTemplate.findMany({
         where: { descriptionPromptId: id },
+        select: { id: true, label: true },
+      }),
+      prisma.patternBinding.findMany({
+        where: { descriptionPromptIdOverride: id },
         select: {
           id: true,
-          label: true,
+          customLabel: true,
+          patternTemplate: { select: { label: true } },
           account: { select: { id: true, handle: true } },
         },
       }),
@@ -110,6 +115,14 @@ export async function DELETE(
         take: 25,
       }),
     ]);
+    const patterns = [
+      ...templates.map((t) => ({ id: t.id, label: t.label, account: null as { id: string; handle: string } | null })),
+      ...bindings.map((b) => ({
+        id: b.id,
+        label: b.customLabel ?? b.patternTemplate.label,
+        account: b.account,
+      })),
+    ];
 
     if (patterns.length > 0 || slots.length > 0) {
       return NextResponse.json(

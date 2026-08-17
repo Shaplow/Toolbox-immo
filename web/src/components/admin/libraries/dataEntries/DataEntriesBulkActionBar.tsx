@@ -4,13 +4,13 @@
  * DataEntriesBulkActionBar — barre d'action sticky bottom affichée en mode
  * sélection multiple sur les DataEntry.
  *
- * Mirror visuel de MediaAssetsBulkActionBar (mediaAssets/) : bulk Set /
- * catégorie + accès comptes IG. La logique (sélection + handlers) vit dans
+ * Mirror visuel de MediaAssetsBulkActionBar (mediaAssets/) : bulk Dossier +
+ * accès comptes IG. La logique (sélection + handlers) vit dans
  * useBulkEditDataEntries.
  */
 
 import { useState } from "react";
-import { Square, CheckSquare, X, Layers, FolderOpen } from "lucide-react";
+import { Square, CheckSquare, X, Layers } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import type { InstagramAccount } from "@/components/admin/libraries/DataEntriesPanel";
@@ -21,10 +21,8 @@ interface Props {
   /** IDs de toutes les entries visibles — utilisé pour "Tout sélectionner". */
   allVisibleIds: string[];
   accounts: InstagramAccount[];
-  /** Valeurs de Set existantes — suggestions du Combobox bulk. */
+  /** Valeurs de Dossier existantes — suggestions du Combobox bulk. */
   setTagOptions?: string[];
-  /** Catégories existantes — suggestions du Combobox bulk. */
-  categoryOptions?: string[];
 }
 
 export function DataEntriesBulkActionBar({
@@ -32,7 +30,6 @@ export function DataEntriesBulkActionBar({
   allVisibleIds,
   accounts,
   setTagOptions = [],
-  categoryOptions = [],
 }: Props) {
   const {
     selectedIds,
@@ -47,7 +44,6 @@ export function DataEntriesBulkActionBar({
   void _toggleSelect; // exposé par le hook, utilisé dans la spreadsheet
 
   const [setTagInput, setSetTagInput] = useState("");
-  const [categoryInput, setCategoryInput] = useState("");
 
   const allSelected = allVisibleIds.length > 0 && selectedIds.size === allVisibleIds.length;
 
@@ -81,7 +77,7 @@ export function DataEntriesBulkActionBar({
       {/* Centre : actions (uniquement quand des items sont sélectionnés) */}
       {selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 flex-1">
-          {/* Bulk Set */}
+          {/* Bulk Dossier */}
           <div className="flex items-center gap-1">
             <div className="w-[180px]">
               <Combobox
@@ -89,8 +85,8 @@ export function DataEntriesBulkActionBar({
                 onChange={setSetTagInput}
                 options={setTagOptions.map((s) => ({ value: s, label: s, icon: Layers }))}
                 allowCustom
-                placeholder="Set…"
-                emptyMessage="Tapez un nom de Set"
+                placeholder="Dossier…"
+                emptyMessage="Tapez un nom de dossier"
                 disabled={bulkApplying}
               />
             </div>
@@ -103,33 +99,7 @@ export function DataEntriesBulkActionBar({
                 setSetTagInput("");
               }}
             >
-              Set
-            </Button>
-          </div>
-
-          {/* Bulk Catégorie */}
-          <div className="flex items-center gap-1">
-            <div className="w-[180px]">
-              <Combobox
-                value={categoryInput}
-                onChange={setCategoryInput}
-                options={categoryOptions.map((c) => ({ value: c, label: c, icon: FolderOpen }))}
-                allowCustom
-                placeholder="Catégorie…"
-                emptyMessage="Tapez une catégorie"
-                disabled={bulkApplying}
-              />
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={bulkApplying}
-              onClick={() => {
-                void handleBulkApplyFields({ category: categoryInput });
-                setCategoryInput("");
-              }}
-            >
-              Cat.
+              Dossier
             </Button>
           </div>
 

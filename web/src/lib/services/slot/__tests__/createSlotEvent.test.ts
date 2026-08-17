@@ -1,11 +1,11 @@
 /**
- * Tests createSlot — chemin « reel rattaché à un événement (eventId) ».
- * Fige :
- *  - compte forcé = compte de l'événement
- *  - statut initial : event SHOT → IN_EDIT ; event PLANNED → PLANNED
+ * Tests createSlot — chemin « reel rattaché à une fiche tournage (clé API
+ * eventId, Phase 5 : Entity) ». Fige :
+ *  - compte forcé = compte du tournage
+ *  - statut initial : tournage SHOT → IN_EDIT ; PLANNED → PLANNED
  *  - needsRushesOverride = false (chaîne démarre au montage)
- *  - eventId persisté
- *  - événement introuvable → NotFoundError
+ *  - shootEntityId persisté
+ *  - tournage introuvable → NotFoundError
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -15,8 +15,9 @@ const mockAccountFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockBindingFindUnique = vi.fn();
 const mockBindingFindFirst = vi.fn().mockResolvedValue(null);
+// Phase 5 : un seul mock Entity sert la fiche tournage (input.eventId) ET la
+// fiche data (input.propertyId) — dispatch par where.id dans beforeEach.
 const mockShootEventFindUnique = vi.fn();
-const mockPropertyFindUnique = vi.fn().mockResolvedValue({ id: "prop-1", isArchived: false });
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -29,8 +30,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     instagramAccount: { findUnique: (...a: unknown[]) => mockAccountFindUnique(...a) },
     user: { findUnique: (...a: unknown[]) => mockUserFindUnique(...a) },
-    property: { findUnique: (...a: unknown[]) => mockPropertyFindUnique(...a) },
-    shootEvent: { findUnique: (...a: unknown[]) => mockShootEventFindUnique(...a) },
+    entity: { findUnique: (...a: unknown[]) => mockShootEventFindUnique(...a) },
   },
 }));
 
@@ -83,7 +83,6 @@ beforeEach(() => {
   mockBindingFindUnique.mockReset().mockImplementation(() =>
     Promise.resolve(makeBinding("acc-ev")),
   );
-  mockPropertyFindUnique.mockReset().mockResolvedValue({ id: "prop-1", isArchived: false });
   mockUserFindUnique.mockReset().mockImplementation(({ where }: { where: { id: string } }) => {
     const id = where.id;
     const role = id.startsWith("mon") ? "MONTEUR" : id.startsWith("cm") ? "CM" : "VIDEASTE";
@@ -97,7 +96,7 @@ describe("createSlot — reel event-attached", () => {
     mockShootEventFindUnique.mockResolvedValue({
       id: "ev-1",
       accountId: "acc-ev",
-      propertyId: null,
+      relatedEntityId: null,
       status: "SHOT",
       assigneeVideasteId: "vid-1",
       defaultAssigneeMonteurId: "mon-1",
@@ -111,7 +110,7 @@ describe("createSlot — reel event-attached", () => {
     );
 
     const data = mockSlotCreate.mock.calls[0][0].data;
-    expect(data.eventId).toBe("ev-1");
+    expect(data.shootEntityId).toBe("ev-1");
     expect(data.accountId).toBe("acc-ev");
     expect(data.status).toBe("IN_EDIT");
     expect(data.needsRushesOverride).toBe(false);
@@ -126,7 +125,7 @@ describe("createSlot — reel event-attached", () => {
     mockShootEventFindUnique.mockResolvedValue({
       id: "ev-2",
       accountId: "acc-ev",
-      propertyId: null,
+      relatedEntityId: null,
       status: "PLANNED",
       assigneeVideasteId: null,
       defaultAssigneeMonteurId: null,
@@ -143,7 +142,7 @@ describe("createSlot — reel event-attached", () => {
     mockShootEventFindUnique.mockResolvedValue({
       id: "ev-3",
       accountId: "acc-ev",
-      propertyId: null,
+      relatedEntityId: null,
       status: "DONE",
       assigneeVideasteId: null,
       defaultAssigneeMonteurId: null,

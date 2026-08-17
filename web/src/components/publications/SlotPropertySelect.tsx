@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Select } from "@/components/ui/Select";
+import { useState } from "react";
+import { EntityPicker } from "@/components/entities/EntityPicker";
 import { toast } from "@/components/ui/Toast";
 
 interface SlotPropertySelectProps {
@@ -15,8 +15,9 @@ interface SlotPropertySelectProps {
 /**
  * Sélecteur de « Bien » (fiche partagée) pour une mission EXISTANTE — rattache
  * ou détache le bien via PATCH /api/calendar/slots/[id] (champ propertyId,
- * whitelisté ADMIN/CM). Charge la liste des biens à la volée. Réutilisé sur la
- * fiche publication et le drawer calendrier.
+ * whitelisté ADMIN/CM). Wrapper mince sur `EntityPicker` (fiches de type
+ * « Bien » uniquement) — plan simplification Phase 5. Réutilisé sur la fiche
+ * publication et le drawer calendrier.
  */
 export function SlotPropertySelect({
   slotId,
@@ -25,31 +26,7 @@ export function SlotPropertySelect({
   onChanged,
 }: SlotPropertySelectProps) {
   const [propertyId, setPropertyId] = useState(initialPropertyId ?? "");
-  const [options, setOptions] = useState<{ value: string; label: string }[]>([
-    { value: "", label: "Aucun bien" },
-  ]);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch("/api/properties");
-        if (!res.ok) return;
-        const data = (await res.json()) as { id: string; label: string }[];
-        if (cancelled) return;
-        setOptions([
-          { value: "", label: "Aucun bien" },
-          ...data.map((p) => ({ value: p.id, label: p.label })),
-        ]);
-      } catch {
-        /* liste indisponible — le Select reste avec « Aucun bien » */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function handleChange(next: string) {
     const prev = propertyId;
@@ -78,12 +55,13 @@ export function SlotPropertySelect({
   }
 
   return (
-    <Select
+    <EntityPicker
+      typeId="etype_bien"
       value={propertyId}
       onChange={handleChange}
-      options={options}
       placeholder="Aucun bien"
       disabled={disabled || saving}
+      emptyLabel="Aucun bien"
     />
   );
 }

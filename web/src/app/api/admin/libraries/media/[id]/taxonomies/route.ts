@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { canViewMediaLibrary, canManageMediaLibraries } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -29,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     for (const a of assets) {
       if (a.category) catMap.set(a.category, (catMap.get(a.category) ?? 0) + 1);
-      if (a.setTag && !a.setTag.startsWith("pack_")) {
+      if (a.setTag && !isReservedSetTag(a.setTag)) {
         packMap.set(a.setTag, (packMap.get(a.setTag) ?? 0) + 1);
       }
       try {

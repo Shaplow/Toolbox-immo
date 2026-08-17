@@ -31,14 +31,11 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
     setBulkSetTagInput,
     bulkTagsInput,
     setBulkTagsInput,
-    bulkCategoryInput,
-    setBulkCategoryInput,
     bulkApplying,
     exitSelectMode,
     handleBulkApplySetTag,
     handleBulkApplyTags,
     handleBulkApplyAccess,
-    handleBulkApplyCategory,
     handleBulkDelete,
   } = bulk;
 
@@ -87,36 +84,13 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               alors à « tout sélectionner » + « Télécharger » + « Annuler ». */}
           {canManageAssets && (
             <>
-          {/* W5.11 : couleurs alignées sur Coastal Studio (sage pour
-              category/pack actions non-destructives — rose réservé au danger). */}
-          {/* Bulk category */}
-          <div className="flex items-center gap-1">
-            <input
-              value={bulkCategoryInput}
-              onChange={(e) => setBulkCategoryInput(e.target.value)}
-              list="group-list"
-              placeholder="Catégorie…"
-              className="w-28 text-xs border border-success-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-success-200"
-              onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyCategory(); } }}
-            />
-            <button
-              onClick={() => { void handleBulkApplyCategory(); }}
-              disabled={bulkApplying}
-              className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
-                bulkCategoryInput.trim() ? "bg-gray-900 hover:bg-gray-700" : "bg-gray-400 hover:bg-gray-500"
-              }`}
-              title={bulkCategoryInput.trim() ? "Appliquer la catégorie" : "Retirer la catégorie"}
-            >
-              {bulkCategoryInput.trim() ? "Cat." : <X size={10} />}
-            </button>
-          </div>
-          {/* Bulk groupe */}
+          {/* Bulk dossier */}
           <div className="flex items-center gap-1">
             <input
               value={bulkSetTagInput}
               onChange={(e) => setBulkSetTagInput(e.target.value)}
               list="bulk-set-tags-list"
-              placeholder="Groupe…"
+              placeholder="Dossier…"
               className="w-28 text-xs border border-success-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-success-200"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplySetTag(); } }}
             />
@@ -126,9 +100,9 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
                 bulkSetTagInput.trim() ? "bg-gray-900 hover:bg-gray-700" : "bg-gray-400 hover:bg-gray-500"
               }`}
-              title={bulkSetTagInput.trim() ? "Appliquer le groupe" : "Retirer le groupe"}
+              title={bulkSetTagInput.trim() ? "Appliquer le dossier" : "Retirer le dossier"}
             >
-              {bulkSetTagInput.trim() ? "Groupe" : <X size={10} />}
+              {bulkSetTagInput.trim() ? "Dossier" : <X size={10} />}
             </button>
           </div>
           {/* Bulk tags */}

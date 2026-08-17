@@ -73,6 +73,8 @@ export interface RecipeFormInitial {
   allowsClientRevision: boolean;
   needsBrief: boolean;
   requiresProperty: boolean;
+  /** Phase 5 (métaobjet) — remplace requiresProperty. */
+  requiresEntityTypeId: string | null;
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
@@ -106,6 +108,7 @@ export interface RecipeFormValues {
     allowsClientRevision: boolean;
     needsBrief: boolean;
     requiresProperty: boolean;
+    requiresEntityTypeId: string | null;
     captionPresetId: string | null;
     descriptionPromptId: string | null;
     descriptionSourceFieldKey: string | null;
@@ -176,7 +179,29 @@ export function RecipeForm({
   const [needsClientValidation, setNeedsClientValidation] = useState(initial.needsClientValidation);
   const [allowsClientRevision, setAllowsClientRevision] = useState(initial.allowsClientRevision);
   const [needsBrief, setNeedsBrief] = useState(initial.needsBrief);
-  const [requiresProperty, setRequiresProperty] = useState(initial.requiresProperty ?? false);
+  // Phase 5 (métaobjet) — « Exige une fiche » : select de type au lieu d'un
+  // toggle booléen. Compat : requiresProperty=true sans requiresEntityTypeId
+  // (recette pas encore migrée) affiche « Bien » sélectionné.
+  const [requiresEntityTypeId, setRequiresEntityTypeId] = useState(
+    initial.requiresEntityTypeId ?? (initial.requiresProperty ? "etype_bien" : ""),
+  );
+  const [entityTypes, setEntityTypes] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch("/api/entity-types");
+        if (!r.ok) return;
+        const data = (await r.json()) as { types: { id: string; name: string }[] };
+        if (!cancelled) setEntityTypes(data.types);
+      } catch {
+        /* liste indisponible — le select reste vide */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [captionPresetId, setCaptionPresetId] = useState(initial.captionPresetId ?? "");
   const [descriptionPromptId, setDescriptionPromptId] = useState(initial.descriptionPromptId ?? "");
   const [descriptionSourceFieldKey, setDescriptionSourceFieldKey] = useState(
@@ -185,15 +210,18 @@ export function RecipeForm({
   const [descriptionFixedText, setDescriptionFixedText] = useState(
     initial.descriptionFixedText ?? "",
   );
-  // Clés de champs de bien suggérées (mode preFilled) — chargées à la volée,
-  // saisie libre autorisée (le bien peut ne pas exister encore).
+  // Clés de champs de fiche suggérées (mode preFilled) — chargées à la volée
+  // depuis le type de fiche sélectionné (fallback « Bien » si aucun type
+  // requis), saisie libre autorisée (la fiche peut ne pas exister encore).
   const [propertyFieldKeys, setPropertyFieldKeys] = useState<{ key: string; label: string }[]>([]);
+  const fieldKeysTypeId = requiresEntityTypeId || "etype_bien";
   useEffect(() => {
-    if (needsDescription !== "preFilled" || propertyFieldKeys.length > 0) return;
+    if (needsDescription !== "preFilled") return;
     let cancelled = false;
     void (async () => {
+      setPropertyFieldKeys([]);
       try {
-        const r = await fetch("/api/properties/field-keys");
+        const r = await fetch(`/api/entity-types/${fieldKeysTypeId}/field-keys`);
         if (!r.ok) return;
         const data = (await r.json()) as { key: string; label: string }[];
         if (!cancelled) setPropertyFieldKeys(data);
@@ -204,7 +232,7 @@ export function RecipeForm({
     return () => {
       cancelled = true;
     };
-  }, [needsDescription, propertyFieldKeys.length]);
+  }, [needsDescription, fieldKeysTypeId]);
   const [templateNotes, setTemplateNotes] = useState(initial.templateNotes ?? "");
 
   // Binding state
@@ -260,7 +288,8 @@ export function RecipeForm({
         needsClientValidation,
         allowsClientRevision,
         needsBrief,
-        requiresProperty,
+        requiresProperty: !!requiresEntityTypeId,
+        requiresEntityTypeId: requiresEntityTypeId || null,
         captionPresetId: captionPresetId || null,
         descriptionPromptId: descriptionPromptId || null,
         descriptionSourceFieldKey:
@@ -355,8 +384,9 @@ export function RecipeForm({
             setAllowsClientRevision={setAllowsClientRevision}
             needsBrief={needsBrief}
             setNeedsBrief={setNeedsBrief}
-            requiresProperty={requiresProperty}
-            setRequiresProperty={setRequiresProperty}
+            requiresEntityTypeId={requiresEntityTypeId}
+            setRequiresEntityTypeId={setRequiresEntityTypeId}
+            entityTypes={entityTypes}
             captionPresetId={captionPresetId}
             setCaptionPresetId={setCaptionPresetId}
             descriptionPromptId={descriptionPromptId}
@@ -468,8 +498,9 @@ interface ContentTabProps {
   setAllowsClientRevision: (v: boolean) => void;
   needsBrief: boolean;
   setNeedsBrief: (v: boolean) => void;
-  requiresProperty: boolean;
-  setRequiresProperty: (v: boolean) => void;
+  requiresEntityTypeId: string;
+  setRequiresEntityTypeId: (v: string) => void;
+  entityTypes: { id: string; name: string }[];
   captionPresetId: string;
   setCaptionPresetId: (v: string) => void;
   descriptionPromptId: string;
@@ -634,17 +665,26 @@ function ContentTab(p: ContentTabProps) {
         </FormField>
       )}
 
+      <FormField
+        label="Exige une fiche"
+        help="Une fiche de ce type doit être rattachée pour créer un slot depuis cette recette."
+      >
+        <Combobox
+          value={p.requiresEntityTypeId}
+          onChange={p.setRequiresEntityTypeId}
+          options={[
+            { value: "", label: "Aucune" },
+            ...p.entityTypes.map((t) => ({ value: t.id, label: t.name })),
+          ]}
+        />
+      </FormField>
+
       <FormField label="Workflow">
         <div className="space-y-1.5 text-[12.5px]">
           <FlagCheckbox
             checked={p.needsBrief}
             onChange={p.setNeedsBrief}
             label="Brief obligatoire avant production"
-          />
-          <FlagCheckbox
-            checked={p.requiresProperty}
-            onChange={p.setRequiresProperty}
-            label="Nécessite un bien"
           />
           <FlagCheckbox
             checked={p.needsAdminValidation}

@@ -10,9 +10,10 @@
  * Aligné sur le pattern Cover/CaptionsTabPanel : panel autonome avec sa
  * propre logique de fetch.
  *
- * UX (cohérent avec Phase 1.x doctrine "campagne invisible") : on ne montre
- * PLUS le combo "Campagne". À la sélection d'une bibliothèque, on auto-set
- * dataCampaignId vers la campagne active (Default) silencieusement.
+ * Plan simplification Phase 4 : le wrapper DataCampaign est décommissionné —
+ * seul `dataLibraryId` compte désormais (le serveur résout les anciens
+ * templates qui portent encore un `dataCampaignId` legacy). Plus d'auto-link
+ * de campagne ici.
  */
 
 import { useEffect, useState } from "react";
@@ -49,30 +50,6 @@ export function DataTabPanel() {
       .catch(() => {});
   }, []);
 
-  // Auto-link dataCampaignId à la campagne active de la lib choisie (concept
-  // campagne invisible côté UX — cf. Phase 1.x Légère). Cohérent avec le fait
-  // que chaque DataLibrary a UNE seule campagne "Default" auto-créée.
-  useEffect(() => {
-    if (!cl?.dataLibraryId || cl.dataCampaignId) return;
-    let active = true;
-    void (async () => {
-      try {
-        const r = await fetch(`/api/admin/libraries/data/${cl.dataLibraryId}/campaigns`);
-        if (!r.ok) return;
-        const data = (await r.json()) as { id: string; isActive: boolean }[];
-        const activeCampaign = data.find((c) => c.isActive) ?? data[0];
-        if (active && activeCampaign) {
-          updateContentLibrary({ dataCampaignId: activeCampaign.id });
-        }
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [cl?.dataLibraryId, cl?.dataCampaignId, updateContentLibrary]);
-
   const hasLib = !!cl?.dataLibraryId;
   const hasSchema = template.schema.length > 0;
 
@@ -106,7 +83,6 @@ export function DataTabPanel() {
               onChange={(e) =>
                 updateContentLibrary({
                   dataLibraryId: e.target.value || undefined,
-                  dataCampaignId: undefined, // re-résolu auto par useEffect ci-dessus
                 })
               }
               className="border border-border rounded px-2 py-1 text-xs bg-white"
@@ -140,8 +116,8 @@ export function DataTabPanel() {
               }
               className="border border-border rounded px-2 py-1 text-xs bg-white"
             >
-              <option value="auto">Automatique (rotation de la bibliothèque)</option>
-              <option value="manual">Manuelle — choix à la génération</option>
+              <option value="auto">Tirage par dossier</option>
+              <option value="manual">Manuelle</option>
             </select>
             {(!cl.dataSelectionRule || cl.dataSelectionRule !== "manual") && (
               <span className="text-[9px] text-muted-foreground leading-relaxed">

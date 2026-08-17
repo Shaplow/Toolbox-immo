@@ -27,6 +27,7 @@ Tool grants work on two levels: role-based scope (`ROLE_TOOL_SCOPE` in `web/src/
 | `web/src/lib/permissions.ts` | `TOOLS` enum, `hasTool()`, `getUserTools()`, `setUserTools()`, `canAccessTemplate()` |
 | `web/src/lib/permissions/tools.ts` | `ROLE_TOOL_SCOPE` — default tool grants per role |
 | `web/src/lib/permissions/slotScope.ts` | `whereClauseForUser`, `canUserAccessSlot`, `ALLOWED_PATCH_FIELDS_BY_ROLE` |
+| `web/src/lib/permissions/entityScope.ts` | Fiches (métaobjets, Phase 5) : `whereClauseForUserEntity`, `canUserAccessEntity`, `canUploadEntityRushes`, `ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE` — switch `EntityType.visibility` (`admin` = CRUD admin strict, `team` = scoping assignés). Remplace l'ex-`eventScope.ts`. |
 | `web/src/lib/permissions/publications.ts` | `canSeePublication`, `canMarkPublished`, `canEditComment` |
 | `web/src/lib/userContext.ts` | `getUserContext()`, `resolveUserContext()`, `IMPERSONATION_COOKIE_NAME`, `UserContext` type |
 | `web/src/lib/auth.ts` | JWT callback — parses and re-serializes permissions; `session.user.role` and `session.user.permissions` |
@@ -102,5 +103,5 @@ const userContext = await resolveUserContext(
 
 Run targeted lint: `cd web && npm run lint -- web/src/lib/permissions.ts web/src/lib/userContext.ts`
 
-Unit tests exist for permissions helpers: `cd web && npm run test:unit` covers `slotScope`, `publications`, and `tools` helpers.
+Unit tests exist for permissions helpers: `cd web && npm run test:unit` covers `slotScope`, `entityScope`, `publications`, and `tools` helpers.
 Verify impersonation behavior manually via the admin UI or by checking the impersonation cookie flow.

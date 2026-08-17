@@ -468,13 +468,6 @@ function MediaLibraryCard({
       return [];
     }
   })();
-  const seq = (() => {
-    try {
-      return JSON.parse(lib.setSequence) as string[];
-    } catch {
-      return [];
-    }
-  })();
   const isVideo = lib.type === "video";
 
   function isFileDrag(e: React.DragEvent): boolean {
@@ -602,7 +595,7 @@ function MediaLibraryCard({
         <div className="flex items-center gap-1.5 text-[9.5px] text-white/80">
           <span className="inline-flex items-center gap-0.5">
             <RotateCw size={9} />
-            {seq.length > 0 ? "Ordre fixe" : "Rotation auto"}
+            {lib.rotationMode === "none" ? "Tirage manuel" : "Tirage par dossier"}
           </span>
           <span className="text-white/40">·</span>
           <span>{rotationScopeLabel(lib.rotationScope)}</span>

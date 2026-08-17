@@ -658,7 +658,7 @@ export interface TemplateJSON {
    * à la fin d'un render vidéo basé sur ce template.
    */
   captionAutoConfig?: CaptionAutoConfig;
-  // coverAutoConfig removed in Phase 1.8 — migrated to AccountPattern.coverConfig
+  // coverAutoConfig removed in Phase 1.8 — migrated to PatternTemplate.coverConfig
   timeline?: undefined; // V2 placeholder
 }
 

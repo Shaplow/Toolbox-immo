@@ -552,7 +552,7 @@ export function PublicationFiche({
               <div className="space-y-1.5">
                 <RushesSection
                   slotId={slot.id}
-                  apiBasePath={`/api/shoot-events/${shootEvent.id}/rushes`}
+                  apiBasePath={`/api/entities/${shootEvent.id}/rushes`}
                   rushes={eventRushes}
                   canUploadRushes={false}
                   canManageRushes={false}
@@ -564,10 +564,10 @@ export function PublicationFiche({
                   collapsible
                 />
                 <Link
-                  href={`/events/${shootEvent.id}`}
+                  href={`/fiches/${shootEvent.id}`}
                   className="inline-block text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Depuis l&apos;événement « {shootEvent.title} » →
+                  Depuis la fiche « {shootEvent.title} » →
                 </Link>
               </div>
             )}

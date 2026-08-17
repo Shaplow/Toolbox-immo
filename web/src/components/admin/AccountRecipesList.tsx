@@ -55,6 +55,8 @@ export interface RecipeItem {
   allowsClientRevision: boolean;
   needsBrief: boolean;
   requiresProperty: boolean;
+  /** Phase 5 (métaobjet) — remplace requiresProperty. */
+  requiresEntityTypeId: string | null;
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
@@ -129,6 +131,7 @@ function defaultRecipeFormInitial(): RecipeFormInitial {
     allowsClientRevision: false,
     needsBrief: false,
     requiresProperty: false,
+    requiresEntityTypeId: null,
     captionPresetId: null,
     descriptionPromptId: null,
     descriptionSourceFieldKey: null,
@@ -162,6 +165,7 @@ function recipeItemToFormInitial(r: RecipeItem): RecipeFormInitial {
     allowsClientRevision: r.allowsClientRevision,
     needsBrief: r.needsBrief,
     requiresProperty: r.requiresProperty,
+    requiresEntityTypeId: r.requiresEntityTypeId,
     captionPresetId: r.captionPresetId,
     descriptionPromptId: r.descriptionPromptId,
     descriptionSourceFieldKey: r.descriptionSourceFieldKey,

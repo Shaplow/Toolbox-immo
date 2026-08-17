@@ -2,7 +2,7 @@
 
 /**
  * MediaAssetsUploadModal — modal d'upload de MediaAsset avec drag-drop,
- * config (catégorie / pack / tags / compte IG) et progress bar.
+ * config (dossier / tags / compte IG) et progress bar.
  *
  * Phase D7 du split C1-v2 (plan §19). Le composant encapsule tous les
  * states + handlers async (presign + XHR upload + bulk apply meta) qui
@@ -17,13 +17,13 @@
  * UI (filtre type vidéo/audio, dropdown comptes). Quand l'upload réussit,
  * `onUploaded()` est appelé pour permettre au parent de refetch la liste.
  *
- * Phase 1 médiathèque (2026-05-30) : wording "Set" → "Pack" (plus parlant
- * pour un noob), auto-suggest depuis filename (regex patterns courants),
- * tooltips explicatifs Catégorie/Pack via Info icon.
+ * Plan simplification 2026-08 : le concept de Catégorie a été retiré — le
+ * Dossier (`setTag`) est la seule notion de rangement, promue au même
+ * niveau que les autres champs (plus de repli "Options avancées").
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Upload, X, FolderOpen, Layers, Tag, CheckCircle2, Info, Sparkles, Globe, ChevronRight } from "lucide-react";
+import { Upload, X, Layers, Tag, CheckCircle2, Info, Sparkles, Globe } from "lucide-react";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { Combobox } from "@/components/ui/Combobox";
 import { Chip } from "@/components/ui/Chip";
@@ -32,37 +32,26 @@ import { captureVideoPoster } from "./captureVideoPoster";
 import type { InstagramAccount, MediaLibrary } from "./types";
 import { normalizeCustomFields } from "@/lib/customFields";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
 
 /**
- * Analyse les filenames pour suggérer Catégorie + Pack.
+ * Analyse les filenames pour suggérer un Dossier.
  * Heuristique conservatrice : ne suggère que si TOUS les fichiers s'accordent
  * sur le même match. Sinon laisse vide (mieux que de proposer une valeur fausse).
  */
-function suggestFromFilenames(files: File[]): { category?: string; setTag?: string } {
+function suggestFromFilenames(files: File[]): { setTag?: string } {
   if (files.length === 0) return {};
 
   const matches = files.map((f) => {
     const base = f.name.toLowerCase().replace(/\.[^.]+$/, "");
-    return { category: matchCategory(base), setTag: matchPack(base) };
+    return { setTag: matchPack(base) };
   });
 
-  const cats = new Set(matches.map((m) => m.category).filter(Boolean));
   const packs = new Set(matches.map((m) => m.setTag).filter(Boolean));
 
   return {
-    category: cats.size === 1 ? Array.from(cats)[0] : undefined,
     setTag: packs.size === 1 ? Array.from(packs)[0] : undefined,
   };
-}
-
-function matchCategory(name: string): string | undefined {
-  const tenue = name.match(/tenue[\s_-]?(\d+)/);
-  if (tenue) return `Tenue ${tenue[1]}`;
-  const cat = name.match(/\bcat[_-]([a-z0-9]+)/);
-  if (cat) return cat[1].charAt(0).toUpperCase() + cat[1].slice(1);
-  if (/(?:^|[\s_-])(?:int|interieur|intérieur)(?:[\s_-]|$)/.test(name)) return "Intérieur";
-  if (/(?:^|[\s_-])(?:ext|exterieur|extérieur)(?:[\s_-]|$)/.test(name)) return "Extérieur";
-  return undefined;
 }
 
 function matchPack(name: string): string | undefined {
@@ -112,12 +101,7 @@ export function MediaAssetsUploadModal({
   );
 
   // ─ State local à la modal (extrait de MediaAssetsPanel)
-  const [uploadCategory, setUploadCategory] = useState("");
   const [uploadSetTag, setUploadSetTag] = useState("");
-  // Le « Groupe » (setTag) ne sert qu'à rassembler des plans joués ensemble —
-  // besoin de niche. On le replie sous « Options avancées » par défaut, déplié
-  // auto si une valeur est déjà saisie/suggérée.
-  const [showAdvancedUpload, setShowAdvancedUpload] = useState(false);
   // Phase γ — multi-select comptes. Vide = global. Sinon restreint aux comptes listés.
   const [uploadAccountIds, setUploadAccountIds] = useState<string[]>([]);
   // Phase γ.bis — tags multi-select avec Combobox autocomplete.
@@ -125,8 +109,7 @@ export function MediaAssetsUploadModal({
   const [tagDraft, setTagDraft] = useState("");
   // Mode manuel — valeurs metadata saisies (key → value).
   const [uploadMetadata, setUploadMetadata] = useState<Record<string, string>>({});
-  // Phase γ — Combobox autocomplete : on fetch les categories/packs/tags existants au mount.
-  const [existingCategories, setExistingCategories] = useState<string[]>([]);
+  // Phase γ — Combobox autocomplete : on fetch les dossiers/tags existants au mount.
   const [existingPacks, setExistingPacks] = useState<string[]>([]);
   const [existingTags, setExistingTags] = useState<string[]>([]);
   const [modalUploading, setModalUploading] = useState(false);
@@ -160,7 +143,7 @@ export function MediaAssetsUploadModal({
     return () => window.removeEventListener("keydown", handler);
   }, [open, modalUploading, onClose]);
 
-  // Phase γ — au mount du modal, fetch les categories/packs déjà utilisés dans la lib
+  // Phase γ — au mount du modal, fetch les dossiers déjà utilisés dans la lib
   // pour pré-remplir l'autocomplete des Combobox. Léger : on lit juste les noms distincts.
   useEffect(() => {
     if (!open) return;
@@ -170,14 +153,12 @@ export function MediaAssetsUploadModal({
         const res = await fetch(`/api/admin/libraries/media/${library.id}/assets`);
         if (!res.ok) return;
         // API retourne tags comme JSON string (pas array). On parse defensively.
-        const assets = (await res.json()) as Array<{ category: string | null; setTag: string | null; tags: unknown }>;
+        const assets = (await res.json()) as Array<{ setTag: string | null; tags: unknown }>;
         if (cancelled) return;
-        const cats = new Set<string>();
         const packs = new Set<string>();
         const tags = new Set<string>();
         for (const a of assets) {
-          if (a.category) cats.add(a.category);
-          if (a.setTag && !a.setTag.startsWith("pack_")) packs.add(a.setTag);
+          if (a.setTag && !isReservedSetTag(a.setTag)) packs.add(a.setTag);
           // tags peut être string JSON OU array déjà parsé selon endpoint.
           let parsed: string[] = [];
           if (Array.isArray(a.tags)) parsed = a.tags as string[];
@@ -186,7 +167,6 @@ export function MediaAssetsUploadModal({
           }
           parsed.forEach((t) => { if (typeof t === "string" && t.trim()) tags.add(t); });
         }
-        setExistingCategories(Array.from(cats).sort());
         setExistingPacks(Array.from(packs).sort());
         setExistingTags(Array.from(tags).sort());
       } catch {
@@ -346,10 +326,10 @@ export function MediaAssetsUploadModal({
       }
     }
 
-    // Apply category / pack / tags / access / metadata to all newly uploaded assets.
+    // Apply dossier / tags / access / metadata to all newly uploaded assets.
     const bulkData: Record<string, unknown> = { assetIds: uploadedIds };
     if (isManualMode) {
-      // Mode manuel : pas de pack auto (asset jamais utilisé en rotation auto).
+      // Mode manuel : pas de dossier auto (asset jamais tiré automatiquement).
       // On envoie juste les metadata saisies — c'est l'identifiant pour la sélection
       // côté générateur via champ formulaire.
       const filledMeta = Object.fromEntries(
@@ -357,12 +337,11 @@ export function MediaAssetsUploadModal({
       );
       if (Object.keys(filledMeta).length > 0) bulkData.metadata = filledMeta;
     } else {
-      // Pas de pack auto : on n'assigne un Groupe (setTag) QUE si l'user en a
-      // saisi un. Sinon on laisse `null` — l'asset entre quand même en rotation
-      // (le resolver inclut le groupe orphelin null/null).
+      // On n'assigne un Dossier (setTag) QUE si l'user en a saisi un. Sinon on
+      // laisse `null` — l'asset entre quand même dans le tirage (bucket « sans
+      // dossier »).
       const setTagValue = uploadSetTag.trim();
       if (setTagValue) bulkData.setTag = setTagValue;
-      if (uploadCategory.trim()) bulkData.category = uploadCategory.trim();
     }
     const tagsList = uploadTags.map((t) => t.trim()).filter(Boolean);
     if (tagsList.length > 0) bulkData.tags = tagsList;
@@ -563,71 +542,30 @@ export function MediaAssetsUploadModal({
                 </p>
               )
             ) : (
-              <div className="space-y-3">
-                <div>
-                  <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
-                    <FolderOpen size={10} /> Catégorie
-                    <Tooltip content="Le thème — sert à éviter de répéter le même type d'asset deux fois de suite dans la rotation. Ex : « Tenue 1 », « Intérieur », « Plan large »." side="top">
-                      <Info size={10} className="text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
-                    </Tooltip>
-                  </label>
-                  {suggestion.category && !uploadCategory && (
-                    <button
-                      type="button"
-                      onClick={() => setUploadCategory(suggestion.category!)}
-                      className="mb-1 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-success-50/80 text-success-700 hover:bg-success-100 transition-colors"
-                    >
-                      <Sparkles size={9} /> Suggéré : {suggestion.category}
-                    </button>
-                  )}
-                  <Combobox
-                    value={uploadCategory}
-                    onChange={setUploadCategory}
-                    options={existingCategories.map((c) => ({ value: c, label: c, icon: FolderOpen }))}
-                    allowCustom
-                    placeholder="Choisir ou créer…"
-                    emptyMessage="Aucune catégorie pour l'instant. Tapez un nom pour en créer une."
-                  />
-                </div>
-
-                {/* Groupe (setTag) — replié sous « Options avancées » (besoin de
-                    niche : rassembler des plans joués ensemble). Déplié auto si
-                    une valeur est déjà saisie ou suggérée. */}
-                {showAdvancedUpload || uploadSetTag || suggestion.setTag ? (
-                  <div>
-                    <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
-                      <Layers size={10} /> Groupe
-                      <Tooltip content="Plans qui doivent être joués ensemble dans le même rendu (ex : intro + outro filmés ensemble). Laisse vide si chaque fichier est indépendant." side="top">
-                        <Info size={10} className="text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
-                      </Tooltip>
-                    </label>
-                    {suggestion.setTag && !uploadSetTag && (
-                      <button
-                        type="button"
-                        onClick={() => setUploadSetTag(suggestion.setTag!)}
-                        className="mb-1 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-success-50/80 text-success-700 hover:bg-success-100 transition-colors"
-                      >
-                        <Sparkles size={9} /> Suggéré : {suggestion.setTag}
-                      </button>
-                    )}
-                    <Combobox
-                      value={uploadSetTag}
-                      onChange={setUploadSetTag}
-                      options={existingPacks.map((p) => ({ value: p, label: p, icon: Layers }))}
-                      allowCustom
-                      placeholder="Choisir, créer ou laisser vide…"
-                      emptyMessage="Aucun groupe. Tapez un nom ou laissez vide."
-                    />
-                  </div>
-                ) : (
+              <div>
+                <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
+                  <Layers size={10} /> Dossier
+                  <Tooltip content="Plans qui doivent être joués ensemble dans le même rendu (ex : intro + outro filmés ensemble). Laisse vide si chaque fichier est indépendant." side="top">
+                    <Info size={10} className="text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
+                  </Tooltip>
+                </label>
+                {suggestion.setTag && !uploadSetTag && (
                   <button
                     type="button"
-                    onClick={() => setShowAdvancedUpload(true)}
-                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setUploadSetTag(suggestion.setTag!)}
+                    className="mb-1 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-success-50/80 text-success-700 hover:bg-success-100 transition-colors"
                   >
-                    <ChevronRight size={12} /> Options avancées (Groupe)
+                    <Sparkles size={9} /> Suggéré : {suggestion.setTag}
                   </button>
                 )}
+                <Combobox
+                  value={uploadSetTag}
+                  onChange={setUploadSetTag}
+                  options={existingPacks.map((p) => ({ value: p, label: p, icon: Layers }))}
+                  allowCustom
+                  placeholder="Choisir, créer ou laisser vide…"
+                  emptyMessage="Aucun dossier. Tapez un nom ou laissez vide."
+                />
               </div>
             )}
 

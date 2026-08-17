@@ -66,19 +66,17 @@ export interface CreateSlotInput {
    */
   patternTemplateId?: string | null;
   /**
-   * Biens — Fiche de données PARTAGÉE (Property) référencée par la mission. Les
-   * valeurs du bien sont résolues LIVE à la génération (base) ; slot.fields reste
-   * la couche override. On ne copie PAS property.fields dans slot.fields (sinon
-   * l'édition du bien ne se propagerait plus).
+   * Fiche (Entity) source de données référencée par la mission — Phase 5
+   * métaobjet. La clé API garde son nom historique `propertyId` (tous les
+   * clients l'envoient) mais la valeur est un id d'Entity ; écrit
+   * `slot.entityId`. Les valeurs de la fiche sont résolues LIVE à la
+   * génération (base) ; slot.fields reste la couche override.
    */
   propertyId?: string | null;
-  /** Pattern-based creation (Phase 1.6). Si fourni, les assignees sont préfilés depuis le pattern. */
-  patternId?: string | null;
   /**
-   * P2 — Identifiant d'un PatternBinding (recette appliquée au compte).
-   * Source canonique pour identifier la recette. Si fourni, prime sur
-   * patternId. Si seul patternId est fourni, on tente le shim de
-   * compatibilité au moment de la résolution.
+   * Identifiant d'un PatternBinding (recette appliquée au compte).
+   * Source canonique pour identifier la recette. Si fourni, les assignees
+   * sont préfilés depuis le binding.
    */
   patternBindingId?: string | null;
   /** Override admin : les valeurs fournies priment sur le préfill pattern. */
@@ -96,11 +94,12 @@ export interface CreateSlotInput {
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
   /**
-   * Événements — Reel rattaché à un ShootEvent (tournage). Quand fourni, le reel
-   * hérite du compte de l'événement (forcé), et par défaut de son bien + de ses
-   * assignés. Le shoot/rushs vivant au niveau de l'événement, le reel démarre à
-   * la phase montage (needsRushesOverride=false) et son statut initial dépend de
-   * l'état du tournage (SHOT → IN_EDIT, sinon PLANNED bumpé plus tard).
+   * Fiche tournage (Entity de type team, ex-ShootEvent) — Phase 5 métaobjet.
+   * Clé API historique `eventId`, valeur = id d'Entity ; écrit
+   * `slot.shootEntityId`. Le reel hérite du compte de la fiche (forcé), et par
+   * défaut de sa fiche liée (relatedEntityId → entityId) + de ses assignés.
+   * Statut initial selon l'état du tournage (SHOT/DONE → IN_EDIT, sinon
+   * PLANNED bumpé plus tard).
    */
   eventId?: string | null;
 }
@@ -167,38 +166,38 @@ export async function createSlot(
     throw new ForbiddenError("Réservé aux administrateurs");
   }
 
-  // Événements — reel rattaché à un ShootEvent. On charge l'événement en amont
-  // pour FORCER le compte du reel (= compte de l'événement) et dériver les
-  // défauts (bien + assignés + statut initial). Doit précéder le guard
+  // Fiche tournage (Entity, ex-ShootEvent) — Phase 5. On charge la fiche en
+  // amont pour FORCER le compte du reel (= compte du tournage) et dériver les
+  // défauts (fiche liée + assignés + statut initial). Doit précéder le guard
   // accountId/patternTemplateId ci-dessous pour que le compte soit résolu.
   let shootEvent: {
     id: string;
-    accountId: string;
-    propertyId: string | null;
-    status: string;
+    accountId: string | null;
+    relatedEntityId: string | null;
+    status: string | null;
     assigneeVideasteId: string | null;
     defaultAssigneeMonteurId: string | null;
     defaultAssigneeCmId: string | null;
   } | null = null;
   if (input.eventId) {
-    shootEvent = await prisma.shootEvent.findUnique({
+    shootEvent = await prisma.entity.findUnique({
       where: { id: input.eventId },
       select: {
         id: true,
         accountId: true,
-        propertyId: true,
+        relatedEntityId: true,
         status: true,
         assigneeVideasteId: true,
         defaultAssigneeMonteurId: true,
         defaultAssigneeCmId: true,
       },
     });
-    if (!shootEvent) throw new NotFoundError("Événement");
-    // Le compte du reel est TOUJOURS celui de l'événement.
-    input.accountId = shootEvent.accountId;
-    // Bien : défaut = celui de l'événement (un input explicite prime).
-    if (!input.propertyId && shootEvent.propertyId) {
-      input.propertyId = shootEvent.propertyId;
+    if (!shootEvent) throw new NotFoundError("Tournage");
+    // Le compte du reel est TOUJOURS celui du tournage (quand il en a un).
+    if (shootEvent.accountId) input.accountId = shootEvent.accountId;
+    // Fiche liée : défaut = celle du tournage (un input explicite prime).
+    if (!input.propertyId && shootEvent.relatedEntityId) {
+      input.propertyId = shootEvent.relatedEntityId;
     }
   }
 
@@ -211,21 +210,22 @@ export async function createSlot(
     );
   }
 
-  // Bien (Property) : si fourni, il doit exister et ne pas être archivé. Validé
-  // en amont pour renvoyer une erreur propre (404/400) plutôt qu'une contrainte
-  // FK Prisma (500), et pour que le guard requiresProperty repose sur un bien
-  // réel (un id de bien archivé ne doit pas satisfaire l'exigence).
-  // Champs du bien capturés ici pour un éventuel pré-remplissage de la légende
-  // (mode preFilled) sans re-query plus bas.
+  // Fiche (Entity) : si fournie, elle doit exister et ne pas être archivée.
+  // Validé en amont pour renvoyer une erreur propre (404/400) plutôt qu'une
+  // contrainte FK Prisma (500), et pour que le guard requiresEntityTypeId
+  // repose sur une fiche réelle. Champs capturés ici pour un éventuel
+  // pré-remplissage de la légende (mode preFilled) sans re-query plus bas.
   let propertyFields: string | null = null;
+  let resolvedEntityTypeId: string | null = null;
   if (input.propertyId) {
-    const property = await prisma.property.findUnique({
+    const entity = await prisma.entity.findUnique({
       where: { id: input.propertyId },
-      select: { id: true, isArchived: true, fields: true },
+      select: { id: true, typeId: true, isArchived: true, fields: true },
     });
-    if (!property) throw new NotFoundError("Bien");
-    if (property.isArchived) throw new ValidationError("Ce bien est archivé");
-    propertyFields = property.fields;
+    if (!entity) throw new NotFoundError("Fiche");
+    if (entity.isArchived) throw new ValidationError("Cette fiche est archivée");
+    propertyFields = entity.fields;
+    resolvedEntityTypeId = entity.typeId;
   }
 
   // Résolution pattern → préfill des assignees (l'override admin du body prime).
@@ -285,10 +285,7 @@ export async function createSlot(
     if (accountBinding) effectiveBindingId = accountBinding.id;
   }
 
-  // P2 — Résolution du pattern via PatternBinding (canonique) avec compat
-  // legacy : on accepte patternBindingId (préféré) OU patternId (legacy).
-  // Si seul patternId est fourni, on tente de résoudre vers le binding
-  // équivalent (créé par le backfill migrate-patterns-to-templates).
+  // Résolution du pattern via PatternBinding (canonique).
   let resolvedBindingId: string | null = effectiveBindingId;
   if (effectiveBindingId) {
     const binding = await prisma.patternBinding.findUnique({
@@ -304,10 +301,16 @@ export async function createSlot(
       );
     }
     const t = binding.patternTemplate;
-    // Guard : si la recette exige un bien, bloquer la création sans propertyId
-    // (couvre le calendrier / AddSlotModal qui passe par un binding).
-    if (t.requiresProperty && !input.propertyId) {
-      throw new ValidationError("Cette recette nécessite un bien");
+    // Guard : si la recette exige une fiche (d'un type donné), bloquer la
+    // création sans fiche conforme (couvre le calendrier / AddSlotModal).
+    {
+      const requiredTypeId = t.requiresEntityTypeId ?? (t.requiresProperty ? "etype_bien" : null);
+      if (requiredTypeId) {
+        if (!input.propertyId) throw new ValidationError("Cette recette nécessite une fiche");
+        if (resolvedEntityTypeId !== requiredTypeId) {
+          throw new ValidationError("La fiche fournie n'est pas du type requis par la recette");
+        }
+      }
     }
     patternLabel = t.label;
     resolvedPattern = {
@@ -335,58 +338,6 @@ export async function createSlot(
     }
     if (!resolvedAssigneeVideasteId && binding.defaultAssigneeVideasteId) {
       resolvedAssigneeVideasteId = binding.defaultAssigneeVideasteId;
-    }
-  } else if (input.patternId) {
-    const pattern = await prisma.accountPattern.findUnique({
-      where: { id: input.patternId },
-    });
-    if (!pattern) {
-      throw new ValidationError("Pattern introuvable");
-    }
-    // Cross-account guard : pareil que patchSlot, un pattern d'un autre
-    // compte casserait toute la résolution downstream (needs*/cover/
-    // idempotence).
-    if (pattern.accountId !== input.accountId) {
-      throw new ValidationError(
-        "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
-      );
-    }
-    // AccountPattern legacy n'a ni descriptionSourceFieldKey ni
-    // descriptionFixedText (features recette portées par PatternTemplate).
-    resolvedPattern = {
-      ...pattern,
-      descriptionSourceFieldKey: null,
-      descriptionFixedText: null,
-    };
-    patternLabel = pattern.label;
-    initialStatus = mapSourceToInitialStatus(pattern.source);
-    if (!resolvedAssigneeMonteurId && pattern.defaultAssigneeMonteurId) {
-      resolvedAssigneeMonteurId = pattern.defaultAssigneeMonteurId;
-    }
-    if (!resolvedAssigneeCmId && pattern.defaultAssigneeCmId) {
-      resolvedAssigneeCmId = pattern.defaultAssigneeCmId;
-    }
-    if (!resolvedAssigneeVideasteId && pattern.defaultAssigneeVideasteId) {
-      resolvedAssigneeVideasteId = pattern.defaultAssigneeVideasteId;
-    }
-    // Compat shim : remonte le binding correspondant pour matérialiser
-    // slot.patternBindingId même quand l'UI envoie encore patternId.
-    // On combine (accountId, publishTime, source, templateId) pour éviter
-    // une collision quand le compte a plusieurs recettes au même horaire
-    // (cas multi-source rare mais possible).
-    const linked = await prisma.patternBinding.findFirst({
-      where: {
-        accountId: pattern.accountId,
-        publishTime: pattern.publishTime,
-        patternTemplate: {
-          source: pattern.source,
-          templateId: pattern.templateId,
-        },
-      },
-      select: { id: true },
-    });
-    if (linked) {
-      resolvedBindingId = linked.id;
     }
   } else if (input.patternTemplateId) {
     // Missions — recette GLOBALE directe (pas de binding, compte optionnel).
@@ -417,9 +368,16 @@ export async function createSlot(
       defaultAssigneeVideasteId: null,
     };
     initialStatus = mapSourceToInitialStatus(template.source);
-    // Guard : si la recette exige un bien, bloquer la création sans propertyId.
-    if (template.requiresProperty && !input.propertyId) {
-      throw new ValidationError("Cette recette nécessite un bien");
+    // Guard : si la recette exige une fiche (d'un type donné), bloquer.
+    {
+      const requiredTypeId =
+        template.requiresEntityTypeId ?? (template.requiresProperty ? "etype_bien" : null);
+      if (requiredTypeId) {
+        if (!input.propertyId) throw new ValidationError("Cette recette nécessite une fiche");
+        if (resolvedEntityTypeId !== requiredTypeId) {
+          throw new ValidationError("La fiche fournie n'est pas du type requis par la recette");
+        }
+      }
     }
   }
 
@@ -531,7 +489,8 @@ export async function createSlot(
   const slot = await prisma.publicationSlot.create({
     data: {
       accountId: input.accountId ?? null,
-      eventId: input.eventId ?? null,
+      // Phase 5 — fiche tournage (clé API `eventId`, colonne `shootEntityId`).
+      shootEntityId: input.eventId ?? null,
       scheduledAt: parsedScheduledAt,
       // Fallback titre = nom de la recette si l'admin ne saisit rien.
       title: (input.title?.trim() || patternLabel) ?? null,
@@ -543,17 +502,16 @@ export async function createSlot(
       status: initialStatus,
       templateId: input.templateId ?? null,
       fields: input.fields ? JSON.stringify(input.fields) : "{}",
-      // fieldSchema : le bien porte désormais la seule source de champs perso.
-      // Le slot stocke toujours "[]" ; la résolution live se fait via property.fieldSchema.
+      // fieldSchema : la fiche porte la seule source de champs perso (via le
+      // type). Le slot stocke toujours "[]" ; résolution live à la génération.
       fieldSchema: "[]",
       isAuto: false,
-      patternId: input.patternId ?? null,
       patternBindingId: resolvedBindingId,
       // Si un binding a été résolu (mission avec compte → recette du compte), le
       // slot devient un slot binding normal ; on ne double pas avec le template.
       patternTemplateId: resolvedBindingId ? null : (input.patternTemplateId ?? null),
-      // Biens — référence vers la fiche partagée (résolue live à la génération).
-      propertyId: input.propertyId ?? null,
+      // Phase 5 — fiche source de données (clé API `propertyId`, colonne `entityId`).
+      entityId: input.propertyId ?? null,
       assigneeMonteurId: resolvedAssigneeMonteurId,
       assigneeCmId: resolvedAssigneeCmId,
       assigneeVideasteId: resolvedAssigneeVideasteId,
@@ -593,185 +551,6 @@ export async function createSlot(
     fields: safeJSON<Record<string, string>>(slot.fields, {}),
     fieldSchema: normalizeCustomFields(slot.fieldSchema),
   };
-}
-
-// ─── bulkStockSlots ──────────────────────────────────────────────────────────
-
-/** Bornes quantité pour un batch de slots banque. */
-export const BULK_STOCK_MIN = 1;
-export const BULK_STOCK_MAX = 20;
-
-export interface BulkStockSlotsInput {
-  accountId: string;
-  /**
-   * P2 — Identifiant du PatternBinding cible (canonique). Accepté aussi
-   * un identifiant d'AccountPattern legacy : on résout vers le binding
-   * équivalent via le backfill effectué par migrate-patterns-to-templates.
-   */
-  patternId: string;
-  quantity: number;
-  /** Override de l'assignation monteur (null = utilise binding.defaultAssigneeMonteurId). */
-  monteurId?: string | null;
-}
-
-/**
- * Crée N slots "en banque" (scheduledAt: null) pour un pattern `manual_rushes` donné.
- * Ces slots arrivent dans la worklist du monteur sans date programmée et
- * pourront être planifiés depuis la vue Banque du calendar.
- *
- * Contraintes :
- *  - ADMIN uniquement (impersonation insuffisante).
- *  - Le pattern doit être `source = "manual_rushes"` ET appartenir au compte.
- *  - quantity ∈ [BULK_STOCK_MIN, BULK_STOCK_MAX].
- *
- * Status initial : RUSHES_EXPECTED (cohérent avec mapSourceToInitialStatus
- * pour manual_rushes). Le pipeline existant prend ensuite le relais : upload
- * rushs → RUSHES_RECEIVED → version → EDIT_REVIEW etc.
- */
-export async function bulkStockSlots(input: BulkStockSlotsInput, ctx: UserContext) {
-  if (!ctx.canAdminBypass) {
-    throw new ForbiddenError("Réservé aux administrateurs");
-  }
-
-  const actorId = ctx.actualUser.id;
-
-  if (!input.accountId || !input.patternId) {
-    throw new ValidationError("accountId et patternId sont requis");
-  }
-
-  const quantity = Math.floor(input.quantity);
-  if (!Number.isFinite(quantity) || quantity < BULK_STOCK_MIN || quantity > BULK_STOCK_MAX) {
-    throw new ValidationError(
-      `quantity doit être entre ${BULK_STOCK_MIN} et ${BULK_STOCK_MAX}`,
-    );
-  }
-
-  // P2 — Résolution du binding : on tente d'abord PatternBinding (canonique),
-  // sinon on tombe sur l'AccountPattern legacy (compat shim pendant la
-  // transition UI). Tous les bindings ont été créés à partir d'AccountPatterns
-  // via le script de migration, donc le résolveur les retrouve par jointure.
-  const binding = await prisma.patternBinding.findUnique({
-    where: { id: input.patternId },
-    include: { patternTemplate: true },
-  });
-
-  let resolvedBinding = binding;
-  if (!resolvedBinding) {
-    // Compat shim : input.patternId pointe peut-être encore sur l'ancien
-    // AccountPattern. On cherche le binding correspondant via
-    // (accountId, publishTime, source, templateId) pour discriminer les
-    // cas où plusieurs recettes coexistent au même horaire.
-    const legacy = await prisma.accountPattern.findUnique({
-      where: { id: input.patternId },
-      select: {
-        id: true,
-        accountId: true,
-        publishTime: true,
-        source: true,
-        templateId: true,
-      },
-    });
-    if (legacy) {
-      resolvedBinding = await prisma.patternBinding.findFirst({
-        where: {
-          accountId: legacy.accountId,
-          publishTime: legacy.publishTime,
-          patternTemplate: {
-            source: legacy.source,
-            templateId: legacy.templateId,
-          },
-        },
-        include: { patternTemplate: true },
-      });
-    }
-  }
-  if (!resolvedBinding) {
-    throw new ValidationError("Pattern introuvable");
-  }
-  if (resolvedBinding.accountId !== input.accountId) {
-    throw new ValidationError(
-      "Le pattern choisi n'appartient pas au compte Instagram cible.",
-    );
-  }
-  if (resolvedBinding.patternTemplate.source !== "manual_rushes") {
-    throw new ValidationError(
-      "La banque n'accepte que les patterns de type « Montage rushes » (manual_rushes).",
-    );
-  }
-  // Une recette qui exige un bien ne peut pas alimenter la banque : les slots
-  // banque sont homogènes et sans bien rattachable en lot (cf. guard createSlot).
-  if (resolvedBinding.patternTemplate.requiresProperty) {
-    throw new ValidationError(
-      "Cette recette nécessite un bien : impossible de créer des slots en banque (aucun bien rattachable en lot).",
-    );
-  }
-
-  // Snapshot des champs résolus utilisés par le reste de la fonction.
-  const pattern = {
-    id: resolvedBinding.id,
-    accountId: resolvedBinding.accountId,
-    source: resolvedBinding.patternTemplate.source,
-    templateId:
-      resolvedBinding.templateIdOverride ?? resolvedBinding.patternTemplate.templateId,
-    defaultAssigneeMonteurId: resolvedBinding.defaultAssigneeMonteurId,
-    defaultAssigneeCmId: resolvedBinding.defaultAssigneeCmId,
-    defaultAssigneeVideasteId: resolvedBinding.defaultAssigneeVideasteId,
-  };
-
-  // Compte cible
-  const account = await prisma.instagramAccount.findUnique({
-    where: { id: input.accountId },
-    select: { id: true },
-  });
-  if (!account) {
-    throw new NotFoundError("Compte");
-  }
-
-  // Résolution monteur : override prime sur le défaut du pattern.
-  const resolvedMonteurId =
-    input.monteurId !== undefined && input.monteurId !== null
-      ? input.monteurId
-      : pattern.defaultAssigneeMonteurId;
-  if (resolvedMonteurId) {
-    await assertAssigneeRole(resolvedMonteurId, ["MONTEUR", "ADMIN"], "Monteur assignee");
-  }
-
-  const initialStatus = mapSourceToInitialStatus(pattern.source);
-
-  // Atomicité : createMany + logActivity dans une seule transaction.
-  // Comme createMany ne retourne pas les ids créés, on utilise create() en
-  // boucle dans la tx — quantité bornée à 20 donc impact négligeable.
-  const created = await prisma.$transaction(async (tx) => {
-    const ids: string[] = [];
-    for (let i = 0; i < quantity; i += 1) {
-      const slot = await tx.publicationSlot.create({
-        data: {
-          accountId: input.accountId,
-          scheduledAt: null,
-          status: initialStatus,
-          templateId: pattern.templateId ?? null,
-          patternBindingId: pattern.id,
-          assigneeMonteurId: resolvedMonteurId ?? null,
-          assigneeCmId: pattern.defaultAssigneeCmId ?? null,
-          assigneeVideasteId: pattern.defaultAssigneeVideasteId ?? null,
-          isAuto: false,
-          fields: "{}",
-          fieldSchema: "[]",
-        },
-        select: { id: true },
-      });
-      ids.push(slot.id);
-      await logActivity(tx as typeof prisma, {
-        slotId: slot.id,
-        actorId,
-        type: "BANK_SLOT_CREATED",
-        payload: { patternBindingId: pattern.id, batchSize: quantity, index: i },
-      });
-    }
-    return ids;
-  });
-
-  return { createdIds: created, count: created.length };
 }
 
 // ─── bulkPatchSlots ──────────────────────────────────────────────────────────
@@ -1285,19 +1064,7 @@ export async function patchSlot(
       descriptionPromptIdOverride: true,
       coverModeOverride: true,
       coverPresetIdOverride: true,
-      // P2 — Lire les deux modèles : pattern (AccountPattern legacy) pour les
-      // slots historiques, patternBinding (canonique) pour les nouveaux slots.
       // La résolution effective merge template + binding overrides côté code.
-      pattern: {
-        select: {
-          captionPresetId: true,
-          descriptionPromptId: true,
-          needsCaptions: true,
-          needsDescription: true,
-          coverMode: true,
-          coverConfig: true,
-        },
-      },
       patternBinding: {
         select: {
           captionPresetIdOverride: true,
@@ -1493,13 +1260,8 @@ export async function patchSlot(
   //      changer le pattern + activer needsCaptionsOverride en un seul PATCH
   //      valide la cohérence contre l'ancien pattern → la nouvelle config
   //      peut être incohérente sans alerte.
-  // P2 — résolution du pattern effectif :
-  //   - en lecture du slot : slot.pattern (legacy) en priorité, sinon
-  //     slot.patternBinding (template + overrides binding) ;
-  //   - sur changement (patternId fourni dans le body) : on tente d'abord
-  //     PatternBinding (canonique de la nouvelle UI), puis AccountPattern
-  //     (legacy) en compat shim. Le payload de patchSlot continue à utiliser
-  //     `patternId` comme nom de clé pour ne pas multiplier les champs API.
+  // NB : le payload de patchSlot utilise `patternId` comme nom de clé API,
+  // mais la valeur est un id de PatternBinding (canonique).
   let effectivePattern: {
     captionPresetId: string | null;
     descriptionPromptId: string | null;
@@ -1507,8 +1269,8 @@ export async function patchSlot(
     needsDescription: string;
     coverMode: string;
     coverConfig: unknown;
-  } | null = slot.pattern;
-  if (!effectivePattern && slot.patternBinding) {
+  } | null = null;
+  if (slot.patternBinding) {
     const b = slot.patternBinding;
     const t = b.patternTemplate;
     effectivePattern = {
@@ -1521,66 +1283,32 @@ export async function patchSlot(
     };
   }
   if (typeof patternId === "string" && patternId !== "") {
-    // 1) Essai PatternBinding (canonique).
     const binding = await prisma.patternBinding.findUnique({
       where: { id: patternId },
       include: { patternTemplate: true },
     });
-    if (binding) {
-      // Cross-account guard.
-      const slotAccount = await prisma.publicationSlot.findUnique({
-        where: { id },
-        select: { accountId: true },
-      });
-      if (slotAccount && binding.accountId !== slotAccount.accountId) {
-        throw new ValidationError(
-          "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
-        );
-      }
-      const t = binding.patternTemplate;
-      effectivePattern = {
-        captionPresetId: binding.captionPresetIdOverride ?? t.captionPresetId,
-        descriptionPromptId: binding.descriptionPromptIdOverride ?? t.descriptionPromptId,
-        needsCaptions: t.needsCaptions,
-        needsDescription: t.needsDescription,
-        coverMode: binding.coverModeOverride ?? t.coverMode,
-        coverConfig: t.coverConfig,
-      };
-    } else {
-      // 2) Fallback AccountPattern legacy.
-      const newPattern = await prisma.accountPattern.findUnique({
-        where: { id: patternId },
-        select: {
-          accountId: true,
-          captionPresetId: true,
-          descriptionPromptId: true,
-          needsCaptions: true,
-          needsDescription: true,
-          coverMode: true,
-          coverConfig: true,
-        },
-      });
-      if (!newPattern) {
-        throw new ValidationError("Pattern introuvable");
-      }
-      const slotAccount = await prisma.publicationSlot.findUnique({
-        where: { id },
-        select: { accountId: true },
-      });
-      if (slotAccount && newPattern.accountId !== slotAccount.accountId) {
-        throw new ValidationError(
-          "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
-        );
-      }
-      effectivePattern = {
-        captionPresetId: newPattern.captionPresetId,
-        descriptionPromptId: newPattern.descriptionPromptId,
-        needsCaptions: newPattern.needsCaptions,
-        needsDescription: newPattern.needsDescription,
-        coverMode: newPattern.coverMode,
-        coverConfig: newPattern.coverConfig,
-      };
+    if (!binding) {
+      throw new ValidationError("Pattern introuvable");
     }
+    // Cross-account guard.
+    const slotAccount = await prisma.publicationSlot.findUnique({
+      where: { id },
+      select: { accountId: true },
+    });
+    if (slotAccount && binding.accountId !== slotAccount.accountId) {
+      throw new ValidationError(
+        "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
+      );
+    }
+    const t = binding.patternTemplate;
+    effectivePattern = {
+      captionPresetId: binding.captionPresetIdOverride ?? t.captionPresetId,
+      descriptionPromptId: binding.descriptionPromptIdOverride ?? t.descriptionPromptId,
+      needsCaptions: t.needsCaptions,
+      needsDescription: t.needsDescription,
+      coverMode: binding.coverModeOverride ?? t.coverMode,
+      coverConfig: t.coverConfig,
+    };
   }
   // patternId="" / null : reset l'effective pattern à null pour la validation.
   if (patternId === null || patternId === "") {
@@ -1648,7 +1376,8 @@ export async function patchSlot(
         where: { id },
         select: slotEffectivePatternSelect,
       }),
-      prisma.property.findUnique({
+      // Phase 5 : la fiche (Entity) porte les valeurs — clé API `propertyId`.
+      prisma.entity.findUnique({
         where: { id: propertyId },
         select: { fields: true },
       }),
@@ -1711,8 +1440,6 @@ export async function patchSlot(
         description: (v) => v as string | null,
         notes: (v) => v as string | null,
         templateId: (v) => v as string | null,
-        // Biens — rattacher (id) ou détacher (null) la fiche bien partagée.
-        propertyId: (v) => v as string | null,
         // null = remise en banque ; string ISO = (re)planification.
         scheduledAt: (v) => (v === null ? null : new Date(v as string)),
         fields: (v) => JSON.stringify(v),
@@ -1720,7 +1447,6 @@ export async function patchSlot(
         assigneeMonteurId: (v) => v as string | null,
         assigneeCmId: (v) => v as string | null,
         assigneeVideasteId: (v) => v as string | null,
-        patternId: (v) => v as string | null,
         currentVersionId: (v) => v as string | null,
         isAuto: (v) => v as boolean,
         // Phase 5/6 — overrides per-slot (null = hérite, true/false = écrase)
@@ -1738,10 +1464,10 @@ export async function patchSlot(
       };
 
       const FIELD_VALUES: Record<string, unknown> = {
-        status, title, description: prefilledDescription ?? description, notes, templateId, propertyId, scheduledAt,
+        status, title, description: prefilledDescription ?? description, notes, templateId, scheduledAt,
         fields, fieldSchema,
         assigneeMonteurId, assigneeCmId, assigneeVideasteId,
-        patternId, currentVersionId, isAuto,
+        currentVersionId, isAuto,
         needsAdminValidationOverride, needsClientValidationOverride,
         allowsClientRevisionOverride, needsCaptionsOverride,
         needsDescriptionOverride, needsRushesOverride, needsBriefOverride,
@@ -1753,6 +1479,18 @@ export async function patchSlot(
       for (const [field, transformer] of Object.entries(FIELD_TRANSFORMERS)) {
         const raw = FIELD_VALUES[field];
         if (raw !== undefined) updateData[field] = transformer(raw);
+      }
+      // Clé API `patternId` (valeur = id de PatternBinding) → colonne
+      // patternBindingId. "" / null = détacher la recette.
+      if (patternId !== undefined) {
+        updateData.patternBindingId =
+          patternId === "" || patternId === null ? null : (patternId as string);
+      }
+      // Phase 5 — clé API `propertyId` (valeur = id d'Entity) → colonne
+      // entityId. null = détacher la fiche.
+      if (propertyId !== undefined) {
+        updateData.entityId =
+          propertyId === "" || propertyId === null ? null : (propertyId as string);
       }
 
       const u = await tx.publicationSlot.update({
@@ -1908,7 +1646,8 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
         bankClause,
         filters.accountId ? { accountId: filters.accountId } : {},
         filters.status ? { status: filters.status } : {},
-        filters.patternId ? { patternId: filters.patternId } : {},
+        // `patternId` (nom de clé API conservé) filtre par PatternBinding.
+        filters.patternId ? { patternBindingId: filters.patternId } : {},
         filters.monteurId ? { assigneeMonteurId: filters.monteurId } : {},
         filters.cmId ? { assigneeCmId: filters.cmId } : {},
         filters.videasteId ? { assigneeVideasteId: filters.videasteId } : {},
@@ -1949,10 +1688,33 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
       assigneeMonteur: { select: { id: true, name: true } },
       assigneeCm: { select: { id: true, name: true } },
       assigneeVideaste: { select: { id: true, name: true } },
-      // pattern.source + needsCaptions nécessaires pour syncSlotsPipelineStatuses.
-      // needs* + allows* pour l'affichage des valeurs héritées dans les
-      // OverrideSelect du SlotDetailPanel (Cohérence Workflows Phase 4).
-      pattern: {
+      // Recette (binding → template) : source + needsCaptions nécessaires pour
+      // syncSlotsPipelineStatuses ; needs* + allows* pour l'affichage des
+      // valeurs héritées dans les OverrideSelect du SlotDetailPanel. Une vue
+      // `pattern` (même shape qu'avant le décommissionnement AccountPattern)
+      // est synthétisée dans le map de retour — les slots recette bénéficient
+      // désormais aussi de l'affichage des héritages (fix résidu G.3).
+      patternBinding: {
+        select: {
+          customLabel: true,
+          coverModeOverride: true,
+          patternTemplate: {
+            select: {
+              label: true,
+              source: true,
+              needsCaptions: true,
+              needsCaptionsMode: true,
+              needsAdminValidation: true,
+              needsClientValidation: true,
+              allowsClientRevision: true,
+              needsDescription: true,
+              needsBrief: true,
+              coverMode: true,
+            },
+          },
+        },
+      },
+      patternTemplate: {
         select: {
           label: true,
           source: true,
@@ -1962,9 +1724,7 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
           needsClientValidation: true,
           allowsClientRevision: true,
           needsDescription: true,
-          needsRushes: true,
           needsBrief: true,
-          // Phase 5 — coverMode pour OverrideEnumSelect dans SlotDetailPanel
           coverMode: true,
         },
       },
@@ -1986,26 +1746,49 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
     },
   });
 
+  // Vue recette synthétisée (binding avec overrides → template global → null),
+  // même shape que l'ancien `slot.pattern` pour les consommateurs UI.
+  const patternViewOf = (s: (typeof slots)[number]) => {
+    if (s.patternBinding?.patternTemplate) {
+      const b = s.patternBinding;
+      const t = b.patternTemplate;
+      return {
+        ...t,
+        label: b.customLabel ?? t.label,
+        coverMode: b.coverModeOverride ?? t.coverMode,
+        needsRushes: t.source === "manual_rushes",
+      };
+    }
+    if (s.patternTemplate) {
+      return { ...s.patternTemplate, needsRushes: s.patternTemplate.source === "manual_rushes" };
+    }
+    return null;
+  };
+
   const updates = await syncSlotsPipelineStatuses(
     prisma,
-    slots.map((s) => ({
-      id: s.id,
-      status: s.status,
-      pattern: s.pattern
-        ? {
-            source: s.pattern.source,
-            needsCaptions: s.pattern.needsCaptions,
-            needsCaptionsMode: s.pattern.needsCaptionsMode,
-          }
-        : null,
-      render: s.render ? { status: s.render.status } : null,
-      captionJobs: s.captionJobs.map((c) => ({ status: c.status, staleSince: c.staleSince })),
-    })),
+    slots.map((s) => {
+      const pattern = patternViewOf(s);
+      return {
+        id: s.id,
+        status: s.status,
+        pattern: pattern
+          ? {
+              source: pattern.source,
+              needsCaptions: pattern.needsCaptions,
+              needsCaptionsMode: pattern.needsCaptionsMode,
+            }
+          : null,
+        render: s.render ? { status: s.render.status } : null,
+        captionJobs: s.captionJobs.map((c) => ({ status: c.status, staleSince: c.staleSince })),
+      };
+    }),
   );
 
   return {
     slots: slots.map((s) => ({
       ...s,
+      pattern: patternViewOf(s),
       status: updates.get(s.id) ?? s.status,
       fields: safeJSON<Record<string, string>>(s.fields, {}),
       fieldSchema: safeJSON<string[]>(s.fieldSchema, []),

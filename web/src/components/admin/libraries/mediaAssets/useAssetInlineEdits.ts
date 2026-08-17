@@ -2,14 +2,13 @@
 
 /**
  * useAssetInlineEdits — regroupe tous les states et handlers d'inline
- * editing d'un MediaAsset (setTag, category, tags, usage, lastUsedAt,
+ * editing d'un MediaAsset (setTag, tags, usage, lastUsedAt,
  * metadata, access, disabled, delete) pour éviter de propager 30+ props
  * à chaque sous-composant de MediaAssetsPanel.
  *
  * Phase D9 du split C1-v2 (plan §19 / nouveau plan F1). Le hook est
  * consommé par le panel parent qui en récupère un objet plat et le
- * destructure ou le passe en bloc aux cards (VideoCard, AudioList,
- * GroupColumn, CompactCard).
+ * destructure ou le passe en bloc aux cards (VideoCard, AudioList).
  *
  * Convention : chaque "champ" éditable a 2 states (editing target id +
  * input value) sauf metadata qui utilise un objet { assetId, key }. Les
@@ -50,11 +49,6 @@ export interface UseAssetInlineEditsResult {
   setSetTagValue: Dispatch<SetStateAction<string>>;
   setTagError: string | null;
   setSetTagError: Dispatch<SetStateAction<string | null>>;
-  // category (family) inline edit
-  editingFamilyKey: string | null;
-  setEditingFamilyKey: Dispatch<SetStateAction<string | null>>;
-  familyInput: string;
-  setFamilyInput: Dispatch<SetStateAction<string>>;
   // tags inline edit
   editingTagsId: string | null;
   setEditingTagsId: Dispatch<SetStateAction<string | null>>;
@@ -81,8 +75,6 @@ export interface UseAssetInlineEditsResult {
   resetError: string | null;
   setResetError: Dispatch<SetStateAction<string | null>>;
   // handlers
-  handleSaveCategory: (asset: MediaAsset, value: string) => Promise<void>;
-  handleSaveCategoryForGroup: (groupAssets: MediaAsset[], value: string) => Promise<void>;
   handleToggleAccess: (asset: MediaAsset, accountId: string, addAccess: boolean) => Promise<void>;
   handleToggleDisabled: (asset: MediaAsset) => Promise<void>;
   handleSaveMetadata: (asset: MediaAsset, key: string, value: string) => Promise<void>;
@@ -106,8 +98,6 @@ export function useAssetInlineEdits({
   const [editingSetTagId, setEditingSetTagId] = useState<string | null>(null);
   const [setTagValue, setSetTagValue] = useState("");
   const [setTagError, setSetTagError] = useState<string | null>(null);
-  const [editingFamilyKey, setEditingFamilyKey] = useState<string | null>(null);
-  const [familyInput, setFamilyInput] = useState("");
   const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [editingUsageId, setEditingUsageId] = useState<string | null>(null);
@@ -134,32 +124,6 @@ export function useAssetInlineEdits({
   }
 
   // ── Handlers ──────────────────────────────────────────────────────────
-  async function handleSaveCategory(asset: MediaAsset, categoryValue: string) {
-    if (blocked()) return;
-    const val = categoryValue.trim() || null;
-    await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: val }),
-    });
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, category: val } : a));
-  }
-
-  async function handleSaveCategoryForGroup(groupAssets: MediaAsset[], categoryValue: string) {
-    if (blocked()) return;
-    const val = categoryValue.trim() || null;
-    await Promise.all(
-      groupAssets.map((a) =>
-        fetch(`/api/admin/libraries/media/assets/${a.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ category: val }),
-        })
-      )
-    );
-    setAssets((prev) => prev.map((a) => groupAssets.some((g) => g.id === a.id) ? { ...a, category: val } : a));
-  }
-
   async function handleToggleAccess(asset: MediaAsset, accountId: string, addAccess: boolean) {
     if (blocked()) return;
     const current = asset.accessAccountIds;
@@ -334,8 +298,6 @@ export function useAssetInlineEdits({
     editingSetTagId, setEditingSetTagId,
     setTagValue, setSetTagValue,
     setTagError, setSetTagError,
-    editingFamilyKey, setEditingFamilyKey,
-    familyInput, setFamilyInput,
     editingTagsId, setEditingTagsId,
     tagInput, setTagInput,
     editingUsageId, setEditingUsageId,
@@ -346,8 +308,6 @@ export function useAssetInlineEdits({
     metaInput, setMetaInput,
     savedMetaFlash, metaSaveError,
     resetError, setResetError,
-    handleSaveCategory,
-    handleSaveCategoryForGroup,
     handleToggleAccess,
     handleToggleDisabled,
     handleSaveMetadata,

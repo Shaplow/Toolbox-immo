@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * MediaAssetsSetStack — représentation visuelle d'un set (groupe d'assets
- * partageant un même setTag dans une catégorie) en mode noob.
+ * MediaAssetsSetStack — représentation visuelle d'un dossier (assets
+ * partageant un même setTag) en mode simple.
  *
- * Phase rotation refonte (2026-05-30) : remplace les sub-cards historiques
- * par une stack visuelle : 1 vignette dominante + badge "+N" overlay si plus
- * d'un asset dans le set. Footer compact : "N plans · Pack" (pack en italique
- * gris si auto). Click → callback (le parent décide : ouvre 1er asset, deploy
- * inline, drawer set dédié…).
+ * Stack visuelle : 1 vignette dominante + badge "+N" overlay si plus d'un
+ * asset dans le dossier. Footer compact : "N plans · Dossier" (ou
+ * « (sans dossier) » pour le bucket sans setTag). Click → callback (le
+ * parent décide : ouvre 1er asset, drawer détail…).
  *
  * Cas N=1 : la stack ressemble à une card asset normale (pas de badge).
  * Cas N>1 : badge "+N" + offset visuel léger pour suggérer la pile.
@@ -18,6 +17,7 @@ import { Play, Layers, AlertTriangle, EyeOff, Download } from "lucide-react";
 import { LazyVideoThumb } from "./LazyVideoThumb";
 import type { SetGroup } from "./types";
 import { downloadAssets } from "./downloadAssets";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
 
 interface Props {
   group: SetGroup;
@@ -33,7 +33,7 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
   const sorted = [...groupAssets].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const primary = sorted[0];
   const allDisabled = groupAssets.every((a) => a.disabled);
-  const isPackAuto = !setTag || setTag.startsWith("pack_");
+  const isFolderAuto = isReservedSetTag(setTag);
   const dimmedByAccount = !!accountFilter && !isAccessible;
 
   if (!primary) return null;
@@ -93,7 +93,7 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
           </div>
         )}
       </div>
-      {/* Footer compact : N plans · Groupe (si nommé, sinon rien). */}
+      {/* Footer compact : N plans · Dossier (nommé, ou « sans dossier »). */}
       <div className="px-2.5 py-2 flex items-center justify-between gap-1.5">
         <p className="text-[11px] text-muted-foreground truncate min-w-0">
           {total === 1 ? "1 plan" : `${total} plans`}
@@ -101,14 +101,16 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
             <span className="text-muted-foreground"> · {accessibleCount} accessible{accessibleCount !== 1 ? "s" : ""}</span>
           )}
         </p>
-        {!isPackAuto && setTag && (
+        {!isFolderAuto && setTag ? (
           <span
             className="text-[10.5px] truncate shrink min-w-0 max-w-[60%] text-foreground font-medium"
             title={setTag}
           >
             {setTag}
           </span>
-        )}
+        ) : !setTag ? (
+          <span className="text-[10.5px] text-muted-foreground italic shrink min-w-0">(sans dossier)</span>
+        ) : null}
       </div>
       </button>
 

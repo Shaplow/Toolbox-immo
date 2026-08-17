@@ -485,7 +485,7 @@ export function SlotDetailPanel({
           accountId: slot.accountId,
           scheduledAt: next.toISOString(),
           title: slot.title ?? undefined,
-          patternId: slot.patternId ?? undefined,
+          patternBindingId: slot.patternBindingId ?? undefined,
           assigneeMonteurId: slot.assigneeMonteurId ?? undefined,
           assigneeCmId: slot.assigneeCmId ?? undefined,
           assigneeVideasteId: slot.assigneeVideasteId ?? undefined,

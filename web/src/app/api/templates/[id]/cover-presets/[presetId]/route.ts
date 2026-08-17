@@ -121,8 +121,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Preset introuvable" }, { status: 404 });
   }
 
-  // Compter les patterns qui référencent ce preset par nom via JSON path
-  const referencingPatterns = await prisma.accountPattern.findMany({
+  // Compter les recettes qui référencent ce preset par nom via JSON path
+  const referencingPatterns = await prisma.patternTemplate.findMany({
     where: {
       templateId,
       coverConfig: {
@@ -130,7 +130,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
         equals: preset.name,
       },
     },
-    select: { id: true, label: true, accountId: true },
+    select: { id: true, label: true },
   });
 
   if (referencingPatterns.length > 0) {

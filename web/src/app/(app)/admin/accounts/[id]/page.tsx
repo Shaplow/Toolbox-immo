@@ -5,7 +5,6 @@ import { ChevronLeft, Film, Database, ArrowRight, CalendarDays, Instagram } from
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { AccountRecipesList, type RecipeItem } from "@/components/admin/AccountRecipesList";
-import { AccountCursorsButton } from "@/components/admin/AccountCursorsButton";
 import { PageShell } from "@/components/ui/PageShell";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { KPIPill } from "@/components/ui/molecules/KPIPill";
@@ -79,6 +78,7 @@ export default async function AccountFichePage({ params }: Props) {
         allowsClientRevision: true,
         needsBrief: true,
         requiresProperty: true,
+        requiresEntityTypeId: true,
         templateId: true,
         captionPresetId: true,
         descriptionPromptId: true,
@@ -193,6 +193,7 @@ export default async function AccountFichePage({ params }: Props) {
       allowsClientRevision: tpl.allowsClientRevision,
       needsBrief: tpl.needsBrief,
       requiresProperty: tpl.requiresProperty,
+      requiresEntityTypeId: tpl.requiresEntityTypeId,
       captionPresetId: tpl.captionPresetId,
       descriptionPromptId: tpl.descriptionPromptId,
       descriptionSourceFieldKey: tpl.descriptionSourceFieldKey,
@@ -246,6 +247,7 @@ export default async function AccountFichePage({ params }: Props) {
       allowsClientRevision: t.allowsClientRevision,
       needsBrief: t.needsBrief,
       requiresProperty: t.requiresProperty,
+      requiresEntityTypeId: t.requiresEntityTypeId,
       captionPresetId: t.captionPresetId,
       descriptionPromptId: t.descriptionPromptId,
       descriptionSourceFieldKey: t.descriptionSourceFieldKey,
@@ -314,7 +316,6 @@ export default async function AccountFichePage({ params }: Props) {
           }
           actions={
             <>
-              <AccountCursorsButton accountId={account.id} accountHandle={account.handle} />
               <Link
                 href={`/calendar?accountId=${account.id}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-card border border-input text-foreground hover:bg-muted text-[12px] font-medium transition-colors"

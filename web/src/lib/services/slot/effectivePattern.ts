@@ -2,21 +2,10 @@
  * effectivePattern — résolution du pattern effectif d'un slot pour les triggers
  * automatiques (transcription, description, cover) et les transitions pipeline.
  *
- * Contexte (bug P2) : depuis le refactor « recettes par compte », un slot porte
- * deux relations possibles :
- *   - `slot.pattern`        → AccountPattern  (LEGACY, @deprecated)
- *   - `slot.patternBinding` → PatternBinding → PatternTemplate (recette, source canonique)
- *
- * Les slots créés via une recette ont `patternBindingId` renseigné mais
- * `patternId = null`. Or les triggers auto lisaient UNIQUEMENT `slot.pattern`
- * (legacy), jamais le binding → avec `slot.pattern = null`, coverMode et
- * needsDescription retombaient au défaut ("none") et toute la chaîne auto
- * (transcription → description, cover, transitions) était silencieusement
- * skippée.
- *
  * Ce module centralise (1) le fragment `select` à charger et (2) la résolution
- * `pattern (legacy) ?? patternBinding (recette)`. Précédence au legacy quand il
- * est présent → zéro changement de comportement pour les slots historiques.
+ * `patternBinding (recette par compte) ?? patternTemplate (recette globale)`.
+ * La branche AccountPattern legacy a été décommissionnée (plan simplification
+ * D2, 2026-08) après backfill complet de `slot.patternBindingId`.
  */
 
 import { Prisma } from "@prisma/client";
@@ -46,28 +35,10 @@ export interface SlotEffectivePattern {
   requiresProperty: boolean;
 }
 
-/** Champs legacy AccountPattern chargés (alignés sur SlotEffectivePattern). */
-const LEGACY_PATTERN_SELECT = {
-  source: true,
-  templateId: true,
-  captionPresetId: true,
-  descriptionPromptId: true,
-  coverMode: true,
-  coverConfig: true,
-  needsCaptions: true,
-  needsCaptionsMode: true,
-  needsDescription: true,
-  needsAdminValidation: true,
-  needsClientValidation: true,
-  allowsClientRevision: true,
-  needsBrief: true,
-  needsRushes: true,
-} satisfies Prisma.AccountPatternSelect;
-
 /**
  * Champs PatternTemplate chargés pour la résolution directe « mission » (recette
- * globale sans binding). Identique à LEGACY_PATTERN_SELECT SAUF `needsRushes`,
- * qui n'existe pas sur PatternTemplate (dérivé de `source === "manual_rushes"`).
+ * globale sans binding). `needsRushes` n'existe pas sur PatternTemplate
+ * (dérivé de `source === "manual_rushes"`).
  */
 const TEMPLATE_PATTERN_SELECT = {
   source: true,
@@ -90,29 +61,27 @@ const TEMPLATE_PATTERN_SELECT = {
 /**
  * Fragment à fusionner (`...slotEffectivePatternSelect`) dans un `select` de
  * PublicationSlot (direct ou imbriqué via render.publicationSlot / version.slot)
- * pour pouvoir appeler {@link resolveSlotEffectivePattern}. Charge le pattern
- * legacy ET le binding (recette) + son template.
+ * pour pouvoir appeler {@link resolveSlotEffectivePattern}. Charge le binding
+ * (recette) + son template.
  */
 export const slotEffectivePatternSelect = {
-  pattern: { select: LEGACY_PATTERN_SELECT },
   patternBinding: { include: { patternTemplate: true } },
   patternTemplate: { select: TEMPLATE_PATTERN_SELECT },
 } satisfies Prisma.PublicationSlotSelect;
 
 /** Slot minimal chargé avec {@link slotEffectivePatternSelect}. */
 export type SlotWithEffectivePattern = {
-  pattern: Prisma.AccountPatternGetPayload<{ select: typeof LEGACY_PATTERN_SELECT }> | null;
   patternBinding: Prisma.PatternBindingGetPayload<{ include: { patternTemplate: true } }> | null;
   patternTemplate: Prisma.PatternTemplateGetPayload<{ select: typeof TEMPLATE_PATTERN_SELECT }> | null;
 };
 
 /**
  * Résout la config de recette effective d'un slot.
- * Précédence : AccountPattern legacy si présent (slots historiques inchangés),
- * sinon dérivé du PatternBinding (recette par compte), sinon dérivé directement
- * du PatternTemplate global (missions sans compte ni binding). null si aucun.
+ * Précédence : PatternBinding (recette par compte) si présent, sinon dérivé
+ * directement du PatternTemplate global (missions sans compte ni binding).
+ * null si aucun.
  *
- * La 3e branche (patternTemplate direct) est indispensable : sans elle, une
+ * La 2e branche (patternTemplate direct) est indispensable : sans elle, une
  * mission account-less résout `null` et TOUTE la chaîne auto (captions/cover/
  * description/transitions) se skippe silencieusement — c'est le bug P2 que ce
  * module existe pour corriger.
@@ -120,10 +89,6 @@ export type SlotWithEffectivePattern = {
 export function resolveSlotEffectivePattern(
   slot: SlotWithEffectivePattern,
 ): SlotEffectivePattern | null {
-  if (slot.pattern) {
-    // AccountPattern n'a ni requiresProperty ni descriptionSourceFieldKey → défauts.
-    return { ...slot.pattern, requiresProperty: false, descriptionSourceFieldKey: null };
-  }
   if (slot.patternBinding) {
     const e = resolveEffectivePattern(slot.patternBinding);
     return {

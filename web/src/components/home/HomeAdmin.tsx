@@ -45,8 +45,10 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
       },
     }),
     prisma.publicationSlot.count({
+      // Slots sans recette (ni binding, ni recette globale directe).
       where: {
-        patternId: null,
+        patternBindingId: null,
+        patternTemplateId: null,
         status: { in: ACTIVE_STATUSES },
       },
     }),

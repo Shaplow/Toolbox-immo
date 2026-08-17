@@ -172,20 +172,22 @@ export const CAPTIONS_MODE_HELP: Record<string, string> = {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// Médiathèque + Data — Groupe / Catégorie
+// Médiathèque + Data — Dossier
 // ───────────────────────────────────────────────────────────────────────────
 //
-// H.1 (16/06) — Le DB-level `setTag` (MediaAsset, DataEntry) est exposé en UI
-// sous le terme unifié « Groupe » côté média ET data. L'ancien vocabulaire
-// "Pack" (média) / "Set" (data) a été retiré : un seul mot pour la même
-// mécanique de groupement / rotation. Le code Prisma reste inchangé.
+// Plan simplification 2026-08 — le système de rotation (curseurs, catégories,
+// séquences, anti-répétition) est décommissionné au profit d'un modèle
+// « dossiers simples » : le DB-level `setTag` (MediaAsset, DataEntry) est
+// exposé en UI sous le terme unifié « Dossier » (avant H.1 : "Groupe" ;
+// avant ça : "Pack" côté média / "Set" côté data). Le tirage est
+// least-recently-used par dossier. Le code Prisma garde `setTag`.
 //
-// Le concept "category" (MediaAsset.category, DataEntry.category) reste
-// exposé sous "Catégorie" mais caché en mode simple (cf H.3).
+// Le concept "category" (MediaAsset.category, DataEntry.category) n'est plus
+// exposé en UI — champ conservé en base pour compat jusqu'au drop DB.
 
 export const MEDIA_LABELS_FR = {
-  group: "Groupe",
-  groupPlural: "Groupes",
+  group: "Dossier",
+  groupPlural: "Dossiers",
   category: "Catégorie",
   asset: "Asset",
   assetPlural: "Assets",
@@ -220,19 +222,5 @@ export function rotationScopeLabel(scope: string | null | undefined): string {
   return ROTATION_SCOPE_LABELS[scope] ?? scope;
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// DataCampaign.usagePolicy — politique de consommation des entrées
-// ───────────────────────────────────────────────────────────────────────────
-
-export const USAGE_POLICY_LABELS: Record<string, string> = {
-  cycle: "Cycle global",
-  cycle_per_account: "Cycle par compte",
-  once_per_account: "1 fois par compte",
-  once_global: "1 fois global",
-  unlimited: "Sans limite",
-};
-
-export function usagePolicyLabel(policy: string | null | undefined): string {
-  if (!policy) return "—";
-  return USAGE_POLICY_LABELS[policy] ?? policy;
-}
+// DataCampaign.usagePolicy — décommissionné (plan simplification Phase 4).
+// USAGE_POLICY_LABELS / usagePolicyLabel supprimés — plus aucun importeur.

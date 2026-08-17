@@ -93,7 +93,7 @@ export function MissionForm({
       return;
     }
     if (selectedRecipe?.requiresProperty && !propertyId) {
-      toast.error("Cette recette nécessite un bien. Sélectionnez un bien pour continuer.");
+      toast.error("Cette recette nécessite une fiche. Sélectionnez une fiche pour continuer.");
       return;
     }
     setSubmitting(true);
@@ -141,7 +141,7 @@ export function MissionForm({
   ];
 
   const propertyOptions = [
-    { value: "", label: "Aucun bien" },
+    { value: "", label: "Aucune fiche" },
     ...properties.map((p) => ({ value: p.id, label: p.label })),
   ];
 
@@ -191,7 +191,7 @@ export function MissionForm({
         </FormField>
 
         <FormField
-          label="Bien"
+          label="Fiche"
           help="Optionnel. Fiche partagée (adresse, prix…) réutilisée par plusieurs missions. Éditée une fois, propagée aux prochaines générations."
         >
           {properties.length > 0 ? (
@@ -199,13 +199,13 @@ export function MissionForm({
               value={propertyId}
               onChange={setPropertyId}
               options={propertyOptions}
-              placeholder="Aucun bien"
+              placeholder="Aucune fiche"
             />
           ) : (
             <div className="rounded-md border border-input bg-muted px-3 py-2.5 text-sm text-muted-foreground">
-              Aucun bien pour l&apos;instant.{" "}
-              <Link href="/biens" className="font-medium text-primary hover:underline">
-                Créez-en un
+              Aucune fiche pour l&apos;instant.{" "}
+              <Link href="/fiches?type=etype_bien" className="font-medium text-primary hover:underline">
+                Créez-en une
               </Link>{" "}
               pour partager ses infos entre plusieurs missions.
             </div>
@@ -213,7 +213,7 @@ export function MissionForm({
           {selectedProperty && (
             <div className="mt-2 rounded-md border border-border bg-muted/60 px-3 py-2">
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
-                Champs partagés du bien
+                Champs partagés de la fiche
               </p>
               {sharedFieldEntries.length > 0 ? (
                 <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
@@ -226,8 +226,8 @@ export function MissionForm({
                 </dl>
               ) : (
                 <p className="text-xs text-muted-foreground italic">
-                  Ce bien n&apos;a pas encore de valeurs.{" "}
-                  <Link href={`/biens/${selectedProperty.id}`} className="text-primary hover:underline">
+                  Cette fiche n&apos;a pas encore de valeurs.{" "}
+                  <Link href={`/fiches/${selectedProperty.id}`} className="text-primary hover:underline">
                     Compléter
                   </Link>
                 </p>
@@ -266,7 +266,7 @@ export function MissionForm({
 
       {selectedRecipe?.requiresProperty && !propertyId && (
         <p className="text-[12px] text-warning-700 bg-warning-50/80 rounded-md px-3 py-2">
-          Cette recette nécessite un bien — sélectionnez-en un ci-dessus pour continuer.
+          Cette recette nécessite une fiche — sélectionnez-en une ci-dessus pour continuer.
         </p>
       )}
 

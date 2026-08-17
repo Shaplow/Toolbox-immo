@@ -128,7 +128,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: { id: "pat-1", coverMode: "manual", coverConfig: PATTERN_CONFIG_WITH_PRESET, templateId: "tpl-1" },
+        patternTemplate: { id: "pat-1", coverMode: "manual", coverConfig: PATTERN_CONFIG_WITH_PRESET, templateId: "tpl-1" },
       },
     });
 
@@ -145,7 +145,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: { id: "pat-1", coverMode: "autoPack", coverConfig: null, templateId: "tpl-1" },
+        patternTemplate: { id: "pat-1", coverMode: "autoPack", coverConfig: null, templateId: "tpl-1" },
       },
     });
     mockTemplateCoverPresetFindFirst.mockResolvedValueOnce(MOCK_PRESET);
@@ -164,7 +164,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: { id: "pat-1", coverMode: "autoPack", coverConfig: null, templateId: "tpl-1" },
+        patternTemplate: { id: "pat-1", coverMode: "autoPack", coverConfig: null, templateId: "tpl-1" },
       },
     });
     mockTemplateCoverPresetFindFirst.mockResolvedValueOnce(null);
@@ -178,7 +178,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: {
+        patternTemplate: {
           id: "pat-1",
           coverMode: "autoPack",
           coverConfig: { enabled: false, coverPresetName: "Default" },
@@ -198,7 +198,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: {
+        patternTemplate: {
           id: "pat-unmigrated",
           coverMode: "autoPack",
           coverConfig: { enabled: true }, // ni coverPresetId ni coverPresetName
@@ -222,7 +222,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: {
+        patternTemplate: {
           id: "pat-1",
           coverMode: "autoPack",
           coverConfig: { enabled: true, coverPresetName: "Inexistant" },
@@ -246,7 +246,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: {
+        patternTemplate: {
           id: "pat-1",
           coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,
@@ -270,7 +270,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: {
+        patternTemplate: {
           id: "pat-1",
           coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,
@@ -295,7 +295,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: {
+        patternTemplate: {
           id: "pat-migrated",
           coverMode: "autoPack",
           coverConfig: {
@@ -323,7 +323,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: {
+        patternTemplate: {
           id: "pat-1",
           coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,
@@ -344,7 +344,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: {
+        patternTemplate: {
           id: "pat-X",
           coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,
@@ -369,7 +369,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: {
+        patternTemplate: {
           id: "pat-1",
           coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,

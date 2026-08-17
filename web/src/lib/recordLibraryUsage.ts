@@ -45,6 +45,20 @@ export interface UsedAssets {
     prevLastUsedAt: string | null;
     claimedLastUsedAt: string;
   };
+  /** Claims d'usage vidéo posés au submit (Phase 3 dossiers) — revert on failure. */
+  prevMediaUsageStates?: Array<{
+    assetId: string;
+    accountId: string;
+    prevLastUsedAt: string | null;
+    claimedLastUsedAt: string;
+  }>;
+  /** Claim d'usage DataEntry posé au submit (Phase 4) — revert on failure. */
+  prevDataUsageState?: {
+    entryId: string;
+    accountId: string;
+    prevLastUsedAt: string | null;
+    claimedLastUsedAt: string;
+  };
   /** DataLibrary cursor snapshot for failure-recovery revert (Phase 1.3) */
   prevDataLibraryCursorState?: {
     libraryId: string;
@@ -171,16 +185,17 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
   if (usedAssets.dataEntryId) {
     const dataEntryId = usedAssets.dataEntryId;
     const accountId = render.accountId;
-    const claimType = usedAssets.prevDataEntryState?.claimType;
     try {
       // Lecture rotationScope avant la tx pour éviter une lecture+write
       // entrelacée dans la tx interactive (Prisma ne supporte pas le
       // pattern findUnique dans la même tx que les upserts qui suivent).
+      // Phase 4 : scope lu depuis la lib directe ; `usedInCycle` n'est plus écrit
+      // (cycles décommissionnés — burn = usageCount).
       const entry = await prisma.dataEntry.findUnique({
         where: { id: dataEntryId },
-        select: { campaign: { select: { library: { select: { rotationScope: true } } } } },
+        select: { library: { select: { rotationScope: true } } },
       });
-      const isShared = entry?.campaign?.library?.rotationScope === "shared";
+      const isShared = entry?.library?.rotationScope === "shared";
 
       await prisma.$transaction(async (tx) => {
         await tx.dataEntry.update({
@@ -188,9 +203,6 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
           data: {
             usageCount: { increment: 1 },
             lastUsedAt: now,
-            // usedInCycle was already set at prefill for "usedInCycle" claim types.
-            // For "perAccountUsage" and fallback (no claim), set it here on DONE.
-            ...(claimType === "usedInCycle" ? {} : { usedInCycle: true }),
           },
         });
         if (accountId) {
@@ -229,34 +241,17 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
   // rather than the real accountId; we also write MediaAssetUsage rows keyed by
   // SHARED_CURSOR_ACCOUNT_ID so pickFromGroup can rotate within groups globally.
   const seqLibraryIds = usedAssets.setSequencedLibraryIds ?? [];
-  const accountId = render.accountId;
   if (seqLibraryIds.length > 0) {
+    // Plan simplification Phase 3 : plus d'AccountLibraryCursor à stamper —
+    // l'ancienneté des dossiers vit entièrement dans MediaAssetUsage.
     const libs = await prisma.mediaLibrary.findMany({
       where: { id: { in: seqLibraryIds } },
       select: { id: true, rotationScope: true },
     });
-    const scopeMap = new Map(libs.map((l) => [l.id, l.rotationScope ?? "per_account"]));
     const sharedSeqLibIds = new Set(libs.filter((l) => l.rotationScope === "shared").map((l) => l.id));
 
-    await Promise.allSettled(
-      seqLibraryIds.map(async (libraryId) => {
-        const isShared = scopeMap.get(libraryId) === "shared";
-        const cursorAccountId = isShared ? SHARED_CURSOR_ACCOUNT_ID : accountId;
-        if (!cursorAccountId) return; // no accountId for per-account library — skip
-        try {
-          await prisma.accountLibraryCursor.upsert({
-            where: { accountId_libraryId: { accountId: cursorAccountId, libraryId } },
-            update: { lastAdvancedAt: now },
-            create: { accountId: cursorAccountId, libraryId, cursor: 0, lastAdvancedAt: now },
-          });
-        } catch (err) {
-          console.error(`[recordLibraryUsage] cursor lastAdvancedAt update failed for library ${libraryId}:`, err);
-        }
-      }),
-    );
-
-    // For video assets from shared-scope set-sequence libraries, write a MediaAssetUsage row
-    // keyed by SHARED_CURSOR_ACCOUNT_ID so within-group rotation ordering is globally shared.
+    // For video assets from shared-scope folder-draw libraries, write a MediaAssetUsage row
+    // keyed by SHARED_CURSOR_ACCOUNT_ID so within-folder ordering is globally shared.
     if (sharedSeqLibIds.size > 0 && videoAssetIds.length > 0) {
       const assetLibraries = await prisma.mediaAsset.findMany({
         where: { id: { in: videoAssetIds } },
@@ -495,15 +490,13 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
     }
   }
 
-  // --- AccountLibraryCursor revert ---
+  // --- AccountLibraryCursor revert (LEGACY, renders pré-simplification) ---
+  // Depuis la Phase 3 (dossiers simples), les nouveaux renders n'ont plus de
+  // snapshot de curseur : l'absence de prevCursorStateByLibrary est normale.
+  // Le bloc ne sert plus qu'aux renders en vol créés avant le deploy — à
+  // supprimer avec le drop de la table AccountLibraryCursor (N+1).
   const prevStateMap = usedAssets.prevCursorStateByLibrary;
-  if (!prevStateMap || Object.keys(prevStateMap).length === 0) {
-    if ((usedAssets.setSequencedLibraryIds ?? []).length > 0) {
-      summary.warnings.push(
-        "Ce render utilise des bibliothèques set-sequence mais ne contient pas de snapshot de curseur (render ancien). Les curseurs ne peuvent pas être revertés.",
-      );
-    }
-  } else if (accountId) {
+  if (prevStateMap && Object.keys(prevStateMap).length > 0 && accountId) {
     for (const [libraryId, state] of Object.entries(prevStateMap)) {
       try {
         // Use the cursorAccountId stored at prefill time (handles shared libs that use
@@ -711,6 +704,53 @@ export async function revertLibraryCursors(renderId: string): Promise<void> {
       }
     } catch (err) {
       console.error(`[revertLibraryCursors] DataEntry revert failed for render=${renderId}:`, err);
+    }
+  }
+
+  // --- Video usage claims revert (Phase 3 dossiers) ---
+  // Même CAS optimiste que l'audio ci-dessous : on n'annule le stamp
+  // lastUsedAt posé au submit que si la ligne n'a pas bougé depuis.
+  for (const state of usedAssets.prevMediaUsageStates ?? []) {
+    try {
+      const prevTs = state.prevLastUsedAt ? new Date(state.prevLastUsedAt) : null;
+      const claimedTs = new Date(state.claimedLastUsedAt);
+      const updated = await prisma.$executeRaw(Prisma.sql`
+        UPDATE "MediaAssetUsage"
+        SET "lastUsedAt" = ${prevTs}
+        WHERE "assetId"   = ${state.assetId}
+          AND "accountId" = ${state.accountId}
+          AND "lastUsedAt" IS NOT DISTINCT FROM ${claimedTs}
+      `);
+      if (updated > 0) {
+        console.info(
+          `[revertLibraryCursors] render=${renderId} video assetId=${state.assetId} lastUsedAt reverted`,
+        );
+      }
+    } catch (err) {
+      console.error(`[revertLibraryCursors] video usage revert failed for render=${renderId}:`, err);
+    }
+  }
+
+  // --- Data usage claim revert (Phase 4 dossiers) ---
+  if (usedAssets.prevDataUsageState) {
+    const state = usedAssets.prevDataUsageState;
+    try {
+      const prevTs = state.prevLastUsedAt ? new Date(state.prevLastUsedAt) : null;
+      const claimedTs = new Date(state.claimedLastUsedAt);
+      const updated = await prisma.$executeRaw(Prisma.sql`
+        UPDATE "DataEntryUsage"
+        SET "lastUsedAt" = ${prevTs}
+        WHERE "entryId"   = ${state.entryId}
+          AND "accountId" = ${state.accountId}
+          AND "lastUsedAt" IS NOT DISTINCT FROM ${claimedTs}
+      `);
+      if (updated > 0) {
+        console.info(
+          `[revertLibraryCursors] render=${renderId} data entryId=${state.entryId} lastUsedAt reverted`,
+        );
+      }
+    } catch (err) {
+      console.error(`[revertLibraryCursors] data usage revert failed for render=${renderId}:`, err);
     }
   }
 

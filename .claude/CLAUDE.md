@@ -47,6 +47,7 @@ Sources concrètes : `web/e2e/production-chain-v8-visual.spec.ts` pour la regres
 
 - **5 rôles** : `ADMIN`, `VIDEASTE`, `MONTEUR`, `CM`, `EXTERNAL_GENERATOR` (`web/src/types/roles.ts`).
 - **Filtrage slots par rôle** : `web/src/lib/permissions/slotScope.ts` (`whereClauseForUser`, `canUserAccessSlot`, `ALLOWED_PATCH_FIELDS_BY_ROLE`).
+- **Filtrage fiches par rôle** : `web/src/lib/permissions/entityScope.ts` (switch `EntityType.visibility` : `admin` = CRUD admin strict, `team` = scoping assignés type ex-ShootEvent).
 - **Permissions outils par rôle** : `web/src/lib/permissions/tools.ts` (`ROLE_TOOL_SCOPE`).
 - **Impersonation** : utilise `effectiveUser` (via `getUserContext`) pour scoper la data, pas `auth()` direct.
 
@@ -67,11 +68,12 @@ Exceptions : `/api/admin/impersonation` (cookie set/destroy) + `/api/webhooks/ru
 
 ## Modèles Prisma centraux
 
-- `PublicationSlot` (assigneeMonteurId, assigneeCmId, patternId, currentVersionId, publishedUrl, description)
+- `PublicationSlot` (assigneeMonteurId, assigneeCmId, patternBindingId, patternTemplateId, currentVersionId, publishedUrl, description)
 - `PatternTemplate` — recette éditoriale réutilisable (label, source `auto_template | manual_rushes | external_upload`, coverConfig, needs* flags, captionPreset, descriptionPrompt, templateId).
 - `PatternBinding` — application d'une recette à un `InstagramAccount` (planning `dayOfWeek` + `publishTime`, assignées défaut, isActive, overrides ponctuels).
-- `AccountPattern` — legacy (toujours présent en DB pour compat, mais l'UI tape sur PatternTemplate+PatternBinding).
+- `AccountPattern` — **décommissionné côté code (D2, 16/08)** : plus aucune lecture/écriture ; la table + `PublicationSlot.patternId` restent en DB jusqu'au drop N+1. La clé API `patternId` du PATCH slot désigne désormais un id de PatternBinding.
 - `Client` → N `InstagramAccount` → N `PatternBinding` → 1 `PatternTemplate`.
+- **Phase 5 métaobjet (17/08)** : `EntityType` (types de fiches configurables — schéma customFields + capacités hasPlanning/hasAccount/hasRushes/hasAssignees + visibility) + `Entity` (« Fiche », fusion de Property « Bien » et ShootEvent « Tournage », ids repris au backfill) + `EntityActivity`. Slots : `entityId` (fiche data, clé API `propertyId`) + `shootEntityId` (tournage, clé API `eventId`). `PatternTemplate.requiresEntityTypeId` remplace `requiresProperty`. Types système seedés : `etype_bien`, `etype_tournage`. **Les modèles `Property`/`ShootEvent`/`ShootEventActivity` sont morts côté code** (tables en DB jusqu'au drop N+1 — cf. `web/prisma/pending-drops/`). Service : `web/src/lib/services/entity/entityService.ts`.
 - `PublicationVersion` (versions monteur, soft-delete)
 - `PublicationComment`, `PublicationActivity` (fil + audit log)
 - `TemplateCoverPreset` (presets cover définis dans le builder, référencés par nom par `Pattern.coverConfig.coverPresetName`)
@@ -84,17 +86,13 @@ Exceptions : `/api/admin/impersonation` (cookie set/destroy) + `/api/webhooks/ru
 
 **G.3 (16/06)** : la "Recette" en UI fusionne PatternTemplate + PatternBinding. Sur la fiche compte (`/admin/accounts/[id]`), chaque carte expose les champs des deux modèles (contenu + planning + équipe) éditables inline via le drawer `RecipeForm` (tabs Contenu / Planning & équipe / Spécifique). Save atomique transaction Prisma : `POST/PATCH /api/admin/accounts/[id]/recipes[/<bindingId>]`. Le catalogue `/admin/patterns` reste accessible (Configuration → Recettes) pour réutiliser une recette sur un autre compte via "Appliquer à des comptes".
 
-**H.1 (16/06)** : médiathèque + data — vocab unifié **« Groupe »** côté UI pour le champ Prisma `setTag` (MediaAsset, DataEntry). Avant : "Pack" en média / "Set" en data ; après : "Groupe" partout. Labels gérés via `MEDIA_LABELS_FR` dans `entityLabels.ts`. Logique métier intacte (rotation, autocut, prefill).
-
-**H.2 (16/06)** : les `setTag` auto-générés à l'upload (préfixe `pack_`) sont **invisibles côté UI admin** — le footer des cards `MediaAssetsSetStack` affiche juste "N plans" sans label, la combobox du detail drawer + la modal upload n'exposent pas les `pack_*` comme options. Côté backend : routes PATCH `/api/admin/libraries/media/assets/[assetId]` + bulk refusent un `setTag` manuel commençant par `pack_` (préfixe réservé). La logique de rotation continue d'utiliser `setTag` comme avant.
-
-**H.3 (16/06)** : sur `MediaAssetDetailDrawer`, le champ `category` est replié sous "Avancé · Catégorie" (`<details>`) par défaut, déplié auto si l'asset a déjà une catégorie. Mode simple : un seul concept "Groupe" visible. Mode avancé : catégorie pilote l'exclusion famille dans la rotation auto.
+**Simplification Phase 3 (16/08)** — médiathèque « dossiers simples » : le champ Prisma `setTag` s'appelle **« Dossier »** côté UI (ex-« Groupe » H.1, ex-« Pack »). Le moteur de rotation (curseurs `AccountLibraryCursor`, `category`/exclusion famille, mode `override`/`setSequence`, anti-répétition, simulation admin) est **décommissionné** : tirage least-recently-used par dossier, zéro état (`selectMediaAssetFromFolder` — voir skill `asset-rotation`). `rotationMode` ∈ `auto | none`. Claim d'usage au submit (`advanceMediaUsageOnSubmit`), revert CAS sur échec. Les colonnes/tables mortes (`AccountLibraryCursor`, `MediaLibrary.setSequence`, `MediaAsset.category`) restent en DB jusqu'au drop N+1. Le préfixe `pack_` (H.2) reste réservé/masqué — test unique `isReservedSetTag()` (`lib/rotation/sentinels.ts`).
 
 **I.1 + I.2 + I.3 (16/06) — Densification layout** :
 - **Calendrier** (`/calendar`) : header sticky 48px (drop le big 105px), `SlotCard` compact 56px (drop padding mort + nom compte, garde dot phase + heure + titre + 3 avatars), grille `gap-x-2.5 gap-y-3`, `DayCard` header single-line. Cible ≥10 slots visibles par viewport (vs 4-6).
 - **Médiathèque** (`/admin/libraries/{media,audio}/[id]`) : page SSR minimal, le shell complet (strip 60px + body) est dans `MediaAssetsPanel`. KpiRow + NextGenPreview retirés du flow (counts dans le strip header), bouton "Réglages" en haut ouvre `MediaLibrarySettingsDrawer`. Cards visibles dès le scroll initial.
 - **Data** (`/admin/libraries/data/[id]`) : même strip pattern, spreadsheet plein écran.
-- Composants `MediaAssetsKpiRow.tsx` + `MediaAssetsNextGenPreview.tsx` conservés en repo mais non-rendus (réversible si demande user).
+- Purge D1 (16/08) : les composants non-rendus (`MediaAssetsKpiRow`, `MediaAssetsNextGenPreview`, `MediaAssetsOrphanRibbon`, `MediaAssetsCategoriesSidebar`, `DataCampaignsPanel`, `BulkStockModal`, `AccountPatternForm/List`, etc.) ont été **supprimés** du repo (plan simplification, tag `pre-simplification`). Le type `CategoryFilter` vit dans `mediaAssets/types.ts`.
 
 Source unique : `web/src/lib/i18n/entityLabels.ts` (`ENTITY_LABELS` + `entityLabel()` + `SOURCE_LABELS_FR` + `SOURCE_VARIANT` + helps contextuels). **Pas de SOURCE_LABEL redéclaré localement** dans un composant, sinon dérive garantie (5 versions différentes ont coexisté avant unification du 15 juin).
 
@@ -106,6 +104,7 @@ Source unique : `web/src/lib/i18n/entityLabels.ts` (`ENTITY_LABELS` + `entityLab
 | `/home` (HomeMonteur/Cm/Videaste) | MONTEUR/CM/VIDEASTE | Worklist triage perso. Aucune action surface (click → fiche). |
 | `/home` (HomeExternalClient) | EXTERNAL_GENERATOR | Gateway client externe. Hors pipeline. |
 | `/calendar` | ADMIN | Orchestration : création slots, réassignation, génération semaine. |
+| `/fiches` + `/fiches/[id]` | ADMIN (tout) / équipe (types `team`) | Fiches (métaobjets) : tabs par type, toggle Liste/Planning pour les types à planning, fiche unifiée à sections conditionnelles (champs custom, planning, rushs, reels, activité). `/biens/*` et `/events/*` = redirects. |
 | `/publications/[id]` | tous (filtré par rôle) | Surface d'exécution unifiée. `shouldRenderForRole` masque les sections hors-rôle. ADMIN voit tout. |
 
 **ADMIN-proxy** : pour agir à la place de quelqu'un, l'admin passe par `/calendar` → fiche (les helpers `canX*` font le bypass). Pas de toggle "Agir comme X" sur la fiche.
@@ -113,9 +112,9 @@ Source unique : `web/src/lib/i18n/entityLabels.ts` (`ENTITY_LABELS` + `entityLab
 ## Navigation admin
 
 ```
-PLANIFICATION — Calendrier / Comptes Instagram / Médiathèque / Vidéo / Données
+PLANIFICATION — Calendrier / Fiches / Comptes Instagram / Médiathèque / Vidéo / Données
 PRODUCTION    — Studio (templates) / Atelier (outils) / Mes générations
-CONFIGURATION — Recettes (catalogue) / Clients / Utilisateurs / Jobs actifs
+CONFIGURATION — Recettes (catalogue) / Types de fiches / Clients / Utilisateurs / Jobs actifs
 ```
 
 - Studio (`/templates`) est le builder template central (pas dans Outils).

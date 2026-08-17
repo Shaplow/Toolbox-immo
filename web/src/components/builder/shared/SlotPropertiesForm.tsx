@@ -19,7 +19,7 @@ const OVERLAY_OPTIONS: { value: OverlayMode; label: string; desc: string }[] = [
 ];
 
 const SEQUENCE_STRATEGIES = [
-  { value: "theme_sequence", label: "Auto" },
+  { value: "theme_sequence", label: "Tirage par dossier" },
   { value: "least_used",     label: "Moins utilisée" },
   { value: "oldest_used",    label: "La plus ancienne" },
   { value: "random",         label: "Aléatoire" },
@@ -316,7 +316,7 @@ export function SlotPropertiesForm({
       {/* Strategy summary (for library mode) */}
       {sourceMode === "library" && slot.libraryId && (
         <div className="text-[9px] text-indigo-500 bg-indigo-50 rounded px-2 py-1">
-          Mode : <strong>{strategy === "theme_sequence" ? "Auto" : "Manuelle"}</strong>
+          Mode : <strong>{strategy === "theme_sequence" ? "Tirage par dossier" : "Manuelle"}</strong>
         </div>
       )}
 

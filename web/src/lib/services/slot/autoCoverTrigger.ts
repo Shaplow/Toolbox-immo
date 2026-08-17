@@ -68,7 +68,7 @@ export async function tryAutoTriggerCover(
     if (!slot) return { status: "error", reason: "slot_not_found" };
     if (!slot.currentVersion?.fileUrl) return { status: "skipped", reason: "no_current_version" };
 
-    // Pattern effectif : legacy AccountPattern OU recette PatternBinding.
+    // Pattern effectif : recette PatternBinding ou PatternTemplate global.
     const effPattern = resolveSlotEffectivePattern(slot);
     // coverConfig.coverPresetId (Phase 3) — extrait pour le résolveur
     const patternCoverPresetId = getCoverPresetIdFromConfig(effPattern?.coverConfig);

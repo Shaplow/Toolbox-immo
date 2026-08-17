@@ -2,14 +2,14 @@
 
 /**
  * useBulkEdit — état + handlers pour la sélection multiple et les actions
- * bulk (apply pack/setTag, tags, category, access, delete) sur les MediaAsset.
+ * bulk (apply dossier/setTag, tags, access, delete) sur les MediaAsset.
  *
- * Phase D4 (plan §19). Le hook isole 8 useState + 6 handlers async qui
+ * Phase D4 (plan §19). Le hook isole les useState + handlers async qui
  * appellent /api/admin/libraries/media/[id]/assets/bulk. Après chaque
  * mutation, met à jour le state local via le `setAssets` passé par le
  * parent (qui vient lui-même de useMediaAssetsLoader).
  *
- * Les 5 handlers async retournent void et signalent leur état via
+ * Les handlers async retournent void et signalent leur état via
  * bulkApplying + toast.success/error (cohérence Coastal Studio).
  */
 
@@ -49,8 +49,6 @@ export interface UseBulkEditResult {
   setBulkSetTagInput: React.Dispatch<React.SetStateAction<string>>;
   bulkTagsInput: string;
   setBulkTagsInput: React.Dispatch<React.SetStateAction<string>>;
-  bulkCategoryInput: string;
-  setBulkCategoryInput: React.Dispatch<React.SetStateAction<string>>;
   bulkApplying: boolean;
   // Actions
   toggleSelect: (id: string) => void;
@@ -58,7 +56,6 @@ export interface UseBulkEditResult {
   handleBulkApplySetTag: () => Promise<void>;
   handleBulkApplyTags: () => Promise<void>;
   handleBulkApplyAccess: (action: "add" | "remove_all", accountId?: string) => Promise<void>;
-  handleBulkApplyCategory: () => Promise<void>;
   handleBulkDelete: () => Promise<void>;
 }
 
@@ -67,7 +64,6 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSetTagInput, setBulkSetTagInput] = useState("");
   const [bulkTagsInput, setBulkTagsInput] = useState("");
-  const [bulkCategoryInput, setBulkCategoryInput] = useState("");
   const [bulkApplying, setBulkApplying] = useState(false);
 
   // Garde lecture seule — cf. `useAssetInlineEdits`. Le mode sélection reste
@@ -181,26 +177,6 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     [blocked, accounts, libraryId, selectedIds, setAssets],
   );
 
-  const handleBulkApplyCategory = useCallback(async () => {
-    if (blocked()) return;
-    if (selectedIds.size === 0) return;
-    const value = bulkCategoryInput.trim() || null;
-    setBulkApplying(true);
-    const res = await fetch(`/api/admin/libraries/media/${libraryId}/assets/bulk`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetIds: Array.from(selectedIds), category: value }),
-    });
-    setBulkApplying(false);
-    if (!res.ok) {
-      const d = (await res.json().catch(() => ({}))) as { error?: string };
-      toast.error(d.error ?? "Erreur lors de l'application");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => (selectedIds.has(a.id) ? { ...a, category: value } : a)));
-    toast.success(value ? `Catégorie « ${value} » appliquée` : "Catégorie retirée");
-  }, [blocked, bulkCategoryInput, libraryId, selectedIds, setAssets]);
-
   const handleBulkDelete = useCallback(async () => {
     if (blocked()) return;
     const count = selectedIds.size;
@@ -237,15 +213,12 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     setBulkSetTagInput,
     bulkTagsInput,
     setBulkTagsInput,
-    bulkCategoryInput,
-    setBulkCategoryInput,
     bulkApplying,
     toggleSelect,
     exitSelectMode,
     handleBulkApplySetTag,
     handleBulkApplyTags,
     handleBulkApplyAccess,
-    handleBulkApplyCategory,
     handleBulkDelete,
   };
 }

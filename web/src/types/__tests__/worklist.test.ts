@@ -16,7 +16,6 @@ function makeSlot(partial: Partial<WorklistSlot>): WorklistSlot {
     assigneeMonteurId: null,
     assigneeCmId: null,
     assigneeVideasteId: null,
-    patternId: null,
     account: { id: "a1", handle: "acc", name: "Acc" },
     pattern: null,
     ...partial,

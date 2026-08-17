@@ -693,11 +693,10 @@ export async function triggerAutoCoverPackForRender(
           id: true,
           status: true,
           needsClientValidationOverride: true,
-          // patternId/patternBindingId pour la traçabilité (logActivity) — la
-          // forme résolue n'expose pas d'id.
-          patternId: true,
+          // patternBindingId pour la traçabilité (logActivity) — la forme
+          // résolue n'expose pas d'id.
           patternBindingId: true,
-          // Pattern legacy + binding (recette par compte) — voir effectivePattern.ts.
+          // Binding (recette par compte) + template global — voir effectivePattern.ts.
           ...slotEffectivePatternSelect,
         },
       },
@@ -796,7 +795,7 @@ export async function triggerAutoCoverPackForRender(
       `[autoCover] Aucune config cover sur le template ${patternTemplateId} — skip`,
     );
     await logCoverActivity(slotId, "COVER_CONFIG_ERROR", {
-      patternId: renderSlot?.publicationSlot?.patternBindingId ?? renderSlot?.publicationSlot?.patternId ?? null,
+      patternId: renderSlot?.publicationSlot?.patternBindingId ?? null,
       reason: "no_template_cover_config",
       templateId: patternTemplateId,
       message:

@@ -18,13 +18,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockSlotFindUnique = vi.fn();
 const mockSlotUpdate = vi.fn();
 const mockSlotUpdateMany = vi.fn();
-const mockPatternFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockActivityCreate = vi.fn();
 const mockTransaction = vi.fn();
-// P2 — patchSlot tente d'abord PatternBinding pour résoudre l'effective
-// pattern, puis fallback AccountPattern. En test legacy on retourne null
-// pour forcer le path AccountPattern (les fixtures sont AccountPattern).
+// patchSlot résout l'effective pattern via PatternBinding (canonique).
 const mockBindingFindUnique = vi.fn().mockResolvedValue(null);
 
 vi.mock("@/lib/prisma", () => ({
@@ -33,9 +30,6 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockSlotFindUnique(...args),
       update: (...args: unknown[]) => mockSlotUpdate(...args),
       updateMany: (...args: unknown[]) => mockSlotUpdateMany(...args),
-    },
-    accountPattern: {
-      findUnique: (...args: unknown[]) => mockPatternFindUnique(...args),
     },
     patternBinding: {
       findUnique: (...args: unknown[]) => mockBindingFindUnique(...args),
@@ -84,14 +78,43 @@ interface SlotFixture {
   descriptionPromptIdOverride: string | null;
   coverModeOverride: string | null;
   coverPresetIdOverride: string | null;
-  pattern: {
-    captionPresetId: string | null;
-    descriptionPromptId: string | null;
-    needsCaptions: boolean;
-    needsDescription: string;
-    coverMode: string;
-    coverConfig: unknown;
+  patternBinding: {
+    captionPresetIdOverride: string | null;
+    descriptionPromptIdOverride: string | null;
+    coverModeOverride: string | null;
+    patternTemplate: {
+      captionPresetId: string | null;
+      descriptionPromptId: string | null;
+      needsCaptions: boolean;
+      needsDescription: string;
+      coverMode: string;
+      coverConfig: unknown;
+    };
   } | null;
+}
+
+/** PatternBinding mock complet (chemin canonique du changement de recette). */
+function makeBindingRow(
+  templateOver: Record<string, unknown> = {},
+  bindingOver: Record<string, unknown> = {},
+) {
+  return {
+    id: "binding-A",
+    accountId: "account-A",
+    captionPresetIdOverride: null,
+    descriptionPromptIdOverride: null,
+    coverModeOverride: null,
+    patternTemplate: {
+      captionPresetId: null,
+      descriptionPromptId: null,
+      needsCaptions: false,
+      needsDescription: "none",
+      coverMode: "none",
+      coverConfig: null,
+      ...templateOver,
+    },
+    ...bindingOver,
+  };
 }
 
 function makeSlot(overrides: Partial<SlotFixture> = {}): SlotFixture {
@@ -108,13 +131,18 @@ function makeSlot(overrides: Partial<SlotFixture> = {}): SlotFixture {
     descriptionPromptIdOverride: null,
     coverModeOverride: null,
     coverPresetIdOverride: null,
-    pattern: {
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
+    patternBinding: {
+      captionPresetIdOverride: null,
+      descriptionPromptIdOverride: null,
+      coverModeOverride: null,
+      patternTemplate: {
+        captionPresetId: null,
+        descriptionPromptId: null,
+        needsCaptions: false,
+        needsDescription: "none",
+        coverMode: "none",
+        coverConfig: null,
+      },
     },
     ...overrides,
   };
@@ -124,7 +152,6 @@ beforeEach(() => {
   mockSlotFindUnique.mockReset();
   mockSlotUpdate.mockReset();
   mockSlotUpdateMany.mockReset();
-  mockPatternFindUnique.mockReset();
   mockBindingFindUnique.mockReset().mockResolvedValue(null);
   mockUserFindUnique.mockReset();
   mockActivityCreate.mockReset();
@@ -241,35 +268,29 @@ describe("patchSlot — PUBLISHED bypass /mark-published", () => {
   });
 });
 
-// ─── Invariant 3 : patternId cross-account refusé ───────────────────────────
+// ─── Invariant 3 : patternId (binding) cross-account refusé ─────────────────
 
 describe("patchSlot — patternId cross-account guard", () => {
-  it("ADMIN ne peut pas attribuer un pattern d'un autre compte", async () => {
+  it("ADMIN ne peut pas attribuer une recette d'un autre compte", async () => {
     mockSlotFindUnique
       .mockResolvedValueOnce(makeSlot({ accountId: "account-A" }))
       .mockResolvedValueOnce({ accountId: "account-A" }); // re-fetch pour slotAccount
 
-    mockPatternFindUnique.mockResolvedValueOnce({
-      accountId: "account-B", // ← autre compte !
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-    });
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({}, { id: "binding-B", accountId: "account-B" }), // ← autre compte !
+    );
 
     await expect(
-      patchSlot("slot-1", { patternId: "pattern-B" }, makeUserCtx("ADMIN")),
+      patchSlot("slot-1", { patternId: "binding-B" }, makeUserCtx("ADMIN")),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("patternId d'un pattern inexistant rejeté", async () => {
+  it("patternId d'une recette inexistante rejeté", async () => {
     mockSlotFindUnique.mockResolvedValueOnce(makeSlot());
-    mockPatternFindUnique.mockResolvedValueOnce(null);
+    mockBindingFindUnique.mockResolvedValueOnce(null);
 
     await expect(
-      patchSlot("slot-1", { patternId: "pattern-ghost" }, makeUserCtx("ADMIN")),
+      patchSlot("slot-1", { patternId: "binding-ghost" }, makeUserCtx("ADMIN")),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -277,19 +298,11 @@ describe("patchSlot — patternId cross-account guard", () => {
     mockSlotFindUnique
       .mockResolvedValueOnce(makeSlot({ accountId: "account-A" }))
       .mockResolvedValueOnce({ accountId: "account-A" });
-    mockPatternFindUnique.mockResolvedValueOnce({
-      accountId: "account-A", // ← même compte
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-    });
+    mockBindingFindUnique.mockResolvedValueOnce(makeBindingRow()); // ← même compte
 
     const result = await patchSlot(
       "slot-1",
-      { patternId: "pattern-A" },
+      { patternId: "binding-A" },
       makeUserCtx("ADMIN"),
     );
     expect(result).toBeDefined();
@@ -299,68 +312,66 @@ describe("patchSlot — patternId cross-account guard", () => {
 // ─── Invariant 4 : cross-field validation utilise NOUVEAU pattern ──────────
 
 describe("patchSlot — cross-field validation post-update pattern", () => {
-  it("change patternId vers un pattern sans captionPresetId + active needsCaptionsOverride → rejet", async () => {
+  it("change patternId vers une recette sans captionPresetId + active needsCaptionsOverride → rejet", async () => {
     mockSlotFindUnique
       .mockResolvedValueOnce(
         makeSlot({
-          pattern: {
-            captionPresetId: "preset-X", // ANCIEN pattern AVAIT un preset
-            descriptionPromptId: null,
-            needsCaptions: false,
-            needsDescription: "none",
-            coverMode: "none",
-            coverConfig: null,
+          patternBinding: {
+            captionPresetIdOverride: null,
+            descriptionPromptIdOverride: null,
+            coverModeOverride: null,
+            patternTemplate: {
+              captionPresetId: "preset-X", // ANCIENNE recette AVAIT un preset
+              descriptionPromptId: null,
+              needsCaptions: false,
+              needsDescription: "none",
+              coverMode: "none",
+              coverConfig: null,
+            },
           },
         }),
       )
       .mockResolvedValueOnce({ accountId: "account-A" });
-    mockPatternFindUnique.mockResolvedValueOnce({
-      accountId: "account-A",
-      captionPresetId: null, // NOUVEAU pattern n'a PAS de preset
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-    });
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({ captionPresetId: null }), // NOUVELLE recette n'a PAS de preset
+    );
 
     await expect(
       patchSlot(
         "slot-1",
-        { patternId: "pattern-new", needsCaptionsOverride: true },
+        { patternId: "binding-new", needsCaptionsOverride: true },
         makeUserCtx("ADMIN"),
       ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("change patternId vers un pattern AVEC captionPresetId + needsCaptionsOverride → accepté", async () => {
+  it("change patternId vers une recette AVEC captionPresetId + needsCaptionsOverride → accepté", async () => {
     mockSlotFindUnique
       .mockResolvedValueOnce(
         makeSlot({
-          pattern: {
-            captionPresetId: null,
-            descriptionPromptId: null,
-            needsCaptions: false,
-            needsDescription: "none",
-            coverMode: "none",
-            coverConfig: null,
+          patternBinding: {
+            captionPresetIdOverride: null,
+            descriptionPromptIdOverride: null,
+            coverModeOverride: null,
+            patternTemplate: {
+              captionPresetId: null,
+              descriptionPromptId: null,
+              needsCaptions: false,
+              needsDescription: "none",
+              coverMode: "none",
+              coverConfig: null,
+            },
           },
         }),
       )
       .mockResolvedValueOnce({ accountId: "account-A" });
-    mockPatternFindUnique.mockResolvedValueOnce({
-      accountId: "account-A",
-      captionPresetId: "preset-new", // ← nouveau pattern AVEC preset
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-    });
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({ captionPresetId: "preset-new" }), // ← nouvelle recette AVEC preset
+    );
 
     const result = await patchSlot(
       "slot-1",
-      { patternId: "pattern-new", needsCaptionsOverride: true },
+      { patternId: "binding-new", needsCaptionsOverride: true },
       makeUserCtx("ADMIN"),
     );
     expect(result).toBeDefined();

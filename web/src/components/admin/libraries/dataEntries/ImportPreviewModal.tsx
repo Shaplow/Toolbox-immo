@@ -3,11 +3,14 @@
 /**
  * ImportPreviewModal — aperçu d'un import CSV/Excel avant commit (dry-run).
  *
- * Affiche le nombre de lignes détectées, les colonnes mappées, la présence des
- * colonnes réservées (set_tag / category), les lignes vides ignorées, et un
- * échantillon des premières fiches. Avertit si la campagne contient déjà des
- * entrées (le commit ajoutera avec force=true). Remplace l'ancien import direct
+ * Affiche le nombre de lignes détectées, les colonnes mappées, la présence de
+ * la colonne réservée (set_tag), les lignes vides ignorées, et un échantillon
+ * des premières fiches. Avertit si la bibliothèque contient déjà des entrées
+ * (le commit ajoutera avec force=true). Remplace l'ancien import direct
  * « 0 importé » silencieux.
+ *
+ * `category` reste une colonne CSV réservée/ignorée côté serveur (plan
+ * simplification Phase 4) — n'est plus affichée ici.
  */
 
 import { FileSpreadsheet, AlertTriangle, Check } from "lucide-react";
@@ -22,7 +25,6 @@ export interface ImportPreview {
   existingCount: number;
   sample: Array<{
     setTag: string | null;
-    category: string | null;
     fields: Record<string, string>;
   }>;
 }
@@ -63,8 +65,8 @@ export function ImportPreviewModal({
             muted={skippedEmpty === 0}
           />
           <Stat
-            label="Set / Catégorie"
-            value={`${reserved.set_tag ? "Set" : "—"} · ${reserved.category ? "Cat." : "—"}`}
+            label="Dossier"
+            value={reserved.set_tag ? "Détecté" : "—"}
           />
         </div>
 
@@ -82,12 +84,12 @@ export function ImportPreviewModal({
           </div>
         )}
 
-        {/* Avertissement campagne non vide */}
+        {/* Avertissement bibliothèque non vide */}
         {existingCount > 0 && (
           <div className="flex items-start gap-2 rounded-md bg-warning-50 border border-warning-200 px-3 py-2 text-[12px] text-warning-700">
             <AlertTriangle size={14} className="shrink-0 mt-0.5" />
             <span>
-              Cette campagne contient déjà <strong>{existingCount}</strong> fiche
+              Cette bibliothèque contient déjà <strong>{existingCount}</strong> fiche
               {existingCount > 1 ? "s" : ""}. L&apos;import <strong>ajoutera</strong> les{" "}
               {detected} nouvelle{detected > 1 ? "s" : ""} fiche{detected > 1 ? "s" : ""}.
             </span>
@@ -100,8 +102,7 @@ export function ImportPreviewModal({
             <table className="w-full text-[11.5px]">
               <thead>
                 <tr className="bg-muted/50 text-muted-foreground text-left">
-                  <th className="px-2 py-1.5 font-medium">Set</th>
-                  <th className="px-2 py-1.5 font-medium">Catégorie</th>
+                  <th className="px-2 py-1.5 font-medium">Dossier</th>
                   {columns.map((c) => (
                     <th key={c} className="px-2 py-1.5 font-medium whitespace-nowrap">
                       {c}
@@ -115,7 +116,6 @@ export function ImportPreviewModal({
                     <td className="px-2 py-1.5 font-mono text-foreground">
                       {row.setTag ?? "—"}
                     </td>
-                    <td className="px-2 py-1.5 text-foreground">{row.category ?? "—"}</td>
                     {columns.map((c) => (
                       <td key={c} className="px-2 py-1.5 text-muted-foreground whitespace-nowrap max-w-[160px] truncate">
                         {row.fields[c] ?? ""}

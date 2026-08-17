@@ -43,6 +43,8 @@ interface TemplatePayload {
   allowsClientRevision?: boolean;
   needsBrief?: boolean;
   requiresProperty?: boolean;
+  /** Phase 5 (métaobjet) — remplace requiresProperty. */
+  requiresEntityTypeId?: string | null;
   notes?: string | null;
 }
 
@@ -141,6 +143,19 @@ export async function POST(
   const bndErr = validateBinding(bnd, true);
   if (bndErr) return NextResponse.json({ error: bndErr }, { status: 400 });
 
+  if (tpl.requiresEntityTypeId) {
+    const type = await prisma.entityType.findUnique({
+      where: { id: tpl.requiresEntityTypeId },
+      select: { id: true },
+    });
+    if (!type) {
+      return NextResponse.json(
+        { error: "template.requiresEntityTypeId : type de fiche introuvable" },
+        { status: 400 },
+      );
+    }
+  }
+
   const account = await prisma.instagramAccount.findUnique({ where: { id: accountId } });
   if (!account) {
     return NextResponse.json({ error: "Compte introuvable" }, { status: 404 });
@@ -187,6 +202,7 @@ export async function POST(
               allowsClientRevision: tpl.allowsClientRevision ?? false,
               needsBrief: tpl.needsBrief ?? false,
               requiresProperty: tpl.requiresProperty ?? false,
+              requiresEntityTypeId: tpl.requiresEntityTypeId ?? null,
               notes: tpl.notes ?? null,
               updatedByUserId: ctx.actualUser.id,
             },

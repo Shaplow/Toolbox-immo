@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ id: string }> };
 
-const VALID_ROTATION_MODES = ["auto", "override", "none"] as const;
+// Plan simplification 2026-08 : "override" (ordre fixe + curseur) est
+// décommissionné — cf. src/lib/rotation/rotationMode.ts (source de vérité).
+const VALID_ROTATION_MODES = ["auto", "none"] as const;
 const VALID_ROTATION_SCOPES = ["shared", "per_account"] as const;
 const VALID_FIELD_TYPES = ["text", "number", "url", "textarea"] as const;
 

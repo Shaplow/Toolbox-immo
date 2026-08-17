@@ -74,7 +74,8 @@ export interface PublicationSlot {
   // ne font pas d'include explicite — d'où le `| undefined`.
   assigneeMonteurId?: string | null;
   assigneeCmId?: string | null;
-  patternId?: string | null;
+  patternBindingId?: string | null;
+  patternTemplateId?: string | null;
   currentVersionId?: string | null;
   pattern?: {
     label: string;

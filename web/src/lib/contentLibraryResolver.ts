@@ -53,146 +53,56 @@ export function buildAccessFilter(accountId: string | undefined): Prisma.Sql {
 }
 
 /**
- * Variante DataEntry du buildAccessFilter — utilise la table DataEntryAccess
- * et l'alias `de` pour DataEntry. Pas de `disabled` sur DataEntry (toutes les
- * entries actives sont éligibles tant qu'elles passent le burn filter).
+ * Découverte des dossiers (`setTag`) d'une bibliothèque média — modèle
+ * « dossiers simples » (plan simplification, 2026-08).
+ *
+ * Un dossier = un `setTag` ; les assets sans setTag forment le dossier virtuel
+ * `(sans dossier)` (`setTag IS NULL`), traité comme un dossier normal.
+ *
+ * Tri : le dossier servi le moins récemment d'abord —
+ *   1. MAX(lastUsedAt) ASC NULLS FIRST (un dossier jamais servi passe devant ;
+ *      après usage, son MAX devient récent → il redescend naturellement :
+ *      anti-répétition douce sans aucun état de curseur) ;
+ *   2. MIN(createdAt) ASC (parmi les jamais-servis, ordre d'upload) ;
+ *   3. setTag ASC NULLS LAST (tiebreaker déterministe, LPAD numérique).
+ *
+ * @param usageAccountId Clé d'ancienneté `MediaAssetUsage` (compte réel, ou
+ *                       sentinel `__shared__` pour les libs partagées). Absent =
+ *                       pool global, l'ancienneté retombe sur `MediaAsset.lastUsedAt`.
  */
-/**
- * W5.18 — ORDER BY commune à toutes les SQL group-discovery (7 callsites).
- * Sans ça, un changement de la stratégie de tri (ex: ajout d'un tiebreaker)
- * devait être propagé 7×. Le LPAD numérique a été aligné Media↔Data en W3.1 ;
- * cette constante prévient toute future divergence.
- */
-const GROUP_DISCOVERY_TIEBREAKERS = Prisma.sql`
-  sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
-  sub2.group_created_at ASC NULLS LAST,
-  CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
-  sub2."category" ASC NULLS FIRST`;
-
-export const GROUP_DISCOVERY_ORDER_BY = Prisma.sql`ORDER BY ${GROUP_DISCOVERY_TIEBREAKERS}`;
-
-/**
- * Media uniquement : les groupes contenant au moins un asset jamais servi à ce
- * compte passent AVANT tous les autres.
- *
- * Sans ce critère, le classement se fait au niveau catégorie
- * (`MAX(lastUsedAt) PARTITION BY category`) : un groupe entièrement neuf mais
- * rattaché à une catégorie jouée récemment passait derrière une catégorie plus
- * ancienne dont tous les assets avaient déjà servi. On resservait donc du
- * déjà-vu alors que du stock neuf attendait — comportement contre-intuitif
- * quand on regarde le sélecteur de rushes, qui lui trie par usage.
- *
- * Volontairement absent du chemin DataEntry, dont la sémantique de cycle diffère.
- */
-const GROUP_DISCOVERY_ORDER_BY_UNUSED_FIRST = Prisma.sql`
-  ORDER BY sub2.has_unused DESC, ${GROUP_DISCOVERY_TIEBREAKERS}`;
-
-/**
- * Un curseur a-t-il un historique de rotation ?
- *
- * `hasHistory = false` désactive toute l'anti-répétition (aucun groupe exclu) —
- * c'est voulu pour un curseur vierge, désastreux sinon : le même groupe peut
- * alors ressortir à chaque génération.
- *
- * `lastAdvancedAt` seul ne suffit pas : des curseurs écrits avant l'ajout de ce
- * champ portent un `lastUsedCategory` / `lastUsedSetTag` renseigné avec
- * `lastAdvancedAt` à null. Les traiter comme « jamais joués » gelait
- * l'anti-répétition sur ces comptes.
- */
-export function hasRotationHistory(cursor: {
-  lastAdvancedAt?: Date | null;
-  lastUsedCategory?: string | null;
-  lastUsedSetTag?: string | null;
-} | null | undefined): boolean {
-  if (!cursor) return false;
-  return cursor.lastAdvancedAt != null || cursor.lastUsedCategory != null || cursor.lastUsedSetTag != null;
-}
-
-/**
- * Découverte des groupes `(category, setTag)` d'une bibliothèque média.
- *
- * Le corps de cette requête était recopié sur 4 sites (3 dans ce fichier + la
- * route simulate-rotation) — `GROUP_DISCOVERY_ORDER_BY` n'avait factorisé que
- * le tri. D'où le bug qu'elle corrige : `tagFrag` était oublié dans 3 sites sur
- * 4. L'ancienneté d'un groupe était donc calculée **tous tags confondus**, si
- * bien qu'un groupe dont les assets « RPI » étaient épuisés remontait en tête du
- * classement grâce à ses « RVA4 » jamais servis — et la génération RPI ressortait
- * un asset déjà utilisé. Le 3ᵉ site (chemin sans compte) n'appliquait en prime
- * aucun `burnFilter` et n'aliasait pas la table.
- *
- * @param usageAccountId        Clé d'ordonnancement `MediaAssetUsage`. Absent =
- *                              pool global, l'ancienneté retombe sur
- *                              `MediaAsset.lastUsedAt`.
- * @param withAccessibleCount   Projette `accessible_count` (nombre d'assets
- *                              actifs du groupe) — utilisé par la simulation
- *                              admin pour afficher la taille de chaque pack.
- */
-export function buildGroupDiscoveryQuery(opts: {
+function buildFolderDiscoveryQuery(opts: {
   libraryId: string;
   usageAccountId?: string;
   accessFilter: Prisma.Sql;
   burnFilter: Prisma.Sql;
   tagFrag: Prisma.Sql;
-  withAccessibleCount?: boolean;
 }): Prisma.Sql {
-  const { libraryId, usageAccountId, accessFilter, burnFilter, tagFrag, withAccessibleCount } = opts;
-  const extraInner = withAccessibleCount
-    ? Prisma.sql`, COUNT(*) FILTER (WHERE NOT ma."disabled") AS accessible_count`
-    : Prisma.empty;
-  const extraOuter = withAccessibleCount ? Prisma.sql`, sub1.accessible_count` : Prisma.empty;
-  const extraProjected = withAccessibleCount ? Prisma.sql`, sub2.accessible_count` : Prisma.empty;
-  // Sans compte : l'ancienneté vient de l'agrégat global, et le pool se limite
-  // aux assets non restreints (aucune ligne MediaAssetAccess).
+  const { libraryId, usageAccountId, accessFilter, burnFilter, tagFrag } = opts;
   const lastUsedExpr = usageAccountId
     ? Prisma.sql`MAX(mau."lastUsedAt")`
     : Prisma.sql`MAX(ma."lastUsedAt")`;
   const usageJoin = usageAccountId
     ? Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}`
     : Prisma.empty;
-  // « Jamais servi » = aucune ligne d'usage pour ce compte (ou, sans compte,
-  // aucun usage global). Sert de critère de tri primaire.
-  const unusedExpr = usageAccountId
-    ? Prisma.sql`mau."lastUsedAt" IS NULL`
-    : Prisma.sql`ma."lastUsedAt" IS NULL`;
 
   return Prisma.sql`
-    SELECT sub2."setTag", sub2."category", sub2.has_unused${extraProjected}
+    SELECT sub."setTag"
     FROM (
-      SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at, sub1.has_unused${extraOuter},
-             MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
-      FROM (
-        SELECT ma."setTag", ma."category",
-               ${lastUsedExpr} AS last_used,
-               COUNT(*) FILTER (WHERE NOT ma."disabled" AND ${unusedExpr}) > 0 AS has_unused,
-               MIN(ma."createdAt") AS group_created_at${extraInner}
-        FROM "MediaAsset" ma
-        ${usageJoin}
-        WHERE ma."libraryId" = ${libraryId}
-          ${tagFrag}
-          ${accessFilter}
-          ${burnFilter}
-        GROUP BY ma."setTag", ma."category"
-        HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
-      ) sub1
-    ) sub2
-    ${GROUP_DISCOVERY_ORDER_BY_UNUSED_FIRST}`;
-}
-
-/**
- * Restreint les candidats aux groupes contenant du stock jamais servi.
- *
- * Règle produit : tant qu'il reste du neuf pour ce compte, on le sert — quitte à
- * enchaîner deux vidéos de la même famille. L'anti-répétition (exclusion de la
- * dernière catégorie) ne s'applique donc plus qu'À L'INTÉRIEUR de ce
- * sous-ensemble : on garde l'alternance quand elle est possible sans sacrifier
- * du contenu neuf.
- *
- * Retourne `allGroups` inchangé quand plus rien n'est neuf — le cycle reprend
- * alors son comportement normal (le moins récemment utilisé d'abord).
- */
-export function preferGroupsWithUnusedAssets<T extends { has_unused?: boolean }>(allGroups: T[]): T[] {
-  const withUnused = allGroups.filter((g) => g.has_unused);
-  return withUnused.length > 0 ? withUnused : allGroups;
+      SELECT ma."setTag",
+             ${lastUsedExpr} AS last_used,
+             MIN(ma."createdAt") AS folder_created_at
+      FROM "MediaAsset" ma
+      ${usageJoin}
+      WHERE ma."libraryId" = ${libraryId}
+        ${tagFrag}
+        ${accessFilter}
+        ${burnFilter}
+      GROUP BY ma."setTag"
+      HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
+    ) sub
+    ORDER BY sub.last_used ASC NULLS FIRST,
+             sub.folder_created_at ASC NULLS LAST,
+             CASE WHEN sub."setTag" ~ '^[0-9]+$' THEN LPAD(sub."setTag", 20, '0') ELSE sub."setTag" END ASC NULLS LAST`;
 }
 
 function buildDataAccessFilter(accountId: string | undefined): Prisma.Sql {
@@ -350,6 +260,7 @@ async function selectMediaAssetWithLock(args: {
  */
 // Re-export depuis lib/rotation/sentinels.ts (source unique W3.3).
 export const SHARED_CURSOR_ACCOUNT_ID = SHARED_CURSOR_ACCOUNT_ID_FROM_SENTINELS;
+export const SHARED_DATA_CURSOR_ACCOUNT_ID = SHARED_DATA_CURSOR_ACCOUNT_ID_FROM_SENTINELS;
 
 /** Normalize a MediaSelectionRule (legacy string or structured object) into a config. */
 export function normalizeRule(rule: MediaSelectionRule | undefined): MediaSelectionRuleConfig {
@@ -611,469 +522,107 @@ export async function selectMediaAssetByMetadataValue(
 }
 
 /**
- * Select an asset using the set_sequence strategy.
+ * Sélection « dossier simple » — remplace l'ancienne stratégie theme_sequence
+ * (curseurs + anti-répétition multi-niveaux, décommissionnés au plan
+ * simplification 2026-08).
  *
  * @public — also used by generateSequenceRender for slot resolution at render time.
  *
- * Le mode est décidé par `resolveRotationMode` (colonne `rotationMode`), PAS par
- * la longueur de `setSequence` — cf. `@/lib/rotation/rotationMode`.
+ * Algo (zéro état, aucune écriture) :
+ *   1. `rotationMode = "none"` → null (sélection metadata/manuelle uniquement).
+ *   2. `pinnedSetTag` fourni (2e+ bloc de la même lib dans une génération,
+ *      ex. paire intro/outro filmée ensemble) → pioche directement dans ce
+ *      dossier, least-recently-used.
+ *   3. Sinon : découverte des dossiers éligibles (≥1 asset actif passant
+ *      accès/burn/tags/durée), ordonnés du moins récemment servi au plus
+ *      récent (cf. buildFolderDiscoveryQuery), puis pioche least-recently-used
+ *      dans le premier dossier qui a un asset éligible.
  *
- * **Auto mode** (`rotationMode = "auto"`, ou legacy `null` sans séquence) :
- *   1. Collect all distinct (category, setTag) groups eligible for this account.
- *      Eligible = global (no MediaAssetAccess rows) OR account-specific (has access entry for accountId).
- *      Without accountId = global-only pool.
- *   2. Exclude the lastUsedCategory group family (avoid consecutive same-category gens).
- *      If only one group exists, allow repeating it.
- *   3. Among candidates, pick the group with the oldest MAX per-account lastUsedAt
- *      (from MediaAssetUsage when accountId present, from MediaAsset.lastUsedAt otherwise).
- *   4. Within the chosen group, pick the asset with the oldest per-account lastUsedAt.
- *
- * **Override mode** (`rotationMode = "override"` avec une séquence non vide) :
- *   Uses the integer cursor into the explicit ordered list (legacy behaviour).
- *   Une séquence vide dégrade en auto plutôt que de ne rien servir.
- *
- * pinnedSetTag: if provided (2nd+ block sharing the same library in one generation),
- *   skip group discovery and pick from that specific group.
+ * L'anti-répétition découle du tri : servir un dossier rafraîchit son
+ * MAX(lastUsedAt) (claim au submit via advanceMediaUsageOnSubmit + usage au
+ * DONE via recordLibraryUsage) → il redescend dans la pile.
  */
-
-/**
- * Snapshot of the cursor state BEFORE it was advanced, enabling a conditional revert
- * if the render subsequently fails.  See revertLibraryCursors() in recordLibraryUsage.ts.
- */
-export type CursorRevertState = {
-  /** cursor value BEFORE advance (override mode) */
-  prevCursor: number;
-  /** cursor value WE WROTE (override mode) — revert condition: cursor still equals this */
-  claimedCursor: number;
-  /** lastUsedCategory BEFORE we wrote (auto mode) */
-  prevLastUsedCategory: string | null;
-  /** lastUsedCategory WE WROTE (auto mode) — revert condition: lastUsedCategory still equals this */
-  claimedLastUsedCategory: string | null;
-  /** lastUsedSetTag BEFORE we wrote (Phase 6 — closes CAS gap that could overwrite a concurrent setTag-only change) */
-  prevLastUsedSetTag: string | null;
-  /** lastUsedSetTag WE WROTE — revert condition: lastUsedSetTag still equals this */
-  claimedLastUsedSetTag: string | null;
-  /** accountId used as the cursor key (may be SHARED_CURSOR_ACCOUNT_ID for shared-scope libs) */
-  cursorAccountId: string;
-};
-
-export async function selectMediaAssetBySetSequence(
+export async function selectMediaAssetFromFolder(
   libraryId: string,
   accountId: string | undefined,
-  tagFilter?: string,          // kept for backward compat (ignored when ruleConfig provided)
-  pinnedSetTag?: string,
-  pinnedCategory?: string | null,
+  tagFilter?: string,          // legacy single-tag filter (ignored when ruleConfig provided)
+  pinnedSetTag?: string | null,
   ruleConfig?: MediaSelectionRuleConfig,
-  /** Cursor + MediaAssetUsage ordering key. Defaults to accountId.
+  /** MediaAssetUsage ordering key. Defaults to accountId.
    *  Set to SHARED_CURSOR_ACCOUNT_ID for shared-scope libraries so all accounts
-   *  advance the same cursor and serialize correctly on concurrent generations. */
-  cursorAccountId?: string,
-  /** When true, skip all cursor writes and return the asset that *would* be picked
-   *  without advancing the cursor.  Used by resolveLibraryPrefill so the page-load
-   *  preview no longer permanently advances the rotation. */
-  readOnly?: boolean,
-  /** Phase 4 gap fix : filtre les assets dont la durée est inférieure à
-   *  minDuration. NULL permis (tolérance pour les assets non probés). */
+   *  share the same recency state. */
+  usageAccountId?: string,
+  /** Filtre les assets dont la durée est inférieure à minDuration (NULL permis). */
   minDuration?: number,
-): Promise<{ id: string; url: string; filename: string; resolvedSetTag: string | null; resolvedCategory: string | null; prevCursorState?: CursorRevertState } | null> {
+): Promise<{ id: string; url: string; filename: string; resolvedSetTag: string | null } | null> {
   const library = await prisma.mediaLibrary.findUnique({
     where: { id: libraryId },
-    select: { setSequence: true, maxUsageCount: true, rotationScope: true, rotationMode: true },
+    select: { maxUsageCount: true, rotationScope: true, rotationMode: true },
   });
   if (!library) return null;
-  // `rotationMode` est le discriminant — plus `sequence.length`. Voir
-  // @/lib/rotation/rotationMode pour le pourquoi (une bibliothèque affichée
-  // « Auto » tournait en ordre fixe sur d'anciens setTags).
-  const { mode: rotationMode, sequence } = resolveRotationMode(library, "selectMediaAssetBySetSequence");
-  // rotationMode "none" → pas de rotation auto/override. Selection via metadata seulement.
-  if (rotationMode === "none") return null;
+  if (resolveRotationMode(library, "selectMediaAssetFromFolder").mode === "none") return null;
 
-  // effectiveCursorId: used for AccountLibraryCursor ops and MediaAssetUsage ordering.
-  // For per-account libraries this equals accountId; for shared libraries it is "__shared__".
-  const effectiveCursorId = cursorAccountId ?? accountId;
+  // Clé d'ancienneté usage : compte réel (per_account) ou sentinel __shared__.
+  const effectiveUsageId = usageAccountId ?? accountId;
 
-  // Burn-once filter — selon rotationScope :
-  // - per_account : par compte (utilise accountId réel)
-  // - shared      : global tous comptes confondus (utilise ma.usageCount)
+  // Burn-once — per_account : par compte réel ; shared : global (ma.usageCount).
   const isSharedScope = library.rotationScope === "shared";
   const burnAccountId = isSharedScope ? undefined : accountId;
   const burnFilter = buildBurnFilter(library.maxUsageCount ?? null, burnAccountId, minDuration);
 
-  // Build tag fragment: prefer structured ruleConfig, fall back to legacy tagFilter string
   const tagFrag: Prisma.Sql = ruleConfig
     ? buildTagFragment(ruleConfig)
     : tagFilter
       ? Prisma.sql`AND lower(ma.tags) ILIKE ${`%"${tagFilter.toLowerCase()}"%`}`
       : Prisma.sql``;
 
-  type AssetRow = { id: string; url: string; filename: string };
-
-  // Access filter for MediaAsset queries — always based on real accountId, NOT cursorAccountId.
-  // This ensures asset visibility (per-account access restrictions) is independent of the
-  // cursor strategy (shared vs per-account). W3.1 : avant, ce site OUBLIAIT le
-  // disabled=false guard → un asset disabled pouvait apparaître en groupe
-  // listing. Le helper buildAccessFilter le réintroduit systématiquement.
+  // Visibilité : toujours le compte réel (jamais la clé d'usage shared).
   const accessFilter: Prisma.Sql = buildAccessFilter(accountId);
 
-  /**
-   * Anti-répétition 3-niveaux (Phase 2, 2026-05-30) :
-   * - Si la lib a ≥2 catégories distinctes (incl. catégorie null pour les orphelins) →
-   *   on exclut la dernière catégorie utilisée pour favoriser l'alternance entre catégories.
-   * - Si la lib a 1 seule catégorie (peut être null) mais ≥2 setTags distincts →
-   *   on exclut le dernier setTag utilisé pour alterner entre packs.
-   * - Sinon (1 seul groupe) → tout est éligible, le moins utilisé sortira via pickFromGroup.
-   *
-   * `hasHistory` discrimine "jamais joué" (curseur vierge → pas d'exclusion) de
-   * "dernier joué = orphelin (null, null)" (curseur posé → exclusion réelle).
-   *
-   * Les barrières de config (max usage, burn-once, 1x par compte) restent appliquées
-   * AU SEIN du groupe via `burnFilter` côté pickFromGroup. Cette logique d'exclusion
-   * n'est qu'un round-robin doux pour éviter la répétition immédiate.
-   */
-  // W3.2 : délégation vers selectEligibleRotationGroups (exporté module-level)
-  // qui est aussi utilisé par DataEntry. Source unique pour la logique
-  // d'anti-répétition Media + Data — un changement de règle ne se propage
-  // plus dans 2 sites.
-  function selectEligibleGroups(
-    allGroups: Array<{ setTag: string | null; category: string | null }>,
-    lastCategory: string | null,
-    lastSetTag: string | null,
-    hasHistory: boolean,
-  ): Array<{ setTag: string | null; category: string | null }> {
-    return selectEligibleRotationGroups(allGroups, lastCategory, lastSetTag, hasHistory);
-  }
+  type AssetRow = { id: string; url: string; filename: string };
 
-  // Helper: pick one asset from a specific (setTag, category) group.
-  // Access filtering uses real accountId; usage ordering uses usageAccountId (may differ for shared).
-  // setTag=null + category=null = groupe orphelin (Phase 2).
-  async function pickFromGroup(setTag: string | null, category: string | null, usageAccountId?: string): Promise<AssetRow | null> {
+  // Pioche least-recently-used dans un dossier donné (setTag null = « (sans dossier) »).
+  async function pickFromFolder(setTag: string | null): Promise<AssetRow | null> {
     const setTagClause = setTag !== null
       ? Prisma.sql`AND ma."setTag" = ${setTag}`
       : Prisma.sql`AND ma."setTag" IS NULL`;
-    const categoryClause = category !== null
-      ? Prisma.sql`AND ma."category" = ${category}`
-      : Prisma.sql`AND ma."category" IS NULL`;
 
-    if (usageAccountId) {
+    if (effectiveUsageId) {
       const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
         SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
-        LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}
+        LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveUsageId}
         WHERE ma."libraryId" = ${libraryId}
-          AND ma."disabled" = false
           ${setTagClause}
-          ${categoryClause}
           ${tagFrag}
           ${accessFilter}
           ${burnFilter}
         ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
       return rows[0] ?? null;
-    } else {
-      const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
-        SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
-        WHERE ma."libraryId" = ${libraryId}
-          AND ma."disabled" = false
-          ${setTagClause}
-          ${categoryClause}
-          ${tagFrag}
-          AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
-          ${burnFilter}
-        ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
-      return rows[0] ?? null;
     }
-  }
-
-  // --- Pinned group (2nd+ block within same library group in one generation) ---
-  if (pinnedSetTag !== undefined) {
-    const row = await pickFromGroup(pinnedSetTag, pinnedCategory ?? null, effectiveCursorId);
-    return row ? { ...row, resolvedSetTag: pinnedSetTag, resolvedCategory: pinnedCategory ?? null } : null;
-  }
-
-  // --- Override mode: rotationMode="override" (+ séquence non vide) → use cursor ---
-  if (rotationMode === "override") {
-    if (effectiveCursorId) {
-      if (readOnly) {
-        // Read-only peek: read current cursor position without advancing or locking
-        const cursorRow = await prisma.accountLibraryCursor.findUnique({
-          where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
-          select: { cursor: true },
-        });
-        const current = cursorRow?.cursor ?? 0;
-        const selectedSetTag = sequence[current % sequence.length];
-        if (!selectedSetTag) return null;
-        const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
-          SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
-          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
-          WHERE ma."libraryId" = ${libraryId} AND ma."setTag" = ${selectedSetTag}
-            AND ma."disabled" = false
-            ${tagFrag}
-            ${accessFilter}
-            ${burnFilter}
-          ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
-        return rows[0] ? { ...rows[0], resolvedSetTag: selectedSetTag, resolvedCategory: null } : null;
-      }
-      // SELECT FOR UPDATE: advance cursor at prefill time so concurrent cron generations
-      // each claim a distinct position in the set list before any render finishes.
-      let selectedSetTag: string | undefined;
-      let prevCursorState: CursorRevertState | undefined;
-      await prisma.$transaction(async (tx) => {
-        // Ensure row exists before locking
-        await tx.accountLibraryCursor.upsert({
-          where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
-          update: {},
-          create: { accountId: effectiveCursorId, libraryId, cursor: 0 },
-        });
-        const locked = await tx.$queryRaw<{ cursor: number; lastUsedCategory: string | null; lastUsedSetTag: string | null }[]>(
-          Prisma.sql`SELECT cursor, "lastUsedCategory", "lastUsedSetTag" FROM "AccountLibraryCursor" WHERE "accountId" = ${effectiveCursorId} AND "libraryId" = ${libraryId} FOR UPDATE`,
-        );
-        const current = locked[0]?.cursor ?? 0;
-        const prevLastUsedCat = locked[0]?.lastUsedCategory ?? null;
-        const prevLastUsedSetTag = locked[0]?.lastUsedSetTag ?? null;
-        selectedSetTag = sequence[current % sequence.length];
-        if (!selectedSetTag) return;
-        const nextCursor = (current + 1) % sequence.length;
-        // Snapshot BEFORE writing so we can conditionally revert on render failure.
-        // Override mode never touches lastUsedCategory, so claimedLastUsedCategory = prevLastUsedCat.
-        // Phase 6: also snapshot lastUsedSetTag (claimed = selectedSetTag).
-        prevCursorState = { prevCursor: current, claimedCursor: nextCursor, prevLastUsedCategory: prevLastUsedCat, claimedLastUsedCategory: prevLastUsedCat, prevLastUsedSetTag, claimedLastUsedSetTag: selectedSetTag, cursorAccountId: effectiveCursorId };
-        await tx.accountLibraryCursor.update({
-          where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
-          data: { cursor: nextCursor, lastUsedSetTag: selectedSetTag, lastAdvancedAt: new Date() },
-        });
-      });
-      if (!selectedSetTag) return null;
-      // Asset selection outside the transaction — set position is already committed
-      const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
-        SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
-        LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
-        WHERE ma."libraryId" = ${libraryId} AND ma."setTag" = ${selectedSetTag}
-          AND ma."disabled" = false
-          ${tagFrag}
-          ${accessFilter}
-          ${burnFilter}
-        ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
-      const row = rows[0] ?? null;
-      if (!row) {
-        // No eligible assets for this setTag (all disabled or access-restricted).
-        // Cursor was already advanced to nextCursor — leave it there so the next generation
-        // tries the following position in the sequence. The disabled position will naturally
-        // re-appear after a full cycle and be skipped again if still disabled.
-        console.warn(`[selectMediaAssetBySetSequence] No eligible assets for setTag=${selectedSetTag} library=${libraryId} — skipping to next cursor position`);
-      }
-      return row ? { ...row, resolvedSetTag: selectedSetTag, resolvedCategory: null, prevCursorState } : null;
-    } else {
-      // No accountId (admin preview): position 0, no lock needed
-      const selectedSetTag = sequence[0];
-      if (!selectedSetTag) return null;
-      const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
-        SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
-        WHERE ma."libraryId" = ${libraryId} AND ma."setTag" = ${selectedSetTag}
-          AND ma."disabled" = false
-          ${tagFrag}
-          AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
-          ${burnFilter}
-        ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
-      const row = rows[0] ?? null;
-      return row ? { ...row, resolvedSetTag: selectedSetTag, resolvedCategory: null } : null;
-    }
-  }
-
-  // --- Auto mode: group by (category, setTag), exclude last used category ---
-  type GroupRow = { setTag: string | null; category: string | null; has_unused?: boolean };
-
-  if (effectiveCursorId) {
-    if (readOnly) {
-      // Read-only: peek at cursor without locking, run group discovery outside tx.
-      // Phase 2 (orphelins) — on lit aussi lastUsedSetTag + lastAdvancedAt pour
-      // discriminer "jamais joué" (lastAdvancedAt null) de "dernier joué = orphelin"
-      // (lastAdvancedAt non null + lastUsedCategory null + lastUsedSetTag null).
-      const cursorRow = await prisma.accountLibraryCursor.findUnique({
-        where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
-        select: { lastUsedCategory: true, lastUsedSetTag: true, lastAdvancedAt: true },
-      });
-      const currentCategory = cursorRow?.lastUsedCategory ?? null;
-      const currentSetTag = cursorRow?.lastUsedSetTag ?? null;
-      const hasHistory = hasRotationHistory(cursorRow);
-      // Phase 2 (orphelins) — la clause `(setTag IS NOT NULL OR category IS NOT NULL)`
-      // a été retirée : les assets totalement orphelins forment désormais un groupe
-      // (null, null) à part entière, traité comme une catégorie normale.
-      const allGroupsRo: GroupRow[] = await prisma.$queryRaw(
-        buildGroupDiscoveryQuery({ libraryId, usageAccountId: effectiveCursorId, accessFilter, burnFilter, tagFrag }),
-      );
-      if (allGroupsRo.length === 0) {
-        const fallbackRows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
-          SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
-          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
-          WHERE ma."libraryId" = ${libraryId}
-            AND ma."disabled" = false
-            ${tagFrag}
-            ${accessFilter}
-            ${burnFilter}
-          ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
-        return fallbackRows[0] ? { ...fallbackRows[0], resolvedSetTag: null, resolvedCategory: null } : null;
-      }
-      // Le neuf d'abord, puis anti-répétition à l'intérieur de ce sous-ensemble.
-      const poolRo = preferGroupsWithUnusedAssets(allGroupsRo);
-      const eligibleRo = selectEligibleGroups(poolRo, currentCategory, currentSetTag, hasHistory);
-      const candidatesRo = eligibleRo.length > 0 ? eligibleRo : poolRo;
-      for (const candidate of candidatesRo) {
-        const row = await pickFromGroup(candidate.setTag, candidate.category, effectiveCursorId);
-        if (row) return { ...row, resolvedSetTag: candidate.setTag, resolvedCategory: candidate.category };
-      }
-      return null;
-    }
-    // SELECT FOR UPDATE: write lastUsedCategory at prefill time so concurrent cron
-    // generations block on the lock, then read the updated category and pick a different
-    // family — preventing duplicate content across back-to-back auto generations.
-    let resultRow: AssetRow | null = null;
-    let resultSetTag: string | null = null;
-    let resultCategory: string | null = null;
-    let prevCursorState: CursorRevertState | undefined;
-
-    await prisma.$transaction(async (tx) => {
-      // Ensure cursor row exists before locking
-      await tx.accountLibraryCursor.upsert({
-        where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
-        update: {},
-        create: { accountId: effectiveCursorId, libraryId, cursor: 0 },
-      });
-      // Lock cursor row and read its rotation state atomically.
-      // Phase 2 — on lit lastUsedSetTag + lastAdvancedAt en plus pour
-      // pouvoir appliquer l'anti-répétition 3-niveaux et discriminer
-      // "jamais joué" de "dernier joué = orphelin".
-      const locked = await tx.$queryRaw<{ lastUsedCategory: string | null; lastUsedSetTag: string | null; lastAdvancedAt: Date | null }[]>(
-        Prisma.sql`SELECT "lastUsedCategory", "lastUsedSetTag", "lastAdvancedAt" FROM "AccountLibraryCursor" WHERE "accountId" = ${effectiveCursorId} AND "libraryId" = ${libraryId} FOR UPDATE`,
-      );
-      const lockedCategory = locked[0]?.lastUsedCategory ?? null;
-      const lockedSetTag = locked[0]?.lastUsedSetTag ?? null;
-      const hasHistory = hasRotationHistory(locked[0]);
-
-      // Group discovery inside the transaction.
-      // Primary sort: category-level staleness (MAX last_used across all sets in the category)
-      // → ensures categories rotate round-robin before cycling within a category.
-      // Secondary sort: set-level staleness (last_used of this specific group)
-      // → within a category, oldest set comes first.
-      // Tertiary: group creation date (MIN createdAt within the group)
-      // → among never-used groups, follow upload order (oldest first).
-      // Quaternary: stable alphabetical tiebreaker (setTag then category).
-      // Usage ordering uses effectiveCursorId; access filter uses real accountId.
-      // Phase 2 — la clause `(setTag IS NOT NULL OR category IS NOT NULL)` a été retirée :
-      // les assets totalement orphelins forment désormais un groupe (null, null) éligible.
-      const allGroups: GroupRow[] = await tx.$queryRaw(
-        buildGroupDiscoveryQuery({ libraryId, usageAccountId: effectiveCursorId, accessFilter, burnFilter, tagFrag }),
-      );
-
-      if (allGroups.length === 0) return; // handled by fallback below
-
-      // Le neuf d'abord, puis anti-répétition à l'intérieur de ce sous-ensemble.
-      const pool = preferGroupsWithUnusedAssets(allGroups);
-      const eligible = selectEligibleGroups(pool, lockedCategory, lockedSetTag, hasHistory);
-      const candidates = eligible.length > 0 ? eligible : pool;
-
-      for (const candidate of candidates) {
-        // Inline pickFromGroup using the transaction client
-        const setTagClause = candidate.setTag !== null
-          ? Prisma.sql`AND ma."setTag" = ${candidate.setTag}`
-          : Prisma.sql`AND ma."setTag" IS NULL`;
-        const categoryClause = candidate.category !== null
-          ? Prisma.sql`AND ma."category" = ${candidate.category}`
-          : Prisma.sql`AND ma."category" IS NULL`;
-        const rows = await tx.$queryRaw<AssetRow[]>(Prisma.sql`
-          SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
-          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
-          WHERE ma."libraryId" = ${libraryId}
-            AND ma."disabled" = false
-            ${setTagClause}
-            ${categoryClause}
-            ${tagFrag}
-            ${accessFilter}
-            ${burnFilter}
-          ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
-        if (rows[0]) {
-          resultRow = rows[0];
-          resultSetTag = candidate.setTag;
-          resultCategory = candidate.category;
-          // Snapshot BEFORE writing so we can conditionally revert on render failure.
-          // Phase 6 : also snapshot lastUsedSetTag so the CAS revert can verify nothing
-          // else (e.g. a concurrent prefill that only updated lastUsedSetTag) has changed
-          // the row between our claim and the revert.
-          prevCursorState = { prevCursor: 0, claimedCursor: 0, prevLastUsedCategory: lockedCategory, claimedLastUsedCategory: candidate.category, prevLastUsedSetTag: lockedSetTag, claimedLastUsedSetTag: candidate.setTag, cursorAccountId: effectiveCursorId };
-          // Write lastUsedCategory immediately — the next generator waiting on FOR UPDATE
-          // will see this value and exclude this category family.
-          await tx.accountLibraryCursor.update({
-            where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
-            data: {
-              lastUsedSetTag: candidate.setTag,
-              lastUsedCategory: candidate.category,
-              lastAdvancedAt: new Date(),
-            },
-          });
-          return; // commit
-        }
-      }
-    });
-
-    if (resultRow) {
-      return { ...(resultRow as AssetRow), resolvedSetTag: resultSetTag, resolvedCategory: resultCategory, prevCursorState };
-    }
-    // allGroups was empty — fallback: any asset from eligible pool.
-    // Phase W2.6 : on stamp `lastAdvancedAt=now` même dans le fallback pour
-    // marquer la rotation comme "history connue". Sans ça, après un full
-    // burn-once cycle (tous assets épuisés), le cursor reste avec
-    // lastAdvancedAt=null → toutes les générations suivantes voient
-    // hasHistory=false et l'anti-repetition catégorie ne se déclenche plus
-    // jamais (finding rotation-9).
-    const fallbackRows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
-      SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
-      LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
-      WHERE ma."libraryId" = ${libraryId}
-        AND ma."disabled" = false
-        ${tagFrag}
-        ${accessFilter}
-        ${burnFilter}
-      ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
-    if (fallbackRows[0]) {
-      try {
-        await prisma.accountLibraryCursor.upsert({
-          where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
-          update: { lastAdvancedAt: new Date() },
-          create: { accountId: effectiveCursorId, libraryId, cursor: 0, lastAdvancedAt: new Date() },
-        });
-      } catch (err) {
-        console.warn(`[selectMediaAssetBySetSequence] fallback lastAdvancedAt stamp failed lib=${libraryId}:`, err);
-      }
-    }
-    return fallbackRows[0] ? { ...fallbackRows[0], resolvedSetTag: null, resolvedCategory: null } : null;
-  }
-
-  // No accountId (admin preview): no lock, no cursor writes, global pool only.
-  // Same two-level sort as the accountId path: category-level staleness first, set-level second.
-  // Phase 2 — la clause `(setTag IS NOT NULL OR category IS NOT NULL)` a été retirée :
-  // les assets totalement orphelins forment désormais un groupe (null, null) éligible.
-  // Ce site divergeait des deux autres : requête non aliasée, sans `tagFrag` NI
-  // `burnFilter`. Le helper le réaligne (`accessFilter` sans compte se limite
-  // déjà aux assets non restreints).
-  const allGroups: GroupRow[] = await prisma.$queryRaw(
-    buildGroupDiscoveryQuery({ libraryId, accessFilter, burnFilter, tagFrag }),
-  );
-
-  if (allGroups.length === 0) {
     const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
       SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
       WHERE ma."libraryId" = ${libraryId}
-        AND ma."disabled" = false
+        ${setTagClause}
         ${tagFrag}
-        AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+        ${accessFilter}
+        ${burnFilter}
       ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
-    return rows[0] ? { ...rows[0], resolvedSetTag: null, resolvedCategory: null } : null;
+    return rows[0] ?? null;
   }
 
-  // No category exclusion without accountId (no per-account cursor).
-  // Le neuf reste prioritaire (ordonné par la requête, et resserré ici).
-  for (const candidate of preferGroupsWithUnusedAssets(allGroups)) {
-    const row = await pickFromGroup(candidate.setTag, candidate.category);
-    if (row) {
-      return { ...row, resolvedSetTag: candidate.setTag, resolvedCategory: candidate.category };
-    }
+  // --- Dossier épinglé (2e+ bloc de la même lib dans une génération) ---
+  if (pinnedSetTag !== undefined) {
+    const row = await pickFromFolder(pinnedSetTag);
+    return row ? { ...row, resolvedSetTag: pinnedSetTag } : null;
+  }
+
+  // --- Découverte + pioche dans le dossier le moins récemment servi ---
+  const folders = await prisma.$queryRaw<{ setTag: string | null }[]>(
+    buildFolderDiscoveryQuery({ libraryId, usageAccountId: effectiveUsageId, accessFilter, burnFilter, tagFrag }),
+  );
+  for (const folder of folders) {
+    const row = await pickFromFolder(folder.setTag);
+    if (row) return { ...row, resolvedSetTag: folder.setTag };
   }
   return null;
 }
@@ -1096,9 +645,6 @@ export async function resolveLibraryPrefill(
     dataSuggestion: null,
     setSequencedLibraryIds: [],
     usedSetTagByLibrary: {},
-    usedCategoryByLibrary: {},
-    prevCursorStateByLibrary: {},
-    prevDataEntryState: undefined,
     prevAudioUsageState: undefined,
   };
 
@@ -1206,19 +752,16 @@ export async function resolveLibraryPrefill(
 
     await Promise.all(
       Array.from(groups.entries()).map(async ([libId, blocks]) => {
-        let pinnedSetTag: string | undefined = undefined;
-        let pinnedCategory: string | null | undefined = undefined;
+        let pinnedSetTag: string | null | undefined = undefined;
         for (const b of blocks) {
           const rule = normalizeRule(b.selectionRule);
-          const suggestion = await selectMediaAssetBySetSequence(
+          const suggestion = await selectMediaAssetFromFolder(
             libId,
             effectiveAccountId(libId),
             undefined,
             pinnedSetTag,
-            pinnedCategory,
             rule,
             effectiveCursorAccountId(libId),
-            true,
             (b as { minDuration?: number }).minDuration,
           );
           if (suggestion) {
@@ -1228,16 +771,9 @@ export async function resolveLibraryPrefill(
               filename: suggestion.filename,
             };
             if (pinnedSetTag === undefined) {
+              pinnedSetTag = suggestion.resolvedSetTag;
               if (suggestion.resolvedSetTag) {
-                pinnedSetTag = suggestion.resolvedSetTag;
-                pinnedCategory = suggestion.resolvedCategory;
                 result.usedSetTagByLibrary![libId] = suggestion.resolvedSetTag;
-              }
-              if (suggestion.resolvedCategory != null) {
-                result.usedCategoryByLibrary![libId] = suggestion.resolvedCategory;
-              }
-              if (suggestion.prevCursorState) {
-                result.prevCursorStateByLibrary![libId] = suggestion.prevCursorState;
               }
             }
           }
@@ -1287,21 +823,18 @@ export async function resolveLibraryPrefill(
     }
     await Promise.all(
       Array.from(groups.entries()).map(async ([libId, slots]) => {
-        let pinnedSetTag: string | undefined = undefined;
-        let pinnedCategory: string | null | undefined = undefined;
+        let pinnedSetTag: string | null | undefined = undefined;
         for (const s of slots) {
           const rule = normalizeRule(s.selectionRule);
           // Phase 4 : passe slot.maxDuration comme minimum requis pour l'asset.
           const slotMinDuration = s.maxDuration && s.maxDuration > 0 ? s.maxDuration : undefined;
-          const suggestion = await selectMediaAssetBySetSequence(
+          const suggestion = await selectMediaAssetFromFolder(
             libId,
             effectiveAccountId(libId),
             undefined,
             pinnedSetTag,
-            pinnedCategory,
             rule,
             effectiveCursorAccountId(libId),
-            true,
             slotMinDuration,
           );
           if (suggestion) {
@@ -1311,16 +844,9 @@ export async function resolveLibraryPrefill(
               filename: suggestion.filename,
             };
             if (pinnedSetTag === undefined) {
+              pinnedSetTag = suggestion.resolvedSetTag;
               if (suggestion.resolvedSetTag) {
-                pinnedSetTag = suggestion.resolvedSetTag;
-                pinnedCategory = suggestion.resolvedCategory;
                 result.usedSetTagByLibrary![libId] = suggestion.resolvedSetTag;
-              }
-              if (suggestion.resolvedCategory != null) {
-                result.usedCategoryByLibrary![libId] = suggestion.resolvedCategory;
-              }
-              if (suggestion.prevCursorState) {
-                result.prevCursorStateByLibrary![libId] = suggestion.prevCursorState;
               }
             }
           }
@@ -1418,472 +944,187 @@ export async function resolveLibraryPrefill(
   }
 
   // --- Data library ---
-  if (template.contentLibrary?.dataCampaignId) {
-    // Phase 1.2 + Phase 3.B — load cursor state to enable category anti-repetition.
-    // Applies to both "per_account" and "shared" rotationScope.
-    // For shared scope, the cursor is keyed by SHARED_DATA_CURSOR_ACCOUNT_ID.
-    let prevCursorState: { lastUsedSetTag: string | null; lastUsedCategory: string | null; hasHistory: boolean } | undefined;
-    const campaignWithLib = await prisma.dataCampaign.findUnique({
-      where: { id: template.contentLibrary.dataCampaignId },
-      select: { libraryId: true, library: { select: { rotationScope: true } } },
-    });
-    if (campaignWithLib) {
-      const scope = campaignWithLib.library.rotationScope;
-      // Determine the effective cursor account ID: shared libs use a global synthetic key.
-      const cursorAccountId =
-        scope === "shared"
-          ? SHARED_DATA_CURSOR_ACCOUNT_ID
-          : accountId; // per_account: only load when accountId is known
-      if (cursorAccountId) {
-        const cursorRow = await prisma.accountDataLibraryCursor.findUnique({
-          where: { accountId_libraryId: { accountId: cursorAccountId, libraryId: campaignWithLib.libraryId } },
-          select: { lastUsedSetTag: true, lastUsedCategory: true, lastAdvancedAt: true },
-        });
-        prevCursorState = {
-          lastUsedSetTag: cursorRow?.lastUsedSetTag ?? null,
-          lastUsedCategory: cursorRow?.lastUsedCategory ?? null,
-          hasHistory: cursorRow?.lastAdvancedAt != null,
-        };
-      }
-    }
-
-    // Phase 8.M1 : readOnly=true → ne pose plus de claim DataEntryUsage(usageCount=0)
-    // ni n'update usedInCycle au SSR. Si l'user abandonne la page, aucun état n'est
-    // laissé en DB. Le claim définitif (atomique avec FOR UPDATE) se fait au submit
-    // via advanceDataEntryClaimOnSubmit appelée depuis POST /api/renders. Symétrique
-    // avec selectMediaAssetBySetSequence(..., readOnly=true).
-    const dataSuggestion = await selectDataEntry(
-      template.contentLibrary.dataCampaignId,
-      template.contentLibrary.dataSelectionRule,
-      accountId,
-      prevCursorState,
-      true, // readOnly
-    );
-    if (dataSuggestion) {
-      result.dataSuggestion = {
-        entryId: dataSuggestion.entryId,
-        fields: dataSuggestion.fields,
-        resolvedSetTag: dataSuggestion.resolvedSetTag,
-        resolvedCategory: dataSuggestion.resolvedCategory,
-      };
-      if (dataSuggestion.claimState) {
-        result.prevDataEntryState = dataSuggestion.claimState;
-      }
-    }
-  }
-
-  return result;
-}
-
-/**
- * Advances AccountLibraryCursor for all set-sequenced libraries at form submission time.
- * Called from POST /api/renders so the cursor only moves when the user actually submits,
- * not when they open the generate page.
- *
- * For override mode libraries, the advance reads the CURRENT cursor position (not the
- * value suggested at prefill time) to handle any concurrent submissions correctly.
- * For auto mode libraries, the submitted category/setTag (from the read-only prefill) is
- * trusted and written as lastUsedCategory.
- */
-export async function advanceLibraryCursorsOnSubmit(
-  setSequencedLibraryIds: string[],
-  submittedSetTagByLibrary: Record<string, string>,
-  submittedCategoryByLibrary: Record<string, string>,
-  accountId: string,
-): Promise<{
-  prevCursorStateByLibrary: Record<string, CursorRevertState>;
-  usedSetTagByLibrary: Record<string, string>;
-  usedCategoryByLibrary: Record<string, string>;
-}> {
-  const result = {
-    prevCursorStateByLibrary: {} as Record<string, CursorRevertState>,
-    usedSetTagByLibrary: { ...submittedSetTagByLibrary },
-    usedCategoryByLibrary: { ...submittedCategoryByLibrary },
-  };
-
-  if (!setSequencedLibraryIds.length) return result;
-
-  const libs = await prisma.mediaLibrary.findMany({
-    where: { id: { in: setSequencedLibraryIds } },
-    select: { id: true, setSequence: true, rotationScope: true, rotationMode: true },
-  });
-
-  // W5.5 / rotation-11 : warn si certaines libs ne sont plus en base (deleted
-  // entre prefill et submit). Les cursors orphelins du payload sont skipped
-  // silencieusement par le for-of, mais on log pour permettre l'investigation
-  // si un Render finit avec usedAssets référençant des libs inexistantes.
-  if (libs.length < setSequencedLibraryIds.length) {
-    const foundIds = new Set(libs.map((l) => l.id));
-    const missing = setSequencedLibraryIds.filter((id) => !foundIds.has(id));
-    console.warn(
-      `[advanceLibraryCursorsOnSubmit] ${missing.length} libraryId(s) absente(s) en base : ${missing.join(", ")}`,
-    );
-  }
-
-  for (const lib of libs) {
-    const cursorAccountId = lib.rotationScope === "shared" ? SHARED_CURSOR_ACCOUNT_ID : accountId;
-    // Même discriminant que `selectMediaAssetBySetSequence`. Indispensable :
-    // sinon le submit continuerait d'avancer le curseur numérique sur une
-    // bibliothèque passée en auto, et d'écraser `lastUsedSetTag` avec un setTag
-    // issu de l'ancienne séquence.
-    const { mode: rotationMode, sequence } = resolveRotationMode(lib, "advanceLibraryCursorsOnSubmit");
-
-    await prisma.$transaction(async (tx) => {
-      // Ensure cursor row exists before locking
-      await tx.accountLibraryCursor.upsert({
-        where: { accountId_libraryId: { accountId: cursorAccountId, libraryId: lib.id } },
-        update: {},
-        create: { accountId: cursorAccountId, libraryId: lib.id, cursor: 0 },
+  // Phase 4 : résolution par libraryId direct. Les templates existants portent
+  // encore `dataCampaignId` — on le résout en libraryId tant que la table
+  // DataCampaign existe (drop N+1 : script one-shot de mise à jour des
+  // TemplateJSON, cf. plan simplification).
+  if (template.contentLibrary?.dataLibraryId || template.contentLibrary?.dataCampaignId) {
+    let dataLibraryId: string | undefined = template.contentLibrary.dataLibraryId;
+    if (!dataLibraryId && template.contentLibrary.dataCampaignId) {
+      const campaign = await prisma.dataCampaign.findUnique({
+        where: { id: template.contentLibrary.dataCampaignId },
+        select: { libraryId: true },
       });
-
-      if (rotationMode === "override") {
-        // Override mode: advance cursor from its CURRENT position (handles concurrency)
-        const locked = await tx.$queryRaw<{ cursor: number; lastUsedCategory: string | null; lastUsedSetTag: string | null }[]>(
-          Prisma.sql`SELECT cursor, "lastUsedCategory", "lastUsedSetTag" FROM "AccountLibraryCursor" WHERE "accountId" = ${cursorAccountId} AND "libraryId" = ${lib.id} FOR UPDATE`,
-        );
-        const current = locked[0]?.cursor ?? 0;
-        const prevLastUsedCat = locked[0]?.lastUsedCategory ?? null;
-        const prevLastUsedSetTag = locked[0]?.lastUsedSetTag ?? null;
-        const selectedSetTag = sequence[current % sequence.length];
-        if (!selectedSetTag) return;
-        const nextCursor = (current + 1) % sequence.length;
-        result.prevCursorStateByLibrary[lib.id] = {
-          prevCursor: current,
-          claimedCursor: nextCursor,
-          prevLastUsedCategory: prevLastUsedCat,
-          claimedLastUsedCategory: prevLastUsedCat,
-          prevLastUsedSetTag,
-          claimedLastUsedSetTag: selectedSetTag,
-          cursorAccountId,
+      dataLibraryId = campaign?.libraryId;
+    }
+    if (dataLibraryId) {
+      // Read-only par nature : aucune écriture au SSR. Le claim d'usage
+      // (advanceDataUsageOnSubmit) se fait à POST /api/renders.
+      const dataSuggestion = await selectDataEntry(
+        dataLibraryId,
+        template.contentLibrary.dataSelectionRule,
+        accountId,
+      );
+      if (dataSuggestion) {
+        result.dataSuggestion = {
+          entryId: dataSuggestion.entryId,
+          fields: dataSuggestion.fields,
+          resolvedSetTag: dataSuggestion.resolvedSetTag,
         };
-        result.usedSetTagByLibrary[lib.id] = selectedSetTag;
-        await tx.accountLibraryCursor.update({
-          where: { accountId_libraryId: { accountId: cursorAccountId, libraryId: lib.id } },
-          data: { cursor: nextCursor, lastUsedSetTag: selectedSetTag, lastAdvancedAt: new Date() },
-        });
-      } else {
-        // Auto mode: trust submitted category/setTag from the read-only prefill.
-        //
-        // Pas d'early return quand les deux sont null : c'est le groupe orphelin
-        // `(null, null)`, un groupe de rotation de plein droit depuis Phase 2. Ne
-        // rien écrire avait deux effets : `lastAdvancedAt` restait null (donc
-        // `hasHistory` false → anti-répétition jamais armée), et le curseur
-        // gardait l'ANCIEN groupe en `lastUsedCategory` → l'orphelin pouvait
-        // ressortir à la génération suivante. C'est le pendant Media du fix C3
-        // déjà appliqué à `advanceDataLibraryCursorOnSubmit`.
-        const submittedCategory = submittedCategoryByLibrary[lib.id] ?? null;
-        const submittedSetTag = submittedSetTagByLibrary[lib.id] ?? null;
-
-        const locked = await tx.$queryRaw<{ lastUsedCategory: string | null; lastUsedSetTag: string | null }[]>(
-          Prisma.sql`SELECT "lastUsedCategory", "lastUsedSetTag" FROM "AccountLibraryCursor" WHERE "accountId" = ${cursorAccountId} AND "libraryId" = ${lib.id} FOR UPDATE`,
-        );
-        const prevLastUsedCategory = locked[0]?.lastUsedCategory ?? null;
-        const prevLastUsedSetTag = locked[0]?.lastUsedSetTag ?? null;
-        result.prevCursorStateByLibrary[lib.id] = {
-          prevCursor: 0,
-          claimedCursor: 0,
-          prevLastUsedCategory,
-          claimedLastUsedCategory: submittedCategory,
-          prevLastUsedSetTag,
-          claimedLastUsedSetTag: submittedSetTag,
-          cursorAccountId,
-        };
-        await tx.accountLibraryCursor.update({
-          where: { accountId_libraryId: { accountId: cursorAccountId, libraryId: lib.id } },
-          data: {
-            lastUsedSetTag: submittedSetTag,
-            lastUsedCategory: submittedCategory,
-            lastAdvancedAt: new Date(),
-          },
-        });
       }
-    });
+    }
   }
 
   return result;
 }
 
 /**
- * Advances AccountDataLibraryCursor for a DataLibrary at form submission time.
- * Mirror of advanceLibraryCursorsOnSubmit but for DataLibrary cursors.
+ * Claim d'usage des assets vidéo au moment du submit (POST /api/renders).
  *
- * Phase 3.B: supports both "per_account" and "shared" rotationScope.
- *   - per_account: cursor key = real accountId
- *   - shared: cursor key = SHARED_DATA_CURSOR_ACCOUNT_ID (one global cursor)
+ * Remplace l'avance de curseur (AccountLibraryCursor, décommissionné) : on
+ * stampe `MediaAssetUsage.lastUsedAt = now` pour chaque asset servi, sous la
+ * clé d'usage de la bibliothèque (compte réel en per_account, sentinel
+ * `__shared__` en shared). C'est ce stamp qui fait redescendre le dossier dans
+ * la pile du tirage — deux générations rapprochées ne resservent donc pas le
+ * même dossier, même avant le DONE du premier render.
  *
- * Fix C3: always writes lastAdvancedAt even when submittedSetTag and
- * submittedCategory are both null (orphan-group libs). Without this, the
- * `hasHistory = lastAdvancedAt != null` check in selectDataEntry stays false
- * forever → selectEligibleDataGroups returns ALL groups every time → same
- * orphan entry picked repeatedly (rotation broken for all-orphan libs).
+ * `usageCount` n'est PAS incrémenté ici — il l'est au DONE par
+ * recordLibraryUsage (même contrat que advanceAudioUsageOnSubmit).
  *
- * Returns prevState (lastUsedSetTag + lastUsedCategory before the write) so the
- * caller can conditionally revert if the Render creation fails.
- * Also returns the effectiveCursorId used so the caller can store it in the
- * snapshot for the revert path.
+ * Retourne un snapshot par asset pour le revert conditionnel (render failure) :
+ * même sémantique CAS que le revert audio dans revertAdvancesOnFailure.
  */
-export async function advanceDataLibraryCursorOnSubmit(
-  dataLibraryId: string,
-  submittedSetTag: string | null,
-  submittedCategory: string | null,
+export type MediaUsageClaimState = {
+  assetId: string;
+  accountId: string;
+  /** lastUsedAt avant notre écriture (null = la ligne n'existait pas). */
+  prevLastUsedAt: string | null;
+  /** lastUsedAt que NOUS avons écrit — condition de revert. */
+  claimedLastUsedAt: string;
+};
+
+export async function advanceMediaUsageOnSubmit(
+  videoAssetIds: string[],
   accountId: string,
-): Promise<{
-  prevState: { lastUsedSetTag: string | null; lastUsedCategory: string | null } | null;
-  effectiveCursorId: string | null;
-}> {
-  // Load library to check rotationScope
-  const library = await prisma.dataLibrary.findUnique({
-    where: { id: dataLibraryId },
-    select: { rotationScope: true },
+): Promise<{ prevMediaUsageStates: MediaUsageClaimState[] }> {
+  const states: MediaUsageClaimState[] = [];
+  if (videoAssetIds.length === 0) return { prevMediaUsageStates: states };
+
+  // Résout la clé d'usage par asset selon le scope de SA bibliothèque.
+  const assets = await prisma.mediaAsset.findMany({
+    where: { id: { in: videoAssetIds } },
+    select: { id: true, library: { select: { rotationScope: true } } },
   });
-  if (!library) return { prevState: null, effectiveCursorId: null };
+  const now = new Date();
 
-  // Phase 3.B: compute effective cursor account ID based on scope
-  const effectiveCursorId =
-    library.rotationScope === "shared" ? SHARED_DATA_CURSOR_ACCOUNT_ID : accountId;
-
-  // Fix C3: removed the early return for (submittedSetTag === null && submittedCategory === null).
-  // We MUST write lastAdvancedAt even for orphan-group libs so that hasHistory becomes true
-  // after the first generation. Without this, selectEligibleDataGroups returns all groups
-  // on every call (no history = no exclusion) → same entry repeatedly.
-
-  // Code-reviewer C2 fix : retourner prevState UNIQUEMENT si la transaction
-  // a effectivement commit. Avant : prevState était `let` en dehors, donc une
-  // tx qui rejette après l'affectation mais avant le commit aurait laissé
-  // prevState avec une valeur DB qu'on n'a en réalité jamais écrite — causant
-  // un revert "fantôme" plus tard (no-op via CAS mais log trompeur).
-  // Maintenant : prevState est retourné par le callback, donc seulement
-  // si le commit réussit. Si la tx throw, l'erreur remonte et l'appelant
-  // ne stocke pas de revert state.
-  const prevState = await prisma.$transaction(async (tx) => {
-    // Ensure cursor row exists before locking
-    await tx.accountDataLibraryCursor.upsert({
-      where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId: dataLibraryId } },
-      update: {},
-      create: { accountId: effectiveCursorId, libraryId: dataLibraryId },
-    });
-
-    // Lock cursor row and snapshot current state
-    const locked = await tx.$queryRaw<{ lastUsedSetTag: string | null; lastUsedCategory: string | null }[]>(
-      Prisma.sql`SELECT "lastUsedSetTag", "lastUsedCategory" FROM "AccountDataLibraryCursor" WHERE "accountId" = ${effectiveCursorId} AND "libraryId" = ${dataLibraryId} FOR UPDATE`,
-    );
-    const snapshot = {
-      lastUsedSetTag: locked[0]?.lastUsedSetTag ?? null,
-      lastUsedCategory: locked[0]?.lastUsedCategory ?? null,
-    };
-
-    await tx.accountDataLibraryCursor.update({
-      where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId: dataLibraryId } },
-      data: {
-        lastUsedSetTag: submittedSetTag,
-        lastUsedCategory: submittedCategory,
-        lastAdvancedAt: new Date(),
-      },
-    });
-
-    return snapshot;
-  });
-
-  return { prevState, effectiveCursorId };
+  for (const asset of assets) {
+    const usageAccountId =
+      asset.library.rotationScope === "shared" ? SHARED_CURSOR_ACCOUNT_ID : accountId;
+    try {
+      let prevLastUsedAt: string | null = null;
+      await prisma.$transaction(async (tx) => {
+        const prev = await tx.mediaAssetUsage.findUnique({
+          where: { assetId_accountId: { assetId: asset.id, accountId: usageAccountId } },
+          select: { lastUsedAt: true },
+        });
+        prevLastUsedAt = prev?.lastUsedAt?.toISOString() ?? null;
+        await tx.mediaAssetUsage.upsert({
+          where: { assetId_accountId: { assetId: asset.id, accountId: usageAccountId } },
+          update: { lastUsedAt: now },
+          create: { assetId: asset.id, accountId: usageAccountId, usageCount: 0, lastUsedAt: now },
+        });
+      });
+      states.push({
+        assetId: asset.id,
+        accountId: usageAccountId,
+        prevLastUsedAt,
+        claimedLastUsedAt: now.toISOString(),
+      });
+    } catch (err) {
+      console.warn(`[advanceMediaUsageOnSubmit] claim failed asset=${asset.id}:`, err);
+    }
+  }
+  return { prevMediaUsageStates: states };
 }
 
 /**
- * Phase 8.M1 — Claim DataEntry atomique au moment du submit.
+ * Claim d'usage DataEntry au moment du submit (POST /api/renders).
  *
- * Avant Phase 8.M1, selectDataEntry posait le claim (INSERT DataEntryUsage
- * usageCount=0 ou UPDATE usedInCycle=true) au PREFILL SSR. Si l'user
- * abandonnait la page, le claim restait et l'entry était définitivement
- * marquée "consommée" pour ce compte. Asymétrique avec Media (readOnly
- * au prefill, claim au submit).
- *
- * Phase 8.M1 corrige : selectDataEntry est désormais readOnly au prefill
- * (juste pick avec FOR UPDATE SKIP LOCKED pour stabilité concurrente, sans
- * mutation), et CE helper claim l'entry au submit avec garde anti-race.
- *
- * Stratégie :
- *  - Si l'entry suggéré est encore claimable (NOT EXISTS DataEntryUsage)
- *    → claim posé.
- *  - Sinon (un autre render a déjà claimé l'entry entre prefill et submit)
- *    → fallback : re-pick + claim sur une autre entry éligible. Le render
- *    final utilisera des données différentes que la suggestion mais
- *    n'échoue pas (le user voit les data du form figées via dataEntryId
- *    envoyé, mais le claim DB est sur une autre — c'est best-effort).
- *
- * Pour `usagePolicy === "unlimited"` ou `"none"`, pas de claim — return null
- * (le caller traite comme "pas de revert state à stocker").
- *
- * Le retour `null` signifie "rien à claim" (unlimited, manual, ou exhausted).
- * Le caller (POST /api/renders) ne stocke alors pas de prevDataEntryState.
+ * Plan simplification Phase 4 : remplace l'avance de curseur
+ * (AccountDataLibraryCursor) et les claims par policy (usedInCycle /
+ * DataEntryUsage usageCount=0) — même contrat que advanceMediaUsageOnSubmit :
+ * on stampe `DataEntryUsage.lastUsedAt = now` sous la clé d'usage de la
+ * bibliothèque (compte réel en per_account, sentinel `__shared__data__` en
+ * shared). C'est ce stamp qui fait redescendre le dossier servi dans la pile
+ * du tirage. `usageCount` est incrémenté au DONE par recordLibraryUsage ;
+ * le burn-once (maxUsageCount) se fonde dessus.
  */
-export async function advanceDataEntryClaimOnSubmit(
-  campaignId: string,
-  suggestedEntryId: string | null | undefined,
+export type DataUsageClaimState = {
+  entryId: string;
+  accountId: string;
+  prevLastUsedAt: string | null;
+  claimedLastUsedAt: string;
+};
+
+export async function advanceDataUsageOnSubmit(
+  entryId: string,
   accountId: string | undefined,
-): Promise<{ claimState: DataEntryClaimState } | null> {
-  const campaign = await prisma.dataCampaign.findUnique({
-    where: { id: campaignId },
-    select: {
-      library: {
-        select: {
-          rotationMode: true,
-          rotationScope: true,
-          maxUsageCount: true,
-        },
-      },
-    },
+): Promise<{ prevDataUsageState: DataUsageClaimState } | null> {
+  const entry = await prisma.dataEntry.findUnique({
+    where: { id: entryId },
+    select: { id: true, library: { select: { rotationMode: true, rotationScope: true } } },
   });
-  if (!campaign?.library) return null;
-  const lib = campaign.library;
-  if (lib.rotationMode === "none") return null;
+  if (!entry?.library) return null;
+  if (entry.library.rotationMode === "none") return null;
 
-  const usagePolicy: "cycle_per_account" | "once_per_account" | "once_global" | "unlimited" =
-    lib.maxUsageCount === 1
-      ? (lib.rotationScope === "per_account" ? "once_per_account" : "once_global")
-      : (lib.rotationScope === "per_account" ? "cycle_per_account" : "unlimited");
+  const usageAccountId =
+    entry.library.rotationScope === "shared" ? SHARED_DATA_CURSOR_ACCOUNT_ID : accountId;
+  if (!usageAccountId) return null;
 
-  // "unlimited" → no claim mechanism (lastUsedAt incrémenté au DONE via recordLibraryUsage).
-  if (usagePolicy === "unlimited") return null;
-
-  // Per-account policies require accountId.
-  if ((usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account") && !accountId) {
+  const now = new Date();
+  try {
+    let prevLastUsedAt: string | null = null;
+    await prisma.$transaction(async (tx) => {
+      const prev = await tx.dataEntryUsage.findUnique({
+        where: { entryId_accountId: { entryId, accountId: usageAccountId } },
+        select: { lastUsedAt: true },
+      });
+      prevLastUsedAt = prev?.lastUsedAt?.toISOString() ?? null;
+      await tx.dataEntryUsage.upsert({
+        where: { entryId_accountId: { entryId, accountId: usageAccountId } },
+        update: { lastUsedAt: now },
+        create: { entryId, accountId: usageAccountId, usageCount: 0, lastUsedAt: now },
+      });
+    });
+    return {
+      prevDataUsageState: {
+        entryId,
+        accountId: usageAccountId,
+        prevLastUsedAt,
+        claimedLastUsedAt: now.toISOString(),
+      },
+    };
+  } catch (err) {
+    console.warn(`[advanceDataUsageOnSubmit] claim failed entry=${entryId}:`, err);
     return null;
   }
-
-  // Tente le claim sur l'entry suggérée d'abord (best-effort).
-  // Si elle est déjà claimée par un render concurrent, on retombe sur
-  // selectDataEntry(readOnly=false) qui re-pioche atomiquement.
-  //
-  // W5.15 : lecture setTag/category pour populer claimState.resolvedSetTag/
-  // Category — sans ça, le caller route.ts devait utiliser le hint client
-  // (dataResolvedSetTag) qui pouvait référer à l'ancien entry après re-pick.
-  let suggestedSetTag: string | null = null;
-  let suggestedCategory: string | null = null;
-  if (suggestedEntryId) {
-    const sug = await prisma.dataEntry.findUnique({
-      where: { id: suggestedEntryId },
-      select: { setTag: true, category: true },
-    });
-    suggestedSetTag = sug?.setTag ?? null;
-    suggestedCategory = sug?.category ?? null;
-  }
-  if (suggestedEntryId) {
-    if (usagePolicy === "cycle_per_account") {
-      try {
-        await prisma.dataEntryUsage.create({
-          data: { entryId: suggestedEntryId, accountId: accountId!, usageCount: 0, lastUsedAt: new Date() },
-        });
-        return {
-          claimState: { entryId: suggestedEntryId, campaignId, usagePolicy, claimType: "perAccountUsage", accountId, resolvedSetTag: suggestedSetTag, resolvedCategory: suggestedCategory },
-        };
-      } catch {
-        // Unique constraint (entryId, accountId) → déjà claim, on fallback.
-        console.info(`[advanceDataEntryClaimOnSubmit] suggested entry ${suggestedEntryId} already claimed for account ${accountId} — re-picking`);
-      }
-    } else if (usagePolicy === "once_per_account") {
-      // Code-reviewer M1 : pour once_per_account, on doit utiliser upsert
-      // (pas create). Le create lèverait sur unique-constraint si une row
-      // usageCount=0 existe déjà (cas re-essai après abandon), déclenchant
-      // un fallback re-pick alors que l'entry n'est pas réellement consommée
-      // (usageCount > 0 = consommation effective).
-      try {
-        const upserted = await prisma.dataEntryUsage.upsert({
-          where: { entryId_accountId: { entryId: suggestedEntryId, accountId: accountId! } },
-          update: {}, // ne touche pas si row existe (claim déjà posé OU consommé)
-          create: { entryId: suggestedEntryId, accountId: accountId!, usageCount: 0, lastUsedAt: new Date() },
-        });
-        // Si usageCount > 0, l'entry est réellement consommée → on fallback.
-        if (upserted.usageCount > 0) {
-          console.info(`[advanceDataEntryClaimOnSubmit] suggested entry ${suggestedEntryId} already consumed (usageCount > 0) — re-picking`);
-        } else {
-          return {
-            claimState: { entryId: suggestedEntryId, campaignId, usagePolicy, claimType: "perAccountUsage", accountId, resolvedSetTag: suggestedSetTag, resolvedCategory: suggestedCategory },
-          };
-        }
-      } catch (err) {
-        console.warn(`[advanceDataEntryClaimOnSubmit] upsert failed:`, err);
-      }
-    } else if (usagePolicy === "once_global") {
-      // Atomic CAS : claim seulement si pas encore claim.
-      const updated = await prisma.$executeRaw(Prisma.sql`
-        UPDATE "DataEntry"
-        SET "usedInCycle" = true
-        WHERE id = ${suggestedEntryId}
-          AND "usedInCycle" = false
-          AND "usageCount" = 0
-      `);
-      if (updated > 0) {
-        return {
-          claimState: { entryId: suggestedEntryId, campaignId, usagePolicy, claimType: "usedInCycle", accountId, resolvedSetTag: suggestedSetTag, resolvedCategory: suggestedCategory },
-        };
-      }
-      console.info(`[advanceDataEntryClaimOnSubmit] suggested entry ${suggestedEntryId} already claimed globally — re-picking`);
-    }
-  }
-
-  // Fallback : re-pick avec selectDataEntry en mode CLAIM (readOnly=false).
-  // Mirror du fallback Media quand un asset suggéré est devenu indisponible.
-  //
-  // Code-reviewer M6 : on passe le prevCursorState lu depuis AccountDataLibraryCursor
-  // pour que l'anti-répétition cat/setTag s'applique aussi au re-pick. Sans ça,
-  // le fallback pouvait tomber sur la même catégorie que la génération précédente,
-  // cassant l'anti-répétition silencieusement.
-  let prevCursorState: { lastUsedSetTag: string | null; lastUsedCategory: string | null; hasHistory: boolean } | undefined;
-  if (accountId && suggestedEntryId) {
-    // Bug-hunter B5 : findUnique({ id: "" }) renvoie silencieusement null →
-    // prevCursorState reste undefined et l'anti-répétition saute. On ne tente
-    // de lire le cursor QUE si un suggestedEntryId existe vraiment.
-    // Détermine la libraryId pour lire le bon AccountDataLibraryCursor.
-    const dataEntry = await prisma.dataEntry.findUnique({
-      where: { id: suggestedEntryId },
-      select: { campaign: { select: { libraryId: true } } },
-    });
-    const libraryId = dataEntry?.campaign?.libraryId;
-    if (libraryId) {
-      const effectiveCursorId = lib.rotationScope === "shared" ? SHARED_DATA_CURSOR_ACCOUNT_ID : accountId;
-      const cursorRow = await prisma.accountDataLibraryCursor.findUnique({
-        where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
-        select: { lastUsedSetTag: true, lastUsedCategory: true, lastAdvancedAt: true },
-      });
-      prevCursorState = {
-        lastUsedSetTag: cursorRow?.lastUsedSetTag ?? null,
-        lastUsedCategory: cursorRow?.lastUsedCategory ?? null,
-        hasHistory: cursorRow?.lastAdvancedAt != null,
-      };
-    }
-  }
-  const reSelected = await selectDataEntry(
-    campaignId,
-    undefined, // rule — la lib joue le pattern par défaut
-    accountId,
-    prevCursorState, // M6 : on porte l'anti-rép historique
-    false, // readOnly = false → claim posé
-  );
-  if (reSelected?.claimState) return { claimState: reSelected.claimState };
-  return null;
 }
 
 /**
  * Stamps MediaAssetUsage.lastUsedAt for the submitted audio asset at form submission time.
- * Called from POST /api/renders after advanceLibraryCursorsOnSubmit.
- * Returns the prev/claimed state needed for failure-recovery revert.
+ * Called from POST /api/renders. Returns the prev/claimed state for the CAS revert.
+ * (Phase 3 : le verrou de sérialisation AccountLibraryCursor a été retiré —
+ * l'upsert sur la contrainte unique (assetId, accountId) suffit, et le revert
+ * CAS neutralise les courses résiduelles.)
  */
 export async function advanceAudioUsageOnSubmit(
   audioAssetId: string,
   accountId: string,
-  audioLibraryId: string,
+  _audioLibraryId: string,
 ): Promise<{ prevAudioUsageState: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string } } | null> {
   let prevUsage: { lastUsedAt: Date | null } | null = null;
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    // Use AccountLibraryCursor as a serialization lock for the audio library
-    await tx.accountLibraryCursor.upsert({
-      where: { accountId_libraryId: { accountId, libraryId: audioLibraryId } },
-      update: {},
-      create: { accountId, libraryId: audioLibraryId, cursor: 0 },
-    });
-    await tx.$queryRaw(
-      Prisma.sql`SELECT id FROM "AccountLibraryCursor" WHERE "accountId" = ${accountId} AND "libraryId" = ${audioLibraryId} FOR UPDATE`,
-    );
     prevUsage = await tx.mediaAssetUsage.findUnique({
       where: { assetId_accountId: { assetId: audioAssetId, accountId } },
       select: { lastUsedAt: true },
@@ -1913,42 +1154,22 @@ export interface LibraryPrefill {
   dataSuggestion: {
     entryId: string;
     fields: Record<string, string>;
-    /** Resolved setTag of the selected group — used to advance AccountDataLibraryCursor at submit. */
+    /** Dossier (setTag) de la fiche servie — trace. */
     resolvedSetTag?: string | null;
-    /** Resolved category of the selected group — used to advance AccountDataLibraryCursor at submit. */
-    resolvedCategory?: string | null;
   } | null;
   /**
-   * Libraries that used set_sequence for this prefill.
-   * Passed through usedAssets so recordLibraryUsage can advance cursor += 1.
+   * Libraries that used the folder-draw strategy (ex-theme_sequence) for this
+   * prefill. Passed through usedAssets so the submit claims their usage.
    */
   setSequencedLibraryIds?: string[];
   /**
-   * libraryId → resolved setTag used in this generation.
-   * Stored in Render.usedAssets so recordLibraryUsage can persist lastUsedSetTag.
+   * libraryId → resolved setTag (dossier) used in this generation.
+   * Stored in Render.usedAssets for traceability.
    */
   usedSetTagByLibrary?: Record<string, string>;
   /**
-   * libraryId → resolved category used in this generation.
-   * Stored in Render.usedAssets so recordLibraryUsage can persist lastUsedCategory.
-   */
-  usedCategoryByLibrary?: Record<string, string>;
-  /**
-   * libraryId → cursor state snapshot taken at prefill time.
-   * Passed through to Render.usedAssets so revertLibraryCursors() can roll back
-   * the cursor if the render subsequently fails.
-   */
-  prevCursorStateByLibrary?: Record<string, CursorRevertState>;
-  /**
-   * DataEntry claim state taken at prefill time.
-   * Passed through to Render.usedAssets so revertLibraryCursors() can release the
-   * claim if the render subsequently fails.
-   */
-  prevDataEntryState?: DataEntryClaimState;
-  /**
-   * Audio asset usage claim taken at prefill time.
-   * Used to conditionally revert MediaAssetUsage.lastUsedAt if the render fails,
-   * so the track re-enters the rotation as if it was never picked.
+   * Audio asset usage claim taken at submit time.
+   * Used to conditionally revert MediaAssetUsage.lastUsedAt if the render fails.
    */
   prevAudioUsageState?: {
     assetId: string;
@@ -1961,663 +1182,108 @@ export interface LibraryPrefill {
 }
 
 /**
- * Snapshot of the DataEntry claim state made at prefill time, enabling a conditional revert
- * if the render subsequently fails.  See revertLibraryCursors() in recordLibraryUsage.ts.
+ * Sélection « dossier simple » d'une DataEntry — plan simplification Phase 4.
+ * Miroir exact de selectMediaAssetFromFolder : zéro état, aucune écriture.
  *
- * claimType:
- *  "usedInCycle"     — we set DataEntry.usedInCycle=true (for "cycle" and "once_global" policies).
- *                      Revert: SET usedInCycle=false WHERE id=? AND usageCount=0
- *  "perAccountUsage" — we inserted DataEntryUsage(usageCount=0) as a claim for this account
- *                      (for "cycle_per_account" and "once_per_account").
- *                      Revert: DELETE DataEntryUsage WHERE entryId=? AND accountId=? AND usageCount=0
- */
-export type DataEntryClaimState = {
-  entryId: string;
-  campaignId: string;
-  usagePolicy: string;
-  claimType: "usedInCycle" | "perAccountUsage";
-  accountId?: string;
-  /** W5.9 (rotation-13) : setTag de l'entry réellement claimée — utile au
-   *  caller pour advance le cursor avec la bonne valeur après un re-pick
-   *  (sans ce champ, le caller utilisait le hint client de prefill qui
-   *  pouvait référer à l'ancien entry). Null si l'entry est orphan. */
-  resolvedSetTag?: string | null;
-  /** W5.9 (rotation-13) : category miroir du resolvedSetTag. */
-  resolvedCategory?: string | null;
-};
-
-/** Select the best DataEntry from a campaign according to rule.
- * Respects DataEntryAccess: with accountId → global OR accessible; without → global only.
- * Ordering uses per-account DataEntryUsage when accountId is provided,
- * falling back to global DataEntry counters otherwise.
- * The campaign's `usagePolicy` field controls the hard/soft constraint:
- *   - "cycle"             : global not_used_in_cycle + fallback (default)
- *   - "cycle_per_account" : per-account not_used + fallback to least_used_by_account
- *   - "once_per_account"  : per-account hard limit — null when all used
- *   - "once_global"       : global hard limit — null when all used
- *   - "unlimited"         : no constraint, always least_used
+ * Les 4 policies dérivées (cycle/once × account/global), `usedInCycle`, les
+ * curseurs AccountDataLibraryCursor et l'anti-répétition multi-niveaux sont
+ * décommissionnés. Le burn-once vit dans `maxUsageCount` (usageCount per-key).
  *
- * When accountId is provided and the policy supports it, the selected entry is
- * "claimed" atomically using SELECT … FOR UPDATE SKIP LOCKED so that concurrent
- * cron generations for the same account/campaign pick different entries.
- *
- * prevCursorState: when provided (per-account rotation), the group selection
- * applies the same 3-level anti-repetition logic as selectMediaAssetBySetSequence:
- *   - ≥2 distinct categories → exclude the last used category family.
- *   - 1 category, ≥2 setTags → exclude the last used setTag.
- *   - Otherwise (single group) → no exclusion.
+ * @param libraryId  DataLibrary id (plus de campagne — DataEntry.libraryId direct).
+ * @param rule       "manual" → null ; tout le reste → tirage dossier.
  */
-/**
- * Anti-repetition group selection — version exportée module-level utilisée
- * pour les rotations Media (selectMediaAssetBySetSequence) ET DataEntry
- * (selectDataEntry). Avant W3.2 les deux paths avaient des copies identiques
- * (selectEligibleGroups inner + selectEligibleDataGroups) — un changement à la
- * règle aurait dû être propagé dans 2 fichiers ou risquer une divergence
- * silencieuse de la rotation media↔data.
- *
- * @internal Exported for unit testing.
- */
-export function selectEligibleRotationGroups(
-  allGroups: Array<{ setTag: string | null; category: string | null }>,
-  lastCategory: string | null,
-  lastSetTag: string | null,
-  hasHistory: boolean,
-): Array<{ setTag: string | null; category: string | null }> {
-  if (!hasHistory) return allGroups; // jamais joué → tout est éligible
-  const distinctCategories = new Set(allGroups.map((g) => g.category)).size;
-  let filtered: Array<{ setTag: string | null; category: string | null }>;
-  if (distinctCategories >= 2) {
-    // ≥2 catégories : exclude catégorie (incl null === null pour orphelins)
-    filtered = allGroups.filter((g) => g.category !== lastCategory);
-  } else {
-    // 1 catégorie unique (peut être null) : exclude setTag (incl null === null)
-    filtered = allGroups.filter((g) => g.setTag !== lastSetTag);
-  }
-  // Phase W3.2 : fallback explicite — si tous les groupes sont exclus (cas
-  // commun : libs avec un seul setTag/category, ou orphelins purement null),
-  // retourne allGroups pour éviter qu'un caller naïf pick rien et que la
-  // génération échoue. Le caller principal (selectMediaAsset...) faisait déjà
-  // ce fallback implicit ; on le rend explicite ici pour protéger tous les
-  // consumers (notamment DataEntry).
-  return filtered.length > 0 ? filtered : allGroups;
-}
-
-/** @deprecated use selectEligibleRotationGroups — kept as alias for tests. */
-export const selectEligibleDataGroups = selectEligibleRotationGroups;
-
-/**
- * Synthetic accountId used as the cursor key for DataLibrary rotations when
- * rotationScope === "shared". Mirrors SHARED_CURSOR_ACCOUNT_ID for MediaLibrary.
- */
-// Re-export depuis lib/rotation/sentinels.ts (source unique W3.3).
-export const SHARED_DATA_CURSOR_ACCOUNT_ID = SHARED_DATA_CURSOR_ACCOUNT_ID_FROM_SENTINELS;
-
-/** @internal Exported for unit testing only. */
 export async function selectDataEntry(
-  campaignId: string,
-  rule: "not_used_in_cycle" | "least_used" | "manual" | undefined,
-  accountId?: string,
-  prevCursorState?: { lastUsedSetTag: string | null; lastUsedCategory: string | null; hasHistory: boolean },
-  /**
-   * Phase 8.M1 — Symétrie avec selectMediaAssetBySetSequence(..., readOnly=true).
-   * En readOnly:
-   *  - Aucun claim n'est écrit (INSERT DataEntryUsage usageCount=0, UPDATE usedInCycle=true).
-   *  - Aucun curseur n'est avancé.
-   *  - Le pick utilise FOR UPDATE SKIP LOCKED pour piocher de manière déterministe
-   *    contre la concurrence, mais ne mute pas la DB.
-   * Le claim définitif (avec FOR UPDATE) se fait à advanceDataEntryClaimOnSubmit
-   * appelé depuis POST /api/renders au moment du submit — comme Media.
-   *
-   * Default false pour backwards compat (callers internes du grouping flow).
-   */
-  readOnly: boolean = false,
-): Promise<{
-  entryId: string;
-  fields: Record<string, string>;
-  claimState?: DataEntryClaimState;
-  resolvedSetTag?: string | null;
-  resolvedCategory?: string | null;
-} | null> {
+  libraryId: string,
+  rule: string | undefined,
+  accountId: string | undefined,
+): Promise<{ entryId: string; fields: Record<string, string>; resolvedSetTag: string | null } | null> {
   if (rule === "manual") return null;
 
-  // Phase 1.x — les réglages rotation vivent désormais sur DataLibrary
-  // (rotationMode / rotationScope / maxUsageCount, mirror MediaLibrary).
-  // DataCampaign reste un wrapper invisible (1 "Default" par lib).
-  const campaign = await prisma.dataCampaign.findUnique({
-    where: { id: campaignId },
-    select: {
-      library: {
-        select: {
-          id: true,
-          rotationMode: true,
-          rotationScope: true,
-          maxUsageCount: true,
-        },
-      },
-    },
+  const library = await prisma.dataLibrary.findUnique({
+    where: { id: libraryId },
+    select: { rotationMode: true, rotationScope: true, maxUsageCount: true },
   });
-  if (!campaign?.library) {
-    console.warn(`[contentLibraryResolver] DataCampaign ${campaignId} introuvable`);
-    return null;
-  }
-  const lib = campaign.library;
+  if (!library) return null;
+  if (library.rotationMode === "none") return null;
 
-  // rotationMode "none" → pas de rotation auto.
-  // rotationMode "override" → TODO V2 (ordre fixe via DataEntry.position).
-  //   En attendant, fallback sur "auto" pour ne pas casser les flows existants.
-  if (lib.rotationMode === "none") return null;
-
-  // Mapping (scope, maxUsage) → policy interne. N > 1 saturé à "unlimited"
-  // (l'UI clamp déjà à {vide, 1}). Si on veut un vrai burn-N par fiche côté
-  // data, il faudra une nouvelle branche dédiée.
-  const usagePolicy: "cycle_per_account" | "once_per_account" | "once_global" | "unlimited" =
-    lib.maxUsageCount === 1
-      ? (lib.rotationScope === "per_account" ? "once_per_account" : "once_global")
-      : (lib.rotationScope === "per_account" ? "cycle_per_account" : "unlimited");
-
-  // Phase 3.B — effective cursor account ID:
-  // - shared scope: one global cursor shared across all accounts
-  // - per_account scope: each account has its own cursor
-  // Mirrors the SHARED_CURSOR_ACCOUNT_ID pattern in selectMediaAssetBySetSequence.
-  const effectiveCursorId: string | undefined =
-    lib.rotationScope === "shared"
-      ? SHARED_DATA_CURSOR_ACCOUNT_ID
-      : accountId;
-
-  // Access filter fragment (built once, used in all queries) — pass par le
-  // helper centralisé pour aligner avec MediaAsset (1 seul site à éditer si
-  // la sémantique d'accès change).
+  const isShared = library.rotationScope === "shared";
+  const usageAccountId = isShared ? SHARED_DATA_CURSOR_ACCOUNT_ID : accountId;
   const accessFilter = buildDataAccessFilter(accountId);
 
-  // W5.15 (rotation-13) : setTag + category remontent pour populer
-  // claimState.resolvedSetTag/Category. Sans ça, le caller route.ts devait
-  // utiliser le hint client (dataResolvedSetTag) qui pouvait référer à
-  // l'ancien entry après un re-pick concurrent.
-  type EntryRow = { id: string; fields: string; setTag: string | null; category: string | null };
-  type GroupRow = { setTag: string | null; category: string | null };
+  // Burn-once : per_account → usage par clé ; shared → compteur global de l'entry.
+  const maxUsage = library.maxUsageCount;
+  const burnFilter = maxUsage != null && maxUsage > 0
+    ? (isShared
+        ? Prisma.sql`AND de."usageCount" < ${maxUsage}`
+        : accountId
+          ? Prisma.sql`AND COALESCE((SELECT deu2."usageCount" FROM "DataEntryUsage" deu2 WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}), 0) < ${maxUsage}`
+          : Prisma.sql``)
+    : Prisma.sql``;
 
-  // Helper: fetch one entry without locking (used for fallback paths and for !accountId cases)
-  async function queryOne(extraWhere: Prisma.Sql, orderBy?: Prisma.Sql): Promise<EntryRow | null> {
-    const order = orderBy ?? (accountId
-      ? Prisma.sql`ORDER BY COALESCE(deu."usageCount", 0) ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC`
-      : Prisma.sql`ORDER BY de."usageCount" ASC, de."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC`);
-    if (accountId) {
-      const rows = await prisma.$queryRaw<EntryRow[]>(
-        Prisma.sql`SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-          LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
-          WHERE de."campaignId" = ${campaignId}
-          ${extraWhere}
-          ${accessFilter}
-          ${order}
-          LIMIT 1`
-      );
-      return rows[0] ?? null;
-    }
-    const rows = await prisma.$queryRaw<EntryRow[]>(
-      Prisma.sql`SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-        WHERE de."campaignId" = ${campaignId}
-        ${extraWhere}
-        ${accessFilter}
-        ${order}
-        LIMIT 1`
-    );
-    return rows[0] ?? null;
-  }
+  type EntryRow = { id: string; fields: string };
 
-  // Helper: discover (setTag, category) groups eligible for the given policy.
-  // Groups are ordered by cat_last_used ASC NULLS FIRST, last_used ASC NULLS FIRST,
-  // group_created_at ASC — mirrors the MediaAsset group discovery sort.
-  //
-  // Phase 3.A: ALL policies go through group-based discovery (not just per_account).
-  // Phase 3.B: usage ordering uses effectiveCursorId (SHARED_DATA_CURSOR_ACCOUNT_ID for
-  //            shared-scope libs) so the staleness ranking reflects the shared global cursor.
-  // Fix C2: accepts an optional tx client so it can run INSIDE the outer $transaction,
-  //         preventing the "discovery reads stale, claim sees a different set" race.
-  async function discoverGroups(
-    policy: "cycle_per_account" | "once_per_account" | "once_global" | "unlimited",
-    tx?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-  ): Promise<GroupRow[]> {
-    const client = tx ?? prisma;
-    if (policy === "cycle_per_account" && accountId) {
-      // Groups where at least one entry has NOT been claimed by this account yet
-      // (no DataEntryUsage row) OR where at least one genuinely-used entry exists
-      // (usageCount >= 1) — same as the two-step primary+fallback logic, but at group level.
-      // We list ALL groups and let pickEntryFromGroup decide per-entry eligibility.
-      // Usage ordering uses effectiveCursorId (may be SHARED_DATA_CURSOR_ACCOUNT_ID for shared libs).
-      return client.$queryRaw<GroupRow[]>(Prisma.sql`
-        SELECT sub2."setTag", sub2."category"
-        FROM (
-          SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
-                 MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
-          FROM (
-            SELECT de."setTag", de."category",
-                   MAX(deu."lastUsedAt") AS last_used,
-                   MIN(de."createdAt") AS group_created_at
-            FROM "DataEntry" de
-            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${effectiveCursorId}
-            WHERE de."campaignId" = ${campaignId}
-              ${accessFilter}
-            GROUP BY de."setTag", de."category"
-            HAVING COUNT(*) > 0
-          ) sub1
-        ) sub2
-        ${GROUP_DISCOVERY_ORDER_BY}`);
-    }
-    if (policy === "once_per_account" && accountId) {
-      // Groups where at least one entry hasn't been consumed (usageCount=0, not yet claimed)
-      return client.$queryRaw<GroupRow[]>(Prisma.sql`
-        SELECT sub2."setTag", sub2."category"
-        FROM (
-          SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
-                 MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
-          FROM (
-            SELECT de."setTag", de."category",
-                   MAX(deu."lastUsedAt") AS last_used,
-                   MIN(de."createdAt") AS group_created_at
-            FROM "DataEntry" de
-            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${effectiveCursorId}
-            WHERE de."campaignId" = ${campaignId}
-              AND NOT EXISTS (
-                SELECT 1 FROM "DataEntryUsage" deu2
-                WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
-                  AND deu2."usageCount" > 0
-              )
-              ${accessFilter}
-            GROUP BY de."setTag", de."category"
-            HAVING COUNT(*) > 0
-          ) sub1
-        ) sub2
-        ${GROUP_DISCOVERY_ORDER_BY}`);
-    }
-    if (policy === "once_global") {
-      // Groups where at least one entry is unused globally.
-      // Phase 3.A: now used for group-based selection like per_account policies.
-      return client.$queryRaw<GroupRow[]>(Prisma.sql`
-        SELECT sub2."setTag", sub2."category"
-        FROM (
-          SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
-                 MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
-          FROM (
-            SELECT de."setTag", de."category",
-                   MAX(de."lastUsedAt") AS last_used,
-                   MIN(de."createdAt") AS group_created_at
-            FROM "DataEntry" de
-            WHERE de."campaignId" = ${campaignId}
-              AND de."usageCount" = 0
-              AND de."usedInCycle" = false
-              ${accessFilter}
-            GROUP BY de."setTag", de."category"
-            HAVING COUNT(*) > 0
-          ) sub1
-        ) sub2
-        ${GROUP_DISCOVERY_ORDER_BY}`);
-    }
-    // unlimited — all groups.
-    // Phase 3.A: now used for group-based selection (anti-repetition across unlimited libs).
-    // Usage ordering uses effectiveCursorId for shared-scope libraries.
-    return client.$queryRaw<GroupRow[]>(Prisma.sql`
-      SELECT sub2."setTag", sub2."category"
-      FROM (
-        SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
-               MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
-        FROM (
-          SELECT de."setTag", de."category",
-                 MAX(deu."lastUsedAt") AS last_used,
-                 MIN(de."createdAt") AS group_created_at
-          FROM "DataEntry" de
-          LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${effectiveCursorId}
-          WHERE de."campaignId" = ${campaignId}
-            ${accessFilter}
-          GROUP BY de."setTag", de."category"
-          HAVING COUNT(*) > 0
-        ) sub1
-      ) sub2
-      ${GROUP_DISCOVERY_ORDER_BY}`);
-  }
-
-  // Helper: pick the best entry within a specific (setTag, category) group.
-  // Filters applied here mirror the per-policy eligibility.
-  async function pickEntryFromGroup(
-    setTag: string | null,
-    category: string | null,
-    policy: "cycle_per_account" | "once_per_account" | "once_global" | "unlimited",
-    tx?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-  ): Promise<{ entry: EntryRow; claimState?: DataEntryClaimState } | null> {
-    const client = tx ?? prisma;
+  async function pickFromFolder(setTag: string | null): Promise<EntryRow | null> {
     const setTagClause = setTag !== null
       ? Prisma.sql`AND de."setTag" = ${setTag}`
       : Prisma.sql`AND de."setTag" IS NULL`;
-    const categoryClause = category !== null
-      ? Prisma.sql`AND de."category" = ${category}`
-      : Prisma.sql`AND de."category" IS NULL`;
-
-    if (policy === "cycle_per_account" && accountId) {
-      // Primary within group: not yet claimed by this account
-      const rows = await client.$queryRaw<EntryRow[]>(Prisma.sql`
-        SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-        WHERE de."campaignId" = ${campaignId}
+    if (usageAccountId) {
+      const rows = await prisma.$queryRaw<EntryRow[]>(Prisma.sql`
+        SELECT de.id, de.fields FROM "DataEntry" de
+        LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${usageAccountId}
+        WHERE de."libraryId" = ${libraryId}
           ${setTagClause}
-          ${categoryClause}
-          AND NOT EXISTS (
-            SELECT 1 FROM "DataEntryUsage" deu2
-            WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
-          )
           ${accessFilter}
-        ORDER BY de."createdAt" ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1`);
-      if (rows[0]) {
-        // Phase 8.M1 : skip claim si readOnly (claim posé au submit côté serveur).
-        if (!readOnly) {
-          await (tx ? tx.dataEntryUsage : prisma.dataEntryUsage).create({
-            data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-          });
-        }
-        return {
-          entry: rows[0],
-          claimState: readOnly ? undefined : { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
-        };
-      }
-      // Fallback within group: cycle restart — genuinely used entries
-      const fallback = await client.$queryRaw<EntryRow[]>(Prisma.sql`
-        SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-        LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
-        WHERE de."campaignId" = ${campaignId}
-          ${setTagClause}
-          ${categoryClause}
-          AND COALESCE(deu."usageCount", 0) >= 1
-          ${accessFilter}
-        ORDER BY deu."usageCount" ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
-        FOR UPDATE OF de SKIP LOCKED
-        LIMIT 1`);
-      if (fallback[0]) return { entry: fallback[0] };
-      return null;
+          ${burnFilter}
+        ORDER BY deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC LIMIT 1`);
+      return rows[0] ?? null;
     }
-
-    if (policy === "once_per_account" && accountId) {
-      const rows = await client.$queryRaw<EntryRow[]>(Prisma.sql`
-        SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-        WHERE de."campaignId" = ${campaignId}
-          ${setTagClause}
-          ${categoryClause}
-          AND NOT EXISTS (
-            SELECT 1 FROM "DataEntryUsage" deu2
-            WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
-              AND deu2."usageCount" > 0
-          )
-          ${accessFilter}
-        ORDER BY de."createdAt" ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1`);
-      if (rows[0]) {
-        // Phase 8.M1 : skip claim si readOnly.
-        if (!readOnly) {
-          await (tx ? tx.dataEntryUsage : prisma.dataEntryUsage).upsert({
-            where: { entryId_accountId: { entryId: rows[0].id, accountId } },
-            update: { lastUsedAt: new Date() },
-            create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-          });
-        }
-        return {
-          entry: rows[0],
-          claimState: readOnly ? undefined : { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
-        };
-      }
-      return null;
-    }
-
-    if (policy === "once_global") {
-      const rows = await client.$queryRaw<EntryRow[]>(Prisma.sql`
-        SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-        WHERE de."campaignId" = ${campaignId}
-          ${setTagClause}
-          ${categoryClause}
-          AND de."usageCount" = 0
-          AND de."usedInCycle" = false
-          ${accessFilter}
-        ORDER BY de."createdAt" ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1`);
-      if (rows[0]) {
-        // Phase 8.M1 : skip claim si readOnly.
-        if (!readOnly) {
-          await (tx ? tx.dataEntry : prisma.dataEntry).update({
-            where: { id: rows[0].id },
-            data: { usedInCycle: true },
-          });
-        }
-        return {
-          entry: rows[0],
-          claimState: readOnly ? undefined : { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId },
-        };
-      }
-      return null;
-    }
-
-    // unlimited — least used within group, no locking
-    const rows = await (tx ?? prisma).$queryRaw<EntryRow[]>(
-      accountId
-        ? Prisma.sql`SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
-            WHERE de."campaignId" = ${campaignId}
-              ${setTagClause}
-              ${categoryClause}
-              ${accessFilter}
-            ORDER BY COALESCE(deu."usageCount", 0) ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
-            LIMIT 1`
-        : Prisma.sql`SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-            WHERE de."campaignId" = ${campaignId}
-              ${setTagClause}
-              ${categoryClause}
-              ${accessFilter}
-            ORDER BY de."usageCount" ASC, de."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
-            LIMIT 1`
-    );
-    if (rows[0]) return { entry: rows[0] };
-    return null;
+    const rows = await prisma.$queryRaw<EntryRow[]>(Prisma.sql`
+      SELECT de.id, de.fields FROM "DataEntry" de
+      WHERE de."libraryId" = ${libraryId}
+        ${setTagClause}
+        ${accessFilter}
+        ${burnFilter}
+      ORDER BY de."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC LIMIT 1`);
+    return rows[0] ?? null;
   }
 
-  let entry: EntryRow | null = null;
-  let claimState: DataEntryClaimState | undefined;
-  let resolvedSetTag: string | null | undefined;
-  let resolvedCategory: string | null | undefined;
+  // Découverte des dossiers, du moins récemment servi au plus récent
+  // (même tri que buildFolderDiscoveryQuery côté média).
+  const lastUsedExpr = usageAccountId
+    ? Prisma.sql`MAX(deu."lastUsedAt")`
+    : Prisma.sql`MAX(de."lastUsedAt")`;
+  const usageJoin = usageAccountId
+    ? Prisma.sql`LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${usageAccountId}`
+    : Prisma.empty;
+  const folders = await prisma.$queryRaw<{ setTag: string | null }[]>(Prisma.sql`
+    SELECT sub."setTag"
+    FROM (
+      SELECT de."setTag",
+             ${lastUsedExpr} AS last_used,
+             MIN(de."createdAt") AS folder_created_at
+      FROM "DataEntry" de
+      ${usageJoin}
+      WHERE de."libraryId" = ${libraryId}
+        ${accessFilter}
+        ${burnFilter}
+      GROUP BY de."setTag"
+      HAVING COUNT(*) > 0
+    ) sub
+    ORDER BY sub.last_used ASC NULLS FIRST,
+             sub.folder_created_at ASC NULLS LAST,
+             CASE WHEN sub."setTag" ~ '^[0-9]+$' THEN LPAD(sub."setTag", 20, '0') ELSE sub."setTag" END ASC NULLS LAST`);
 
-  // -----------------------------------------------------------------------
-  // Group-based selection when prevCursorState is provided.
-  //
-  // Phase 3.A: applied to ALL policies (not just per_account) so that
-  // once_global and unlimited also benefit from anti-repetition grouping.
-  //
-  // Phase 3.B: discoverGroups uses effectiveCursorId for usage ordering so
-  // shared-scope libs rank group staleness on the shared cursor, not per-account.
-  //
-  // Fix C2: discoverGroups runs INSIDE the $transaction so its read is consistent
-  // with the subsequent FOR UPDATE SKIP LOCKED picks.
-  // -----------------------------------------------------------------------
-  if (prevCursorState) {
-    // Must run inside a transaction so group discovery and claims are atomic.
-    await prisma.$transaction(async (tx) => {
-      // C2 fix: discoverGroups runs inside the transaction with the tx client.
-      const allGroups = await discoverGroups(usagePolicy, tx);
-
-      if (allGroups.length > 0) {
-        const eligible = selectEligibleDataGroups(
-          allGroups,
-          prevCursorState.lastUsedCategory,
-          prevCursorState.lastUsedSetTag,
-          prevCursorState.hasHistory,
-        );
-        const candidates = eligible.length > 0 ? eligible : allGroups;
-
-        for (const candidate of candidates) {
-          const picked = await pickEntryFromGroup(candidate.setTag, candidate.category, usagePolicy, tx);
-          if (picked) {
-            entry = picked.entry;
-            claimState = picked.claimState;
-            resolvedSetTag = candidate.setTag;
-            resolvedCategory = candidate.category;
-            return; // commit
-          }
-        }
+  for (const folder of folders) {
+    const row = await pickFromFolder(folder.setTag);
+    if (row) {
+      let fields: Record<string, string> = {};
+      try {
+        fields = JSON.parse(row.fields ?? "{}") as Record<string, string>;
+      } catch {
+        fields = {};
       }
-      // If group-based pick found nothing, fall through to legacy flat selection (entry stays null).
-    });
-  }
-
-  // -----------------------------------------------------------------------
-  // Flat selection (no prevCursorState, or group discovery returned nothing,
-  // or policies that don't benefit from group grouping).
-  // Preserves ALL original locking semantics.
-  // -----------------------------------------------------------------------
-  if (!entry) {
-    if (usagePolicy === "cycle_per_account") {
-      if (accountId) {
-        await prisma.$transaction(async (tx) => {
-          // Primary: entry never touched by this account
-          const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
-            SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-            WHERE de."campaignId" = ${campaignId}
-              AND NOT EXISTS (
-                SELECT 1 FROM "DataEntryUsage" deu2
-                WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
-              )
-              ${accessFilter}
-            ORDER BY de."createdAt" ASC
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1`);
-          if (rows[0]) {
-            entry = rows[0];
-            // Phase 8.M1 : skip claim si readOnly.
-            if (!readOnly) {
-              await tx.dataEntryUsage.create({
-                data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-              });
-              claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId, resolvedSetTag: rows[0].setTag, resolvedCategory: rows[0].category };
-            }
-          } else {
-            // Fallback: cycle restart — pick from genuinely used entries (usageCount >= 1), least used first.
-            // FOR UPDATE OF de SKIP LOCKED ensures concurrent cron jobs pick distinct entries
-            // during a simultaneous cycle restart.
-            const fallback = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
-              SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-              LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
-              WHERE de."campaignId" = ${campaignId}
-                AND COALESCE(deu."usageCount", 0) >= 1
-                ${accessFilter}
-              ORDER BY deu."usageCount" ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
-              FOR UPDATE OF de SKIP LOCKED
-              LIMIT 1`);
-            entry = fallback[0] ?? null;
-            // Bug-hunter B4 : poser un claim soft (update lastUsedAt=now) pour
-            // que les submits concurrents au cycle restart voient un ordering
-            // mis à jour et choisissent une autre entry. Sans ce claim, plusieurs
-            // submits simultanés peuvent re-sélectionner la même entry au restart
-            // (drift mineur sur usageCount). Comme la condition garantit que
-            // DataEntryUsage existe déjà avec usageCount>=1, l'upsert update
-            // ne touche que lastUsedAt — recordLibraryUsage au DONE incrémentera
-            // normalement, et un revert via DELETE WHERE usageCount=0 sera no-op.
-            if (entry && !readOnly) {
-              await tx.dataEntryUsage.upsert({
-                where: { entryId_accountId: { entryId: entry.id, accountId } },
-                update: { lastUsedAt: new Date() },
-                create: { entryId: entry.id, accountId, usageCount: 0, lastUsedAt: new Date() },
-              });
-              claimState = { entryId: entry.id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId, resolvedSetTag: entry.setTag, resolvedCategory: entry.category };
-            }
-          }
-        });
-      } else {
-        entry = await queryOne(Prisma.sql``);
-      }
-
-    // -----------------------------------------------------------------------
-    // "once_per_account" — hard per-account limit via DataEntryUsage.
-    // Claim: same INSERT as cycle_per_account.
-    // No fallback — returns null when exhausted for this account.
-    // -----------------------------------------------------------------------
-    } else if (usagePolicy === "once_per_account") {
-      if (accountId) {
-        await prisma.$transaction(async (tx) => {
-          const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
-            SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-            WHERE de."campaignId" = ${campaignId}
-              AND NOT EXISTS (
-                SELECT 1 FROM "DataEntryUsage" deu2
-                WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
-                  AND deu2."usageCount" > 0
-              )
-              ${accessFilter}
-            ORDER BY de."createdAt" ASC
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1`);
-          if (rows[0]) {
-            entry = rows[0];
-            // Phase 8.M1 : skip claim si readOnly.
-            if (!readOnly) {
-              await tx.dataEntryUsage.upsert({
-                where: { entryId_accountId: { entryId: rows[0].id, accountId } },
-                update: { lastUsedAt: new Date() },
-                create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-              });
-              claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId, resolvedSetTag: rows[0].setTag, resolvedCategory: rows[0].category };
-            }
-          }
-          // No fallback for once_per_account — null means exhausted
-        });
-      } else {
-        entry = await queryOne(
-          Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "DataEntryUsage" deu2 WHERE deu2."entryId" = de.id AND deu2."usageCount" > 0)`
-        );
-      }
-
-    // -----------------------------------------------------------------------
-    // "once_global" — hard global limit via usageCount.
-    // Claim: SET usedInCycle=true so concurrent queries see AND usedInCycle=false.
-    // The filter includes AND usedInCycle=false as the claim sentinel.
-    // Revert: SET usedInCycle=false WHERE usageCount=0.
-    // -----------------------------------------------------------------------
-    } else if (usagePolicy === "once_global") {
-      if (accountId) {
-        await prisma.$transaction(async (tx) => {
-          const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
-            SELECT de.id, de.fields, de."setTag", de."category" FROM "DataEntry" de
-            WHERE de."campaignId" = ${campaignId}
-              AND de."usageCount" = 0
-              AND de."usedInCycle" = false
-              ${accessFilter}
-            ORDER BY de."createdAt" ASC
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1`);
-          if (rows[0]) {
-            entry = rows[0];
-            // Phase 8.M1 : skip claim si readOnly.
-            if (!readOnly) {
-              await tx.dataEntry.update({ where: { id: rows[0].id }, data: { usedInCycle: true } });
-              claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId, resolvedSetTag: rows[0].setTag, resolvedCategory: rows[0].category };
-            }
-          }
-          // No fallback for once_global — null means globally exhausted
-        });
-      } else {
-        entry = await queryOne(Prisma.sql`AND de."usageCount" = 0 AND de."usedInCycle" = false`);
-      }
-
-    // -----------------------------------------------------------------------
-    // "unlimited" — no constraint, always least used. No locking needed.
-    // -----------------------------------------------------------------------
-    } else {
-      entry = await queryOne(Prisma.sql``);
+      return { entryId: row.id, fields, resolvedSetTag: folder.setTag };
     }
   }
-
-  if (!entry) return null;
-
-  let fields: Record<string, string> = {};
-  try {
-    fields = JSON.parse(entry.fields) as Record<string, string>;
-  } catch {
-    fields = {};
-  }
-
-  return { entryId: entry.id, fields, claimState, resolvedSetTag, resolvedCategory };
+  return null;
 }

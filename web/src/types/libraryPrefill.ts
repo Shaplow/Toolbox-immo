@@ -38,11 +38,8 @@ export interface LibraryPrefillContext {
   dataSuggestion?: {
     entryId: string;
     fields: Record<string, string>;
-    /** Resolved setTag of the group selected during prefill — passed to the render endpoint
-     *  so advanceDataLibraryCursorOnSubmit can record it in AccountDataLibraryCursor. */
+    /** Dossier (setTag) de la fiche servie — trace. */
     resolvedSetTag?: string | null;
-    /** Resolved category of the group selected during prefill — same purpose. */
-    resolvedCategory?: string | null;
   } | null;
   /**
    * Libraries whose selection used set_sequence.
@@ -71,16 +68,6 @@ export interface LibraryPrefillContext {
    * Passed to the render endpoint so the render is linked back to the slot.
    */
   slotId?: string;
-  /**
-   * DataEntry claim state taken at prefill time for failure-recovery revert.
-   */
-  prevDataEntryState?: {
-    entryId: string;
-    campaignId: string;
-    usagePolicy: string;
-    claimType: "usedInCycle" | "perAccountUsage";
-    accountId?: string;
-  };
   /**
    * Describes a link between a select field (source) and a video field (target)
    * where the video is resolved at render time from a media asset's metadata value.

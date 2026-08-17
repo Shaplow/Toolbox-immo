@@ -1,21 +1,21 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Upload, RotateCcw, Download, Plus, Trash2, Search } from "lucide-react";
+import { Upload, Download, Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
 import { DataEntriesSpreadsheet } from "@/components/admin/libraries/dataEntries/DataEntriesSpreadsheet";
 
-function downloadCSVFromColumns(columns: string[], campaignName: string) {
-  const headers = ["set_tag", "category", ...columns];
+function downloadCSVFromColumns(columns: string[], libraryName: string) {
+  const headers = ["set_tag", ...columns];
   const csv = headers.join(",") + "\n";
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `modele-${campaignName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`;
+  a.download = `modele-${libraryName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -29,15 +29,15 @@ function csvEscape(value: string): string {
 
 /**
  * Exporte les entries actuelles en CSV (vérification visuelle de l'état BDD).
- * Format identique à celui attendu par l'import : `set_tag,category,<champs>`.
- * Filename : `data-{campaignName}-{YYYY-MM-DD}.csv`.
+ * Format identique à celui attendu par l'import : `set_tag,<champs>`.
+ * Filename : `data-{libraryName}-{YYYY-MM-DD}.csv`.
  */
 function downloadCSVFromEntries(
   entries: DataEntry[],
   columns: string[],
-  campaignName: string,
+  libraryName: string,
 ) {
-  const headers = ["set_tag", "category", ...columns];
+  const headers = ["set_tag", ...columns];
   const lines = [headers.map(csvEscape).join(",")];
   for (const entry of entries) {
     let fields: Record<string, unknown> = {};
@@ -49,7 +49,6 @@ function downloadCSVFromEntries(
     }
     const row = [
       entry.setTag ?? "",
-      entry.category ?? "",
       ...columns.map((col) => {
         const v = fields[col];
         if (v == null) return "";
@@ -65,7 +64,7 @@ function downloadCSVFromEntries(
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   const today = new Date().toISOString().slice(0, 10);
-  const safeName = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const safeName = libraryName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   a.href = url;
   a.download = `data-${safeName}-${today}.csv`;
   document.body.appendChild(a);
@@ -78,20 +77,10 @@ export interface DataEntry {
   id: string;
   fields: string;
   setTag: string | null;
-  category: string | null;
   usageCount: number;
   lastUsedAt: string | null;
-  usedInCycle: boolean;
   createdAt: string;
   accessAccountIds: string[];
-}
-
-interface DataCampaign {
-  id: string;
-  name: string;
-  isActive: boolean;
-  usagePolicy: string;
-  _count: { entries: number };
 }
 
 export interface InstagramAccount {
@@ -107,10 +96,13 @@ export type FieldType = CustomFieldType;
 export type FieldDef = CustomField;
 
 interface Props {
-  campaignId: string;
   libraryId: string;
+  /** Nom de la bibliothèque — sert aux filenames CSV (modèle / export). */
+  libraryName?: string;
   /** JSON FieldDef[] depuis DataLibrary.fieldsSchema (Phase 1.x). */
   fieldsSchema?: string;
+  /** "auto" | "none" — pilote l'affichage du compteur de dossiers dans le strip. */
+  rotationMode?: string | null;
 }
 
 // parseFieldsSchema remplacée par normalizeCustomFields (importée depuis @/lib/customFields).
@@ -123,15 +115,14 @@ import {
   type ImportPreview,
 } from "@/components/admin/libraries/dataEntries/ImportPreviewModal";
 
-export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props) {
+export function DataEntriesPanel({ libraryId, libraryName = "bibliotheque", fieldsSchema, rotationMode }: Props) {
   // Phase 1.x — schéma de champs au niveau lib (source de vérité).
   const declaredSchema = useMemo(() => normalizeCustomFields(fieldsSchema), [fieldsSchema]);
   const { confirm, dialog: confirmDialog } = useConfirm();
-  const [campaign, setCampaign] = useState<DataCampaign | null>(null);
   const [entries, setEntries] = useState<DataEntry[]>([]);
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
   const [accountFilter, setAccountFilter] = useState<string | null>(null);
-  // Recherche texte (Set / catégorie / valeurs de champs). Filtre client-side
+  // Recherche texte (Dossier / valeurs de champs). Filtre client-side
   // appliqué avant le scoping accès, comme accountFilter.
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -141,14 +132,10 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
   // Dry-run : preview + fichier en attente de confirmation.
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [resetting, setResetting] = useState(false);
-  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
-  const [resetError, setResetError] = useState<string | null>(null);
-  const [resettingAccount, setResettingAccount] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Phase 1.x design (spreadsheet) — édition inline, plus de drawer.
   // focusBottomSignal bump à chaque création vide pour que la spreadsheet
-  // scroll + focus la cellule Set de la dernière row.
+  // scroll + focus la cellule Dossier de la dernière row.
   const [focusBottomSignal, setFocusBottomSignal] = useState(0);
 
   // Phase 1.x — fallback rétrocompatible : si la lib n'a pas de schéma déclaré
@@ -179,15 +166,9 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
     setLoading(true);
     try {
       const entriesUrl = accountFilter
-        ? `/api/admin/libraries/data/campaigns/${campaignId}/entries?accountId=${encodeURIComponent(accountFilter)}`
-        : `/api/admin/libraries/data/campaigns/${campaignId}/entries`;
-      const [camRes, entriesRes] = await Promise.all([
-        fetch(`/api/admin/libraries/data/${libraryId}/campaigns`),
-        fetch(entriesUrl),
-      ]);
-      if (!camRes.ok) throw new Error(`campaigns HTTP ${camRes.status}`);
-      const campaigns = await camRes.json() as DataCampaign[];
-      setCampaign(campaigns.find((c) => c.id === campaignId) ?? null);
+        ? `/api/admin/libraries/data/${libraryId}/entries?accountId=${encodeURIComponent(accountFilter)}`
+        : `/api/admin/libraries/data/${libraryId}/entries`;
+      const entriesRes = await fetch(entriesUrl);
       if (entriesRes.ok) {
         const data = await entriesRes.json() as DataEntry[];
         setEntries(data);
@@ -197,12 +178,12 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
     } finally {
       setLoading(false);
     }
-  }, [campaignId, libraryId, accountFilter]);
+  }, [libraryId, accountFilter]);
 
   useEffect(() => { void load(); }, [load]);
 
   // Hook bulk edit access — sélection multi-row + actions accès comptes.
-  const bulk = useBulkEditDataEntries({ campaignId, accounts, reload: load });
+  const bulk = useBulkEditDataEntries({ libraryId, accounts, reload: load });
 
   // Load accounts for filter selector
   useEffect(() => {
@@ -232,7 +213,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch(
-        `/api/admin/libraries/data/campaigns/${campaignId}/import?dry=true`,
+        `/api/admin/libraries/data/${libraryId}/entries/import?dry=true`,
         { method: "POST", body: formData },
       );
       const d = (await res.json().catch(() => ({}))) as
@@ -253,7 +234,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
     }
   }
 
-  /** Étape 2 — commit : import réel (avec force si la campagne est non vide). */
+  /** Étape 2 — commit : import réel (avec force si la bibliothèque est non vide). */
   async function confirmImport() {
     if (!pendingFile) return;
     setImporting(true);
@@ -265,7 +246,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
         formData.append("force", "true");
       }
       const res = await fetch(
-        `/api/admin/libraries/data/campaigns/${campaignId}/import`,
+        `/api/admin/libraries/data/${libraryId}/entries/import`,
         { method: "POST", body: formData },
       );
       if (!res.ok) {
@@ -335,74 +316,21 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
     void requestImportPreview(file);
   }
 
-  async function handleReset() {
-    const ok = await confirm({
-      title: "Remettre à zéro le cycle ?",
-      description: "Tous les usages seront effacés pour toutes les entrées. Cette opération est irréversible.",
-      confirmLabel: "Réinitialiser",
-      variant: "danger",
-    });
-    if (!ok) return;
-    setResetting(true);
-    setResetSuccess(null);
-    setResetError(null);
-    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/reset`, { method: "POST" });
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      setResetError(d.error ?? "Erreur lors du reset");
-    } else {
-      const d = await res.json() as { reset: number };
-      setResetSuccess(`${d.reset} entrée${d.reset !== 1 ? "s" : ""} réinitialisée${d.reset !== 1 ? "s" : ""}`);
-      setTimeout(() => setResetSuccess(null), 4000);
-    }
-    setResetting(false);
-    void load();
-  }
-  async function handleResetForAccount() {
-    if (!accountFilter) return;
-    const accountName = accounts.find((a) => a.id === accountFilter)?.handle ?? accountFilter;
-    const ok = await confirm({
-      title: `Réinitialiser le cycle pour @${accountName} ?`,
-      description: "Les usages de ce compte seront effacés. Cette opération est irréversible.",
-      confirmLabel: "Réinitialiser",
-      variant: "danger",
-    });
-    if (!ok) return;
-    setResettingAccount(true);
-    setResetSuccess(null);
-    setResetError(null);
-    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/reset`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: accountFilter }),
-    });
-    setResettingAccount(false);
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      setResetError(d.error ?? "Erreur lors du reset");
-    } else {
-      const d = await res.json() as { reset: number };
-      setResetSuccess(`${d.reset} entrée${d.reset !== 1 ? "s" : ""} réinitialisée${d.reset !== 1 ? "s" : ""} pour @${accountName}`);
-      setTimeout(() => setResetSuccess(null), 4000);
-      void load();
-    }
-  }
-
   async function createBlankEntry() {
     // Phase 1.x design (spreadsheet) — POST une fiche vide puis bump focusBottomSignal
-    // pour que la spreadsheet scroll + focus la cellule Set de la nouvelle row.
+    // pour que la spreadsheet scroll + focus la cellule Dossier de la nouvelle row.
     try {
-      const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries`, {
+      const res = await fetch(`/api/admin/libraries/data/${libraryId}/entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ setTag: null, category: null, fields: {} }),
+        body: JSON.stringify({ setTag: null, fields: {} }),
       });
       if (!res.ok) {
         const d = (await res.json()) as { error?: string };
         toast.error(d.error ?? "Erreur lors de la création");
         return;
       }
-      // Clear la recherche : une fiche vide (Set/catégorie null) ne matcherait
+      // Clear la recherche : une fiche vide (Dossier null) ne matcherait
       // pas une requête active et resterait invisible.
       setSearch("");
       await load();
@@ -424,7 +352,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
     if (!ok) return;
     await Promise.all(
       ids.map((id) =>
-        fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${id}`, { method: "DELETE" }),
+        fetch(`/api/admin/libraries/data/${libraryId}/entries/${id}`, { method: "DELETE" }),
       ),
     );
     setEntries((prev) => prev.filter((e) => !bulk.selectedIds.has(e.id)));
@@ -432,20 +360,12 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
     toast.success(`${ids.length} fiche${ids.length !== 1 ? "s" : ""} supprimée${ids.length !== 1 ? "s" : ""}.`);
   }
 
-  const usedCount = entries.filter((e) => e.usedInCycle).length;
-  const isPerAccountPolicy = campaign?.usagePolicy === "cycle_per_account" || campaign?.usagePolicy === "once_per_account";
-  // Phase 1.x — policy "unlimited" = pas de cycle ni de blocage : on cache
-  // le compteur "X ce cycle" (toujours 0) et les boutons "Reset cycle" qui
-  // n'ont aucun effet utile.
-  const isUnlimitedPolicy = campaign?.usagePolicy === "unlimited";
-
-  // Recherche : Set / catégorie / valeurs de champs (insensible à la casse).
+  // Recherche : Dossier / valeurs de champs (insensible à la casse).
   const matchesSearch = useCallback(
     (entry: DataEntry) => {
       const q = search.trim().toLowerCase();
       if (!q) return true;
       if ((entry.setTag ?? "").toLowerCase().includes(q)) return true;
-      if ((entry.category ?? "").toLowerCase().includes(q)) return true;
       try {
         const f = JSON.parse(entry.fields) as Record<string, unknown>;
         return Object.values(f).some(
@@ -478,13 +398,16 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
     [entries, visibleIds],
   );
 
-  // Suggestions pour les Combobox bulk Set / catégorie (valeurs existantes).
+  // Suggestions pour le Combobox bulk Dossier (valeurs existantes).
   const setTagOptions = useMemo(
     () => Array.from(new Set(entries.map((e) => e.setTag).filter((s): s is string => !!s))).sort(),
     [entries],
   );
-  const categoryOptions = useMemo(
-    () => Array.from(new Set(entries.map((e) => e.category).filter((c): c is string => !!c))).sort(),
+
+  // Strip header — total fiches + nombre de dossiers (masqué en tirage manuel).
+  const isManualMode = rotationMode === "none";
+  const dossierCount = useMemo(
+    () => new Set(entries.map((e) => e.setTag).filter((s): s is string => !!s)).size,
     [entries],
   );
 
@@ -507,23 +430,13 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
 
       {/* Actions principales */}
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <p className="text-[12.5px] text-muted-foreground">
-          {entries.length} fiche{entries.length !== 1 ? "s" : ""} · {schemaFields.length} champ{schemaFields.length !== 1 ? "s" : ""} dans le schéma
-          {!isUnlimitedPolicy && (
+        <p className="text-[12.5px] text-muted-foreground tabular-nums">
+          {entries.length} fiche{entries.length !== 1 ? "s" : ""}
+          {!isManualMode && (
             <>
               {" · "}
-              <span className="tabular-nums">{usedCount}</span> utilisée
-              {usedCount !== 1 ? "s" : ""} ce cycle
+              {dossierCount} dossier{dossierCount !== 1 ? "s" : ""}
             </>
-          )}
-          {accountFilter && isPerAccountPolicy && (
-            <span className="ml-1 text-info-700">
-              ·{" "}
-              <span className="tabular-nums">
-                {entries.filter((e) => e.usageCount > 0).length}
-              </span>{" "}
-              par ce compte
-            </span>
           )}
         </p>
         <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -532,50 +445,22 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
             size="sm"
             icon={Download}
             onClick={() =>
-              downloadCSVFromColumns(columns, campaign?.name ?? "campagne")
+              downloadCSVFromColumns(columns, libraryName)
             }
             title={
               columns.length === 0
-                ? "Télécharge un modèle minimal (set_tag, category)."
+                ? "Télécharge un modèle minimal (set_tag)."
                 : "Télécharger le modèle CSV (en-têtes uniquement)"
             }
           >
             Modèle CSV
           </Button>
-          {!isUnlimitedPolicy && (accountFilter && isPerAccountPolicy ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={RotateCcw}
-              onClick={() => {
-                void handleResetForAccount();
-              }}
-              disabled={resettingAccount || entries.length === 0}
-              loading={resettingAccount}
-              title="Réinitialiser le cycle uniquement pour ce compte"
-            >
-              Reset ce compte
-            </Button>
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={RotateCcw}
-              onClick={() => {
-                void handleReset();
-              }}
-              disabled={resetting || entries.length === 0}
-              loading={resetting}
-            >
-              Reset cycle
-            </Button>
-          ))}
           <Button
             variant="secondary"
             size="sm"
             icon={Download}
             onClick={() =>
-              downloadCSVFromEntries(entries, columns, campaign?.name ?? "campagne")
+              downloadCSVFromEntries(entries, columns, libraryName)
             }
             disabled={entries.length === 0}
             title="Télécharger les entrées actuelles au format CSV"
@@ -621,7 +506,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
               value={search}
               onChange={setSearch}
               icon={Search}
-              placeholder="Rechercher (Set, catégorie, valeurs…)"
+              placeholder="Rechercher (Dossier, valeurs…)"
               trailing={
                 search ? (
                   <button
@@ -673,16 +558,6 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
           {importSuccess}
         </div>
       )}
-      {resetSuccess && (
-        <div className="mb-4 rounded-xl bg-success-50/70 px-3 py-2.5 text-[12px] text-success-700 ">
-          ✓ {resetSuccess}
-        </div>
-      )}
-      {resetError && (
-        <div className="mb-4 rounded-xl bg-danger-50/70 px-3 py-2.5 text-[12px] text-danger-700 ">
-          {resetError}
-        </div>
-      )}
 
       {loading ? (
         <div className="rounded-2xl bg-card border border-border py-12  flex items-center justify-center text-muted-foreground gap-3">
@@ -708,16 +583,16 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
               variant="secondary"
               size="md"
               icon={Download}
-              onClick={() => downloadCSVFromColumns(columns, campaign?.name ?? "campagne")}
+              onClick={() => downloadCSVFromColumns(columns, libraryName)}
             >
               Modèle CSV
             </Button>
           </div>
           <p className="text-[10.5px] text-muted-foreground mb-1">
-            Colonnes réservées : <code className="bg-white/60 px-1.5 py-0.5 rounded shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] font-mono">set_tag</code>, <code className="bg-white/60 px-1.5 py-0.5 rounded shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] font-mono">category</code>
+            Colonne réservée : <code className="bg-white/60 px-1.5 py-0.5 rounded shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] font-mono">set_tag</code>
           </p>
           <p className="text-[10.5px] text-muted-foreground">
-            Astuce : générez le modèle CSV depuis le builder (onglet Paramètres) pour obtenir automatiquement
+            Astuce : générez le modèle CSV depuis le builder (onglet Paramètres) pour obtenir automatiquement
             les bons en-têtes depuis le schéma de la template.
           </p>
         </div>
@@ -740,7 +615,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
             </div>
           )}
           <DataEntriesSpreadsheet
-            campaignId={campaignId}
+            libraryId={libraryId}
             entries={visibleEntries}
             onEntriesChange={(next) => setEntries([...hiddenEntries, ...next])}
             schema={schemaFields}
@@ -749,7 +624,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
             focusBottomSignal={focusBottomSignal}
             accounts={accounts}
           />
-          {/* Sticky bar bulk (Set / catégorie / accès) — dès qu'une fiche est
+          {/* Sticky bar bulk (Dossier / accès) — dès qu'une fiche est
               sélectionnée (le sélecteur compte est masqué si aucun compte). */}
           {bulk.selectedIds.size > 0 && (
             <DataEntriesBulkActionBar
@@ -757,7 +632,6 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
               allVisibleIds={visibleEntries.map((e) => e.id)}
               accounts={accounts}
               setTagOptions={setTagOptions}
-              categoryOptions={categoryOptions}
             />
           )}
         </>
@@ -780,7 +654,3 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
     </div>
   );
 }
-
-// ─── Shared: cycle badge ─────────────────────────────────────────────────────
-
-

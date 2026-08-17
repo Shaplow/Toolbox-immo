@@ -7,30 +7,26 @@ import { MediaLibrarySettingsDrawer } from "./MediaLibrarySettingsDrawer";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
-import type { MediaAsset, MetadataField, MediaLibrary, SortKey } from "./mediaAssets/types";
+import type { MediaAsset, MetadataField, MediaLibrary, SetGroup, SortKey } from "./mediaAssets/types";
 import { useMediaAssetsLoader } from "./mediaAssets/useMediaAssetsLoader";
 import { useInstagramAccounts } from "./mediaAssets/useInstagramAccounts";
 import { useBulkEdit } from "./mediaAssets/useBulkEdit";
 import { MediaAssetsUploadModal } from "./mediaAssets/MediaAssetsUploadModal";
 import { MediaAssetsBulkActionBar } from "./mediaAssets/MediaAssetsBulkActionBar";
-import { MediaAssetsRotationView } from "./mediaAssets/MediaAssetsRotationView";
 import { MediaAssetsGroupedView } from "./mediaAssets/MediaAssetsGroupedView";
 import { MediaAssetsAudioList } from "./mediaAssets/MediaAssetsAudioList";
 import { useAssetInlineEdits } from "./mediaAssets/useAssetInlineEdits";
 import { MediaAssetsVideoCard } from "./mediaAssets/MediaAssetsVideoCard";
 import { MediaAssetsGroupColumn } from "./mediaAssets/MediaAssetsGroupColumn";
-import { MediaAssetsCompactCard } from "./mediaAssets/MediaAssetsCompactCard";
 import { MediaAssetsToolbar } from "./mediaAssets/MediaAssetsToolbar";
-import { MediaAssetsBulkSortDrawer } from "./mediaAssets/MediaAssetsBulkSortDrawer";
 import { MediaAssetDetailDrawer } from "./mediaAssets/MediaAssetDetailDrawer";
 import { MediaAssetsTable } from "./mediaAssets/list/MediaAssetsTable";
 // MediaAssetsNextGenPreview + MediaAssetsKpiRow drop I.2 — info redondante remontée dans le strip header.
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { type CategoryFilter } from "./mediaAssets/MediaAssetsCategoriesSidebar";
-import { useAssetSequence } from "./mediaAssets/useAssetSequence";
 import { useAdvancedMode } from "@/hooks/useAdvancedMode";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
 import {
   MediaLibraryPermissionsProvider,
   useMediaLibraryPermissions,
@@ -46,7 +42,7 @@ interface Props {
   canManageAssets?: boolean;
   /**
    * Gestion library-level (réglages de la bibliothèque). Réservé ADMIN : un
-   * VIDEASTE gère les assets mais pas les réglages/rotation de la librairie.
+   * VIDEASTE gère les assets mais pas les réglages de la librairie.
    * Défaut false = least-privilege.
    */
   canManageLibraries?: boolean;
@@ -56,8 +52,8 @@ interface Props {
  * Wrapper : pose le contexte de permissions, puis rend le panel.
  *
  * Le découpage est nécessaire — `MediaAssetsPanelInner` consomme le contexte
- * dans ses hooks (`useAssetInlineEdits`, `useBulkEdit`, `useAssetSequence`), et
- * un composant ne peut pas lire un Provider qu'il rend lui-même.
+ * dans ses hooks (`useAssetInlineEdits`, `useBulkEdit`), et un composant ne
+ * peut pas lire un Provider qu'il rend lui-même.
  */
 export function MediaAssetsPanel({
   library,
@@ -98,26 +94,23 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [showAtelier, setShowAtelier] = useState(false);
-  const [viewMode, setViewMode] = useState<"grid" | "grouped" | "rotation">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "grouped">("grid");
   // Phase 2 médiathèque — toggle "Réglages avancés" (default OFF = mode noob).
-  // Quand OFF : viewMode forcé en "grouped" (vue Catégories), filtre tag caché,
+  // Quand OFF : viewMode forcé en "grouped" (vue Dossiers), filtre tag caché,
   // édition inline rapide non-prioritaire. Le state viewMode local reste pour
   // que l'user retrouve son dernier choix en réactivant le mode avancé.
   const { isAdvanced, toggleAdvanced } = useAdvancedMode(library.id);
-  // Mode manuel (rotation = "none") : la lib n'utilise pas la rotation auto.
+  // Mode manuel (rotation = "none") : la lib n'utilise pas le tirage auto.
   // Les assets sont sélectionnés par metadata côté générateur — pas de notion
-  // de catégorie/pack/orphelin/prochaine génération.
+  // de dossier.
   const isManualMode = library.rotationMode === "none";
-  // Force vue "grid" en manual (Catégories n'a pas de sens sans rotation).
+  // Force vue "grid" en manual (Dossiers n'a pas de sens sans tirage).
   const effectiveViewMode = isManualMode ? "grid" : isAdvanced ? viewMode : "grouped";
-  const [sortDrawerOpen, setSortDrawerOpen] = useState(false);
   // Phase 3 — drawer détail asset (ouvert en mode noob via click sur card).
   const [detailAsset, setDetailAsset] = useState<MediaAsset | null>(null);
-  // Si le drawer a été ouvert depuis une stack (set), on garde la liste des assets du set
-  // pour permettre de naviguer entre eux sans fermer/rouvrir le drawer.
+  // Si le drawer a été ouvert depuis une stack (dossier), on garde la liste des assets du
+  // dossier pour permettre de naviguer entre eux sans fermer/rouvrir le drawer.
   const [detailSetAssets, setDetailSetAssets] = useState<MediaAsset[] | null>(null);
-  // Phase B — filtre catégorie depuis la sidebar (mode noob uniquement).
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   // F2.3 — Count des jobs autocut en attente de review (badge sur "Analyse auto").
   const [autocutPendingCount, setAutocutPendingCount] = useState(0);
   // D4 — bulk edit extrait dans useBulkEdit hook. La sticky bar D8
@@ -125,54 +118,28 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
   // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
   const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts, confirm });
   const { selectMode, setSelectMode, selectedIds, toggleSelect, exitSelectMode } = bulk;
-  const { seqState, saveSequence, moveSetTag, addToSequence, removeFromSequence } = useAssetSequence({
-    libraryId: library.id,
-    initialSequence: library.setSequence,
-  });
-  // ── Ordre de rotation (source serveur — applique buildBurnFilter / maxUsageCount) ──
-  // La simulation côté client (avant le fix 2026-06-11) ignorait `maxUsageCount`
-  // de MediaLibrary → preview désynchronisée. On délègue maintenant au resolver
-  // via /simulate-rotation pour avoir une source unique de vérité.
-  const [rotationOrder, setRotationOrder] = useState<Map<string, { autoRank: number; cycleSize: number }> | null>(null);
-  // ── Infinite scroll ──
+  // ── Infinite scroll (grille uniquement — la vue "grouped" reste non paginée) ──
   const [visibleCount, setVisibleCount] = useState(48);
-  const [visibleGroupCount, setVisibleGroupCount] = useState(20);
-  // Sentinels d'infinite-scroll stockés en state via callback ref : l'effet
+  // Sentinel d'infinite-scroll stocké en state via callback ref : l'effet
   // observer se (re)lance quand le nœud se monte réellement — le sentinel est
   // rendu derrière le gate `loading`, donc un observer posé sur `[viewMode]`
   // au montage ratait le nœud (encore null) et ne se rattachait jamais → scroll
   // bloqué à 48. Le callback ref (setter useState, stable) corrige ça.
   const [gridSentinel, setGridSentinel] = useState<HTMLDivElement | null>(null);
-  const [groupSentinel, setGroupSentinel] = useState<HTMLDivElement | null>(null);
-  // Refs stables pour les sentinels (mise à jour inline pendant le rendu — pas des hooks)
+  // Refs stables pour le sentinel (mise à jour inline pendant le rendu — pas des hooks)
   const hasPendingRef = useRef(false);
   const visibleCountRef = useRef(0);
   const filteredLengthRef = useRef(0);
-  const visibleGroupCountRef = useRef(0);
-  const groupedLengthRef = useRef(0);
 
   const metadataSchema = useMemo<MetadataField[]>(() => {
     try { return JSON.parse(library.metadataSchema ?? "[]") as MetadataField[]; } catch { return []; }
   }, [library.metadataSchema]);
 
-  // Phase 2 — assets orphelins (sans catégorie) + catégories existantes pour
-  // le ribbon "X fichiers à ranger" et le drawer bulk-sort.
-  const orphanAssets = useMemo(
-    () => assets.filter((a) => !a.category),
-    [assets],
-  );
-  const existingCategories = useMemo(() => {
-    const set = new Set<string>();
-    assets.forEach((a) => {
-      if (a.category) set.add(a.category);
-    });
-    return Array.from(set).sort();
-  }, [assets]);
-  // Phase 3 — packs nommés explicitement (exclus les pack_<random> auto).
+  // Dossiers nommés explicitement (exclus les pack_<random> auto — legacy).
   const existingPacks = useMemo(() => {
     const set = new Set<string>();
     assets.forEach((a) => {
-      if (a.setTag && !a.setTag.startsWith("pack_")) set.add(a.setTag);
+      if (a.setTag && !isReservedSetTag(a.setTag)) set.add(a.setTag);
     });
     return Array.from(set).sort();
   }, [assets]);
@@ -183,9 +150,9 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
     [detailAsset, assets],
   );
 
-  // D9 — inline edits (setTag, category, tags, usage, lastUsedAt, metadata,
-  // access, disabled, delete) extraits dans useAssetInlineEdits hook.
-  // Destructuré pour garder les call sites historiques inchangés.
+  // D9 — inline edits (setTag, tags, usage, lastUsedAt, metadata, access,
+  // disabled, delete) extraits dans useAssetInlineEdits hook. Destructuré
+  // pour garder les call sites historiques inchangés.
   const inline = useAssetInlineEdits({
     libraryId: library.id,
     setAssets,
@@ -194,18 +161,14 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
     confirm,
   });
   // D9 — destructure réduit aux symboles encore consommés directement
-  // par le panel (audio list inline editing + group category bulk edit
-  // utilisé dans le wrapper renderColumn). Les cards/vues isolées
-  // consomment le hook complet via la prop `inline`.
+  // par le panel (audio list inline editing). Les cards consomment le
+  // hook complet via la prop `inline`.
   const {
     editingTagsId, setEditingTagsId,
     tagInput, setTagInput,
     editingUsageId, setEditingUsageId,
     usageInput, setUsageInput,
-    editingFamilyKey, setEditingFamilyKey,
-    familyInput, setFamilyInput,
     resetError,
-    handleSaveCategoryForGroup,
     handleSaveUsage,
     handleResetAssetUsage,
     handleSaveTags,
@@ -309,23 +272,14 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
 
   // ─ Liste des comptes Instagram chargée via useInstagramAccounts hook.
 
-  // Phase B — filtre catégorie depuis la sidebar (avant search/tagFilter).
-  // En mode avancé, categoryFilter reste "all" donc no-op.
-  const categoryFilteredAssets = useMemo(() => {
-    if (categoryFilter === "all") return assets;
-    if (categoryFilter === "orphans") return assets.filter((a) => !a.category);
-    if (categoryFilter === "disabled") return assets.filter((a) => a.disabled);
-    return assets.filter((a) => a.category === categoryFilter.category);
-  }, [assets, categoryFilter]);
-
   // filteredPreTag = recherche texte uniquement, sans le filtre tag.
   // Utilisé pour allTags/allSetTags afin que les chips de tags restent
   // visibles même quand un tag est actif.
   const filteredPreTag = useMemo(() => {
-    if (!search.trim()) return categoryFilteredAssets;
+    if (!search.trim()) return assets;
     const q = search.toLowerCase();
-    return categoryFilteredAssets.filter((a) => a.filename.toLowerCase().includes(q));
-  }, [categoryFilteredAssets, search]);
+    return assets.filter((a) => a.filename.toLowerCase().includes(q));
+  }, [assets, search]);
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -377,13 +331,11 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
     hasPendingRef.current = assets.some((a) => a.pendingEditJob !== null);
   }, [visibleCount, filtered.length, assets]);
 
-  // Reset visible counts quand les filtres/tri/bibliothèque/compte changent
+  // Reset visible count quand les filtres/tri/bibliothèque/compte changent
   // (pattern "reset state when external data changes" — React docs OK).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleCount(48);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setVisibleGroupCount(20);
   }, [search, sort, tagFilter, accountFilter, library.id]);
 
   // Sentinel grille/liste — se (re)lance dès que le nœud sentinel est monté
@@ -403,104 +355,20 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
     return () => observer.disconnect();
   }, [gridSentinel]);
 
-  // Sentinel groupes (vue rotation) — même logique
-  useEffect(() => {
-    if (!groupSentinel) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && visibleGroupCountRef.current < groupedLengthRef.current) {
-          setVisibleGroupCount((n) => n + 20);
-        }
-      },
-      { rootMargin: "400px" }
-    );
-    observer.observe(groupSentinel);
-    return () => observer.disconnect();
-  }, [groupSentinel]);
-
-  // Composite key helpers
-  const toGroupKey = (category: string | null, setTag: string | null) =>
-    `${category ?? ""}\u00a7\u00a7${setTag ?? ""}`;
-  const fromGroupKey = (k: string) => {
-    const idx = k.indexOf("\u00a7\u00a7");
-    const cat = k.slice(0, idx) || null;
-    const st = k.slice(idx + 2) || null;
-    return { category: cat, setTag: st };
-  };
-
-  // Hash compact des champs qui affectent la rotation c\u00f4t\u00e9 serveur. Sert de
-  // dep au useEffect ci-dessous \u2192 refetch automatiquement apr\u00e8s toute mutation
-  // locale (cr\u00e9ation, suppression, changement de setTag/category, toggle
-  // disabled, modif d'acc\u00e8s, reset usage). \u00c9vite \u00e0 l'admin de recharger la
-  // page apr\u00e8s chaque \u00e9dition. Ordre stable (assets est tri\u00e9 en amont par
-  // useMediaAssetsLoader) \u2014 pas besoin de re-trier ici.
-  const assetsRotationHash = useMemo(() => {
-    return assets
-      .map(
-        (a) =>
-          `${a.id}:${a.setTag ?? ""}:${a.category ?? ""}:${a.disabled ? 1 : 0}:${a.accessAccountIds.join(",")}:${a.usageCount}`,
-      )
-      .join("|");
-  }, [assets]);
-
-  // Fetch l'ordre de rotation depuis /simulate-rotation \u00e0 chaque changement
-  // de compte filtr\u00e9, s\u00e9quence, rotationScope, maxUsageCount, OU mutation
-  // d'assets pertinente (via assetsRotationHash). Le serveur applique le
-  // resolver r\u00e9el (avec buildBurnFilter) \u2192 preview fid\u00e8le au prod, y compris
-  // pour maxUsageCount. Sans compte s\u00e9lectionnable on d\u00e9grade \u00e0 null (la UI
-  // affiche un placeholder neutre via NextGenPreview).
-  useEffect(() => {
-    const shouldSkip =
-      isManualMode ||
-      (!accountFilter && library.rotationScope !== "shared");
-    const accountParam = accountFilter ?? accounts[0]?.id; // shared : n'importe quel compte
-    const ctrl = new AbortController();
-    void (async () => {
-      if (shouldSkip || !accountParam) {
-        setRotationOrder(null);
-        return;
-      }
-      try {
-        const res = await fetch(
-          `/api/admin/libraries/media/${library.id}/simulate-rotation?accountId=${encodeURIComponent(accountParam)}`,
-          { cache: "no-store", signal: ctrl.signal }
-        );
-        if (!res.ok) { setRotationOrder(null); return; }
-        const payload = (await res.json()) as {
-          ordered?: Array<{ rank: number; setTag: string | null; category: string | null }>;
-          cycleSize?: number;
-        };
-        const ordered = Array.isArray(payload.ordered) ? payload.ordered : [];
-        const cycleSize = typeof payload.cycleSize === "number" ? payload.cycleSize : ordered.length;
-        const map = new Map<string, { autoRank: number; cycleSize: number }>();
-        for (const item of ordered) {
-          if (typeof item.rank !== "number") continue;
-          map.set(toGroupKey(item.category, item.setTag), { autoRank: item.rank, cycleSize });
-        }
-        setRotationOrder(map);
-      } catch {
-        // Aborted (component unmount / d\u00e9ps chang\u00e9es) ou erreur r\u00e9seau \u2014 on
-        // d\u00e9grade gracieusement vers "pas d'ordre disponible". L'UI affichera
-        // les groupes sans badge autoRank, ce qui reste lisible.
-        setRotationOrder(null);
-      }
-    })();
-    return () => ctrl.abort();
-  }, [library.id, library.rotationScope, library.maxUsageCount, accountFilter, seqState, accounts, isManualMode, assetsRotationHash]);
-
+  // ── Dossiers (groupement par setTag) ──────────────────────────────────
+  // Groupe tous les assets filtrés par `setTag` (bucket "" = sans dossier).
+  // Le tirage réel (LRU par dossier) est géré côté serveur — cette vue est
+  // purement une grille de rangement, pas une preview d'ordre de tirage.
   const groupedBySetTag = useMemo(() => {
     const groups = new Map<string, MediaAsset[]>();
     filtered.forEach((a) => {
-      const key = toGroupKey(a.category, a.setTag);
+      const key = a.setTag ?? "";
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(a);
     });
 
     // Only use assets accessible to the filtered account when computing last-used date.
-    // Without this, inaccessible assets (restricted to other accounts) can skew group ordering.
     const getLastUsed = (groupAssets: MediaAsset[]) => {
-      // Include disabled assets in recency computation — mirrors the resolver which uses all
-      // assets for MAX(lastUsedAt) in group discovery and excludes fully-disabled groups via HAVING.
       const pool = accountFilter
         ? groupAssets.filter((a) => a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
         : groupAssets;
@@ -511,110 +379,48 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
       }, null);
     };
 
-    // Group creation date = MIN(createdAt) across accessible assets in the group.
-    // Mirrors the SQL MIN(ma."createdAt") group_created_at used as a tiebreaker so that
-    // among never-used groups the resolver picks oldest-uploaded first (upload order).
-    const getGroupCreatedAt = (groupAssets: MediaAsset[]) => {
-      const pool = accountFilter
-        ? groupAssets.filter((a) => a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
-        : groupAssets;
-      return pool.reduce<string | null>((min, a) => {
-        if (!a.createdAt) return min;
-        if (!min) return a.createdAt;
-        return a.createdAt < min ? a.createdAt : min;
-      }, null);
-    };
-
-    type GroupItem = { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount: number; lastUsed: string | null; groupCreatedAt: string | null; autoRank: number | null; cycleSize: number | null; isAccessible: boolean };
-
-    // L'ordre + autoRank/cycleSize sont fournis par /simulate-rotation (le
-    // resolver serveur). Ici on se contente de regrouper et d'attacher le
-    // rank par lookup. Plus de simulation locale — voir useEffect ci-dessus.
-    const allEntries: GroupItem[] = Array.from(groups.entries()).map(([key, groupAssets]) => {
-      const { category, setTag } = fromGroupKey(key);
+    const allEntries: SetGroup[] = Array.from(groups.entries()).map(([key, groupAssets]) => {
+      const setTag = key || null;
       const isAccessible = !accountFilter || groupAssets.some(
         (a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
       );
       const accessibleCount = accountFilter
         ? groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))).length
         : groupAssets.filter((a) => !a.disabled).length;
-      const ranked = rotationOrder?.get(key) ?? null;
       return {
-        key,
+        key: key || "__none__",
         setTag,
-        category,
         groupAssets,
         accessibleCount,
         lastUsed: getLastUsed(groupAssets),
-        groupCreatedAt: getGroupCreatedAt(groupAssets),
-        autoRank: ranked?.autoRank ?? null,
-        cycleSize: ranked?.cycleSize ?? null,
         isAccessible,
       };
     });
 
-    const named = allEntries.filter((g) => g.setTag || g.category);
-    const unnamed = allEntries.filter((g) => !g.setTag && !g.category);
+    const named = allEntries.filter((g) => g.setTag);
+    const unnamed = allEntries.filter((g) => !g.setTag);
 
-    // Tri : groupes avec autoRank (= participent à la rotation côté serveur)
-    // en tête, ordonnés par rank ASC. Le reste suit, named puis unnamed,
-    // avec tiebreak alphabétique numeric-aware sur setTag (parité avec le
-    // SQL LPAD du resolver).
-    const tiebreakSetTag = (a: GroupItem, b: GroupItem): number => {
+    // Tri alphabétique numeric-aware sur setTag (parité avec le LPAD SQL du
+    // resolver serveur) — le bucket « sans dossier » reste toujours en dernier.
+    const tiebreakSetTag = (a: SetGroup, b: SetGroup): number => {
       const na = parseInt(a.setTag ?? "", 10);
       const nb = parseInt(b.setTag ?? "", 10);
       if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
       return (a.setTag ?? "").localeCompare(b.setTag ?? "");
     };
-    const sortedNamed = [...named].sort((a, b) => {
-      if (a.autoRank != null && b.autoRank != null) return a.autoRank - b.autoRank;
-      if (a.autoRank != null) return -1;
-      if (b.autoRank != null) return 1;
-      return tiebreakSetTag(a, b);
-    });
+    const sortedNamed = [...named].sort(tiebreakSetTag);
 
-    // En filtre par compte, on masque les groupes inaccessibles sauf ceux
-    // qui occupent un slot du setSequence (mode override) — l'admin doit
-    // pouvoir les retirer de la séquence depuis l'UI.
+    // En filtre par compte, on masque les dossiers inaccessibles.
     if (accountFilter) {
-      const visibleNamed = sortedNamed.filter(
-        (g) => g.isAccessible || (g.setTag != null && seqState.includes(g.setTag))
-      );
+      const visibleNamed = sortedNamed.filter((g) => g.isAccessible);
       const visibleUnnamed = unnamed.filter((g) => g.isAccessible);
       return [...visibleNamed, ...visibleUnnamed];
     }
     return [...sortedNamed, ...unnamed];
-  }, [filtered, accountFilter, rotationOrder, seqState]);
+  }, [filtered, accountFilter]);
 
-  // Mise à jour des refs groupes après render via useEffect.
-  useEffect(() => {
-    groupedLengthRef.current = groupedBySetTag.length;
-    visibleGroupCountRef.current = visibleGroupCount;
-  }, [groupedBySetTag.length, visibleGroupCount]);
-
-  const sectionsByGroup = useMemo(() => {
-    const order: string[] = [];
-    const map = new Map<string, typeof groupedBySetTag>();
-    const unassigned: typeof groupedBySetTag = [];
-    for (const g of groupedBySetTag) {
-      const cat = g.category;
-      if (!cat) { unassigned.push(g); continue; } // no category → can't belong to a named section
-      if (!map.has(cat)) { map.set(cat, []); order.push(cat); }
-      map.get(cat)!.push(g);
-    }
-    return {
-      sections: order.map((name) => ({ name, groups: map.get(name)! })),
-      unassigned,
-      hasGroups: order.length > 0,
-    };
-  }, [groupedBySetTag]);
-
-  // D9 — handleSaveCategory, handleToggleAccess, handleToggleDisabled,
-  // handleSaveMetadata, handleSaveCategoryForGroup extraits dans le hook
-  // useAssetInlineEdits (cf. const inline ci-dessus).
-  // D9 — saveSequence + moveSetTag + addToSequence + removeFromSequence
-  // extraits dans useAssetSequence (cf. ci-dessus).
-
+  // D9 — handleToggleAccess, handleToggleDisabled, handleSaveMetadata
+  // extraits dans le hook useAssetInlineEdits (cf. const inline ci-dessus).
   // D9 — handleSaveUsage, handleResetAssetUsage, handleSaveTags,
   // handleSaveSetTag, handleSaveLastUsed, handleDelete, toDateInputValue
   // extraits dans le hook useAssetInlineEdits.
@@ -623,45 +429,23 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
 
   const isVideo = library.type === "video";
   // Mode noob vidéo (hors manual) → nouvelle vue liste dense + détail (drawer).
-  // Le mode avancé conserve les vues grille/groupé/rotation.
+  // Le mode avancé conserve les vues grille/groupé.
   const useListView = !isAdvanced && isVideo && !isManualMode;
   // I.2 — Drawer settings accessible depuis le strip header.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // I.2 — Counts compacts inline (remplace la KpiRow lourde).
+  // I.2 — Counts compacts inline (remplace la KpiRow lourde). Plan
+  // simplification 2026-08 : plus de catégories/orphelins, juste le total +
+  // le nombre de dossiers.
   const stripCounts = useMemo(() => {
-    const cats = new Set<string>();
-    const groups = new Set<string>();
-    let orphans = 0;
+    const folders = new Set<string>();
     for (const a of assets) {
-      if (a.category) cats.add(a.category);
-      else orphans++;
-      if (a.setTag && !a.setTag.startsWith("pack_")) groups.add(a.setTag);
+      if (a.setTag && !isReservedSetTag(a.setTag)) folders.add(a.setTag);
     }
     return {
       total: assets.length,
-      categories: cats.size,
-      groups: groups.size,
-      orphans,
+      folders: folders.size,
     };
   }, [assets]);
-
-  // D9-step4 — renderCompactCard extrait dans MediaAssetsCompactCard.
-  // Wrapper closure stable pour le passer en callback aux vues grouped/rotation.
-  function renderCompactCard(asset: MediaAsset, opts: { hideCategory?: boolean } = {}): React.ReactNode {
-    return (
-      <MediaAssetsCompactCard
-        key={asset.id}
-        asset={asset}
-        accountFilter={accountFilter}
-        metadataSchema={metadataSchema}
-        selectMode={selectMode}
-        selectedIds={selectedIds}
-        toggleSelect={toggleSelect}
-        hideCategory={opts.hideCategory}
-        inline={inline}
-      />
-    );
-  }
 
   // D9-step2 — renderVideoCard extrait dans MediaAssetsVideoCard.
   // Le wrapper local fournit un closure stable des props (inline hook,
@@ -672,7 +456,6 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
       <MediaAssetsVideoCard
         key={asset.id}
         asset={asset}
-        assets={assets}
         accounts={accounts}
         accountFilter={accountFilter}
         metadataSchema={metadataSchema}
@@ -691,33 +474,19 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
   }
 
   // D9-step3 — renderColumn extrait dans MediaAssetsGroupColumn.
-  // Le wrapper local fournit un closure stable des props (seqState +
-  // moveSetTag/addToSequence/removeFromSequence + inline editing
-  // catégorie group-level + renderVideoCard callback).
-  function renderColumn({ key, setTag, category, groupAssets, accessibleCount, lastUsed, autoRank, isAccessible = true, inSection = false, fluid = false }: { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount?: number; lastUsed: string | null; autoRank: number | null; cycleSize?: number | null; isAccessible?: boolean; inSection?: boolean; fluid?: boolean }): React.ReactNode {
+  // Le wrapper local fournit un closure stable des props (renderVideoCard callback).
+  function renderColumn({ key, setTag, groupAssets, accessibleCount, lastUsed, isAccessible = true, fluid = false }: SetGroup & { fluid?: boolean }): React.ReactNode {
     return (
       <MediaAssetsGroupColumn
         key={key || "__unset__"}
         groupKey={key}
         setTag={setTag}
-        category={category}
         groupAssets={groupAssets}
         accessibleCount={accessibleCount}
         lastUsed={lastUsed}
-        autoRank={autoRank}
         isAccessible={isAccessible}
-        inSection={inSection}
         fluid={fluid}
-        seqState={seqState}
         accountFilter={accountFilter}
-        editingFamilyKey={editingFamilyKey}
-        setEditingFamilyKey={setEditingFamilyKey}
-        familyInput={familyInput}
-        setFamilyInput={setFamilyInput}
-        handleSaveCategoryForGroup={handleSaveCategoryForGroup}
-        moveSetTag={moveSetTag}
-        addToSequence={addToSequence}
-        removeFromSequence={removeFromSequence}
         renderVideoCard={renderVideoCard}
       />
     );
@@ -815,28 +584,7 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
           {!isManualMode && (
             <>
               <span className="text-muted-foreground/40">·</span>
-              <button
-                type="button"
-                onClick={() => setCategoryFilter("all")}
-                className="hover:text-foreground transition-colors"
-              >
-                {stripCounts.categories} catégorie{stripCounts.categories !== 1 ? "s" : ""}
-              </button>
-              <span className="text-muted-foreground/40">·</span>
-              <span>{stripCounts.groups} groupe{stripCounts.groups !== 1 ? "s" : ""}</span>
-              {stripCounts.orphans > 0 && (
-                <>
-                  <span className="text-muted-foreground/40">·</span>
-                  <button
-                    type="button"
-                    onClick={() => setCategoryFilter("orphans")}
-                    className="text-warning-700 hover:underline"
-                    title="Filtrer les assets sans catégorie"
-                  >
-                    {stripCounts.orphans} orphelin{stripCounts.orphans !== 1 ? "s" : ""}
-                  </button>
-                </>
-              )}
+              <span>{stripCounts.folders} dossier{stripCounts.folders !== 1 ? "s" : ""}</span>
             </>
           )}
         </div>
@@ -874,8 +622,6 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
 
       {/* Phase α — espace toolbar ↔ contenu. */}
       <div className="mt-5">
-        {/* Ribbon orphelins retiré (trop bruyant). Filtre "Sans catégorie" reste accessible via la sidebar. */}
-
         {/* D8 — bulk action bar extraite dans MediaAssetsBulkActionBar */}
         {selectMode && <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} />}
       </div>
@@ -925,7 +671,7 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
         />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8 text-center">
-          {tagFilter ? `Aucun fichier avec le tag «\u00a0${tagFilter}\u00a0»${search ? ` correspondant à «\u00a0${search}\u00a0»` : ""}.` : `Aucun résultat pour «\u00a0${search}\u00a0».`}
+          {tagFilter ? `Aucun fichier avec le tag « ${tagFilter} »${search ? ` correspondant à « ${search} »` : ""}.` : `Aucun résultat pour « ${search} ».`}
         </p>
       ) : isVideo ? (
         /* ─── Video grid / grouped ─── */
@@ -955,33 +701,14 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
                 </p>
               )}
             </>
-          ) : effectiveViewMode === "rotation" ? (
-            <MediaAssetsRotationView
-              groupedBySetTag={groupedBySetTag}
-              seqState={seqState}
-              accountFilter={accountFilter}
-              visibleGroupCount={visibleGroupCount}
-              groupSentinelRef={setGroupSentinel}
-              saveSequence={saveSequence}
-              moveSetTag={moveSetTag}
-              addToSequence={addToSequence}
-              removeFromSequence={removeFromSequence}
-              renderCompactCard={renderCompactCard}
-            />
           ) : effectiveViewMode === "grouped" ? (
-            <>
             <MediaAssetsGroupedView
               groupedBySetTag={groupedBySetTag}
-              sectionsByGroup={sectionsByGroup}
-              seqState={seqState}
               accountFilter={accountFilter}
-              assets={assets}
-              saveSequence={saveSequence}
               renderColumn={renderColumn}
-              renderCompactCard={renderCompactCard}
               isAdvanced={isAdvanced}
               onOpenSet={(g) => {
-                // Ouvre le drawer détail sur le 1er asset du set + passe la liste
+                // Ouvre le drawer détail sur le 1er asset du dossier + passe la liste
                 // pour permettre de naviguer entre les assets via le set navigator.
                 const sorted = [...g.groupAssets].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
                 const first = sorted[0];
@@ -991,7 +718,6 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
                 }
               }}
             />
-            </>
           ) : (
             <>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
@@ -1040,8 +766,8 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
         />
       )}
 
-      {/* Modals mutantes : jamais montées sans droits assets — un état résiduel
-          (pendingFiles, sortDrawerOpen) ne doit pas pouvoir les faire surgir. */}
+      {/* Modal mutante : jamais montée sans droits assets — un état résiduel
+          (pendingFiles) ne doit pas pouvoir la faire surgir. */}
       {canManageAssets && (
         <>
           {/* ── Upload modal (D7 — extraite dans MediaAssetsUploadModal) ── */}
@@ -1054,25 +780,15 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
             initialFiles={pendingFiles}
             onInitialFilesConsumed={() => setPendingFiles(null)}
           />
-          {/* Phase 2 — bulk-sort drawer pour ranger les assets orphelins en 1 décision. */}
-          <MediaAssetsBulkSortDrawer
-            open={sortDrawerOpen}
-            onClose={() => setSortDrawerOpen(false)}
-            libraryId={library.id}
-            orphanAssets={orphanAssets}
-            existingCategories={existingCategories}
-            onApplied={() => void load()}
-          />
         </>
       )}
       {/* Phase 3 — drawer détail asset (édition complète en mode noob).
-          setAssets : si ouvert via une stack, la liste des autres vidéos du set pour navigation. */}
+          setAssets : si ouvert via une stack, la liste des autres vidéos du dossier pour navigation. */}
       <MediaAssetDetailDrawer
         open={liveDetailAsset !== null}
         onClose={() => { setDetailAsset(null); setDetailSetAssets(null); }}
         asset={liveDetailAsset}
         metadataSchema={metadataSchema}
-        existingCategories={existingCategories}
         existingPacks={existingPacks}
         accounts={accounts}
         inline={inline}
@@ -1090,7 +806,6 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
           name: library.name,
           description: null,
           tags: "[]",
-          setSequence: library.setSequence ?? "[]",
           rotationScope: library.rotationScope ?? "per_account",
           rotationMode: library.rotationMode,
           metadataSchema: library.metadataSchema ?? "[]",

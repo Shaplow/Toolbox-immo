@@ -69,6 +69,20 @@ export function eventRushKey(eventId: string, filename: string): string {
 }
 
 /**
+ * Clé R2 pour un rush de FICHE (Entity, plan simplification Phase 5).
+ *
+ * Pattern : entities/{entityId}/rushes/{ts}-{rand}.{ext}
+ * Préfixe distinct de `shoot-events/…` (rushs d'événements historiques) et de
+ * `publications/…` : sert de garde anti cross-scope dans upload-complete. Les
+ * rushs déjà uploadés via `shoot-events/{id}/…` avant la migration id-preserving
+ * gardent leur clé d'origine — seuls les NOUVEAUX uploads passent par ce préfixe.
+ */
+export function entityRushKey(entityId: string, filename: string): string {
+  const { ext } = sanitizeFilename(filename);
+  return `entities/${entityId}/rushes/${timestamp()}-${randomToken()}.${ext}`;
+}
+
+/**
  * Clé R2 pour une version de montage.
  *
  * Pattern : publications/{slotId}/versions/v{versionNumber}-{ts}-{rand}.{ext}

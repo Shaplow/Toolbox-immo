@@ -28,7 +28,7 @@ export type SearchResultItem = {
     | "slot"
     | "mediaLibrary"
     | "dataLibrary"
-    | "dataCampaign";
+    | "entity";
   id: string;
   label: string;
   sublabel: string | null;
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     slots,
     mediaLibraries,
     dataLibraries,
-    dataCampaigns,
+    entities,
   ] = await Promise.all([
     prisma.client.findMany({
       where: { name: contains },
@@ -122,15 +122,16 @@ export async function GET(req: NextRequest) {
       take: TAKE,
       select: { id: true, name: true, templateType: true },
     }),
-    prisma.dataCampaign.findMany({
-      where: { name: contains },
-      orderBy: { createdAt: "desc" },
+    // Phase 5 — fiches (métaobjets) dans la recherche globale (remplace les
+    // campagnes data, décommissionnées).
+    prisma.entity.findMany({
+      where: { label: contains, isArchived: false },
+      orderBy: { updatedAt: "desc" },
       take: TAKE,
       select: {
         id: true,
-        name: true,
-        libraryId: true,
-        library: { select: { name: true } },
+        label: true,
+        type: { select: { name: true } },
       },
     }),
   ]);
@@ -189,12 +190,12 @@ export async function GET(req: NextRequest) {
       sublabel: `Bibliothèque données · ${d.templateType}`,
       href: `/admin/libraries/data/${d.id}`,
     })),
-    ...dataCampaigns.map((c) => ({
-      kind: "dataCampaign" as const,
-      id: c.id,
-      label: c.name,
-      sublabel: c.library?.name ? `Campagne · ${c.library.name}` : "Campagne",
-      href: `/admin/libraries/data/${c.libraryId}/${c.id}`,
+    ...entities.map((e) => ({
+      kind: "entity" as const,
+      id: e.id,
+      label: e.label,
+      sublabel: `Fiche · ${e.type.name}`,
+      href: `/fiches/${e.id}`,
     })),
   ];
 

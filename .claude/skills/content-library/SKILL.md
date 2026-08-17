@@ -2,15 +2,15 @@
 name: content-library
 description: >
   Work with the Content Library system in Toolbox Immo. Use when a task involves
-  MediaLibrary, MediaAsset (setTag, category, tags, setSequence), MediaAssetAccess,
+  MediaLibrary, MediaAsset (setTag « Dossier », tags), MediaAssetAccess,
   MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, library-to-VideoBlock bindings
-  in the builder, generation form pre-fill, asset rotation (auto mode or override mode),
-  selection rules (theme_sequence, oldest_used, least_used, not_used_in_cycle, manual),
-  AccountLibraryCursor, per-account usage isolation, bulk asset operations, asset editing
+  in the builder, generation form pre-fill, folder-draw selection,
+  selection rules (theme_sequence, oldest_used, least_used, manual),
+  per-account usage isolation, bulk asset operations, asset editing
   via RunPod, or MediaAutocutJob batch autocut (Whisper-based
   cut-point detection, review queue, and apply flow).
-  For deep rotation algorithm details (auto mode, category exclusion, per-account ordering,
-  how to simulate or debug rotation): load the asset-rotation skill instead.
+  For deep folder-draw algorithm details (ordering, usage claims, revert):
+  load the asset-rotation skill instead.
 ---
 
 # Content Library
@@ -25,7 +25,7 @@ Three distinct library types exist:
 |------|-------|---------------|
 | Video | `MediaLibrary` (type="video") | Rush videos uploaded to R2 |
 | Audio | `MediaLibrary` (type="audio") | Music tracks uploaded to R2 |
-| Data | `DataLibrary` + `DataCampaign` + `DataEntry` | Text data per template type (RPI, RTIPS…) |
+| Data | `DataLibrary` + `DataEntry` (lien direct `DataEntry.libraryId` — `DataCampaign` décommissionnée Phase 4, drop N+1) | Text data per template type (RPI, RTIPS…) |
 
 ---
 
@@ -34,11 +34,9 @@ Three distinct library types exist:
 ```
 Admin UI
   └── creates/uploads MediaLibrary + MediaAsset (video, audio)
-  └── tags assets: free-form tags[] + setTag (UI label « Groupe ») + category (UI label « Catégorie », family for rotation exclusion)
+  └── tags assets: free-form tags[] + setTag (UI label « Dossier »)
   └── restricts assets per account: MediaAssetAccess (0 rows = global)
-  └── views rotation per account: account filter on MediaAssetsPanel
-  └── orders MediaLibrary.setSequence: explicit setTag override list (optional)
-  └── creates DataLibrary → DataCampaign → DataEntry (CSV import)
+  └── creates DataLibrary → DataEntry (CSV import, routes `data/[id]/entries*`)
   └── edits/trims MediaAsset via RunPod media-edit job (async, webhook)
 
 Builder
@@ -47,15 +45,17 @@ Builder
   └── Template-level → contentLibrary: { dataLibraryId, dataCampaignId, dataSelectionRule }
 
 Generation form (server component)
-  └── contentLibraryResolver.ts → resolveLibraryPrefill(template, formData, accountId)
-  └── theme_sequence rule: selectMediaAssetBySetSequence() — auto mode or override mode
+  └── contentLibraryResolver.ts → resolveLibraryPrefill(template, formData, accountId) — READ-ONLY
+  └── theme_sequence rule: selectMediaAssetFromFolder() — folder draw (least-recently-served)
   └── other rules: selectMediaAsset() — per-account usage ordering via MediaAssetUsage
   └── user reviews and confirms before launching render
+
+Submit (POST /api/renders)
+  └── advanceMediaUsageOnSubmit() stamps MediaAssetUsage.lastUsedAt (claim, revertable)
 
 Post-render (webhook DONE)
   └── recordLibraryUsage() increments global MediaAsset.usageCount + lastUsedAt
   └── recordLibraryUsage() upserts per-account MediaAssetUsage row
-  └── advances AccountLibraryCursor (lastUsedCategory, lastUsedSetTag, cursor) per account
 ```
 
 ---
@@ -69,18 +69,18 @@ After any schema change: `cd web && npm run db:generate && npm run db:push`
 ### MediaLibrary (video or audio)
 
 Key fields:
-- `setSequence String @default("[]")` — JSON `string[]`, **optional** explicit ordered list of setTags.
-  When empty: auto mode (rotation by least-recently used group + category exclusion).
-  When non-empty: override mode (integer cursor cycles through the list).
+- `rotationMode String` — `"auto"` (folder draw) | `"none"` (metadata/manual selection).
+- `rotationScope String` — `per_account` | `shared` (usage key = `__shared__` sentinel).
+- `maxUsageCount Int?` — burn-once (null = infinite).
 - `tags String @default("[]")` — JSON `string[]`, type labels used for filtering in admin.
+- ⚠️ `setSequence` : colonne morte (mode override décommissionné, Phase 3) — drop au deploy N+1.
 
 ### MediaAsset
 
 Key fields:
-- `setTag String?` — set identifier. Groups assets from the same shoot (e.g. `"tenue1-set1"`).
-  The rotation unit is the `(category, setTag)` pair.
-- `category String?` — family. Groups sets from the same model/location (e.g. `"Tenue 1"`).
-  The category exclusion rule prevents two consecutive sets from the same category.
+- `setTag String?` — « Dossier » (UI). Groups assets from the same shoot (e.g. `"tenue1-set1"`).
+  The draw unit. `null` = « (sans dossier) » virtual folder.
+- ⚠️ `category` : colonne morte (exclusion famille décommissionnée, Phase 3) — drop au deploy N+1.
 - `tags String[] @default([])` — free-form keyword array (e.g. `["lola", "intro"]`). Filtered via ILIKE.
 - `usageCount Int @default(0)` / `lastUsedAt DateTime?` — **global** aggregates updated by `recordLibraryUsage()`.
 - `accesses MediaAssetAccess[]` — access restriction entries (0 rows = accessible to everyone).
@@ -112,25 +112,18 @@ Tracks each account's individual usage of an asset. Used by the resolver for per
 ordering (least-recently used by **this account**, not globally). Created/updated by
 `recordLibraryUsage()` on each DONE render.
 
-### AccountLibraryCursor
+### AccountLibraryCursor (DÉCOMMISSIONNÉ)
 
-```
-accountId        String
-libraryId        String
-cursor           Int       @default(0)   // index in setSequence (override mode only)
-lastUsedSetTag   String?                 // last picked setTag (auto + override)
-lastUsedCategory String?                 // last picked category (auto mode: category exclusion)
-lastAdvancedAt   DateTime?
-@@unique([accountId, libraryId])
-```
-
-One row per (account, library) pair. Created on first use. Advanced by `recordLibraryUsage()`
-only on `DONE` renders.
+Table morte depuis la Phase 3 (folder draw, zéro état) — plus aucune
+lecture/écriture dans le code ; drop au deploy N+1. L'ancienneté des dossiers
+vit entièrement dans `MediaAssetUsage.lastUsedAt`.
 
 ### Data models
 
-- `DataEntry.usedInCycle Boolean` — set `true` after use; reset by campaign reset endpoint.
-- `DataCampaign.isActive Boolean` — only one per `DataLibrary` may be active at a time.
+- `DataEntry.libraryId` — lien direct vers la lib (Phase 4). `selectDataEntry(libraryId, rule, accountId)`
+  = tirage dossier, `advanceDataUsageOnSubmit` = claim au submit (sentinel `__shared__data__` en shared).
+- ⚠️ morts (drop N+1) : `DataEntry.campaignId`/`category`/`usedInCycle`, table `DataCampaign`,
+  table `AccountDataLibraryCursor`.
 
 ### Render.usedAssets JSON
 
@@ -141,27 +134,23 @@ only on `DONE` renders.
   "dataEntryId": "...",
   "setSequencedLibraryIds": ["libraryId1"],
   "usedSetTagByLibrary": { "libraryId1": "tenue1-set1" },
-  "usedCategoryByLibrary": { "libraryId1": "Tenue 1" }
+  "prevMediaUsageStates": [{ "assetId": "…", "accountId": "…", "prevLastUsedAt": null, "claimedLastUsedAt": "…" }]
 }
 ```
 
-`setSequencedLibraryIds` → libraries whose cursor must be advanced post-render.
-`usedSetTagByLibrary` / `usedCategoryByLibrary` → written to `AccountLibraryCursor` so the
-next generation can apply the category exclusion rule correctly.
+`setSequencedLibraryIds` → libraries using folder draw (trace + shared usage stamping au DONE).
+`usedSetTagByLibrary` → dossier servi (trace). `prevMediaUsageStates` → claims du submit,
+revertés (CAS) si le render échoue.
 
 ---
 
-## Asset Organisation: Set + Category
+## Asset Organisation: Dossier
 
 | Concept | Field | Description |
 |---------|-------|-------------|
-| **Set** | `MediaAsset.setTag` | Assets from the same shoot (intro + outro filmed together). Rotation unit. |
-| **Category** | `MediaAsset.category` | Family of sets (same model, location, or theme). Used for category exclusion in auto mode. |
+| **Dossier** | `MediaAsset.setTag` | Assets from the same shoot (intro + outro filmed together). The draw unit. |
 | **Access** | `MediaAssetAccess` | Which accounts can use an asset. 0 rows = everyone. |
-| **Usage** | `MediaAssetUsage` | Per-account `lastUsedAt` + `usageCount`. Drives rotation ordering per account. |
-
-The rotation unit is always the `(category, setTag)` pair, not just `setTag`.
-Two sets with the same `setTag` but different `category` are treated as separate groups.
+| **Usage** | `MediaAssetUsage` | Per-account `lastUsedAt` + `usageCount`. Drives draw ordering per account. |
 
 ---
 
@@ -169,7 +158,7 @@ Two sets with the same `setTag` but different `category` are treated as separate
 
 | Rule | Applies to | Behaviour |
 |------|-----------|-----------|
-| `theme_sequence` | Video | Auto mode or override mode — see asset-rotation skill |
+| `theme_sequence` | Video | Folder draw (least-recently-served folder) — see asset-rotation skill |
 | `oldest_used` | Video, Audio | Per-account: JOIN MediaAssetUsage, ORDER BY mau.lastUsedAt ASC NULLS FIRST. Without accountId: global MediaAsset.lastUsedAt. |
 | `least_used` | Video, Audio | Per-account: JOIN MediaAssetUsage, ORDER BY COALESCE(mau.usageCount,0) ASC. Without accountId: global MediaAsset.usageCount. |
 | `not_used_in_cycle` | DataEntry | Pick entry where `usedInCycle = false`; fall back to `least_used`. |
@@ -190,7 +179,7 @@ Resolver: `web/src/lib/contentLibraryResolver.ts` → `resolveLibraryPrefill(tem
 ```
 GET    /media                              — list MediaLibrary
 POST   /media                              — create MediaLibrary
-PATCH  /media/[id]                         — update name, description, tags, setSequence
+PATCH  /media/[id]                         — update name, description, tags, rotationMode/scope, maxUsageCount
 DELETE /media/[id]                         — delete (cascade assets)
 
 GET    /media/[id]/assets                  — list MediaAsset; ?accountId= for per-account stats

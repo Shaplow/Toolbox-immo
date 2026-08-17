@@ -50,7 +50,9 @@ const VALID_R2_PREFIX = "content-library/";
 function isValidManifest(obj: unknown): obj is LibraryExportManifest {
   if (!obj || typeof obj !== "object") return false;
   const m = obj as Record<string, unknown>;
-  if (m.version !== 1) return false;
+  // v1 accepté en lecture : ses champs supprimés (setSequence, category) sont
+  // simplement ignorés à l'import (plan simplification Phase 3).
+  if (m.version !== 1 && m.version !== 2) return false;
   if (m.libraryType !== "media" && m.libraryType !== "data") return false;
   if (!m.library || typeof m.library !== "object") return false;
   // W5.6 : validation explicite Array.isArray sur assets/campaigns selon le
@@ -135,7 +137,6 @@ async function importMediaLibrary(
         type: lib.type,
         tags: JSON.stringify(lib.tags ?? []),
         description: lib.description ?? null,
-        setSequence: JSON.stringify(lib.setSequence ?? []),
         rotationScope: lib.rotationScope ?? "per_account",
       },
     });
@@ -229,7 +230,6 @@ async function importMediaLibrary(
           duration: asset.duration ?? null,
           tags: JSON.stringify(asset.tags ?? []),
           setTag: asset.setTag ?? null,
-          category: asset.category ?? null,
           usageCount: options.includeUsage ? asset.usageCount : 0,
           lastUsedAt: options.includeUsage && asset.lastUsedAt ? new Date(asset.lastUsedAt) : null,
         },
@@ -302,26 +302,9 @@ async function importDataLibrary(
   // W5.6 : invariant "1 seule campaign active par lib" enforce ici. Avant,
   // un ZIP avec plusieurs campaigns isActive=true (état invalide producible
   // si la contrainte a été contournée) importait toutes actives → resolver
-  // retournait la 1ère arbitrairement (non déterministe).
-  let firstActiveImported = false;
+  // Phase 4 : les campagnes du manifest v1 sont un wrapper décommissionné —
+  // leurs entries sont importées à plat sur la bibliothèque (libraryId direct).
   for (const campaign of manifest.campaigns) {
-    const isActiveForce = campaign.isActive && !firstActiveImported;
-    if (isActiveForce) firstActiveImported = true;
-    else if (campaign.isActive) {
-      warnings.push(
-        `Campaign "${campaign.name}" était marquée active dans le ZIP mais une autre est déjà active : importée comme inactive.`,
-      );
-    }
-    const newCampaign = await prisma.dataCampaign.create({
-      data: {
-        libraryId: targetLibraryId,
-        name: campaign.name,
-        isActive: isActiveForce,
-        usagePolicy: campaign.usagePolicy ?? "cycle",
-        cycleResetAt: campaign.cycleResetAt ? new Date(campaign.cycleResetAt) : null,
-      },
-    });
-
     // 3. Traiter chaque entry
     for (const entry of campaign.entries) {
       // Résoudre les accès compte
@@ -338,10 +321,9 @@ async function importDataLibrary(
 
       const newEntry = await prisma.dataEntry.create({
         data: {
-          campaignId: newCampaign.id,
+          libraryId: targetLibraryId,
           fields: JSON.stringify(entry.fields ?? {}),
           setTag: entry.setTag ?? null,
-          category: entry.category ?? null,
           usageCount: options.includeUsage ? entry.usageCount : 0,
           lastUsedAt: options.includeUsage && entry.lastUsedAt ? new Date(entry.lastUsedAt) : null,
           usedInCycle: options.includeUsage ? entry.usedInCycle : false,

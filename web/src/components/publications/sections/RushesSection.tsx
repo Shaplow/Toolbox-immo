@@ -51,10 +51,12 @@ interface RushesSectionProps {
   defaultOpen?: boolean;
   collapsible?: boolean;
   /** Base des routes rush (download-all / download-one / delete). Défaut :
-   *  `/api/publications/${slotId}/rushes`. Surchargé pour les rushs d'event :
-   *  `/api/shoot-events/${eventId}/rushes`. */
+   *  `/api/publications/${slotId}/rushes`. Surchargé pour les rushs de fiche
+   *  (ex-event) : `/api/entities/${entityId}/rushes`. Ne pilote PAS l'upload
+   *  (MediaDropzone garde son défaut `/api/publications/{slotId}` sauf
+   *  usage en readOnly, où l'upload est masqué). */
   apiBasePath?: string;
-  /** Lecture seule : masque l'upload ET la suppression (rushs d'event sur la
+  /** Lecture seule : masque l'upload ET la suppression (rushs de fiche sur la
    *  fiche du reel). */
   readOnly?: boolean;
   /** Titre de section (défaut « Rushes »). */
@@ -115,7 +117,7 @@ export function RushesSection({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // Base des routes rush. Défaut = flow publication (slot-scopé). Les rushs
-  // d'event surchargent vers `/api/shoot-events/${eventId}/rushes`.
+  // de fiche (ex-event) surchargent vers `/api/entities/${entityId}/rushes`.
   const base = apiBasePath ?? `/api/publications/${slotId}/rushes`;
 
   async function downloadAllRushes() {

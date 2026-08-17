@@ -41,7 +41,6 @@ export interface WorklistSlot {
   assigneeCmId: string | null;
   /** Phase VIDÉASTE — assignation du shoot. null = pas de vidéaste assigné (slot legacy ou one-off sans shoot). */
   assigneeVideasteId?: string | null;
-  patternId: string | null;
   /** null = mission sans compte Instagram (production stock). */
   account: WorklistAccount | null;
   pattern: WorklistPattern | null;

@@ -1,12 +1,16 @@
 "use client";
 
 /**
- * DataLibrarySettingsDrawer — drawer side-right pour éditer une DataLibrary.
+ * DataLibrarySettingsDrawer — drawer side-right pour éditer une DataLibrary
+ * sans exposer le JSON.
  *
- * Phase 1.x (Légère) — mirror du MediaLibrarySettingsDrawer mais simplifié :
+ * Plan simplification Phase 4 (2026-08) : aligné sur MediaLibrarySettingsDrawer
+ * refondu (Phase 3) — le mode « Ordre fixe » et les policies de campagne
+ * (cycle/once × account/global) sont décommissionnés. Sections :
  *  1. Identité : nom, description.
- *  2. Rotation : mode (auto / ordre fixe / aucune) + portée (partagé / par compte) + max usage.
- *  3. Champs : éditeur structuré key+label+type+required pour le schéma des fiches.
+ *  2. Tirage : switch auto/aucun + portée (par compte / partagé) + consommation max.
+ *  3. Champs personnalisés : éditeur structuré key+label+type+required.
+ *  4. Lien public : génère/révoque le lien de remplissage externe.
  *
  * Save via PATCH /api/admin/libraries/data/[id].
  */
@@ -16,11 +20,13 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
+import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
+import { declaredRotationMode } from "@/lib/rotation/rotationMode";
 
 import { toast } from "@/components/ui/Toast";
-import { Copy, Link2, RefreshCw, Settings2, Trash2 } from "lucide-react";
+import { Copy, Link2, RefreshCw, RotateCw, Settings2, SlidersHorizontal, Trash2 } from "lucide-react";
 import type { CustomField } from "@/lib/customFields";
 import { normalizeCustomFields, validateCustomFields } from "@/lib/customFields";
 import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
@@ -29,7 +35,7 @@ interface DataLibrarySettings {
   id: string;
   name: string;
   description: string | null;
-  rotationMode: "auto" | "override" | "none";
+  rotationMode?: string | null; // "auto" | "none" | legacy ("override"/null → auto)
   rotationScope: "shared" | "per_account";
   maxUsageCount: number | null;
   fieldsSchema: string; // JSON FieldDef[]
@@ -43,24 +49,25 @@ interface Props {
   onUpdated: () => void | Promise<void>;
 }
 
-// FIELD_TYPE_OPTIONS et parseSchema remplacés par CustomFieldsSchemaEditor + normalizeCustomFields.
-
 export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }: Props) {
   const initialSchema = useMemo(() => normalizeCustomFields(library?.fieldsSchema), [library?.fieldsSchema]);
 
   const [name, setName] = useState(library?.name ?? "");
   const [description, setDescription] = useState(library?.description ?? "");
-  const [rotationMode, setRotationMode] = useState<"auto" | "override" | "none">(
-    library?.rotationMode ?? "auto",
+  const [rotationMode, setRotationMode] = useState<"auto" | "none">(
+    declaredRotationMode({ rotationMode: library?.rotationMode ?? null }),
   );
-  const [rotationScope, setRotationScope] = useState<"shared" | "per_account">(
-    library?.rotationScope ?? "shared",
+  const [rotationScope, setRotationScope] = useState<"per_account" | "shared">(
+    library?.rotationScope === "shared" ? "shared" : "per_account",
   );
+  // Consommation max : null = rotation infinie, sinon entier ≥ 1 (soft cap N).
   const [maxUsageCount, setMaxUsageCount] = useState<string>(
     library?.maxUsageCount != null ? String(library.maxUsageCount) : "",
   );
   const [fields, setFields] = useState<CustomField[]>(initialSchema);
   const [saving, setSaving] = useState(false);
+  type TabKey = "identity" | "rotation" | "fields" | "share";
+  const [tab, setTab] = useState<TabKey>("identity");
   // Phase 1.x Vague 3 — token de remplissage public.
   const [publicToken, setPublicToken] = useState<string | null>(library?.publicFillToken ?? null);
   const [tokenLoading, setTokenLoading] = useState(false);
@@ -70,8 +77,8 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
     if (!library) return;
     setName(library.name);
     setDescription(library.description ?? "");
-    setRotationMode(library.rotationMode);
-    setRotationScope(library.rotationScope);
+    setRotationMode(declaredRotationMode({ rotationMode: library.rotationMode ?? null }));
+    setRotationScope(library.rotationScope === "shared" ? "shared" : "per_account");
     setMaxUsageCount(library.maxUsageCount != null ? String(library.maxUsageCount) : "");
     setFields(normalizeCustomFields(library.fieldsSchema));
     setPublicToken(library.publicFillToken ?? null);
@@ -130,6 +137,8 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
     }
   }
 
+  if (!library) return null;
+
   async function handleSave() {
     if (!library) return;
     if (!name.trim()) {
@@ -148,9 +157,21 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
       toast.error(`« ${reservedHit.key} » est réservé (ajouté automatiquement)`);
       return;
     }
+    // Parse maxUsageCount : vide → null, sinon entier ≥ 1
+    const trimmedMax = maxUsageCount.trim();
+    let parsedMax: number | null;
+    if (trimmedMax === "") {
+      parsedMax = null;
+    } else {
+      const n = Number(trimmedMax);
+      if (!Number.isInteger(n) || n < 1) {
+        toast.error("Consommation max : laisser vide pour infini, sinon un entier ≥ 1");
+        return;
+      }
+      parsedMax = n;
+    }
     setSaving(true);
     try {
-      const maxUsage = maxUsageCount.trim() ? parseInt(maxUsageCount, 10) : null;
       const res = await fetch(`/api/admin/libraries/data/${library.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -159,7 +180,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
           description: description.trim(),
           rotationMode,
           rotationScope,
-          maxUsageCount: maxUsage,
+          maxUsageCount: parsedMax,
           fieldsSchema: fields,
         }),
       });
@@ -168,7 +189,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
         toast.error(data.error ?? "Erreur lors de la sauvegarde");
         return;
       }
-      toast.success("Bibliothèque mise à jour.");
+      toast.success(`Bibliothèque « ${name.trim()} » mise à jour`);
       await onUpdated();
       onClose();
     } catch (err) {
@@ -179,8 +200,6 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
     }
   }
 
-  if (!library) return null;
-
   return (
     <Drawer open={open} onClose={onClose} side="right" size="lg">
       <Drawer.Header onClose={onClose}>
@@ -190,7 +209,20 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
         </span>
       </Drawer.Header>
       <Drawer.Body className="space-y-4">
-        {/* Identité */}
+        <Tabs
+          variant="line"
+          size="sm"
+          value={tab}
+          onChange={(id) => setTab(id as TabKey)}
+          items={[
+            { id: "identity", label: "Identité", icon: Settings2 },
+            { id: "rotation", label: "Tirage", icon: RotateCw },
+            { id: "fields", label: "Champs perso", icon: SlidersHorizontal },
+            { id: "share", label: "Lien public", icon: Link2 },
+          ]}
+        />
+
+        {tab === "identity" && (
         <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
           <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
             Identité
@@ -207,81 +239,67 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
             />
           </FormField>
         </section>
+        )}
 
-        {/* Rotation */}
-        <section className="rounded-2xl bg-card border border-border p-4  space-y-4">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
-            Rotation
+        {tab === "rotation" && (
+        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
+            <RotateCw size={11} /> Tirage
           </h3>
-
-          <FormField
-            label="Mode de rotation"
-            help={
-              rotationMode === "auto"
-                ? "Sélection automatique de la fiche la moins utilisée à chaque génération."
-                : rotationMode === "override"
-                  ? "Ordre fixe (V2 — non implémenté pour data, fallback sur auto pour l'instant)."
-                  : "Pas de rotation auto — la fiche doit être sélectionnée manuellement."
-            }
-          >
+          <FormField label="Tirage automatique">
             <div className="flex gap-1.5 flex-wrap">
-              {(["auto", "override", "none"] as const).map((m) => (
+              {(["auto", "none"] as const).map((m) => (
                 <Chip
                   key={m}
                   variant={rotationMode === m ? "sky" : "default"}
                   selected={rotationMode === m}
                   onClick={() => setRotationMode(m)}
-                  size="md"
+                  size="sm"
                 >
-                  {m === "auto" ? "Auto" : m === "override" ? "Ordre fixe" : "Aucune"}
+                  {m === "auto" ? "Auto · par dossier" : "Aucun"}
                 </Chip>
               ))}
             </div>
+            <p className="text-[10.5px] text-muted-foreground mt-1.5 leading-relaxed">
+              {rotationMode === "auto"
+                ? "Toolbox pioche dans le dossier servi le moins récemment, puis la fiche la moins récemment utilisée dedans."
+                : "Pas de tirage auto. La sélection se fait manuellement au moment de la génération."}
+            </p>
           </FormField>
-
-          <FormField
-            label="Portée"
-            help={
-              rotationScope === "shared"
-                ? "Pool partagé : tous les comptes consomment le même stock de fiches."
-                : "Indépendant par compte : chaque compte tourne dans la bibliothèque séparément."
-            }
-          >
-            <div className="flex gap-1.5 flex-wrap">
-              {(["shared", "per_account"] as const).map((s) => (
+          <FormField label="Comment elles tournent" help="Indépendant : chaque compte avance dans son propre cycle. Partagé : tous les comptes consomment le même.">
+            <div className="flex gap-1.5">
+              {(["per_account", "shared"] as const).map((s) => (
                 <Chip
                   key={s}
                   variant={rotationScope === s ? "sky" : "default"}
                   selected={rotationScope === s}
                   onClick={() => setRotationScope(s)}
-                  size="md"
+                  size="sm"
                 >
-                  {s === "shared" ? "Partagé entre comptes" : "Indépendant par compte"}
+                  {s === "per_account" ? "Indépendant par compte" : "Partagé entre comptes"}
                 </Chip>
               ))}
             </div>
           </FormField>
-
           <FormField
             label="Consommation max par fiche"
-            help="Vide = infini · 1 = chaque fiche utilisée une seule fois (puis bloquée)."
+            help={
+              rotationScope === "per_account"
+                ? "Laisser vide = rotation infinie. Sinon, chaque compte voit chaque fiche max N fois avant qu'elle sorte de la rotation pour ce compte."
+                : "Laisser vide = rotation infinie. Sinon, chaque fiche est utilisée max N fois au total (tous comptes confondus) avant d'être retirée."
+            }
           >
             <Input
-              type="number"
-              min={1}
-              max={1}
               value={maxUsageCount}
-              onChange={(v) => {
-                const trimmed = v.trim();
-                if (!trimmed) return setMaxUsageCount("");
-                setMaxUsageCount("1");
-              }}
+              onChange={setMaxUsageCount}
               placeholder="Vide = infini"
+              type="number"
             />
           </FormField>
         </section>
+        )}
 
-        {/* Champs personnalisés */}
+        {tab === "fields" && (
         <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
           <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
             Champs des fiches
@@ -291,7 +309,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
             <br />— générer un modèle CSV propre (même sans fiche existante),
             <br />— construire le formulaire « Nouvelle fiche »,
             <br />— valider les imports.
-            <br />Les colonnes <code className="text-[10.5px] bg-white/60 px-1 rounded">set_tag</code> et <code className="text-[10.5px] bg-white/60 px-1 rounded">category</code> sont ajoutées automatiquement.
+            <br />La colonne <code className="text-[10.5px] bg-white/60 px-1 rounded">set_tag</code> est ajoutée automatiquement.
           </p>
           {fields.length > 0 && (
             <p className="text-[10.5px] text-muted-foreground">
@@ -307,13 +325,13 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
             reservedKeys={["set_tag", "category"]}
           />
         </section>
-        {/* Lien public de remplissage (Phase 1.x Vague 3) */}
+        )}
+
+        {tab === "share" && (
         <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
-              <Link2 size={12} /> Lien public de remplissage
-            </h3>
-          </div>
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
+            <Link2 size={12} /> Lien public de remplissage
+          </h3>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             Génère un lien que tu peux partager (mail, Slack…) à quelqu&apos;un d&apos;externe.
             Cette personne pourra ajouter des fiches sans avoir besoin d&apos;un compte. Les fiches
@@ -354,6 +372,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
             </Button>
           )}
         </section>
+        )}
       </Drawer.Body>
       <Drawer.Footer>
         <div className="flex items-center justify-end gap-2 w-full">

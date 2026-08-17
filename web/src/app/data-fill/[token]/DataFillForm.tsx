@@ -22,14 +22,13 @@ type FieldDef = CustomField;
 
 interface EntryDraft {
   setTag: string;
-  category: string;
   fields: Record<string, string>;
 }
 
 function blankEntry(schema: FieldDef[]): EntryDraft {
   const fields: Record<string, string> = {};
   for (const f of schema) fields[f.key] = "";
-  return { setTag: "", category: "", fields };
+  return { setTag: "", fields };
 }
 
 interface Props {
@@ -76,7 +75,6 @@ export function DataFillForm({ token, fieldsSchema }: Props) {
         body: JSON.stringify({
           entries: entries.map((e) => ({
             setTag: e.setTag.trim() || null,
-            category: e.category.trim() || null,
             fields: e.fields,
           })),
         }),
@@ -152,18 +150,11 @@ export function DataFillForm({ token, fieldsSchema }: Props) {
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-3">
-            <FormField label="Set (optionnel)">
+            <FormField label="Dossier (optionnel)">
               <Input
                 value={entry.setTag}
                 onChange={(v) => updateRow(idx, { setTag: v })}
-                placeholder="ex: set1"
-              />
-            </FormField>
-            <FormField label="Catégorie (optionnel)">
-              <Input
-                value={entry.category}
-                onChange={(v) => updateRow(idx, { category: v })}
-                placeholder="ex: tenue1"
+                placeholder="ex: dossier1"
               />
             </FormField>
           </div>

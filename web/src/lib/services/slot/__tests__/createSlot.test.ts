@@ -19,26 +19,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockSlotCreate = vi.fn();
-const mockPatternFindUnique = vi.fn();
 const mockAccountFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
-// P2 — compat shim createSlot : on cherche un PatternBinding depuis le
-// legacy patternId pour matérialiser slot.patternBindingId. En test on
-// renvoie null par défaut (le test focus l'AccountPattern legacy path).
+// Recette canonique : PatternBinding (les tests binding le surchargent).
 const mockBindingFindUnique = vi.fn().mockResolvedValue(null);
 const mockBindingFindFirst = vi.fn().mockResolvedValue(null);
 // Missions — résolution recette GLOBALE directe (patternTemplateId).
 const mockPatternTemplateFindUnique = vi.fn().mockResolvedValue(null);
-// Bien (Property) — validation existence/archivage du propertyId.
-const mockPropertyFindUnique = vi.fn().mockResolvedValue({ id: "prop-1", isArchived: false });
+// Fiche (Entity, Phase 5) — validation existence/archivage du propertyId (clé API).
+const mockEntityFindUnique = vi.fn().mockResolvedValue({ id: "prop-1", typeId: "etype_bien", isArchived: false, fields: "{}" });
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     publicationSlot: {
       create: (...args: unknown[]) => mockSlotCreate(...args),
-    },
-    accountPattern: {
-      findUnique: (...args: unknown[]) => mockPatternFindUnique(...args),
     },
     patternTemplate: {
       findUnique: (...args: unknown[]) => mockPatternTemplateFindUnique(...args),
@@ -53,8 +47,8 @@ vi.mock("@/lib/prisma", () => ({
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
     },
-    property: {
-      findUnique: (...args: unknown[]) => mockPropertyFindUnique(...args),
+    entity: {
+      findUnique: (...args: unknown[]) => mockEntityFindUnique(...args),
     },
   },
 }));
@@ -90,15 +84,50 @@ function makeNonAdminCtx() {
   } as Parameters<typeof createSlot>[1];
 }
 
+/** PatternBinding mock (recette appliquée au compte) — chemin canonique createSlot. */
+function makeBindingRow(
+  templateOver: Record<string, unknown> = {},
+  bindingOver: Record<string, unknown> = {},
+) {
+  return {
+    id: "binding-A",
+    accountId: "account-A",
+    customLabel: null,
+    captionPresetIdOverride: null,
+    descriptionPromptIdOverride: null,
+    coverModeOverride: null,
+    templateIdOverride: null,
+    defaultAssigneeMonteurId: null,
+    defaultAssigneeCmId: null,
+    defaultAssigneeVideasteId: null,
+    patternTemplate: {
+      id: "tpl-A",
+      label: "Recette A",
+      source: "auto_template",
+      templateId: null,
+      requiresProperty: false,
+      captionPresetId: null,
+      descriptionPromptId: null,
+      needsCaptions: false,
+      needsDescription: "none",
+      descriptionSourceFieldKey: null,
+      descriptionFixedText: null,
+      coverMode: "none",
+      coverConfig: null,
+      ...templateOver,
+    },
+    ...bindingOver,
+  };
+}
+
 beforeEach(() => {
   mockSlotCreate.mockReset();
-  mockPatternFindUnique.mockReset();
   mockAccountFindUnique.mockReset();
   mockUserFindUnique.mockReset();
   mockBindingFindUnique.mockReset().mockResolvedValue(null);
   mockBindingFindFirst.mockReset().mockResolvedValue(null);
   mockPatternTemplateFindUnique.mockReset().mockResolvedValue(null);
-  mockPropertyFindUnique.mockReset().mockResolvedValue({ id: "prop-1", isArchived: false });
+  mockEntityFindUnique.mockReset().mockResolvedValue({ id: "prop-1", typeId: "etype_bien", isArchived: false, fields: "{}" });
 
   // Mock par défaut : create renvoie un objet stub plausible
   mockSlotCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
@@ -312,7 +341,7 @@ describe("createSlot — champs requis", () => {
       makeAdminCtx(),
     );
 
-    expect(slot.propertyId).toBe("prop-1");
+    expect(slot.entityId).toBe("prop-1");
     // Pas de copie des valeurs du bien dans slot.fields (résolues live à la génération).
     expect(slot.fields).toEqual({});
   });
@@ -320,43 +349,32 @@ describe("createSlot — champs requis", () => {
 
 // ─── Invariant 3 : pattern cross-account ────────────────────────────────────
 
-describe("createSlot — patternId cross-account guard", () => {
-  it("Pattern d'un autre compte rejeté", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-B",
-      accountId: "account-B", // ← autre compte !
-      source: "auto_template",
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-      defaultAssigneeMonteurId: null,
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+describe("createSlot — binding cross-account guard", () => {
+  it("Binding d'un autre compte rejeté", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({}, { id: "binding-B", accountId: "account-B" }), // ← autre compte !
+    );
 
     await expect(
       createSlot(
         {
           accountId: "account-A",
           scheduledAt: "2026-06-01T10:00:00Z",
-          patternId: "pattern-B",
+          patternBindingId: "binding-B",
         },
         makeAdminCtx(),
       ),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("Pattern inexistant → ValidationError", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce(null);
+  it("Binding inexistant → ValidationError", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce(null);
     await expect(
       createSlot(
         {
           accountId: "account-A",
           scheduledAt: "2026-06-01T10:00:00Z",
-          patternId: "pattern-ghost",
+          patternBindingId: "binding-ghost",
         },
         makeAdminCtx(),
       ),
@@ -366,29 +384,21 @@ describe("createSlot — patternId cross-account guard", () => {
 
 // ─── Invariant 4 : préfill assignees + override admin prime ────────────────
 
-describe("createSlot — préfill assignees depuis pattern", () => {
-  it("Pattern avec defaultAssigneeMonteurId → préfile dans le slot", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-A",
-      accountId: "account-A",
-      source: "manual_rushes",
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-      defaultAssigneeMonteurId: "user-monteur-default",
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+describe("createSlot — préfill assignees depuis la recette", () => {
+  it("Binding avec defaultAssigneeMonteurId → préfile dans le slot", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow(
+        { source: "manual_rushes" },
+        { defaultAssigneeMonteurId: "user-monteur-default" },
+      ),
+    );
     mockUserFindUnique.mockResolvedValueOnce({ role: "MONTEUR" });
 
     await createSlot(
       {
         accountId: "account-A",
         scheduledAt: "2026-06-01T10:00:00Z",
-        patternId: "pattern-A",
+        patternBindingId: "binding-A",
       },
       makeAdminCtx(),
     );
@@ -399,28 +409,20 @@ describe("createSlot — préfill assignees depuis pattern", () => {
     expect(callArgs.data.assigneeMonteurId).toBe("user-monteur-default");
   });
 
-  it("Override admin prime sur le default du pattern", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-A",
-      accountId: "account-A",
-      source: "manual_rushes",
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-      defaultAssigneeMonteurId: "user-monteur-default",
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+  it("Override admin prime sur le default de la recette", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow(
+        { source: "manual_rushes" },
+        { defaultAssigneeMonteurId: "user-monteur-default" },
+      ),
+    );
     mockUserFindUnique.mockResolvedValueOnce({ role: "MONTEUR" });
 
     await createSlot(
       {
         accountId: "account-A",
         scheduledAt: "2026-06-01T10:00:00Z",
-        patternId: "pattern-A",
+        patternBindingId: "binding-A",
         assigneeMonteurId: "user-monteur-override", // ← override
       },
       makeAdminCtx(),
@@ -451,26 +453,13 @@ describe("createSlot — préfill assignees depuis pattern", () => {
 
 describe("createSlot — status initial selon pattern.source", () => {
   it("source=auto_template → PLANNED", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-A",
-      accountId: "account-A",
-      source: "auto_template",
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-      defaultAssigneeMonteurId: null,
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+    mockBindingFindUnique.mockResolvedValueOnce(makeBindingRow({ source: "auto_template" }));
 
     await createSlot(
       {
         accountId: "account-A",
         scheduledAt: "2026-06-01T10:00:00Z",
-        patternId: "pattern-A",
+        patternBindingId: "binding-A",
       },
       makeAdminCtx(),
     );
@@ -480,26 +469,13 @@ describe("createSlot — status initial selon pattern.source", () => {
   });
 
   it("source=manual_rushes → RUSHES_EXPECTED", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-A",
-      accountId: "account-A",
-      source: "manual_rushes",
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-      defaultAssigneeMonteurId: null,
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+    mockBindingFindUnique.mockResolvedValueOnce(makeBindingRow({ source: "manual_rushes" }));
 
     await createSlot(
       {
         accountId: "account-A",
         scheduledAt: "2026-06-01T10:00:00Z",
-        patternId: "pattern-A",
+        patternBindingId: "binding-A",
       },
       makeAdminCtx(),
     );
@@ -509,26 +485,13 @@ describe("createSlot — status initial selon pattern.source", () => {
   });
 
   it("source=external_upload → READY_FOR_CM", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-A",
-      accountId: "account-A",
-      source: "external_upload",
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-      defaultAssigneeMonteurId: null,
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+    mockBindingFindUnique.mockResolvedValueOnce(makeBindingRow({ source: "external_upload" }));
 
     await createSlot(
       {
         accountId: "account-A",
         scheduledAt: "2026-06-01T10:00:00Z",
-        patternId: "pattern-A",
+        patternBindingId: "binding-A",
       },
       makeAdminCtx(),
     );
@@ -554,28 +517,17 @@ describe("createSlot — status initial selon pattern.source", () => {
 // ─── Invariant 6 : cross-field validation ──────────────────────────────────
 
 describe("createSlot — cross-field validation", () => {
-  it("needsCaptionsOverride=true + pattern sans captionPresetId → rejet", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-A",
-      accountId: "account-A",
-      source: "auto_template",
-      captionPresetId: null, // ← rien
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-      defaultAssigneeMonteurId: null,
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+  it("needsCaptionsOverride=true + recette sans captionPresetId → rejet", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({ captionPresetId: null }), // ← rien
+    );
 
     await expect(
       createSlot(
         {
           accountId: "account-A",
           scheduledAt: "2026-06-01T10:00:00Z",
-          patternId: "pattern-A",
+          patternBindingId: "binding-A",
           needsCaptionsOverride: true,
         },
         makeAdminCtx(),
@@ -583,28 +535,17 @@ describe("createSlot — cross-field validation", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("needsDescriptionOverride=autoGenerate + pattern sans prompt → rejet", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-A",
-      accountId: "account-A",
-      source: "auto_template",
-      captionPresetId: null,
-      descriptionPromptId: null, // ← rien
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-      defaultAssigneeMonteurId: null,
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+  it("needsDescriptionOverride=autoGenerate + recette sans prompt → rejet", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({ descriptionPromptId: null }), // ← rien
+    );
 
     await expect(
       createSlot(
         {
           accountId: "account-A",
           scheduledAt: "2026-06-01T10:00:00Z",
-          patternId: "pattern-A",
+          patternBindingId: "binding-A",
           needsDescriptionOverride: "autoGenerate",
         },
         makeAdminCtx(),
@@ -612,32 +553,19 @@ describe("createSlot — cross-field validation", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("coverModeOverride=autoPack sans coverPresetId sur le pattern → accepté (fallback runtime)", async () => {
+  it("coverModeOverride=autoPack sans coverPresetId sur la recette → accepté (fallback runtime)", async () => {
     // Phase 2.6 : pattern.coverConfig n'a plus à porter coverPresetId — le
     // preset vit sur le template (1 preset par défaut auto-créé dans le
     // builder). Le runtime coverAuto.ts résout via template.coverPresets en
     // fallback. createSlot ne doit donc PAS bloquer ce cas (le guard a été
     // retiré post-regression user 2026-06-05).
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-A",
-      accountId: "account-A",
-      source: "auto_template",
-      captionPresetId: null,
-      descriptionPromptId: null,
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: null,
-      defaultAssigneeMonteurId: null,
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+    mockBindingFindUnique.mockResolvedValueOnce(makeBindingRow());
 
     const result = await createSlot(
       {
         accountId: "account-A",
         scheduledAt: "2026-06-01T10:00:00Z",
-        patternId: "pattern-A",
+        patternBindingId: "binding-A",
         coverModeOverride: "autoPack",
       },
       makeAdminCtx(),
@@ -646,26 +574,19 @@ describe("createSlot — cross-field validation", () => {
   });
 
   it("Overrides cohérents → création OK", async () => {
-    mockPatternFindUnique.mockResolvedValueOnce({
-      id: "pattern-A",
-      accountId: "account-A",
-      source: "auto_template",
-      captionPresetId: "preset-1",
-      descriptionPromptId: "prompt-1",
-      needsCaptions: false,
-      needsDescription: "none",
-      coverMode: "none",
-      coverConfig: { coverPresetId: "cover-preset-1" },
-      defaultAssigneeMonteurId: null,
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    });
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({
+        captionPresetId: "preset-1",
+        descriptionPromptId: "prompt-1",
+        coverConfig: { coverPresetId: "cover-preset-1" },
+      }),
+    );
 
     const result = await createSlot(
       {
         accountId: "account-A",
         scheduledAt: "2026-06-01T10:00:00Z",
-        patternId: "pattern-A",
+        patternBindingId: "binding-A",
         needsCaptionsOverride: true,
         needsDescriptionOverride: "autoGenerate",
         coverModeOverride: "auto",
@@ -721,7 +642,7 @@ describe("createSlot — requiresProperty", () => {
       { patternTemplateId: "tpl-req-prop", propertyId: "prop-1" },
       makeAdminCtx(),
     );
-    expect(slot.propertyId).toBe("prop-1");
+    expect(slot.entityId).toBe("prop-1");
   });
 
   it("binding (calendrier/AddSlotModal) requiresProperty=true SANS propertyId → ValidationError", async () => {
@@ -782,18 +703,18 @@ describe("createSlot — requiresProperty", () => {
       { patternBindingId: "binding-req", accountId: "account-A", propertyId: "prop-1" },
       makeAdminCtx(),
     );
-    expect(slot.propertyId).toBe("prop-1");
+    expect(slot.entityId).toBe("prop-1");
   });
 
   it("propertyId d'un bien inexistant → NotFoundError", async () => {
-    mockPropertyFindUnique.mockResolvedValueOnce(null);
+    mockEntityFindUnique.mockResolvedValueOnce(null);
     await expect(
       createSlot({ accountId: "account-A", propertyId: "ghost" }, makeAdminCtx()),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("propertyId d'un bien archivé → ValidationError", async () => {
-    mockPropertyFindUnique.mockResolvedValueOnce({ id: "prop-arch", isArchived: true });
+    mockEntityFindUnique.mockResolvedValueOnce({ id: "prop-arch", isArchived: true });
     await expect(
       createSlot({ accountId: "account-A", propertyId: "prop-arch" }, makeAdminCtx()),
     ).rejects.toBeInstanceOf(ValidationError);

@@ -4,8 +4,10 @@
  * MediaAssetDetailDrawer — drawer side-right qui remplace les 20+ inline edits
  * de MediaAssetsVideoCard pour le mode noob.
  *
- * Phase 3 médiathèque (2026-05-30). Le drawer expose 3 sections :
- *  1. Rangement (toujours visible) : Catégorie + Pack via Combobox autocomplete.
+ * Phase 3 médiathèque (2026-05-30). Plan simplification 2026-08 : le concept
+ * de Catégorie a été retiré (le dossier — `setTag` — est la seule notion de
+ * rangement). Le drawer expose 3 sections :
+ *  1. Rangement (toujours visible) : Dossier via Combobox autocomplete.
  *  2. Tags & filtres (collapsible, fermée par défaut) : chips éditables.
  *  3. Avancé (collapsible) : restreindre à compte(s), champs métadonnées,
  *     désactiver, reset usage, supprimer.
@@ -34,7 +36,6 @@ import {
   Power,
   RotateCcw,
   Plus,
-  X,
   ChevronDown,
   Info,
   Download,
@@ -43,13 +44,13 @@ import type { InstagramAccount, MediaAsset, MetadataField } from "./types";
 import type { UseAssetInlineEditsResult } from "./useAssetInlineEdits";
 import { downloadAsset } from "./downloadAssets";
 import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   asset: MediaAsset | null;
   metadataSchema: MetadataField[];
-  existingCategories: string[];
   existingPacks: string[];
   accounts: InstagramAccount[];
   inline: UseAssetInlineEditsResult;
@@ -66,7 +67,6 @@ export function MediaAssetDetailDrawer({
   onClose,
   asset,
   metadataSchema,
-  existingCategories,
   existingPacks,
   accounts,
   inline,
@@ -76,23 +76,17 @@ export function MediaAssetDetailDrawer({
 }: Props) {
   const { canManageAssets } = useMediaLibraryPermissions();
   // États locaux contrôlés pour les inputs — sync sur asset change.
-  const [categoryInput, setCategoryInput] = useState("");
   const [packInput, setPackInput] = useState("");
   const [tagDraft, setTagDraft] = useState("");
 
   useEffect(() => {
     if (asset) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCategoryInput(asset.category ?? "");
       setPackInput(asset.setTag ?? "");
       setTagDraft("");
     }
   }, [asset]);
 
-  const categoryOptions = useMemo(
-    () => existingCategories.map((c) => ({ value: c, label: c, icon: FolderOpen })),
-    [existingCategories],
-  );
   const packOptions = useMemo(
     () => existingPacks.map((p) => ({ value: p, label: p, icon: Layers })),
     [existingPacks],
@@ -188,7 +182,7 @@ export function MediaAssetDetailDrawer({
         </div>
 
         {/* Rangement — en lecture seule, on affiche les mêmes informations sans
-            aucun contrôle éditable : le monteur a besoin de savoir à quel groupe
+            aucun contrôle éditable : le monteur a besoin de savoir à quel dossier
             appartient un plan, pas de pouvoir le changer. */}
         {!canManageAssets ? (
           <section className="rounded-2xl bg-card border border-border p-4 space-y-2">
@@ -196,14 +190,10 @@ export function MediaAssetDetailDrawer({
               <FolderOpen size={11} /> Rangement
             </h3>
             <p className="text-[12px] text-foreground">
-              <span className="text-muted-foreground">Groupe : </span>
-              {asset.setTag && !asset.setTag.startsWith("pack_")
+              <span className="text-muted-foreground">Dossier : </span>
+              {asset.setTag && !isReservedSetTag(asset.setTag)
                 ? asset.setTag
                 : <span className="text-muted-foreground italic">aucun</span>}
-            </p>
-            <p className="text-[12px] text-foreground">
-              <span className="text-muted-foreground">Catégorie : </span>
-              {asset.category ?? <span className="text-muted-foreground italic">aucune</span>}
             </p>
             <p className="text-[12px] text-foreground">
               <span className="text-muted-foreground">Tags : </span>
@@ -218,7 +208,7 @@ export function MediaAssetDetailDrawer({
             <FolderOpen size={11} /> Rangement
           </h3>
           <FormField
-            label="Groupe"
+            label="Dossier"
             help="Plans qui voyagent ensemble dans le même rendu (intro + outro par exemple)."
           >
             <div className="flex gap-2">
@@ -232,58 +222,11 @@ export function MediaAssetDetailDrawer({
                 }}
                 options={packOptions}
                 allowCustom
-                placeholder="Choisir ou créer un groupe…"
-                emptyMessage="Aucun groupe. Tapez un nom pour en créer un."
+                placeholder="Choisir ou créer un dossier…"
+                emptyMessage="Aucun dossier. Tapez un nom pour en créer un."
               />
             </div>
           </FormField>
-
-          {/* H.3 — Catégorie déplacée en mode avancé (repliée par défaut).
-              Affichée résumée si déjà setée pour rester découvrable. */}
-          <details className="group" open={!!asset.category}>
-            <summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground select-none inline-flex items-center gap-1.5">
-              <span className="inline-block w-2 h-2 rounded-full border border-border group-open:bg-foreground transition-colors" />
-              Avancé · Catégorie
-              {asset.category && (
-                <span className="text-foreground font-medium">— {asset.category}</span>
-              )}
-            </summary>
-            <div className="mt-2.5">
-              <FormField
-                label="Catégorie"
-                help="Optionnelle. Sert à éviter de jouer deux groupes de la même famille à la suite quand la rotation est en mode auto."
-              >
-                <div className="flex gap-2">
-                  <Combobox
-                    value={categoryInput}
-                    onChange={(v) => {
-                      setCategoryInput(v);
-                      if (asset && v !== (asset.category ?? "")) {
-                        void inline.handleSaveCategory(asset, v.trim());
-                      }
-                    }}
-                    options={categoryOptions}
-                    allowCustom
-                    placeholder="Choisir ou créer une catégorie…"
-                    emptyMessage="Aucune catégorie. Tapez un nom pour en créer une."
-                  />
-                  {asset.category && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setCategoryInput("");
-                        if (asset) void inline.handleSaveCategory(asset, "");
-                      }}
-                      icon={X}
-                    >
-                      Retirer
-                    </Button>
-                  )}
-                </div>
-              </FormField>
-            </div>
-          </details>
         </section>
         )}
 

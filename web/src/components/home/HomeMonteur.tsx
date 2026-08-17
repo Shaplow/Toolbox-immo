@@ -58,7 +58,10 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     },
     include: {
       account: { select: { id: true, handle: true, name: true } },
-      pattern: { select: { label: true } },
+      patternBinding: {
+        select: { customLabel: true, patternTemplate: { select: { label: true } } },
+      },
+      patternTemplate: { select: { label: true } },
     },
     orderBy: { scheduledAt: "asc" },
   });
@@ -71,9 +74,13 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     notes: s.notes,
     assigneeMonteurId: s.assigneeMonteurId,
     assigneeCmId: s.assigneeCmId,
-    patternId: s.patternId,
     account: s.account,
-    pattern: s.pattern,
+    // Vue recette synthétisée (binding → template global → null).
+    pattern: s.patternBinding?.patternTemplate
+      ? { label: s.patternBinding.customLabel ?? s.patternBinding.patternTemplate.label }
+      : s.patternTemplate
+        ? { label: s.patternTemplate.label }
+        : null,
   }));
 
   const editReviewSlotIds = slots

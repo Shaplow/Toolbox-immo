@@ -82,8 +82,7 @@ export function MediaAssetsTable({
                 Nom {nameActive && <ChevronDown size={11} />}
               </button>
             </th>
-            <th className="px-2 py-2">Catégorie</th>
-            <th className="px-2 py-2">Groupe</th>
+            <th className="px-2 py-2">Dossier</th>
             <th className="px-2 py-2">Tags</th>
             <th className="px-2 py-2">
               <button
