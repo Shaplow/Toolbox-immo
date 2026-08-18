@@ -10,6 +10,7 @@ import { DEFAULT_CAPTION_CONFIG } from "@/lib/captionPresetConfig";
 import { isSafeRelativePath } from "@/lib/safeUrl";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { toast } from "@/components/ui/Toast";
+import { numericDateFr } from "@/lib/date/formatFr";
 
 type Preset = {
   id: string;
@@ -429,7 +430,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  {new Date(preset.createdAt).toLocaleDateString("fr-FR")}
+                  {numericDateFr(preset.createdAt)}
                 </p>
               </div>
 

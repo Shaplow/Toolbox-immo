@@ -10,7 +10,7 @@ import type { WorklistSlotBadges } from "./WorklistSlotCard";
 import type { WorklistSlot } from "@/types/worklist";
 import type { SlotStatus } from "@/types/roles";
 import { getPublicationPhase, PHASE_DOT } from "@/lib/slots/phase";
-import { timeFr } from "@/lib/date/formatFr";
+import { timeFr, shortDateFr } from "@/lib/date/formatFr";
 import {
   getMonteurSection,
   isSlotOverdue,
@@ -302,10 +302,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
                         </div>
                         <span className="text-[10.5px] text-muted-foreground font-mono tabular-nums shrink-0">
                           {slot.scheduledAt
-                            ? slot.scheduledAt.toLocaleDateString("fr-FR", {
-                                day: "numeric",
-                                month: "short",
-                              })
+                            ? shortDateFr(slot.scheduledAt)
                             : "Banque"}
                         </span>
                       </div>

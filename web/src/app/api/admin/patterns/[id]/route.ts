@@ -5,38 +5,16 @@
  * DELETE /api/admin/patterns/[id] — archive (soft) le template ; les bindings
  *   existants restent valides.
  */
-import { VALID_SOURCES, VALID_CAPTIONS_MODES, VALID_DESCRIPTION_MODES, VALID_COVER_MODES } from "@/lib/publications/patternEnums";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import {
-  normalizeSourceFieldKey,
-  normalizeFixedText,
-} from "@/lib/publications/preFilledDescription";
-type PatchBody = {
-  label?: string;
-  source?: string;
-  templateId?: string | null;
-  captionPresetId?: string | null;
-  descriptionPromptId?: string | null;
-  descriptionSourceFieldKey?: string | null;
-  descriptionFixedText?: string | null;
-  coverMode?: string;
-  coverConfig?: unknown;
-  needsDescription?: string;
-  needsCaptionsMode?: string;
-  needsAdminValidation?: boolean;
-  needsClientValidation?: boolean;
-  allowsClientRevision?: boolean;
-  needsBrief?: boolean;
-  requiresProperty?: boolean;
-  /** Phase 5 (métaobjet) — remplace requiresProperty. */
-  requiresEntityTypeId?: string | null;
-  notes?: string | null;
-  isArchived?: boolean;
-  autoSaveToLibraryId?: string | null;
-};
+  validatePatternTemplateInput,
+  toPatternTemplateUpdateData,
+  type PatternTemplateInputPayload,
+} from "@/lib/services/pattern/patternTemplateInput";
 
+type PatchBody = PatternTemplateInputPayload;
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -77,86 +55,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Body JSON invalide" }, { status: 400 });
   }
 
-  if (body.source !== undefined && !VALID_SOURCES.includes(body.source)) {
-    return NextResponse.json({ error: "source invalide" }, { status: 400 });
-  }
-  if (body.needsCaptionsMode !== undefined && !VALID_CAPTIONS_MODES.includes(body.needsCaptionsMode)) {
-    return NextResponse.json({ error: "needsCaptionsMode invalide" }, { status: 400 });
-  }
-  if (body.needsDescription !== undefined && !VALID_DESCRIPTION_MODES.includes(body.needsDescription)) {
-    return NextResponse.json({ error: "needsDescription invalide" }, { status: 400 });
-  }
-  if (body.coverMode !== undefined && !VALID_COVER_MODES.includes(body.coverMode)) {
-    return NextResponse.json({ error: "coverMode invalide" }, { status: 400 });
-  }
-  // Valide requiresEntityTypeId si fourni (non null).
-  if (body.requiresEntityTypeId) {
-    const type = await prisma.entityType.findUnique({
-      where: { id: body.requiresEntityTypeId },
-      select: { id: true },
-    });
-    if (!type) {
-      return NextResponse.json({ error: "requiresEntityTypeId : type de fiche introuvable" }, { status: 400 });
-    }
-  }
-
-  // Valide autoSaveToLibraryId si fourni (non null).
-  if (body.autoSaveToLibraryId) {
-    const lib = await prisma.mediaLibrary.findUnique({
-      where: { id: body.autoSaveToLibraryId },
-      select: { id: true, type: true },
-    });
-    if (!lib) {
-      return NextResponse.json({ error: "autoSaveToLibraryId : bibliothèque introuvable" }, { status: 400 });
-    }
-    if (lib.type !== "video") {
-      return NextResponse.json(
-        { error: "autoSaveToLibraryId : la bibliothèque doit être de type vidéo" },
-        { status: 400 },
-      );
-    }
-  }
+  const err = await validatePatternTemplateInput(body, { requireAll: false }, prisma);
+  if (err) return NextResponse.json({ error: err }, { status: 400 });
 
   const updated = await prisma.patternTemplate.update({
     where: { id },
-    data: {
-      ...(body.label !== undefined ? { label: body.label.trim() } : {}),
-      ...(body.source !== undefined ? { source: body.source } : {}),
-      ...(body.templateId !== undefined ? { templateId: body.templateId } : {}),
-      ...(body.captionPresetId !== undefined ? { captionPresetId: body.captionPresetId } : {}),
-      ...(body.descriptionPromptId !== undefined ? { descriptionPromptId: body.descriptionPromptId } : {}),
-      ...(body.descriptionSourceFieldKey !== undefined
-        ? { descriptionSourceFieldKey: normalizeSourceFieldKey(body.descriptionSourceFieldKey) }
-        : {}),
-      ...(body.descriptionFixedText !== undefined
-        ? { descriptionFixedText: normalizeFixedText(body.descriptionFixedText) }
-        : {}),
-      ...(body.coverMode !== undefined ? { coverMode: body.coverMode } : {}),
-      ...(body.coverConfig !== undefined
-        ? { coverConfig: body.coverConfig === null ? undefined : (body.coverConfig as object) }
-        : {}),
-      ...(body.needsDescription !== undefined ? { needsDescription: body.needsDescription } : {}),
-      ...(body.needsCaptionsMode !== undefined
-        ? {
-            needsCaptionsMode: body.needsCaptionsMode,
-          }
-        : {}),
-      ...(body.needsAdminValidation !== undefined ? { needsAdminValidation: body.needsAdminValidation } : {}),
-      ...(body.needsClientValidation !== undefined ? { needsClientValidation: body.needsClientValidation } : {}),
-      ...(body.allowsClientRevision !== undefined ? { allowsClientRevision: body.allowsClientRevision } : {}),
-      ...(body.needsBrief !== undefined ? { needsBrief: body.needsBrief } : {}),
-      ...(body.requiresProperty !== undefined ? { requiresProperty: body.requiresProperty } : {}),
-      ...(body.requiresEntityTypeId !== undefined
-        ? { requiresEntityTypeId: body.requiresEntityTypeId }
-        : {}),
-      ...(body.notes !== undefined ? { notes: body.notes } : {}),
-      ...(body.isArchived !== undefined ? { isArchived: body.isArchived } : {}),
-      ...(body.autoSaveToLibraryId !== undefined
-        ? { autoSaveToLibraryId: body.autoSaveToLibraryId }
-        : {}),
-      // Sprint D — audit log light : trace l'auteur de l'édition.
-      updatedByUserId: ctx.actualUser.id,
-    },
+    // Sprint D — audit log light : trace l'auteur de l'édition.
+    data: toPatternTemplateUpdateData(body, ctx.actualUser.id),
   });
   return NextResponse.json(updated);
 }
@@ -166,6 +71,19 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (auth.response) return auth.response;
   const ctx = auth.ctx;
   const { id } = await params;
+
+  // Garde-fou : une recette encore liée à des comptes reste résolvable pour
+  // les slots existants mais devient impossible à ré-appliquer/déployer une
+  // fois archivée — on bloque l'archivage tant qu'il reste des bindings.
+  const bindingCount = await prisma.patternBinding.count({ where: { patternTemplateId: id } });
+  if (bindingCount > 0) {
+    return NextResponse.json(
+      {
+        error: `Cette recette est utilisée par ${bindingCount} compte${bindingCount > 1 ? "s" : ""}. Retire-la des comptes avant d'archiver.`,
+      },
+      { status: 400 },
+    );
+  }
 
   // Soft-delete via isArchived. Les bindings + slots historiques restent
   // fonctionnels mais le template disparaît du catalogue.

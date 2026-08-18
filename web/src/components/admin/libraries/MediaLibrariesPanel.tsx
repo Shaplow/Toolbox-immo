@@ -30,11 +30,11 @@ import { FormField } from "@/components/ui/FormField";
 import { Modal } from "@/components/ui/Modal";
 import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
-// LibraryExportButton retiré du flow card par défaut (export accessible via Drawer Settings).
+import { Alert } from "@/components/ui/Alert";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { MediaAssetsUploadModal } from "./mediaAssets/MediaAssetsUploadModal";
 import { MediaLibrarySettingsDrawer } from "./MediaLibrarySettingsDrawer";
-import { type PreviewAsset } from "./LibraryPreviewThumbs";
-import type { MediaLibrary } from "./mediaAssets/types";
+import type { MediaLibrary, PreviewAsset } from "./mediaAssets/types";
 import { LazyVideoThumb } from "./mediaAssets/LazyVideoThumb";
 import { rotationScopeLabel } from "@/lib/i18n/glossary";
 
@@ -73,11 +73,12 @@ export function MediaLibrariesPanel({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState<{ name: string; type: "video" | "audio"; tags: string; description: string }>({
+  // tags/description : pas de champ dans la modal de création (édités ensuite
+  // via Réglages sur la card) — le state ne porte que ce que le formulaire
+  // affiche réellement.
+  const [form, setForm] = useState<{ name: string; type: "video" | "audio" }>({
     name: "",
     type: forcedType ?? "video",
-    tags: "",
-    description: "",
   });
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSaving, setCreateSaving] = useState(false);
@@ -141,15 +142,12 @@ export function MediaLibrariesPanel({
     setCreateError(null);
     setCreateSaving(true);
     try {
-      const tags = form.tags.split(",").map((t) => t.trim()).filter(Boolean);
       const res = await fetch("/api/admin/libraries/media", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name,
           type: form.type,
-          tags,
-          description: form.description,
         }),
       });
       if (!res.ok) {
@@ -159,7 +157,7 @@ export function MediaLibrariesPanel({
       }
       const createdName = form.name;
       setCreating(false);
-      setForm({ name: "", type: "video", tags: "", description: "" });
+      setForm({ name: "", type: forcedType ?? "video" });
       toast.success(`Bibliothèque « ${createdName} » créée.`);
       void load();
     } catch {
@@ -271,26 +269,25 @@ export function MediaLibrariesPanel({
 
       {/* Error */}
       {loadError && (
-        <div className="rounded-xl bg-danger-50/70 p-3 ">
-          <p className="text-[12.5px] font-semibold text-danger-700">
-            Impossible de charger les bibliothèques
-          </p>
-          <p className="text-[11px] font-mono text-danger-700 mt-1">{loadError}</p>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="text-[11px] text-danger-700 underline mt-2"
-          >
-            Réessayer
-          </button>
-        </div>
+        <Alert
+          variant="danger"
+          title="Impossible de charger les bibliothèques"
+          actions={
+            <Button variant="secondary" size="sm" onClick={() => void load()}>
+              Réessayer
+            </Button>
+          }
+        >
+          {loadError}
+        </Alert>
       )}
 
       {/* Loading */}
       {loading ? (
-        <div className="rounded-2xl bg-card border border-border py-16  flex items-center justify-center text-muted-foreground gap-3">
-          <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-          <span className="text-[12.5px]">Chargement…</span>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} shape="block" className="aspect-[9/16] w-full rounded-2xl" />
+          ))}
         </div>
       ) : libraries.length === 0 ? (
         <div className="rounded-2xl bg-card border border-border p-8 ">
@@ -355,21 +352,23 @@ export function MediaLibrariesPanel({
                 />
               </FormField>
 
-              <FormField label="Type" required>
-                <div className="flex gap-2">
-                  {(["video", "audio"] as const).map((t) => (
-                    <Chip
-                      key={t}
-                      variant={form.type === t ? (t === "video" ? "sky" : "sage") : "default"}
-                      selected={form.type === t}
-                      onClick={() => setForm((f) => ({ ...f, type: t }))}
-                      icon={t === "video" ? Video : Music2}
-                    >
-                      {t === "video" ? "Vidéo" : "Audio"}
-                    </Chip>
-                  ))}
-                </div>
-              </FormField>
+              {!forcedType && (
+                <FormField label="Type" required>
+                  <div className="flex gap-2">
+                    {(["video", "audio"] as const).map((t) => (
+                      <Chip
+                        key={t}
+                        variant={form.type === t ? (t === "video" ? "sky" : "sage") : "default"}
+                        selected={form.type === t}
+                        onClick={() => setForm((f) => ({ ...f, type: t }))}
+                        icon={t === "video" ? Video : Music2}
+                      >
+                        {t === "video" ? "Vidéo" : "Audio"}
+                      </Chip>
+                    ))}
+                  </div>
+                </FormField>
+              )}
 
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 Tags, description, rotation et champs personnalisés sont éditables

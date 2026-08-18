@@ -9,12 +9,12 @@
  * intégrale (édition recettes, curseurs, archive, etc.).
  */
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { toast } from "@/components/ui/Toast";
+import { useFetchOnOpen } from "@/hooks/useFetchOnOpen";
 import {
   AccountSummaryCard,
   type AccountPeekData,
@@ -32,38 +32,16 @@ export function AccountPeekDrawer({
   onClose,
 }: AccountPeekDrawerProps) {
   const router = useRouter();
-  const [data, setData] = useState<AccountPeekData | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open || !accountId) {
-      setData(null);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    void (async () => {
-      try {
-        const res = await fetch(`/api/admin/accounts/${accountId}/peek`);
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(body.error ?? `Erreur ${res.status}`);
-        }
-        const payload = (await res.json()) as AccountPeekData;
-        if (!cancelled) setData(payload);
-      } catch (err) {
-        if (!cancelled) {
-          toast.error(err instanceof Error ? err.message : "Aperçu indisponible");
-          onClose();
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, accountId, onClose]);
+  const { data, loading } = useFetchOnOpen<AccountPeekData>(
+    accountId ? `/api/admin/accounts/${accountId}/peek` : null,
+    open,
+    {
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : "Aperçu indisponible");
+        onClose();
+      },
+    },
+  );
 
   function goToFullView() {
     if (!accountId) return;

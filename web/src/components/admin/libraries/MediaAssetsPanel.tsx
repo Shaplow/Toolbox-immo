@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useState, useRef, useMemo } from "react";
 import Link from "next/link";
 import { Play, Music2, ChevronLeft, Settings2, Film, Headphones } from "lucide-react";
 import { MediaLibrarySettingsDrawer } from "./MediaLibrarySettingsDrawer";
@@ -11,6 +11,9 @@ import type { MediaAsset, MetadataField, MediaLibrary, SetGroup, SortKey } from 
 import { useMediaAssetsLoader } from "./mediaAssets/useMediaAssetsLoader";
 import { useInstagramAccounts } from "./mediaAssets/useInstagramAccounts";
 import { useBulkEdit } from "./mediaAssets/useBulkEdit";
+import { useMediaAssetsPolling } from "./mediaAssets/useMediaAssetsPolling";
+import { useInfiniteScroll } from "./mediaAssets/useInfiniteScroll";
+import { useSetGroups } from "./mediaAssets/useSetGroups";
 import { MediaAssetsUploadModal } from "./mediaAssets/MediaAssetsUploadModal";
 import { MediaAssetsBulkActionBar } from "./mediaAssets/MediaAssetsBulkActionBar";
 import { MediaAssetsGroupedView } from "./mediaAssets/MediaAssetsGroupedView";
@@ -108,28 +111,11 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
   const effectiveViewMode = isManualMode ? "grid" : isAdvanced ? viewMode : "grouped";
   // Phase 3 — drawer détail asset (ouvert en mode noob via click sur card).
   const [detailAsset, setDetailAsset] = useState<MediaAsset | null>(null);
-  // Si le drawer a été ouvert depuis une stack (dossier), on garde la liste des assets du
-  // dossier pour permettre de naviguer entre eux sans fermer/rouvrir le drawer.
-  const [detailSetAssets, setDetailSetAssets] = useState<MediaAsset[] | null>(null);
-  // F2.3 — Count des jobs autocut en attente de review (badge sur "Analyse auto").
-  const [autocutPendingCount, setAutocutPendingCount] = useState(0);
   // D4 — bulk edit extrait dans useBulkEdit hook. La sticky bar D8
   // (MediaAssetsBulkActionBar) consomme l'objet `bulk` complet. Le panel
   // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
   const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts, confirm });
   const { selectMode, setSelectMode, selectedIds, toggleSelect, exitSelectMode } = bulk;
-  // ── Infinite scroll (grille uniquement — la vue "grouped" reste non paginée) ──
-  const [visibleCount, setVisibleCount] = useState(48);
-  // Sentinel d'infinite-scroll stocké en state via callback ref : l'effet
-  // observer se (re)lance quand le nœud se monte réellement — le sentinel est
-  // rendu derrière le gate `loading`, donc un observer posé sur `[viewMode]`
-  // au montage ratait le nœud (encore null) et ne se rattachait jamais → scroll
-  // bloqué à 48. Le callback ref (setter useState, stable) corrige ça.
-  const [gridSentinel, setGridSentinel] = useState<HTMLDivElement | null>(null);
-  // Refs stables pour le sentinel (mise à jour inline pendant le rendu — pas des hooks)
-  const hasPendingRef = useRef(false);
-  const visibleCountRef = useRef(0);
-  const filteredLengthRef = useRef(0);
 
   const metadataSchema = useMemo<MetadataField[]>(() => {
     try { return JSON.parse(library.metadataSchema ?? "[]") as MetadataField[]; } catch { return []; }
@@ -178,95 +164,18 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
   // ─ Fetch des assets + accounts extrait dans les hooks
   //   useMediaAssetsLoader / useInstagramAccounts (D3 du split C1-v2).
 
-  /**
-   * Met à jour silencieusement les champs qui changent en arrière-plan
-   * (pendingEditJob, url, duration) sans toucher loading ni réinitialiser le scroll.
-   *
-   * L'endpoint retourne deux groupes :
-   * - Jobs actifs (pending/processing) : mise à jour du statut/url/duration
-   * - Jobs récemment terminés (done/failed < 120s) : vidage du pendingEditJob + url/duration frais
-   * Aucun rechargement complet n'est déclenché.
-   */
-  const silentPoll = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/active-jobs`);
-      if (!res.ok) return;
-      type ActiveJobEntry = {
-        id: string;
-        url: string;
-        duration: number | null;
-        pendingEditJob: { id: string; status: string } | null;
-        recentlyCompleted: boolean;
-      };
-      const entries = await res.json() as ActiveJobEntry[];
-      const activeMap = new Map(entries.filter((e) => !e.recentlyCompleted).map((e) => [e.id, e]));
-      const completedMap = new Map(entries.filter((e) => e.recentlyCompleted).map((e) => [e.id, e]));
-
-      setAssets((prev) => {
-        let changed = false;
-        const next = prev.map((a) => {
-          if (!a.pendingEditJob) return a; // pas de job connu — rien à faire
-          const active = activeMap.get(a.id);
-          const completed = completedMap.get(a.id);
-          if (active) {
-            // Job toujours en cours — mettre à jour si quelque chose a changé
-            if (
-              active.pendingEditJob?.id === a.pendingEditJob?.id &&
-              active.pendingEditJob?.status === a.pendingEditJob?.status &&
-              active.url === a.url &&
-              active.duration === a.duration
-            ) return a;
-            changed = true;
-            return { ...a, pendingEditJob: active.pendingEditJob, url: active.url, duration: active.duration };
-          } else if (completed) {
-            // Job venant de se terminer — url/duration déjà mis à jour par le worker
-            changed = true;
-            return { ...a, pendingEditJob: null, url: completed.url, duration: completed.duration };
-          } else {
-            // Job terminé il y a > 120s (cas limite) — vider le spinner, garder l'url courante
-            changed = true;
-            return { ...a, pendingEditJob: null };
-          }
-        });
-        return changed ? next : prev;
-      });
-    } catch {
-      // silencieux — le poll ne doit pas perturber l'UI
-    }
-  }, [library.id, setAssets]); // setAssets vient de useMediaAssetsLoader (stable mais explicite)
-
-  // Poll toutes les 5s — tourne en continu, ne fait rien si aucun job actif (hasPendingRef)
-  useEffect(() => {
-    const timer = setInterval(() => { if (hasPendingRef.current) void silentPoll(); }, 5000);
-    return () => clearInterval(timer);
-  }, [silentPoll]);
-
-  // F2.3 — Fetch le count des jobs autocut en attente de review (badge sur
-  // "Analyse auto"). Refresh à chaque fermeture de l'atelier (où l'admin
-  // peut avoir validé/passé des jobs). Pas de fetch pour les bibliothèques
-  // audio (pas d'autocut).
-  useEffect(() => {
-    if (library.type !== "video") return;
-    // Sans droits assets, l'atelier « Analyse auto » n'est pas rendu : inutile
-    // d'aller chercher son badge, et la route est de toute façon gatée
-    // `canManageMediaAssets` — l'appel ne ferait qu'un 403 silencieux à chaque
-    // montage du panel.
-    if (!canManageAssets) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/admin/libraries/media/${library.id}/autocut-queue?reviewStatus=pending_review&pageSize=1&lean=1`,
-        );
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { total?: number };
-        if (!cancelled) setAutocutPendingCount(data.total ?? 0);
-      } catch {
-        // silent
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [library.id, library.type, showAtelier, canManageAssets]);
+  // Job polling (spinner asset en cours d'édition) + badge autocut extraits
+  // dans useMediaAssetsPolling (split C1-v2). Le fetch du badge est gaté sur
+  // `canManageAssets` — même condition que la visibilité du bouton « Analyse
+  // auto » côté Toolbar, donc jamais de fetch pour un badge invisible.
+  const { autocutPendingCount } = useMediaAssetsPolling({
+    libraryId: library.id,
+    libraryType: library.type,
+    canManageAssets,
+    showAtelier,
+    assets,
+    setAssets,
+  });
 
   // ESC handler géré dans MediaAssetsUploadModal (D7).
 
@@ -316,6 +225,17 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
     });
   }, [filteredPreTag, sort, tagFilter, accountFilter]);
 
+  // Infinite scroll (grille/liste uniquement — la vue "grouped" reste non
+  // paginée) extrait dans useInfiniteScroll (split C1-v2). resetDeps
+  // reproduit le tableau de dépendances historique du panel : tout changement
+  // remet visibleCount à 48.
+  const { visibleCount, setGridSentinel } = useInfiniteScroll(filtered.length, [
+    search,
+    sort,
+    tagFilter,
+    accountFilter,
+    library.id,
+  ]);
   const visibleFiltered = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
   // Ids de TOUT l'ensemble filtré (indépendant de la fenêtre d'infinite-scroll)
   // — le select-all de la vue liste doit porter sur ces ids, pas sur les 48
@@ -323,101 +243,8 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
   // delete silencieusement partiel.
   const allFilteredIds = useMemo(() => filtered.map((a) => a.id), [filtered]);
 
-  // Mise à jour des refs stables après render via useEffect (React 19
-  // strict mode interdit `ref.current = ...` dans le corps du composant).
-  useEffect(() => {
-    visibleCountRef.current = visibleCount;
-    filteredLengthRef.current = filtered.length;
-    hasPendingRef.current = assets.some((a) => a.pendingEditJob !== null);
-  }, [visibleCount, filtered.length, assets]);
-
-  // Reset visible count quand les filtres/tri/bibliothèque/compte changent
-  // (pattern "reset state when external data changes" — React docs OK).
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setVisibleCount(48);
-  }, [search, sort, tagFilter, accountFilter, library.id]);
-
-  // Sentinel grille/liste — se (re)lance dès que le nœud sentinel est monté
-  // (dep = le nœud lui-même, posé par callback ref). Robuste à la fin du
-  // `loading`, au switch de vue et au passage « 0 résultat » → N.
-  useEffect(() => {
-    if (!gridSentinel) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && visibleCountRef.current < filteredLengthRef.current) {
-          setVisibleCount((n) => n + 48);
-        }
-      },
-      { rootMargin: "300px" }
-    );
-    observer.observe(gridSentinel);
-    return () => observer.disconnect();
-  }, [gridSentinel]);
-
-  // ── Dossiers (groupement par setTag) ──────────────────────────────────
-  // Groupe tous les assets filtrés par `setTag` (bucket "" = sans dossier).
-  // Le tirage réel (LRU par dossier) est géré côté serveur — cette vue est
-  // purement une grille de rangement, pas une preview d'ordre de tirage.
-  const groupedBySetTag = useMemo(() => {
-    const groups = new Map<string, MediaAsset[]>();
-    filtered.forEach((a) => {
-      const key = a.setTag ?? "";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(a);
-    });
-
-    // Only use assets accessible to the filtered account when computing last-used date.
-    const getLastUsed = (groupAssets: MediaAsset[]) => {
-      const pool = accountFilter
-        ? groupAssets.filter((a) => a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
-        : groupAssets;
-      return pool.reduce<string | null>((max, a) => {
-        if (!a.lastUsedAt) return max;
-        if (!max) return a.lastUsedAt;
-        return a.lastUsedAt > max ? a.lastUsedAt : max;
-      }, null);
-    };
-
-    const allEntries: SetGroup[] = Array.from(groups.entries()).map(([key, groupAssets]) => {
-      const setTag = key || null;
-      const isAccessible = !accountFilter || groupAssets.some(
-        (a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
-      );
-      const accessibleCount = accountFilter
-        ? groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))).length
-        : groupAssets.filter((a) => !a.disabled).length;
-      return {
-        key: key || "__none__",
-        setTag,
-        groupAssets,
-        accessibleCount,
-        lastUsed: getLastUsed(groupAssets),
-        isAccessible,
-      };
-    });
-
-    const named = allEntries.filter((g) => g.setTag);
-    const unnamed = allEntries.filter((g) => !g.setTag);
-
-    // Tri alphabétique numeric-aware sur setTag (parité avec le LPAD SQL du
-    // resolver serveur) — le bucket « sans dossier » reste toujours en dernier.
-    const tiebreakSetTag = (a: SetGroup, b: SetGroup): number => {
-      const na = parseInt(a.setTag ?? "", 10);
-      const nb = parseInt(b.setTag ?? "", 10);
-      if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
-      return (a.setTag ?? "").localeCompare(b.setTag ?? "");
-    };
-    const sortedNamed = [...named].sort(tiebreakSetTag);
-
-    // En filtre par compte, on masque les dossiers inaccessibles.
-    if (accountFilter) {
-      const visibleNamed = sortedNamed.filter((g) => g.isAccessible);
-      const visibleUnnamed = unnamed.filter((g) => g.isAccessible);
-      return [...visibleNamed, ...visibleUnnamed];
-    }
-    return [...sortedNamed, ...unnamed];
-  }, [filtered, accountFilter]);
+  // ── Dossiers (groupement par setTag) — extrait dans useSetGroups (split C1-v2).
+  const groupedBySetTag = useSetGroups(filtered, accountFilter);
 
   // D9 — handleToggleAccess, handleToggleDisabled, handleSaveMetadata
   // extraits dans le hook useAssetInlineEdits (cf. const inline ci-dessus).
@@ -433,6 +260,36 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
   const useListView = !isAdvanced && isVideo && !isManualMode;
   // I.2 — Drawer settings accessible depuis le strip header.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Objet dérivé mémoïsé passé au drawer settings : un littéral inline aurait
+  // été recréé à CHAQUE render du panel (dont le poll silencieux 5s), ce qui
+  // retriggait le useEffect de re-sync du drawer ([library] dep) et
+  // réinitialisait les saisies en cours de l'admin (nom, tirage, tags…)
+  // pendant qu'il éditait. Dépendances sur les valeurs primitives, pas sur
+  // `library` en entier, pour ne recalculer que si une vraie donnée change.
+  const settingsLibrary = useMemo(
+    () => ({
+      id: library.id,
+      type: library.type,
+      name: library.name,
+      description: library.description ?? null,
+      tags: library.tags ?? "[]",
+      rotationScope: library.rotationScope ?? "per_account",
+      rotationMode: library.rotationMode,
+      metadataSchema: library.metadataSchema ?? "[]",
+      maxUsageCount: library.maxUsageCount,
+    }),
+    [
+      library.id,
+      library.type,
+      library.name,
+      library.description,
+      library.tags,
+      library.rotationScope,
+      library.rotationMode,
+      library.metadataSchema,
+      library.maxUsageCount,
+    ],
+  );
   // I.2 — Counts compacts inline (remplace la KpiRow lourde). Plan
   // simplification 2026-08 : plus de catégories/orphelins, juste le total +
   // le nombre de dossiers.
@@ -593,7 +450,6 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3">
 
       <MediaAssetsToolbar
-        library={library}
         isVideo={isVideo}
         loading={loading}
         assetsCount={assets.length}
@@ -663,7 +519,7 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
           cta={
             canManageAssets
               ? {
-                  label: isVideo ? "Ajouter des vidéos" : "Ajouter des musiques",
+                  label: isVideo ? "Ajouter des vidéos" : "Ajouter des pistes",
                   onClick: () => setShowUploadModal(true),
                 }
               : undefined
@@ -704,19 +560,7 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
           ) : effectiveViewMode === "grouped" ? (
             <MediaAssetsGroupedView
               groupedBySetTag={groupedBySetTag}
-              accountFilter={accountFilter}
               renderColumn={renderColumn}
-              isAdvanced={isAdvanced}
-              onOpenSet={(g) => {
-                // Ouvre le drawer détail sur le 1er asset du dossier + passe la liste
-                // pour permettre de naviguer entre les assets via le set navigator.
-                const sorted = [...g.groupAssets].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-                const first = sorted[0];
-                if (first) {
-                  setDetailSetAssets(sorted);
-                  setDetailAsset(first);
-                }
-              }}
             />
           ) : (
             <>
@@ -779,38 +623,27 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
             onUploaded={() => void load()}
             initialFiles={pendingFiles}
             onInitialFilesConsumed={() => setPendingFiles(null)}
+            existingPacks={existingPacks}
+            allTags={allTags}
           />
         </>
       )}
-      {/* Phase 3 — drawer détail asset (édition complète en mode noob).
-          setAssets : si ouvert via une stack, la liste des autres vidéos du dossier pour navigation. */}
+      {/* Phase 3 — drawer détail asset (édition complète en mode noob). */}
       <MediaAssetDetailDrawer
         open={liveDetailAsset !== null}
-        onClose={() => { setDetailAsset(null); setDetailSetAssets(null); }}
+        onClose={() => setDetailAsset(null)}
         asset={liveDetailAsset}
         metadataSchema={metadataSchema}
         existingPacks={existingPacks}
         accounts={accounts}
         inline={inline}
         onOpenTrim={(a) => setEditingAsset(a)}
-        setAssets={detailSetAssets ?? undefined}
-        onSwitchAsset={(a) => setDetailAsset(a)}
       />
       {/* I.2 — Drawer settings (refondu en tabs en H.4) accessible depuis le strip header. */}
       <MediaLibrarySettingsDrawer
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        library={{
-          id: library.id,
-          type: library.type,
-          name: library.name,
-          description: null,
-          tags: "[]",
-          rotationScope: library.rotationScope ?? "per_account",
-          rotationMode: library.rotationMode,
-          metadataSchema: library.metadataSchema ?? "[]",
-          maxUsageCount: library.maxUsageCount,
-        }}
+        library={settingsLibrary}
         onUpdated={() => { void load(); }}
       />
       {confirmDialog}

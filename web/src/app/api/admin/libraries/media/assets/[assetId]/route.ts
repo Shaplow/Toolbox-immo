@@ -101,7 +101,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 }
 
 // PATCH /api/admin/libraries/media/assets/[assetId]
-// Champs acceptés : duration, tags, setTag, category, incrementUsage, usageCount, resetUsage, lastUsedAt, disabled
+// Champs acceptés : duration, tags, setTag, incrementUsage, usageCount, resetUsage, lastUsedAt, disabled
 export async function PATCH(req: NextRequest, { params }: Params) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
@@ -114,7 +114,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     duration?: number;
     tags?: string[];
     setTag?: string | null;
-    category?: string | null;
     incrementUsage?: boolean;
     usageCount?: number;
     resetUsage?: boolean;
@@ -139,7 +138,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (typeof body.duration === "number") data.duration = body.duration;
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
   if ("setTag" in body) data.setTag = body.setTag ?? null;
-  if ("category" in body) data.category = body.category ?? null;
   if (typeof body.disabled === "boolean") data.disabled = body.disabled;
   if (body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)) {
     data.metadata = JSON.stringify(body.metadata);

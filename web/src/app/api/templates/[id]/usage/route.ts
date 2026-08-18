@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { parsePatternCoverConfig } from "@/lib/publications/coverMode";
 import type { TemplateUsagePattern } from "@/types/patternUsage";
 
 type Params = { params: Promise<{ id: string }> };
@@ -56,11 +57,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Une ligne par binding (recette appliquée à un compte) ; une ligne « globale »
   // sans compte pour les recettes catalogue sans binding.
   const result: TemplateUsagePattern[] = templates.flatMap((t): TemplateUsagePattern[] => {
-    const cfg = (t.coverConfig as { enabled?: boolean; coverPresetName?: string } | null) ?? {};
+    const cfg = parsePatternCoverConfig(t.coverConfig);
     const base = {
       captionPresetId: t.captionPresetId,
-      coverPresetName: cfg.coverPresetName ?? null,
-      coverEnabled: cfg.enabled === true,
+      coverPresetName: cfg.coverPresetName,
+      coverEnabled: cfg.enabled,
     };
     if (t.bindings.length === 0) {
       return [

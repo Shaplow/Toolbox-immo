@@ -48,7 +48,6 @@ function parseAsset(a: ApiAsset): MediaAsset {
   return {
     ...a,
     setTag: (a as unknown as { setTag?: string | null }).setTag ?? null,
-    category: (a as unknown as { category?: string | null }).category ?? null,
     tags: (() => {
       try {
         return JSON.parse(a.tags) as string[];

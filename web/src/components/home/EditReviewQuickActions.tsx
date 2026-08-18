@@ -26,6 +26,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
 import { toast } from "@/components/ui/Toast";
+import { shortDateFr } from "@/lib/date/formatFr";
 
 export interface EditReviewSlotItem {
   id: string;
@@ -134,10 +135,7 @@ export function EditReviewQuickActions({ initialSlots }: Props) {
       <div className="space-y-2">
         {slots.map((slot) => {
           const uploadDate = slot.latestVersion
-            ? new Date(slot.latestVersion.createdAt).toLocaleDateString(
-                "fr-FR",
-                { day: "numeric", month: "short" },
-              )
+            ? shortDateFr(slot.latestVersion.createdAt)
             : null;
           const versionLabel = slot.latestVersion
             ? `V${slot.latestVersion.versionNumber}`

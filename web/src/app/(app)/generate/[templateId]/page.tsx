@@ -9,13 +9,11 @@ import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import type { TemplateJSON, VideoBlock } from "@/types/template";
 import { getUserContext } from "@/lib/userContext";
 import { buildLibraryPrefillContext } from "@/lib/generate/buildLibraryPrefillContext";
+import { buildSlotPrefill } from "@/lib/generate/buildSlotPrefill";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 import { buildMergedSchema } from "@/lib/generate/buildMergedSchema";
-import {
-  normalizeCustomFields,
-  customFieldToSchemaField,
-  type CustomField,
-} from "@/lib/customFields";
+import { customFieldToSchemaField } from "@/lib/customFields";
+import { readProvenance, stripProvenance, type ProvenanceMap } from "@/lib/generate/provenance";
 
 function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number> {
   const ratios = new Map<string, { ratio: number; area: number }>();
@@ -61,56 +59,26 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   if (!userContext) notFound();
   const userId = userContext.effectiveUser.id;
 
-  // If listingId provided, pre-fill form with its data
-  let initialValues: Record<string, unknown> | undefined;
+  // If listingId provided, pre-fill form with its data. `__provenance` (posé
+  // au submit par ListingForm) est séparé des valeurs — il pilote la
+  // précédence de buildSlotPrefill, pas le contenu du formulaire.
+  let existingListingValues: Record<string, unknown> | undefined;
+  let existingListingProvenance: ProvenanceMap = {};
+  let existingListingFound = false;
   if (listingId) {
     const existingListing = await prisma.listing.findFirst({
       where: userContext.canAdminBypass ? { id: listingId } : { id: listingId, userId },
     });
     if (existingListing) {
-      initialValues = JSON.parse(existingListing.jsonData) as Record<string, unknown>;
+      existingListingFound = true;
+      const parsed = JSON.parse(existingListing.jsonData) as Record<string, unknown>;
+      existingListingProvenance = readProvenance(parsed);
+      existingListingValues = stripProvenance(parsed);
     }
   }
-
-  // If slotId provided: load slot to derive accountId and merge flex fields
-  // + capture context for banner (title, account handle).
-  let slotBannerContext: { title: string | null; handle: string } | null = null;
-  // Biens/missions — schéma des champs perso (bien < mission) fusionné dans le
-  // formulaire de génération (Phase 4) : un champ typé du bien/mission apparaît
-  // même s'il n'est pas déclaré dans le template.
-  let customFormFields: CustomField[] = [];
-  if (slotId) {
-    const slot = await prisma.publicationSlot.findFirst({
-      where: { id: slotId },
-      select: {
-        accountId: true,
-        fields: true,
-        title: true,
-        account: { select: { handle: true } },
-        // Phase 5 — fiche (Entity) rattachée : ses valeurs servent de base,
-        // résolues LIVE ; le schéma des champs vient du TYPE de la fiche.
-        entity: { select: { fields: true, type: { select: { fieldSchema: true } } } },
-      },
-    });
-    if (slot) {
-      if (!accountId) accountId = slot.accountId ?? undefined;
-      slotBannerContext = { title: slot.title, handle: slot.account?.handle ?? "Sans compte" };
-      try {
-        // Précédence : fiche (base) < overrides mission (slot.fields) < Listing figé.
-        const entityFields = slot.entity
-          ? (JSON.parse(slot.entity.fields) as Record<string, string>)
-          : {};
-        const slotFields = JSON.parse(slot.fields) as Record<string, string>;
-        initialValues = { ...entityFields, ...slotFields, ...initialValues };
-      } catch { /* ignore malformed JSON */ }
-      // Schéma des champs perso : source unique = le type de la fiche rattachée.
-      customFormFields = normalizeCustomFields(slot.entity?.type.fieldSchema);
-    }
-  }
-
   // Listing présent pour banner (le modèle Listing n'a pas de nom propre,
   // donc on affiche juste un label "annonce existante" sans creuser jsonData).
-  const hasListingPrefill = !!listingId && !!initialValues;
+  const hasListingPrefill = !!listingId && existingListingFound;
 
   const { canAccessTemplate } = await import("@/lib/permissions");
   const ok = userContext.canAdminBypass
@@ -125,9 +93,25 @@ export default async function GeneratePage({ params, searchParams }: Props) {
 
   const mergedSchema = buildMergedSchema(json);
 
-  // Phase 4 — fusionne les champs perso typés du bien/mission absents du template
+  // Phase 5 (métaobjet) + Phase 3 (socle prefill) — fiche data (Entity),
+  // fiche tournage (shootEntity) et overrides mission (slot.fields), avec
+  // provenance explicite par clé. `mergedSchema` (pré-customFormFields) sert
+  // de cible au matching case-insensitive des clés de fiche — voir
+  // `buildSlotPrefill`/`matchFieldValue`.
+  const slotPrefill = await buildSlotPrefill({
+    slotId: slotId ?? null,
+    schema: mergedSchema,
+    existingValues: existingListingValues,
+    existingProvenance: existingListingProvenance,
+  });
+  if (!accountId) accountId = slotPrefill.accountId;
+  let initialValues: Record<string, unknown> | undefined = slotPrefill.initialValues;
+  let provenance: ProvenanceMap = slotPrefill.provenance;
+  const slotBannerContext = slotPrefill.slotBannerContext;
+
+  // Phase 4 — fusionne les champs perso typés de la fiche absents du template
   // (le template reste prioritaire sur conflit de clé).
-  for (const cf of customFormFields) {
+  for (const cf of slotPrefill.customFormFields) {
     if (!mergedSchema.some((f) => f.key === cf.key)) {
       mergedSchema.push(customFieldToSchemaField(cf));
     }
@@ -196,9 +180,13 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       accountId: accountId ?? null,
       slotId: slotId ?? null,
       listingId: listingId ?? null,
+      provenance,
     });
     libraryPrefillContext = context;
     initialValues = updatedInitialValues;
+    // La boucle DataEntry étend `provenance` (dataEntry) — c'est la map
+    // complète qui part au client, pas seulement les couches fiche/mission.
+    if (context) provenance = context.prefilledKeys;
   }
   // Sinon : prefill différé côté client après sélection du compte IG.
 
@@ -285,6 +273,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
             formSections={json.formSections ?? []}
             mediaFieldAspectRatios={mediaFieldAspectRatios}
             initialValues={initialValues}
+            initialProvenance={provenance}
             libraryPrefillContext={libraryPrefillContext}
             autoSubmit={autoMode}
             instagramAccounts={instagramAccounts}

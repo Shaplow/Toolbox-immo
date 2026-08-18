@@ -58,6 +58,9 @@ const PHASE_DOT_COLOR: Record<ReturnType<typeof getPublicationPhase>, string> = 
 };
 
 function formatScheduledAt(date: Date): string {
+  // Format bespoke (weekday court + mois long) sans équivalent dans
+  // lib/date/formatFr.ts — laissé en l'état, pas de duplication ailleurs.
+  // eslint-disable-next-line no-restricted-syntax
   const datePart = date.toLocaleDateString("fr-FR", {
     weekday: "short",
     day: "numeric",

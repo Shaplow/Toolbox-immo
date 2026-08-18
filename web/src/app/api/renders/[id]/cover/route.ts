@@ -4,6 +4,7 @@ import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/api/requireAuth";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
+import { parsePatternCoverConfig, resolveCoverPreset } from "@/lib/publications/coverMode";
 import type { CoverAutoConfig } from "@/types/template";
 
 type Params = { params: Promise<{ id: string }> };
@@ -50,12 +51,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const coverConfigJson = (effPattern.coverConfig ?? {}) as {
-    enabled?: boolean;
-    coverPresetId?: string;
-    coverPresetName?: string;
-  };
-  if (coverConfigJson.enabled === false) {
+  if (!parsePatternCoverConfig(effPattern.coverConfig).enabled) {
     return NextResponse.json({ error: "Cover auto désactivée sur cette recette." }, { status: 400 });
   }
 
@@ -65,20 +61,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // preset : id → nom → défaut du template (sortOrder min).
-  let preset = coverConfigJson.coverPresetId
-    ? await prisma.templateCoverPreset.findUnique({ where: { id: coverConfigJson.coverPresetId } })
-    : null;
-  if (!preset && coverConfigJson.coverPresetName) {
-    preset = await prisma.templateCoverPreset.findUnique({
-      where: { templateId_name: { templateId: patternTemplateId, name: coverConfigJson.coverPresetName } },
-    });
-  }
-  if (!preset) {
-    preset = await prisma.templateCoverPreset.findFirst({
-      where: { templateId: patternTemplateId },
-      orderBy: { sortOrder: "asc" },
-    });
-  }
+  const preset = await resolveCoverPreset({ coverConfig: effPattern.coverConfig, templateId: patternTemplateId });
   if (!preset) {
     return NextResponse.json(
       { error: "Aucun preset cover sur le template — configure-le dans le builder (onglet « Cover auto »)." },

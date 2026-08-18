@@ -15,6 +15,7 @@ import { EditTemplateInfoButton } from "@/components/templates/EditTemplateInfoB
 import { TemplateAdminActions } from "@/components/templates/TemplateAdminActions";
 import { Input } from "@/components/ui/Input";
 import { Chip } from "@/components/ui/Chip";
+import { dateFr } from "@/lib/date/formatFr";
 
 export interface TemplateGalleryItem {
   id: string;
@@ -204,15 +205,9 @@ function TemplateCard({
         </div>
       )}
 
-      {/* Date — timeZone forcée pour éviter hydration mismatch (server UTC vs client locale). */}
+      {/* dateFr fige déjà Europe/Paris — évite l'hydration mismatch (server UTC vs client locale). */}
       <p className="text-[10.5px] text-muted-foreground font-mono tabular-nums mt-auto">
-        Mis à jour{" "}
-        {new Date(template.updatedAt).toLocaleDateString("fr-FR", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-          timeZone: "Europe/Paris",
-        })}
+        Mis à jour {dateFr(template.updatedAt)}
       </p>
 
       {/* Actions */}

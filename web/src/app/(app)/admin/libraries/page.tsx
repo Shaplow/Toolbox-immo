@@ -8,7 +8,6 @@ import {
 import { prisma } from "@/lib/prisma";
 import { Video, Music2, Database, Type, Sparkles, ArrowRight } from "lucide-react";
 import { Hub, type HubItem } from "@/components/ui/molecules/Hub";
-import { PageShell } from "@/components/ui/PageShell";
 
 export default async function LibrariesHubPage() {
   const userContext = await getUserContext();
@@ -71,7 +70,7 @@ export default async function LibrariesHubPage() {
   ];
 
   return (
-    <PageShell variant="narrow">
+    <>
       <Hub
         eyebrow="Configuration"
         title="Médiathèque"
@@ -79,9 +78,11 @@ export default async function LibrariesHubPage() {
         cols={3}
       />
       {/* V8 Phase 9 — Ressources avancées en lien discret (rare usage).
-          Réservé ADMIN : polices + prompts IA hors périmètre médiathèque du vidéaste. */}
+          Réservé ADMIN : polices + prompts IA hors périmètre médiathèque du vidéaste.
+          Hub gère déjà son propre shell (min-h-screen + max-w-5xl mx-auto) — ce
+          bloc reprend la même largeur en sibling, pas de wrapper imbriqué. */}
       {canManage && (
-        <div className="mt-6 mx-auto max-w-3xl px-6 sm:px-8 pb-12">
+        <div className="max-w-5xl mx-auto px-6 sm:px-8 pb-12 -mt-4">
           <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-2">
             Plus de ressources
           </p>
@@ -113,6 +114,6 @@ export default async function LibrariesHubPage() {
           </div>
         </div>
       )}
-    </PageShell>
+    </>
   );
 }

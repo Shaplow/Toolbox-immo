@@ -19,7 +19,17 @@ const eslintConfig = defineConfig([
   // depuis le passage flat shadcn. `sky` et `rose` restent autorisés (Tailwind
   // natifs) mais à utiliser avec parcimonie — préférer info / danger semantic.
   //
-  // Override ponctuel pour un cas hors `ui/` : `// eslint-disable-next-line no-restricted-syntax`.
+  // Chantier date FR (18/08) — même logique anti-drift pour le formatage de
+  // date : `lib/date/formatFr.ts` existait déjà mais était dupliqué en
+  // toLocaleDateString ad hoc dans ~25 fichiers. Nouveaux appels → utiliser/
+  // étendre les helpers de `lib/date/formatFr.ts`.
+  //
+  // IMPORTANT : les deux règles ci-dessous doivent rester dans le MÊME bloc
+  // `no-restricted-syntax` — deux blocs distincts qui matchent les mêmes
+  // fichiers et configurent la même règle s'écrasent l'un l'autre en flat
+  // config (le dernier gagne intégralement, pas de merge d'array).
+  //
+  // Override ponctuel : `// eslint-disable-next-line no-restricted-syntax`.
   {
     files: ["src/**/*.{ts,tsx}"],
     ignores: [
@@ -36,7 +46,22 @@ const eslintConfig = defineConfig([
           message:
             "Palette Coastal Studio jetée en DA v3. Utilise warning-* (peach) ou success-* (sage) à la place. Voir src/app/globals.css.",
         },
+        {
+          selector:
+            "CallExpression[callee.type='MemberExpression'][callee.property.name='toLocaleDateString']",
+          message:
+            "toLocaleDateString direct interdit hors lib/date/formatFr.ts (fuseau Europe/Paris non garanti, drift de format). Utilise dateFr/dateFrLong/shortDateFr/... ou ajoute un helper dédié dans lib/date/formatFr.ts.",
+        },
       ],
+    },
+  },
+  // lib/date/formatFr.ts est le seul fichier autorisé à appeler
+  // toLocaleDateString — hors du scope de l'ignore ci-dessus (qui ne couvre
+  // que components/ui, playground, tests).
+  {
+    files: ["src/lib/date/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": "off",
     },
   },
   // Override default ignores of eslint-config-next.

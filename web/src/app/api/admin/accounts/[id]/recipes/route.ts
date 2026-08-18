@@ -17,100 +17,29 @@
  *
  * Admin-only.
  */
-import { VALID_SOURCES, VALID_CAPTIONS_MODES, VALID_DESCRIPTION_MODES, VALID_COVER_MODES, PUBLISH_TIME_RE } from "@/lib/publications/patternEnums";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import {
-  normalizeSourceFieldKey,
-  normalizeFixedText,
-} from "@/lib/publications/preFilledDescription";
+  validatePatternTemplateInput,
+  toPatternTemplateCreateData,
+  type PatternTemplateInputPayload,
+} from "@/lib/services/pattern/patternTemplateInput";
+import {
+  validateBindingInput,
+  toPatternBindingCreateData,
+  type PatternBindingInputPayload,
+} from "@/lib/services/pattern/bindingInput";
 
-interface TemplatePayload {
+interface TemplatePayload extends PatternTemplateInputPayload {
   id?: string; // si fourni : réutilise (skip création template)
-  label?: string;
-  source?: string;
-  templateId?: string | null;
-  captionPresetId?: string | null;
-  descriptionPromptId?: string | null;
-  descriptionSourceFieldKey?: string | null;
-  descriptionFixedText?: string | null;
-  coverMode?: string;
-  coverConfig?: unknown;
-  needsDescription?: string;
-  needsCaptionsMode?: string;
-  needsAdminValidation?: boolean;
-  needsClientValidation?: boolean;
-  allowsClientRevision?: boolean;
-  needsBrief?: boolean;
-  requiresProperty?: boolean;
-  /** Phase 5 (métaobjet) — remplace requiresProperty. */
-  requiresEntityTypeId?: string | null;
-  /** V2.6 — auto-save de la sortie de génération vers une MediaLibrary vidéo. */
-  autoSaveToLibraryId?: string | null;
-  notes?: string | null;
 }
 
-interface BindingPayload {
-  customLabel?: string | null;
-  dayOfWeek?: number[];
-  publishTime?: string;
-  isActive?: boolean;
-  defaultAssigneeMonteurId?: string | null;
-  defaultAssigneeCmId?: string | null;
-  defaultAssigneeVideasteId?: string | null;
-  captionPresetIdOverride?: string | null;
-  descriptionPromptIdOverride?: string | null;
-  coverModeOverride?: string | null;
-  notes?: string | null;
-}
+type BindingPayload = PatternBindingInputPayload;
 
 interface CreateRecipeBody {
   template?: TemplatePayload;
   binding?: BindingPayload;
-}
-
-
-function validateTemplate(t: TemplatePayload, isNew: boolean): string | null {
-  if (isNew) {
-    if (!t.label?.trim()) return "template.label requis";
-    if (!t.source || !VALID_SOURCES.includes(t.source)) {
-      return `template.source invalide (attendu : ${VALID_SOURCES.join(", ")})`;
-    }
-  }
-  if (t.needsCaptionsMode !== undefined && !VALID_CAPTIONS_MODES.includes(t.needsCaptionsMode)) {
-    return "template.needsCaptionsMode invalide";
-  }
-  if (t.needsDescription !== undefined && !VALID_DESCRIPTION_MODES.includes(t.needsDescription)) {
-    return "template.needsDescription invalide";
-  }
-  if (t.coverMode !== undefined && !VALID_COVER_MODES.includes(t.coverMode)) {
-    return "template.coverMode invalide";
-  }
-  return null;
-}
-
-function validateBinding(b: BindingPayload, requireAll: boolean): string | null {
-  if (requireAll && !b.publishTime) return "binding.publishTime requis";
-  if (b.publishTime !== undefined && !PUBLISH_TIME_RE.test(b.publishTime)) {
-    return "binding.publishTime doit être HH:MM";
-  }
-  if (b.dayOfWeek !== undefined) {
-    if (!Array.isArray(b.dayOfWeek)) return "binding.dayOfWeek doit être un tableau";
-    for (const d of b.dayOfWeek) {
-      if (!Number.isInteger(d) || d < 1 || d > 7) {
-        return "binding.dayOfWeek doit contenir des entiers 1-7";
-      }
-    }
-  }
-  if (
-    b.coverModeOverride !== undefined &&
-    b.coverModeOverride !== null &&
-    !VALID_COVER_MODES.includes(b.coverModeOverride)
-  ) {
-    return "binding.coverModeOverride invalide";
-  }
-  return null;
 }
 
 export async function POST(
@@ -133,24 +62,13 @@ export async function POST(
   const bnd = body.binding ?? {};
 
   const isReusing = !!tpl.id;
-  const tplErr = isReusing ? null : validateTemplate(tpl, true);
+  const tplErr = isReusing
+    ? null
+    : await validatePatternTemplateInput(tpl, { requireAll: true, fieldPrefix: "template." }, prisma);
   if (tplErr) return NextResponse.json({ error: tplErr }, { status: 400 });
 
-  const bndErr = validateBinding(bnd, true);
+  const bndErr = validateBindingInput(bnd, { requireAll: true, fieldPrefix: "binding." });
   if (bndErr) return NextResponse.json({ error: bndErr }, { status: 400 });
-
-  if (tpl.requiresEntityTypeId) {
-    const type = await prisma.entityType.findUnique({
-      where: { id: tpl.requiresEntityTypeId },
-      select: { id: true },
-    });
-    if (!type) {
-      return NextResponse.json(
-        { error: "template.requiresEntityTypeId : type de fiche introuvable" },
-        { status: 400 },
-      );
-    }
-  }
 
   const account = await prisma.instagramAccount.findUnique({ where: { id: accountId } });
   if (!account) {
@@ -177,50 +95,12 @@ export async function POST(
       ? tpl.id!
       : (
           await tx.patternTemplate.create({
-            data: {
-              label: tpl.label!.trim(),
-              source: tpl.source!,
-              templateId: tpl.templateId ?? null,
-              captionPresetId: tpl.captionPresetId ?? null,
-              descriptionPromptId: tpl.descriptionPromptId ?? null,
-              descriptionSourceFieldKey: normalizeSourceFieldKey(tpl.descriptionSourceFieldKey),
-              descriptionFixedText: normalizeFixedText(tpl.descriptionFixedText),
-              coverMode: tpl.coverMode ?? "none",
-              coverConfig:
-                tpl.coverConfig === undefined || tpl.coverConfig === null
-                  ? undefined
-                  : (tpl.coverConfig as object),
-              needsDescription: tpl.needsDescription ?? "none",
-              needsCaptionsMode: tpl.needsCaptionsMode ?? "none",
-              needsAdminValidation: tpl.needsAdminValidation ?? false,
-              needsClientValidation: tpl.needsClientValidation ?? false,
-              allowsClientRevision: tpl.allowsClientRevision ?? false,
-              needsBrief: tpl.needsBrief ?? false,
-              requiresProperty: tpl.requiresProperty ?? false,
-              requiresEntityTypeId: tpl.requiresEntityTypeId ?? null,
-              autoSaveToLibraryId: tpl.autoSaveToLibraryId ?? null,
-              notes: tpl.notes ?? null,
-              updatedByUserId: ctx.actualUser.id,
-            },
+            data: toPatternTemplateCreateData(tpl, ctx.actualUser.id),
           })
         ).id;
 
     const binding = await tx.patternBinding.create({
-      data: {
-        accountId,
-        patternTemplateId: templateId,
-        customLabel: bnd.customLabel ?? null,
-        dayOfWeek: bnd.dayOfWeek ?? [],
-        publishTime: bnd.publishTime!,
-        isActive: bnd.isActive ?? true,
-        defaultAssigneeMonteurId: bnd.defaultAssigneeMonteurId ?? null,
-        defaultAssigneeCmId: bnd.defaultAssigneeCmId ?? null,
-        defaultAssigneeVideasteId: bnd.defaultAssigneeVideasteId ?? null,
-        captionPresetIdOverride: bnd.captionPresetIdOverride ?? null,
-        descriptionPromptIdOverride: bnd.descriptionPromptIdOverride ?? null,
-        coverModeOverride: bnd.coverModeOverride ?? null,
-        notes: bnd.notes ?? null,
-      },
+      data: toPatternBindingCreateData(bnd, { accountId, patternTemplateId: templateId }),
       include: { patternTemplate: true },
     });
 

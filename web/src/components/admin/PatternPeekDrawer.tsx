@@ -11,12 +11,12 @@
  *    /admin/patterns pour les usages hors-contexte.
  */
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Edit, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import { toast } from "@/components/ui/Toast";
+import { useFetchOnOpen } from "@/hooks/useFetchOnOpen";
 import {
   PatternSummaryCard,
   type PatternPeekData,
@@ -37,38 +37,16 @@ export function PatternPeekDrawer({
   onOpenEdit,
 }: PatternPeekDrawerProps) {
   const router = useRouter();
-  const [data, setData] = useState<PatternPeekData | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open || !patternTemplateId) {
-      setData(null);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    void (async () => {
-      try {
-        const res = await fetch(`/api/admin/patterns/${patternTemplateId}/peek`);
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(body.error ?? `Erreur ${res.status}`);
-        }
-        const payload = (await res.json()) as PatternPeekData;
-        if (!cancelled) setData(payload);
-      } catch (err) {
-        if (!cancelled) {
-          toast.error(err instanceof Error ? err.message : "Aperçu indisponible");
-          onClose();
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, patternTemplateId, onClose]);
+  const { data, loading } = useFetchOnOpen<PatternPeekData>(
+    patternTemplateId ? `/api/admin/patterns/${patternTemplateId}/peek` : null,
+    open,
+    {
+      onError: (err) => {
+        toast.error(err instanceof Error ? err.message : "Aperçu indisponible");
+        onClose();
+      },
+    },
+  );
 
   function goToCatalog() {
     router.push("/admin/patterns");

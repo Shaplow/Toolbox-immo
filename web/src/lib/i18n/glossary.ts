@@ -10,8 +10,18 @@
  *
  * Règle : un terme = un mot. Pas de "Slot" + "Publication" + "PublicationSlot"
  * dans la même page selon l'humeur. Pas de SOURCE_LABEL redéclaré localement
- * dans chaque composant — tout passe par ce module.
+ * dans chaque composant — tout passe par ce module. Les `*Options()` ci-dessous
+ * renvoient des `{value,label}[]` prêts pour Combobox/Select ; ne redéclare
+ * pas de tableau d'options local à côté de ces enums.
  */
+
+import { COVER_MODE_VALUES } from "@/lib/publications/coverMode";
+import { CAPTIONS_MODE_LABELS_FR as CAPTIONS_MODE_LABELS_FR_TYPED } from "@/lib/publications/captionsMode";
+
+export interface GlossaryOption {
+  value: string;
+  label: string;
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // PatternTemplate.source — labels + help + chip color
@@ -41,6 +51,14 @@ export const SOURCE_VARIANT: Record<string, "default" | "sky" | "peach" | "sage"
   external_upload: "sage",
 };
 
+/** PatternTemplate.source → options prêtes pour Combobox/Select. */
+export function sourceOptions(): GlossaryOption[] {
+  return Object.keys(SOURCE_LABELS_FR).map((value) => ({
+    value,
+    label: SOURCE_LABELS_FR[value],
+  }));
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // PatternTemplate.coverMode
 // ───────────────────────────────────────────────────────────────────────────
@@ -53,6 +71,23 @@ export const COVER_MODE_LABELS_FR: Record<string, string> = {
   // Alias legacy
   auto: "Pack auto → choix CM",
 };
+
+/**
+ * PatternTemplate.coverMode → options prêtes pour Combobox/Select. Dérivées
+ * de `COVER_MODE_VALUES` (source de vérité des valeurs valides) : exclut de
+ * fait l'alias legacy "auto" de `COVER_MODE_LABELS_FR`.
+ */
+export function coverModeOptions(): GlossaryOption[] {
+  return COVER_MODE_VALUES.map((value) => ({
+    value,
+    label: COVER_MODE_LABELS_FR[value] ?? value,
+  }));
+}
+
+/** Idem, avec l'option "hérite de la recette" en tête (overrides de binding). */
+export function coverModeOverrideOptions(): GlossaryOption[] {
+  return [{ value: "", label: "Hérite de la recette" }, ...coverModeOptions()];
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // PatternTemplate.needsDescription
@@ -69,20 +104,14 @@ export const NEEDS_DESCRIPTION_LABELS_FR: Record<string, string> = {
 // ───────────────────────────────────────────────────────────────────────────
 // PatternTemplate.needsCaptionsMode (V8 — remplace le Boolean needsCaptions)
 // ───────────────────────────────────────────────────────────────────────────
+//
+// Labels ré-exportés depuis lib/publications/captionsMode.ts (source unique,
+// version typée sur `CaptionsMode`) — ne pas redéclarer ici. `CAPTIONS_MODE_HELP`
+// était dupliqué à l'identique dans les deux fichiers ; la version de
+// captionsMode.ts est la seule qui reste (import direct, pas de re-export :
+// aucun composant ne la consommait via ce module).
 
-export const CAPTIONS_MODE_LABELS_FR: Record<string, string> = {
-  none: "Aucun sous-titre",
-  auto: "Auto (preset + IA)",
-  manual: "Manuel (écrits à la main)",
-};
-
-export const CAPTIONS_MODE_HELP: Record<string, string> = {
-  none: "Pas de sous-titres sur la vidéo finale.",
-  auto:
-    "Transcription Whisper + burn-in via preset captions. Le pipeline déclenche tout automatiquement après le rendu.",
-  manual:
-    "L'éditeur écrit les sous-titres à la main dans l'app (pas de burn-in vidéo, juste un SRT stocké sur le slot).",
-};
+export const CAPTIONS_MODE_LABELS_FR: Record<string, string> = CAPTIONS_MODE_LABELS_FR_TYPED;
 
 // ───────────────────────────────────────────────────────────────────────────
 // MediaLibrary/DataLibrary.rotationScope — portée du tirage par dossier

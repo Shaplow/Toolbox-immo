@@ -35,6 +35,8 @@ import type {
   LibraryPrefillContext,
   MetadataDrivenLink,
 } from "@/types/libraryPrefill";
+import type { ProvenanceMap } from "@/lib/generate/provenance";
+import { buildLowerKeyMap, canAssignFieldValue, matchFieldValue } from "@/lib/generate/matchFieldValue";
 
 interface BuildArgs {
   json: TemplateJSON;
@@ -43,6 +45,9 @@ interface BuildArgs {
   accountId: string | null;
   slotId: string | null;
   listingId: string | null;
+  /** Provenance déjà connue pour `initialValues` (posée par `buildSlotPrefill`
+   *  en amont) — la boucle DataEntry l'étend plutôt que de la recalculer. */
+  provenance?: ProvenanceMap;
 }
 
 interface BuildResult {
@@ -85,8 +90,10 @@ export async function buildLibraryPrefillContext({
   accountId,
   slotId,
   listingId,
+  provenance: provenanceIn,
 }: BuildArgs): Promise<BuildResult> {
   let initialValues = initialValuesIn;
+  const provenance: ProvenanceMap = { ...(provenanceIn ?? {}) };
 
   const hasLibraryBindings =
     json.blocks.some((b) => (b.type === "video" || b.type === "music") && b.libraryId) ||
@@ -123,7 +130,6 @@ export async function buildLibraryPrefillContext({
     string,
     { id: string; url: string; filename: string } | null
   > = {};
-  const prefilledDataKeys: string[] = [];
 
   // Build fieldLibraryMap — always, even when regenerating
   for (const block of json.blocks) {
@@ -345,31 +351,22 @@ export async function buildLibraryPrefillContext({
 
     if (prefill.dataSuggestion) {
       const rawFields = prefill.dataSuggestion.fields;
-      // Build a lowercase-key → value lookup so that CSV headers lowercased
-      // by the import route (e.g. "c2l1") can still match schema field keys
-      // stored in any case (e.g. "C2L1").
-      const lowerToValue = new Map<string, string>(
-        Object.entries(rawFields).map(([k, v]) => [k.toLowerCase(), v]),
-      );
+      // Lowercase-key → value lookup partagé par matchFieldValue, pour que les
+      // headers CSV lowercased par la route d'import (ex. "c2l1") matchent
+      // quand même une clé de schéma stockée dans une autre casse (ex. "C2L1").
+      const lowerToValue = buildLowerKeyMap(rawFields);
       for (const schemaField of json.schema) {
-        // Exact match first; fall back to case-insensitive
-        let value: string | undefined =
-          rawFields[schemaField.key] ?? lowerToValue.get(schemaField.key.toLowerCase());
+        const value = matchFieldValue(schemaField, rawFields, lowerToValue);
         if (value === undefined) continue;
-        // For select fields: normalize value to match the canonical option
-        // string (e.g. stored "quartier" → option "Quartier").
-        if (
-          schemaField.type === "select" &&
-          Array.isArray(schemaField.options) &&
-          schemaField.options.length > 0
-        ) {
-          const matched = schemaField.options.find(
-            (opt) => opt.toLowerCase() === value!.toLowerCase(),
-          );
-          if (matched) value = matched;
-        }
+        // Précédence de pré-remplissage (voir lib/generate/provenance.ts) :
+        // manual > entity > shootEntity > dataEntry > assetMetadata. À ce
+        // stade `initialValues`/`provenance` portent déjà la fiche/le
+        // tournage/les overrides mission (posés en amont par buildSlotPrefill)
+        // — ne jamais les écraser avec la DataEntry.
+        const existing = initialValues?.[schemaField.key];
+        if (!canAssignFieldValue(existing, provenance[schemaField.key], "dataEntry")) continue;
         initialValues = { ...initialValues, [schemaField.key]: value };
-        prefilledDataKeys.push(schemaField.key);
+        provenance[schemaField.key] = "dataEntry";
       }
       dataSuggestion = prefill.dataSuggestion
         ? {
@@ -384,7 +381,7 @@ export async function buildLibraryPrefillContext({
   const context: LibraryPrefillContext = {
     fieldLibraryMap,
     initialSuggestions,
-    prefilledDataKeys,
+    prefilledKeys: provenance,
     dataSuggestion,
     setSequencedLibraryIds,
     usedSetTagByLibrary,

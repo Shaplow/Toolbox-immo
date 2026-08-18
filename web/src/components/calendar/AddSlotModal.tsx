@@ -35,6 +35,8 @@ import { EntityPicker } from "@/components/entities/EntityPicker";
 import { formatNextActionLine } from "@/lib/publications/nextActionLabel";
 import { SOURCE_LABELS_FR } from "@/lib/i18n/glossary";
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
+import { requiredEntityTypeId, requiresEntity } from "@/lib/publications/entityRequirement";
+import { SYSTEM_ENTITY_TYPE_IDS } from "@/lib/entityTypes";
 
 interface Account {
   id: string;
@@ -313,7 +315,7 @@ export function AddSlotModal({
       if (!selectedPatternId) return false;
       // Recette qui exige une fiche : bloquer si aucune fiche sélectionnée.
       const pattern = patterns.find((p) => p.id === selectedPatternId);
-      if ((pattern?.requiresEntityTypeId || pattern?.requiresProperty) && !propertyId) return false;
+      if (requiresEntity(pattern) && !propertyId) return false;
       return true;
     }
     if (!title.trim()) return false;
@@ -562,15 +564,15 @@ export function AddSlotModal({
           {isPatternMode && selectedPattern && (
             <FormField
               label="Fiche"
-              required={!!(selectedPattern.requiresEntityTypeId || selectedPattern.requiresProperty)}
+              required={requiresEntity(selectedPattern)}
               help={
-                selectedPattern.requiresEntityTypeId || selectedPattern.requiresProperty
+                requiresEntity(selectedPattern)
                   ? "Cette recette nécessite une fiche rattachée."
                   : "Optionnel — fiche partagée réutilisée par plusieurs slots."
               }
             >
               <EntityPicker
-                typeId={selectedPattern.requiresEntityTypeId ?? "etype_bien"}
+                typeId={requiredEntityTypeId(selectedPattern) ?? SYSTEM_ENTITY_TYPE_IDS.bien}
                 value={propertyId}
                 onChange={setPropertyId}
                 placeholder="Aucune fiche"
@@ -580,7 +582,7 @@ export function AddSlotModal({
           )}
 
           {/* requiresEntityTypeId/requiresProperty sans fiche → avertissement */}
-          {isPatternMode && (selectedPattern?.requiresEntityTypeId || selectedPattern?.requiresProperty) && !propertyId && (
+          {isPatternMode && requiresEntity(selectedPattern) && !propertyId && (
             <div className="flex items-start gap-2 text-[11px] text-warning-700 bg-warning-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
               <AlertCircle size={12} className="mt-0.5 shrink-0" />
               Cette recette nécessite une fiche. Sélectionnez-en une pour continuer.

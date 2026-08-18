@@ -32,6 +32,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { toast } from "@/components/ui/Toast";
+import { dateFrLong } from "@/lib/date/formatFr";
 import { SlotQuickEditButton } from "@/components/publications/SlotQuickEditButton";
 import { StatusBadge } from "@/components/ui/molecules/StatusBadge";
 import { SlotStatusTimeline } from "@/components/ui/molecules/SlotStatusTimeline";
@@ -53,15 +54,6 @@ export interface PublicationHeaderProps {
   canMarkPublished: boolean;
   canDelete: boolean;
   currentUserRole: UserRole;
-}
-
-function formatDateFR(date: Date): string {
-  return date.toLocaleDateString("fr-FR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
 }
 
 function formatTimeFR(date: Date): string {
@@ -157,7 +149,7 @@ export function PublicationHeader({
               <p className="mt-0.5 text-[12px] text-muted-foreground">
                 {scheduledAt ? (
                   <>
-                    {formatDateFR(scheduledAt)} · {formatTimeFR(scheduledAt)}
+                    {dateFrLong(scheduledAt)} · {formatTimeFR(scheduledAt)}
                   </>
                 ) : (
                   "En banque · non programmé"

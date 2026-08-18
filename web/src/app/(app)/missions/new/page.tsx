@@ -13,6 +13,7 @@ import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { toUserRole } from "@/lib/permissions/role";
 import { whereClauseForUserEntity } from "@/lib/permissions/entityScope";
+import { requiredEntityTypeId, requiresEntity } from "@/lib/publications/entityRequirement";
 import { prisma } from "@/lib/prisma";
 import { safeJSON } from "@/lib/utils/json";
 import { PageShell } from "@/components/ui/PageShell";
@@ -70,10 +71,8 @@ export default async function NewMissionPage({ searchParams }: PageProps) {
     label: t.label,
     source: t.source,
     templateId: t.templateId,
-    requiresProperty: t.requiresProperty || t.requiresEntityTypeId != null,
-    // Fallback legacy : requiresProperty sans type explicite ⇒ type « Bien »
-    // (même règle que la garde createSlot).
-    requiredEntityTypeId: t.requiresEntityTypeId ?? (t.requiresProperty ? "etype_bien" : null),
+    requiresProperty: requiresEntity(t),
+    requiredEntityTypeId: requiredEntityTypeId(t),
     autoSaveLibraryName: t.autoSaveToLibrary?.name ?? null,
   }));
 

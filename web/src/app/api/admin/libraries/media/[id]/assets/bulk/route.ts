@@ -12,8 +12,8 @@ import { isReservedSetTag } from "@/lib/rotation/sentinels";
 type Params = { params: Promise<{ id: string }> };
 
 // PATCH /api/admin/libraries/media/[id]/assets/bulk
-// Applique tags, setTag, category et/ou contrôle d'accès à plusieurs assets d'un coup
-// Body : { assetIds: string[], tags?: string[], setTag?: string | null, category?: string | null,
+// Applique tags, setTag et/ou contrôle d'accès à plusieurs assets d'un coup
+// Body : { assetIds: string[], tags?: string[], setTag?: string | null,
 //          accessAction?: "add" | "remove_all", accountId?: string }
 export async function PATCH(req: NextRequest, { params }: Params) {
   const auth = await requireUser();
@@ -44,7 +44,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const data: Record<string, unknown> = {};
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
   if ("setTag" in body) data.setTag = (body.setTag as string | null | undefined) ?? null;
-  if ("category" in body) data.category = (body.category as string | null | undefined) ?? null;
   if (body.metadata !== undefined && body.metadata !== null && typeof body.metadata === "object") {
     data.metadata = JSON.stringify(body.metadata);
   }

@@ -11,7 +11,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, BookMarked } from "lucide-react";
+import { PageShell } from "@/components/ui/PageShell";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { toast } from "@/components/ui/Toast";
 import {
   PatternTemplateForm,
@@ -61,18 +63,15 @@ export function PatternEditClient({
   }
 
   async function handleArchive() {
-    if (initial.bindingCount && initial.bindingCount > 0) {
-      toast.error(
-        `Cette recette est utilisée par ${initial.bindingCount} compte${initial.bindingCount > 1 ? "s" : ""}. Retire-la des comptes avant d'archiver.`,
-      );
-      return;
-    }
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/patterns/${templateId}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error("Erreur lors de l'archivage");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Erreur lors de l'archivage");
+      }
       toast.success("Recette archivée");
       router.push("/admin/patterns");
     } catch (err) {
@@ -87,43 +86,36 @@ export function PatternEditClient({
   }
 
   return (
-    <div className="min-h-screen">
-      <div
-        className="mx-auto max-w-7xl px-6 py-8"
+    <PageShell variant="default">
+      <ToolPageHeader
+        icon={BookMarked}
+        title={initial.label || "Édition recette"}
+        subtitle="Configuration · Édition recette"
+        breadcrumb={
+          <Link
+            href="/admin/patterns"
+            className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors font-medium"
+          >
+            <ArrowLeft size={13} />
+            Catalogue de recettes
+          </Link>
+        }
+      />
 
-      >
-        <div className="px-6 sm:px-8 pt-6 pb-12">
-          <div className="max-w-3xl mx-auto space-y-6">
-            <div>
-              <Link
-                href="/admin/patterns"
-                className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
-                <ArrowLeft size={13} />
-                Catalogue de recettes
-              </Link>
-              <p className="mt-4 text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
-                Configuration · Édition recette
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-card border border-border  overflow-hidden">
-              <PatternTemplateForm
-                initial={initial}
-                templateId={templateId}
-                builderTemplates={builderTemplates}
-                captionPresets={captionPresets}
-                descriptionPrompts={descriptionPrompts}
-                videoLibraries={videoLibraries}
-                saving={saving}
-                onSave={handleSave}
-                onArchive={handleArchive}
-                onClose={handleClose}
-              />
-            </div>
-          </div>
-        </div>
+      <div className="max-w-3xl mx-auto rounded-xl bg-card border border-border overflow-hidden">
+        <PatternTemplateForm
+          initial={initial}
+          templateId={templateId}
+          builderTemplates={builderTemplates}
+          captionPresets={captionPresets}
+          descriptionPrompts={descriptionPrompts}
+          videoLibraries={videoLibraries}
+          saving={saving}
+          onSave={handleSave}
+          onArchive={handleArchive}
+          onClose={handleClose}
+        />
       </div>
-    </div>
+    </PageShell>
   );
 }

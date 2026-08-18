@@ -38,6 +38,7 @@ import { DeployTemplateModal } from "./DeployTemplateModal";
 import { PatternTemplateForm, type PatternTemplateFormValues } from "./PatternTemplateForm";
 import { PatternPeekDrawer } from "./PatternPeekDrawer";
 import { SOURCE_LABELS_FR, SOURCE_VARIANT } from "@/lib/i18n/glossary";
+import { shortDateFr } from "@/lib/date/formatFr";
 
 export interface CatalogItem {
   id: string;
@@ -128,16 +129,13 @@ export function PatternsCatalogClient({
   }
 
   async function handleArchive(item: CatalogItem) {
-    if (item.bindingCount > 0) {
-      toast.error(
-        `Cette recette est utilisée par ${item.bindingCount} compte${item.bindingCount > 1 ? "s" : ""}. Retire-la des comptes avant d'archiver.`,
-      );
-      return;
-    }
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/patterns/${item.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Erreur lors de l'archivage");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Erreur lors de l'archivage");
+      }
       setItems((prev) => prev.filter((i) => i.id !== item.id));
       toast.success("Recette archivée");
       closeDrawer();
@@ -286,10 +284,7 @@ export function PatternsCatalogClient({
                       : `Utilisée par ${item.bindingCount} compte${item.bindingCount > 1 ? "s" : ""}`}
                   </span>
                   <span className="font-mono tabular-nums">
-                    {new Date(item.updatedAt).toLocaleDateString("fr-FR", {
-                      day: "numeric",
-                      month: "short",
-                    })}
+                    {shortDateFr(item.updatedAt)}
                   </span>
                 </div>
               </div>

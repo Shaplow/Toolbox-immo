@@ -7,6 +7,13 @@
  *  3. patternBindingId d'un autre compte refusé
  *  4. cross-field validation utilise le NOUVEAU pattern quand patternBindingId change
  *  5. assigneeVideasteId loggué dans ASSIGNEE_CHANGED
+ *  6. scoping non-admin → NotFoundError
+ *  7. mission account-less (patternBindingId null, patternTemplateId direct) :
+ *     la validation cross-field doit résoudre via la branche patternTemplate
+ *     directe de resolveSlotEffectivePattern, pas seulement patternBinding —
+ *     sinon un slot avec preset/prompt hérité du template throw à tort
+ *     (bug audit 2026-08-18, cf. les fixtures avant ce test n'avaient
+ *     jamais patternBinding: null + patternTemplate non-null).
  *
  * Prisma est mocké au niveau module — tests vitest unit purs, pas de DB.
  */
@@ -91,6 +98,31 @@ interface SlotFixture {
       coverConfig: unknown;
     };
   } | null;
+  /**
+   * Recette globale directe (mission account-less, patternBindingId null +
+   * patternTemplateId non-null) — branche 2 de resolveSlotEffectivePattern,
+   * chargée via slotEffectivePatternSelect dans le select réel de patchSlot.
+   */
+  patternTemplate: {
+    id: string;
+    label: string;
+    source: string;
+    templateId: string | null;
+    captionPresetId: string | null;
+    descriptionPromptId: string | null;
+    coverMode: string;
+    coverConfig: unknown;
+    needsCaptionsMode: string;
+    needsDescription: string;
+    descriptionSourceFieldKey: string | null;
+    descriptionFixedText: string | null;
+    needsAdminValidation: boolean;
+    needsClientValidation: boolean;
+    allowsClientRevision: boolean;
+    needsBrief: boolean;
+    requiresProperty: boolean;
+    requiresEntityTypeId: string | null;
+  } | null;
 }
 
 /** PatternBinding mock complet (chemin canonique du changement de recette). */
@@ -114,6 +146,31 @@ function makeBindingRow(
       ...templateOver,
     },
     ...bindingOver,
+  };
+}
+
+/** PatternTemplate mock direct (mission account-less, sans binding). */
+function makeTemplateRow(over: Record<string, unknown> = {}) {
+  return {
+    id: "template-mission",
+    label: "Mission recette",
+    source: "auto_template",
+    templateId: null,
+    captionPresetId: null,
+    descriptionPromptId: null,
+    coverMode: "none",
+    coverConfig: null,
+    needsCaptionsMode: "none",
+    needsDescription: "none",
+    descriptionSourceFieldKey: null,
+    descriptionFixedText: null,
+    needsAdminValidation: false,
+    needsClientValidation: false,
+    allowsClientRevision: false,
+    needsBrief: false,
+    requiresProperty: false,
+    requiresEntityTypeId: null,
+    ...over,
   };
 }
 
@@ -144,6 +201,7 @@ function makeSlot(overrides: Partial<SlotFixture> = {}): SlotFixture {
         coverConfig: null,
       },
     },
+    patternTemplate: null,
     ...overrides,
   };
 }
@@ -426,6 +484,39 @@ describe("patchSlot — scoping", () => {
     await expect(
       patchSlot("slot-1", { notes: "test" }, makeUserCtx("MONTEUR", "user-monteur")),
     ).rejects.toMatchObject({ message: expect.stringMatching(/introuvable/i) });
+  });
+});
+
+// ─── Invariant 7 : mission account-less — branche patternTemplate directe ──
+
+describe("patchSlot — mission account-less (patternBindingId null, patternTemplateId direct)", () => {
+  it('override captions "auto" + preset hérité du patternTemplate direct → PAS de throw', async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({
+        patternBinding: null,
+        patternTemplate: makeTemplateRow({ captionPresetId: "preset-mission" }),
+      }),
+    );
+
+    const result = await patchSlot(
+      "slot-1",
+      { needsCaptionsModeOverride: "auto" },
+      makeUserCtx("ADMIN"),
+    );
+    expect(result).toBeDefined();
+  });
+
+  it("mode auto hérité du patternTemplate direct sans preset nulle part → throw", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({
+        patternBinding: null,
+        patternTemplate: makeTemplateRow({ needsCaptionsMode: "auto", captionPresetId: null }),
+      }),
+    );
+
+    await expect(
+      patchSlot("slot-1", { notes: "test" }, makeUserCtx("ADMIN")),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 });
 

@@ -8,7 +8,7 @@ import { getInboxItems } from "@/lib/services/inbox/getInboxItems";
 import { MiniWeekCalendar, type MiniCalItem } from "./MiniWeekCalendar";
 import { getCurrentWeekMonday, getCurrentWeekSunday } from "@/types/worklist";
 import { STATUS_DOT } from "@/lib/slots/statusLabels";
-import { timeFr } from "@/lib/date/formatFr";
+import { timeFr, dateFrLong } from "@/lib/date/formatFr";
 import { AdminInbox } from "./AdminInbox";
 
 const ACTIVE_STATUSES: SlotStatus[] = [
@@ -79,12 +79,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
     }),
   ]);
 
-  const todayLabel = now.toLocaleDateString("fr-FR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const todayLabel = dateFrLong(now);
 
   return (
     <div className="min-h-screen">

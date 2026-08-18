@@ -21,6 +21,7 @@ import { selectAndClaimMediaAsset, selectMediaAssetFromFolder, selectMediaAssetB
 import { triggerAutoTranscriptionLocal } from "@/lib/triggerAutoTranscriptionLocal";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 import { onRenderCompleted } from "@/lib/services/slot/pipelineHooks";
+import { enrichListingWithEntityFields, loadRenderEntityContext } from "./enrichListingWithEntityFields";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
 const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -238,13 +239,18 @@ export async function generateRender(renderId: string): Promise<void> {
 
   const templateJson = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
   const listingData = JSON.parse(listing.jsonData) as ListingData;
+  // 1bis. Injection déclarative des champs de fiche (Entity) — un seul point,
+  // couvre les trois pipelines (image, vidéo, séquence) en aval. NO-OP strict
+  // (aucune requête) si le render n'a pas de PublicationSlot.
+  const entityContext = await loadRenderEntityContext(render.publicationSlotId);
+  const listingDataWithEntityFields = enrichListingWithEntityFields(listingData, templateJson.schema, entityContext);
   // 2. Validation conformité (enrichissement auto)
   await updateRenderTracking(renderId, {
     stage: RENDER_STAGE.VALIDATE_LISTING,
     statusDetail: "Validation et enrichissement des données",
     progress: 0.08,
   });
-  const { enrichedListing } = validateConformite(listingData);
+  const { enrichedListing } = validateConformite(listingDataWithEntityFields);
 
   // ─── Branchement : vidéo (RunPod ou local) vs image (Node.js) ───────────
   // Chantier C1 — pipeline unifié : tout template avec un VideoBlock arrive
@@ -544,7 +550,7 @@ async function mergeAudioAssetId(renderId: string, assetId: string): Promise<voi
  * Allows {{key}} variables in text blocks to resolve from asset metadata,
  * with full support for formatThousands / decimalSeparator via resolveTextTemplate.
  */
-function enrichListingWithAssetMetadata(
+export function enrichListingWithAssetMetadata(
   listingData: ListingData,
   schema: SchemaField[],
   assetMetadataByLibrary: Map<string, Record<string, string | number | null>>,

@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
 import { useInlineAction } from "@/hooks/useInlineAction";
+import { shortDateFr } from "@/lib/date/formatFr";
 import type { InboxItem as InboxItemData, InboxTypology } from "@/lib/services/inbox/getInboxItems";
 
 const TYPOLOGY_META: Record<
@@ -135,10 +136,7 @@ export function InboxItem({ item }: Props) {
   // ── Meta dynamique selon typology ───────────────────────────────────
   const sublabel = (() => {
     if (item.typology === "version_review" && item.latestVersion) {
-      const created = new Date(item.latestVersion.createdAt).toLocaleDateString(
-        "fr-FR",
-        { day: "numeric", month: "short" },
-      );
+      const created = shortDateFr(item.latestVersion.createdAt);
       return `V${item.latestVersion.versionNumber} · ${created}`;
     }
     if (item.typology === "overdue" || item.typology === "rushes_overdue") {

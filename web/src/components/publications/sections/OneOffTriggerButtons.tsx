@@ -34,11 +34,15 @@ interface Props {
   /**
    * Config résolue par resolveSlotConfig (override slot prime sur pattern).
    * coverMode/captionPresetId nuls = ne pas afficher le bouton correspondant.
-   * Si coverMode="autoPack" mais coverPresetId null → bouton disabled avec tooltip.
+   * Si coverMode="autoPack" mais coverPresetResolvable=false → bouton disabled
+   * avec tooltip.
    */
   resolvedConfig: {
     coverMode: string; // "none" | "manualSelect" | "autoPack" | "monteurUpload"
-    coverPresetId: string | null;
+    /** true si un TemplateCoverPreset est résolvable pour ce template (id →
+     *  nom → défaut) — cf. resolveCoverPreset (lib/publications/coverMode.ts).
+     *  Calculé côté serveur (page.tsx) car la résolution nécessite Prisma. */
+    coverPresetResolvable: boolean;
     /** "none" | "auto" | "manual". */
     needsCaptionsMode?: string | null;
     captionPresetId: string | null;
@@ -70,7 +74,7 @@ export function OneOffTriggerButtons({
   // dans la section dédiée et regénérer depuis là si besoin.
   const showCoverButton = resolvedConfig.coverMode === "autoPack" && !hasCoverPack;
   const showCaptionsButton = resolvedConfig.needsCaptionsMode === "auto" && !hasCaptionJob;
-  const coverDisabled = !resolvedConfig.coverPresetId;
+  const coverDisabled = !resolvedConfig.coverPresetResolvable;
   const captionsDisabled = !resolvedConfig.captionPresetId;
 
   // Masquer si non applicable
@@ -124,7 +128,7 @@ export function OneOffTriggerButtons({
       </div>
       <div className="flex flex-wrap gap-2 mt-3">
         {showCoverButton && (
-          <span title={coverDisabled ? "Aucun preset cover défini (ajustement ou recette)" : undefined}>
+          <span title={coverDisabled ? "Aucun preset cover sur le template de cette recette" : undefined}>
             <Button
               variant="secondary"
               size="sm"

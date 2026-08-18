@@ -40,6 +40,7 @@ import { CalendarDndContext, type SlotDropPayload } from "./dnd/CalendarDndConte
 import { useSlotDrag } from "./dnd/useSlotDrag";
 import { useDayDrop } from "./dnd/useDayDrop";
 import { toast } from "@/components/ui/Toast";
+import { numericDateFr, dayMonthLongFr } from "@/lib/date/formatFr";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
@@ -547,14 +548,15 @@ export function CalendarView({
     [slots, bankRailSlots],
   );
 
-  const weekLabel = `${weekStart.toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "long",
-  })} – ${addDays(weekStart, 6).toLocaleDateString("fr-FR", {
+  // Fin de semaine : jour + mois long + année, sans équivalent exact dans
+  // lib/date/formatFr.ts (dayMonthLongFr n'a pas l'année) — laissé en l'état.
+  // eslint-disable-next-line no-restricted-syntax
+  const weekEndLabel = addDays(weekStart, 6).toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "long",
     year: "numeric",
-  })}`;
+  });
+  const weekLabel = `${dayMonthLongFr(weekStart)} – ${weekEndLabel}`;
 
   const today = new Date();
   const isCurrentWeek = isSameDay(weekStart, getMondayOf(today));
@@ -1120,10 +1122,10 @@ export function CalendarView({
         title="Générer les publications de la semaine ?"
         description={
           genPreviewLoading
-            ? `Analyse de la semaine du ${weekStart.toLocaleDateString("fr-FR")}…`
+            ? `Analyse de la semaine du ${numericDateFr(weekStart)}…`
             : genPreview
-              ? `Semaine du ${weekStart.toLocaleDateString("fr-FR")} — ${genPreview.created} slot${genPreview.created !== 1 ? "s" : ""} à créer, ${genPreview.skipped} déjà présent${genPreview.skipped !== 1 ? "s" : ""} (ignoré${genPreview.skipped !== 1 ? "s" : ""}).`
-              : `Générer les slots auto pour la semaine du ${weekStart.toLocaleDateString("fr-FR")} ? Les slots existants ne seront pas écrasés.`
+              ? `Semaine du ${numericDateFr(weekStart)} — ${genPreview.created} slot${genPreview.created !== 1 ? "s" : ""} à créer, ${genPreview.skipped} déjà présent${genPreview.skipped !== 1 ? "s" : ""} (ignoré${genPreview.skipped !== 1 ? "s" : ""}).`
+              : `Générer les slots auto pour la semaine du ${numericDateFr(weekStart)} ? Les slots existants ne seront pas écrasés.`
         }
         confirmLabel={genPreview && genPreview.created > 0 ? `Créer ${genPreview.created} slot${genPreview.created !== 1 ? "s" : ""}` : "Générer"}
         loading={generating}

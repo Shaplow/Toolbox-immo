@@ -8,6 +8,7 @@ import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { toast } from "@/components/ui/Toast";
+import { numericDateFr } from "@/lib/date/formatFr";
 
 type FontAsset = {
   id: string;
@@ -235,7 +236,7 @@ export function AdminFontsPanel() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">{font.originalName ?? font.storageKey ?? font.url}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1">Mise à jour le {new Date(font.updatedAt).toLocaleDateString("fr-FR")}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Mise à jour le {numericDateFr(font.updatedAt)}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Button

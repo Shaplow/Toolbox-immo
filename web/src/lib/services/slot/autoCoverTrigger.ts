@@ -16,7 +16,7 @@ import type { PrismaClient } from "@prisma/client";
 import { resolveSlotConfig } from "@/lib/services/slot/config";
 import { logActivity } from "@/lib/services/slot/activity";
 import { queueCoverFramePackPreparation } from "@/lib/coverAuto";
-import { getCoverPresetIdFromConfig } from "@/lib/publications/coverMode";
+import { resolveCoverPreset } from "@/lib/publications/coverMode";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 export type AutoCoverResult =
@@ -69,31 +69,23 @@ export async function tryAutoTriggerCover(
 
     // Pattern effectif : recette PatternBinding ou PatternTemplate global.
     const effPattern = resolveSlotEffectivePattern(slot);
-    // coverConfig.coverPresetId (Phase 3) — extrait pour le résolveur
-    const patternCoverPresetId = getCoverPresetIdFromConfig(effPattern?.coverConfig);
 
-    const resolved = resolveSlotConfig(
-      slot,
-      effPattern
-        ? {
-            ...effPattern,
-            coverPresetId: patternCoverPresetId,
-          }
-        : null,
-    );
+    const resolved = resolveSlotConfig(slot, effPattern);
 
     if (resolved.coverMode !== "autoPack") {
       return { status: "skipped", reason: `cover_mode_${resolved.coverMode}` };
     }
-    if (!resolved.coverPresetId) {
-      return { status: "skipped", reason: "no_cover_preset" };
-    }
 
-    const preset = await prisma.templateCoverPreset.findUnique({
-      where: { id: resolved.coverPresetId },
-      select: { id: true, name: true, config: true, templateId: true },
-    });
-    if (!preset) return { status: "skipped", reason: "preset_not_found" };
+    // Cascade unique id → nom → défaut du template (cf. resolveCoverPreset) —
+    // coverConfig null/incomplet n'est pas bloquant, contrairement à l'ancienne
+    // résolution ici qui skippait sans jamais retomber sur le preset par défaut.
+    const preset = effPattern
+      ? await resolveCoverPreset(
+          { coverConfig: effPattern.coverConfig, templateId: effPattern.templateId },
+          prisma,
+        )
+      : null;
+    if (!preset) return { status: "skipped", reason: "no_cover_preset" };
 
     // V7.6 — Garde unifiée slot-level (Pattern C audit V6). Avant : on
     // vérifiait juste `publicationVersionId`, mais un pack pouvait être

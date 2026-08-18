@@ -18,6 +18,8 @@ import { PublicationLiveRefresh } from "@/components/publications/PublicationLiv
 import { NextActionBanner } from "@/components/publications/NextActionBanner";
 import { ProductionChain } from "@/components/publications/ProductionChain";
 import { SlotEntitySelect } from "@/components/publications/SlotEntitySelect";
+import { EntityFieldsSection } from "@/components/publications/sections/EntityFieldsSection";
+import type { EntityFieldsSummary } from "@/lib/publications/entityFieldsSummary";
 import { RenderSection } from "@/components/publications/sections/RenderSection";
 import { getSlotFinalVideoUrl, isFinalVideoCaptioned } from "@/lib/publications/finalVideo";
 import { CoverSection } from "@/components/publications/sections/CoverSection";
@@ -36,6 +38,7 @@ import { cloneElement } from "react";
 import type { ReactElement } from "react";
 import type { PublicationStep } from "@/lib/publications/steps";
 import { promoteVersionWarning } from "@/lib/publications/actions";
+import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
 import { resolveCaptionsMode, isCaptionsEnabled } from "@/lib/publications/captionsMode";
 import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
@@ -46,6 +49,7 @@ import type { UserRole } from "@/types/roles";
 // ---------------------------------------------------------------------------
 
 type SectionKey =
+  | "entityFields"
   | "brief"
   | "rushes"
   | "versions"
@@ -65,25 +69,30 @@ type SectionKey =
  * rien à y faire.
  *
  * ADMIN : tout (pas d'entrée dans le record, voir wrap()).
- * VIDÉASTE : brief + rushes + comments. Le reste lui est inutile.
- * MONTEUR : brief + rushes + versions + render (lecture seule pour
- *   référencer le rendu final) + cover + captions + comments. Il gère les
+ * VIDÉASTE : entityFields + brief + rushes + comments. Le reste lui est inutile.
+ * MONTEUR : entityFields + brief + rushes + versions + render (lecture seule
+ *   pour référencer le rendu final) + cover + captions + comments. Il gère les
  *   sous-titres (mode manuel : il les saisit ; mode auto : il voit le statut
  *   du pipeline). Description ne le concerne pas.
  * CM : tout sauf brief (qui appartient au pipeline amont). Activity
  *   reste repliée par défaut.
+ *
+ * `entityFields` (résumé des champs de la fiche rattachée) est ajouté à
+ * VIDEASTE/MONTEUR/CM : les types de fiche `visibility="admin"` (ex. « Bien »)
+ * ne leur sont pas ouvrables ailleurs (`lib/permissions/entityScope.ts`) —
+ * cette section est leur seule vue sur ces valeurs.
  */
 const PRIMARY_SECTIONS_BY_ROLE: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
-  VIDEASTE: ["brief", "rushes", "comments"],
+  VIDEASTE: ["entityFields", "brief", "rushes", "comments"],
   // Phase 2.5 : MONTEUR voit aussi "cover" pour le cas monteurUpload (il
   // uploade la cover avec sa version). CoverSection se masque elle-même
   // si le mode n'est pas monteurUpload, donc pas de bruit pour les autres
   // patterns.
-  MONTEUR: ["brief", "rushes", "versions", "render", "cover", "captions", "comments"],
+  MONTEUR: ["entityFields", "brief", "rushes", "versions", "render", "cover", "captions", "comments"],
   // Ordre du process (2026-05-30) : render → captions → clientValidation
   // → description → cover → publish (les versions/rushes restent en amont,
   // comments à la fin de la fiche).
-  CM: ["render", "rushes", "versions", "captions", "clientValidation", "description", "cover", "publish", "comments"],
+  CM: ["entityFields", "render", "rushes", "versions", "captions", "clientValidation", "description", "cover", "publish", "comments"],
   EXTERNAL_GENERATOR: [],
 };
 
@@ -236,6 +245,8 @@ export interface PublicationFicheProps {
   pattern: PatternInfo | null;
   /** Nom du type de fiche exigé par la recette (titre de la section Fiche). */
   requiredEntityTypeName?: string | null;
+  /** Résumé lecture seule des fiches rattachées (data + tournage) — vide = section masquée. */
+  entitySummaries: EntityFieldsSummary[];
   render: RenderInfo | null;
   coverPack: CoverPackInfo | null;
   coverConfigError: CoverConfigError | null;
@@ -303,10 +314,12 @@ export interface PublicationFicheProps {
     }>;
   };
   // Phase 4 cohérence — config résolue (override + pattern) pour OneOffTriggerButtons
-  // (le composant utilise ces 4 fields pour décider affichage + disabled).
+  // (le composant utilise ces champs pour décider affichage + disabled).
   resolvedConfig: {
     coverMode: string;
-    coverPresetId: string | null;
+    /** true si un TemplateCoverPreset est résolvable (id → nom → défaut du
+     *  template) — calculé côté serveur, cf. resolveCoverPreset. */
+    coverPresetResolvable: boolean;
     /** V8 — "none" | "auto" | "manual". */
     needsCaptionsMode?: "none" | "auto" | "manual";
     captionPresetId: string | null;
@@ -333,6 +346,7 @@ export function PublicationFiche({
   listing,
   pattern,
   requiredEntityTypeName,
+  entitySummaries,
   render,
   coverPack,
   coverConfigError,
@@ -386,6 +400,7 @@ export function PublicationFiche({
       visibleSectionIds.add(key);
     }
   };
+  trackVisible("entityFields", entitySummaries.length > 0);
   trackVisible("brief", !!pattern?.needsBrief);
   trackVisible(
     "rushes",
@@ -507,10 +522,7 @@ export function PublicationFiche({
               <SlotEntitySelect
                 slotId={slot.id}
                 initialPropertyId={slot.propertyId ?? null}
-                requiredEntityTypeId={
-                  pattern?.requiresEntityTypeId ??
-                  (pattern?.requiresProperty ? "etype_bien" : null)
-                }
+                requiredEntityTypeId={requiredEntityTypeId(pattern)}
               />
             </div>
           </div>
@@ -519,6 +531,11 @@ export function PublicationFiche({
         <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-6">
           {/* Colonne workflow — sections d'action */}
           <div className="space-y-4 min-w-0">
+            {/* Champs de la fiche rattachée — résumé lecture seule (data +
+                tournage). Masquée si aucune fiche n'est rattachée. */}
+            {entitySummaries.length > 0 &&
+              wrap("entityFields", <EntityFieldsSection summaries={entitySummaries} />)}
+
             {/* Brief éditorial — Phase B3, conditionné par pattern.needsBrief */}
             {pattern?.needsBrief &&
               wrap(
@@ -621,7 +638,12 @@ export function PublicationFiche({
                       needsCaptionsMode: resolvedConfig.needsCaptionsMode,
                       needsDescription: pattern?.needsDescription ?? "none",
                       coverMode: resolvedConfig.coverMode,
-                      coverPresetId: resolvedConfig.coverPresetId,
+                      // promoteVersionWarning ne lit pas coverPresetId (seuls
+                      // latestCaptionJob/coverPack comptent) — champ requis par
+                      // ResolvedConfigForActions, non exploitable ici sans un
+                      // second aller-retour Prisma. coverPresetResolvable est la
+                      // source de vérité du gate réel (cf. OneOffTriggerButtons).
+                      coverPresetId: null,
                       captionPresetId: resolvedConfig.captionPresetId,
                       descriptionPromptId:
                         slot.descriptionPromptIdOverride ??

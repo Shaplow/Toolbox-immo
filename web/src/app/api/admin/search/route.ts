@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
+import { numericDateFr } from "@/lib/date/formatFr";
 
 export type SearchResultItem = {
   kind:
@@ -170,7 +171,7 @@ export async function GET(req: NextRequest) {
       label:
         s.title ??
         (s.scheduledAt
-          ? `Publication du ${s.scheduledAt.toLocaleDateString("fr-FR")}`
+          ? `Publication du ${numericDateFr(s.scheduledAt)}`
           : "Publication en banque"),
       sublabel: s.account ? `@${s.account.handle}` : "Sans compte",
       href: `/publications/${s.id}`,

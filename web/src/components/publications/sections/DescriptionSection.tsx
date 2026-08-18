@@ -27,6 +27,7 @@ import { Section } from "@/components/ui/molecules/Section";
 import { FormField } from "@/components/ui/FormField";
 import { Textarea } from "@/components/ui/Textarea";
 import { Alert } from "@/components/ui/Alert";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/components/ui/Toast";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 import { canGenerateDescription } from "@/lib/publications/actions";
@@ -140,6 +141,8 @@ function DescriptionSectionInner({
   const [editing, setEditing] = useState(!isAutoMode || !hasContent);
   const [copied, setCopied] = useState(false);
   const [retryingChain, setRetryingChain] = useState(false);
+  const [recomputing, setRecomputing] = useState(false);
+  const [showRecomputeConfirm, setShowRecomputeConfirm] = useState(false);
   const [value, setValue] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -379,6 +382,43 @@ function DescriptionSectionInner({
       toast.error(err instanceof Error ? err.message : "Erreur réseau");
     } finally {
       setRetryingChain(false);
+    }
+  }
+
+  /**
+   * Recalcule la légende « Pré-remplie »/« fixe » depuis les valeurs FRAÎCHES
+   * des fiches rattachées — comble l'écart avec la copie one-shot faite au
+   * (re)rattachement de fiche (cf. POST /recompute-caption).
+   */
+  async function handleRecompute() {
+    setRecomputing(true);
+    try {
+      const res = await fetch(`/api/publications/${slot.id}/recompute-caption`, {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        updated?: boolean;
+        description?: string | null;
+        message?: string;
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? `Erreur ${res.status}`);
+        return;
+      }
+      if (data.updated && typeof data.description === "string") {
+        setValue(data.description);
+        setSaved(false);
+        toast.success("Légende recalculée depuis la fiche.");
+      } else {
+        toast.info(data.message ?? "Aucune valeur exploitable — légende inchangée.");
+      }
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur réseau");
+    } finally {
+      setRecomputing(false);
+      setShowRecomputeConfirm(false);
     }
   }
 
@@ -640,17 +680,27 @@ function DescriptionSectionInner({
         ) : (
           /* ── Mode manuel OU édition après preview ─────────────────────────── */
           <>
-            {isPreFilled && (
-              <p className="text-[11px] text-muted-foreground">
-                Légende pré-remplie depuis la fiche rattachée — réécrite à chaque
-                changement de bien. Tu peux l&apos;ajuster librement ici.
-              </p>
-            )}
-            {isFixed && (
-              <p className="text-[11px] text-muted-foreground">
-                Légende pré-remplie depuis la recette. Tu peux l&apos;ajuster
-                librement ici.
-              </p>
+            {(isPreFilled || isFixed) && (
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[11px] text-muted-foreground">
+                  Copiée depuis la fiche rattachée au rattachement (création
+                  ou changement de fiche) — une édition des champs de la
+                  fiche ensuite ne se répercute pas automatiquement ici.
+                  Utilise « Recalculer » pour resynchroniser, ou ajuste
+                  librement le texte ci-dessous.
+                </p>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRecomputeConfirm(true)}
+                    className="inline-flex items-center gap-1 shrink-0 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors"
+                    title="Recalcule la légende depuis les valeurs actuelles de la fiche"
+                  >
+                    <RefreshCw size={11} />
+                    Recalculer
+                  </button>
+                )}
+              </div>
             )}
             <Textarea
               value={value}
@@ -868,6 +918,17 @@ function DescriptionSectionInner({
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={showRecomputeConfirm}
+        title="Recalculer la légende ?"
+        description="La légende sera remplacée par le résultat recalculé depuis les valeurs actuelles de la ou des fiches rattachées. Toute retouche manuelle sera écrasée."
+        confirmLabel="Recalculer"
+        cancelLabel="Annuler"
+        loading={recomputing}
+        onConfirm={() => void handleRecompute()}
+        onCancel={() => setShowRecomputeConfirm(false)}
+      />
     </Section>
   );
 }

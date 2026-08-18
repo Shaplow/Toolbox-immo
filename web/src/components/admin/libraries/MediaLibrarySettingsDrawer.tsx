@@ -14,15 +14,11 @@
  * Save via PATCH /api/admin/libraries/media/[id] (endpoint existant inchangé).
  */
 
-import { useCallback, useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { Drawer } from "@/components/ui/Drawer";
 import { BackfillPostersButton } from "./BackfillPostersButton";
 import { Button } from "@/components/ui/Button";
-import { Chip } from "@/components/ui/Chip";
-import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
-import { Textarea } from "@/components/ui/Textarea";
-import { FormField } from "@/components/ui/FormField";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { resolveRotationMode } from "@/lib/rotation/rotationMode";
 import { toast } from "@/components/ui/Toast";
@@ -38,6 +34,8 @@ import {
 import type { CustomField } from "@/lib/customFields";
 import { normalizeCustomFields, validateCustomFields } from "@/lib/customFields";
 import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
+import { LibraryIdentitySection } from "./shared/LibraryIdentitySection";
+import { RotationSettingsSection } from "./shared/RotationSettingsSection";
 
 interface LibrarySettings {
   id: string;
@@ -87,11 +85,20 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
     library?.maxUsageCount != null ? String(library.maxUsageCount) : "",
   );
   const [saving, setSaving] = useState(false);
+  // Défense — dirty-tracking description/tags : la route PATCH applique un
+  // champ dès qu'il est présent dans le body (partial update, cf.
+  // `body.description !== undefined`). On snapshotte ici les valeurs reçues
+  // du caller à l'ouverture/au changement de `library`, et handleSave n'inclut
+  // description/tags dans le payload que s'ils diffèrent de ce snapshot. Ça
+  // empêche un caller qui passerait par erreur des valeurs par défaut (ex:
+  // description: null / tags: "[]" en dur) d'écraser silencieusement la vraie
+  // valeur tant que l'admin n'a pas lui-même édité l'onglet Identité.
+  const baselineRef = useRef<{ description: string; tags: string[] } | null>(null);
   type TabKey = "identity" | "rotation" | "fields" | "cleanup";
   const [tab, setTab] = useState<TabKey>("identity");
   // Taxonomies (Dossiers / Tags) chargées au open du drawer.
   type TaxItem = { value: string; count: number };
-  const [taxonomies, setTaxonomies] = useState<{ categories: TaxItem[]; packs: TaxItem[]; tags: TaxItem[] } | null>(null);
+  const [taxonomies, setTaxonomies] = useState<{ packs: TaxItem[]; tags: TaxItem[] } | null>(null);
   const [taxLoading, setTaxLoading] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -101,7 +108,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
     try {
       const res = await fetch(`/api/admin/libraries/media/${library.id}/taxonomies`);
       if (!res.ok) return;
-      const data = (await res.json()) as { categories: TaxItem[]; packs: TaxItem[]; tags: TaxItem[] };
+      const data = (await res.json()) as { packs: TaxItem[]; tags: TaxItem[] };
       setTaxonomies(data);
     } catch {
       /* ignore */
@@ -150,14 +157,16 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
   // Re-sync states quand library change (drawer opened for another lib).
   useEffect(() => {
     if (library) {
+      const initDescription = library.description ?? "";
       setName(library.name);
-      setDescription(library.description ?? "");
+      setDescription(initDescription);
       const t = parseStringArray(library.tags);
       setTagsCsv(t.join(", "));
       setRotationMode(resolveRotationMode({ rotationMode: library.rotationMode ?? null }).mode);
       setRotationScope(library.rotationScope === "shared" ? "shared" : "per_account");
       setMetadataFields(normalizeCustomFields(library.metadataSchema));
       setMaxUsageCount(library.maxUsageCount != null ? String(library.maxUsageCount) : "");
+      baselineRef.current = { description: initDescription, tags: t };
     }
   }, [library]);
 
@@ -191,12 +200,9 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
     setSaving(true);
     try {
       const tagsList = tagsCsv.split(",").map((t) => t.trim()).filter(Boolean);
-      const payload = {
+      const trimmedDescription = description.trim();
+      const payload: Record<string, unknown> = {
         name: name.trim(),
-        description: description.trim() || null,
-        // Tableaux bruts : la route les sérialise elle-même. Envoyer une string
-        // ici les faisait silencieusement ignorer côté serveur.
-        tags: tagsList,
         rotationScope,
         rotationMode,
         maxUsageCount: parsedMax,
@@ -206,6 +212,17 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
           type: f.type,
         })),
       };
+      // Dirty-tracking (cf. baselineRef ci-dessus) : la route ignore un champ
+      // absent du body, donc on ne l'inclut que s'il a réellement changé.
+      const baseline = baselineRef.current;
+      if (!baseline || trimmedDescription !== baseline.description) {
+        payload.description = trimmedDescription || null;
+      }
+      if (!baseline || JSON.stringify(tagsList) !== JSON.stringify(baseline.tags)) {
+        // Tableau brut : la route le sérialise elle-même. Envoyer une string
+        // ici le faisait silencieusement ignorer côté serveur.
+        payload.tags = tagsList;
+      }
       const res = await fetch(`/api/admin/libraries/media/${library.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -247,78 +264,36 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
         />
 
         {tab === "identity" && (
-        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
-            Identité
-          </h3>
-          <FormField label="Nom" required>
-            <Input value={name} onChange={setName} placeholder="Ex: Rush RPI Paris" />
-          </FormField>
-          <FormField label="Description (optionnel)">
-            <Textarea value={description} onChange={setDescription} rows={2} placeholder="À quoi sert cette bibliothèque…" />
-          </FormField>
-          <FormField label="Tags" help="Séparés par virgule. Sert au filtrage côté builder / generation.">
-            <Input value={tagsCsv} onChange={setTagsCsv} placeholder="RPI, RTIPS" />
-          </FormField>
-        </section>
+          <LibraryIdentitySection
+            name={name}
+            onNameChange={setName}
+            namePlaceholder="Ex: Rush RPI Paris"
+            description={description}
+            onDescriptionChange={setDescription}
+            descriptionRows={2}
+            tags={{ value: tagsCsv, onChange: setTagsCsv }}
+          />
         )}
 
         {tab === "rotation" && (
-        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
-            <RotateCw size={11} /> Tirage
-          </h3>
-          <FormField label="Tirage automatique">
-            <div className="flex gap-1.5 flex-wrap">
-              {(["auto", "none"] as const).map((m) => (
-                <Chip
-                  key={m}
-                  variant={rotationMode === m ? "sky" : "default"}
-                  selected={rotationMode === m}
-                  onClick={() => setRotationMode(m)}
-                  size="sm"
-                >
-                  {m === "auto" ? "Auto · par dossier" : "Aucun"}
-                </Chip>
-              ))}
-            </div>
-            <p className="text-[10.5px] text-muted-foreground mt-1.5 leading-relaxed">
-              {rotationMode === "auto"
-                ? "Toolbox pioche dans le dossier servi le moins récemment, puis le plan le moins récemment utilisé dedans. Les plans d'un même dossier (ex : intro + outro filmées ensemble) sortent ensemble."
-                : "Pas de tirage auto. La sélection se fait via un champ du formulaire de génération (metadata) — vous choisissez vous-même quel plan utiliser."}
-            </p>
-          </FormField>
-          <FormField label="Comment ils tournent" help="Indépendant : chaque compte avance dans son propre cycle. Partagé : tous les comptes consomment le même.">
-            <div className="flex gap-1.5">
-              {(["per_account", "shared"] as const).map((s) => (
-                <Chip
-                  key={s}
-                  variant={rotationScope === s ? "sky" : "default"}
-                  selected={rotationScope === s}
-                  onClick={() => setRotationScope(s)}
-                  size="sm"
-                >
-                  {s === "per_account" ? "Indépendant par compte" : "Partagé entre comptes"}
-                </Chip>
-              ))}
-            </div>
-          </FormField>
-          <FormField
-            label="Consommation max par asset"
-            help={
-              rotationScope === "per_account"
-                ? "Laisser vide = rotation infinie. Sinon, chaque compte voit chaque asset max N fois avant qu'il sorte de la rotation pour ce compte."
-                : "Laisser vide = rotation infinie. Sinon, chaque asset est utilisé max N fois au total (tous comptes confondus) avant d'être retiré."
-            }
-          >
-            <Input
-              value={maxUsageCount}
-              onChange={setMaxUsageCount}
-              placeholder="Vide = infini"
-              type="number"
-            />
-          </FormField>
-        </section>
+          <RotationSettingsSection
+            mode={rotationMode}
+            onModeChange={setRotationMode}
+            scope={rotationScope}
+            onScopeChange={setRotationScope}
+            maxUsageCount={maxUsageCount}
+            onMaxUsageCountChange={setMaxUsageCount}
+            turnoverLabel="Comment ils tournent"
+            unit={{ singular: "asset" }}
+            modeHelp={{
+              auto: "Toolbox pioche dans le dossier servi le moins récemment, puis le plan le moins récemment utilisé dedans. Les plans d'un même dossier (ex : intro + outro filmées ensemble) sortent ensemble.",
+              none: "Pas de tirage auto. La sélection se fait via un champ du formulaire de génération (metadata) — vous choisissez vous-même quel plan utiliser.",
+            }}
+            maxUsageHelp={{
+              per_account: "Laisser vide = rotation infinie. Sinon, chaque compte voit chaque asset max N fois avant qu'il sorte de la rotation pour ce compte.",
+              shared: "Laisser vide = rotation infinie. Sinon, chaque asset est utilisé max N fois au total (tous comptes confondus) avant d'être retiré.",
+            }}
+          />
         )}
 
         {tab === "fields" && (

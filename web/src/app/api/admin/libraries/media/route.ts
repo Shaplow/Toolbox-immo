@@ -23,13 +23,13 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
       include: {
         _count: { select: { assets: true } },
-        // Phase 4 médiathèque — 4 assets les plus récents pour preview thumbs
-        // sur les LibraryCards (grille 2x2). Limité à 4 + champs minimaux pour
-        // garder la payload légère.
+        // Cover unique de la LibraryCard (MediaLibrariesPanel) — 1er asset
+        // vidéo le plus récent. Les libs audio n'ont pas de mimeType
+        // "video/*" donc ne remontent rien ici (fallback icône côté client).
         assets: {
-          where: { disabled: false },
+          where: { disabled: false, mimeType: { startsWith: "video/" } },
           orderBy: { createdAt: "desc" },
-          take: 4,
+          take: 1,
           select: { id: true, url: true, mimeType: true },
         },
       },

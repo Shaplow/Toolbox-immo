@@ -11,6 +11,8 @@ import { Select } from "@/components/ui/Select";
 import { FormField } from "@/components/ui/FormField";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { toast } from "@/components/ui/Toast";
+import { SYSTEM_ENTITY_TYPE_IDS } from "@/lib/entityTypes";
+import { SOURCE_LABELS_FR } from "@/lib/i18n/glossary";
 export interface MissionRecipe {
   id: string;
   label: string;
@@ -48,12 +50,6 @@ interface MissionFormProps {
    *  catalogue vide : lien vers /admin/patterns pour un admin, message d'attente sinon. */
   canCreateRecipe?: boolean;
 }
-
-const SOURCE_LABEL: Record<string, string> = {
-  auto_template: "Génération auto",
-  manual_rushes: "Montage rushes",
-  external_upload: "Upload externe",
-};
 
 export function MissionForm({
   recipes,
@@ -149,7 +145,7 @@ export function MissionForm({
 
   const recipeOptions = recipes.map((r) => ({
     value: r.id,
-    label: `${r.label} · ${SOURCE_LABEL[r.source] ?? r.source}`,
+    label: `${r.label} · ${SOURCE_LABELS_FR[r.source] ?? r.source}`,
   }));
 
   const accountOptions = [
@@ -224,7 +220,7 @@ export function MissionForm({
                 ? "Aucune fiche du type requis par cette recette."
                 : "Aucune fiche pour l'instant."}{" "}
               <Link
-                href={`/fiches?type=${selectedRecipe?.requiredEntityTypeId ?? "etype_bien"}`}
+                href={`/fiches?type=${selectedRecipe?.requiredEntityTypeId ?? SYSTEM_ENTITY_TYPE_IDS.bien}`}
                 className="font-medium text-primary hover:underline"
               >
                 Créez-en une

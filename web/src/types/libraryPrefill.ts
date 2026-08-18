@@ -3,6 +3,8 @@
  * Passed from the generate page (server component) to ListingForm (client).
  */
 
+import type { ProvenanceMap } from "@/lib/generate/provenance";
+
 export interface LibraryAssetOption {
   id: string;
   url: string;
@@ -32,8 +34,15 @@ export interface LibraryPrefillContext {
   fieldLibraryMap: Record<string, LibraryFieldMeta>;
   /** form field key → initial auto-selected suggestion (null = manual rule or empty library) */
   initialSuggestions: Record<string, LibraryAssetOption | null>;
-  /** text/data field keys pre-filled from a DataEntry — drives the "depuis la bibliothèque" badge */
-  prefilledDataKeys: string[];
+  /**
+   * Provenance par clé de TOUTES les valeurs de pré-remplissage connues côté
+   * serveur au moment de l'appel (fiche, fiche tournage, overrides mission,
+   * DataEntry) — voir `lib/generate/provenance.ts`. Pilote le badge de
+   * provenance affiché par `FieldInput`. Remplace l'ancien `prefilledDataKeys`
+   * (liste plate, DataEntry uniquement) : la précédence entre sources est
+   * maintenant explicite plutôt qu'implicite à l'ordre d'appel.
+   */
+  prefilledKeys: ProvenanceMap;
   /** full data suggestion with entryId for usage tracking */
   dataSuggestion?: {
     entryId: string;

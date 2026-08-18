@@ -9,7 +9,8 @@
  */
 
 import { Instagram, Layers, Calendar, Clock } from "lucide-react";
-import { STATUS_LABELS } from "@/lib/slots/statusLabels";
+import { STATUS_LABELS, ACTIVE_PIPELINE_STATUSES } from "@/lib/slots/statusLabels";
+import { dateFr } from "@/lib/date/formatFr";
 
 export interface AccountPeekData {
   id: string;
@@ -47,13 +48,7 @@ function avatarBg(handle: string): string {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return dateFr(iso);
 }
 
 function formatDateTime(iso: string): string {
@@ -66,22 +61,6 @@ function formatDateTime(iso: string): string {
     minute: "2-digit",
   });
 }
-
-const ACTIVE_PIPELINE_STATUSES = [
-  "DRAFT",
-  "PLANNED",
-  "RUSHES_EXPECTED",
-  "RUSHES_RECEIVED",
-  "IN_EDIT",
-  "EDIT_REVIEW",
-  "EDIT_APPROVED",
-  "READY_FOR_CM",
-  "AWAITING_CLIENT",
-  "CLIENT_REVISION",
-  "SCHEDULED",
-  "IN_PROGRESS",
-  "READY",
-];
 
 export function AccountSummaryCard({ data }: { data: AccountPeekData }) {
   const avatarBgClass = avatarBg(data.handle);

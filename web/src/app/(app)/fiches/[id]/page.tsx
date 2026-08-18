@@ -7,6 +7,7 @@ import { hasTool, TOOLS } from "@/lib/permissions";
 import { getEntity } from "@/lib/services/entity/entityService";
 import { canAttachSlotToEntity, canUploadEntityRushes } from "@/lib/permissions/entityScope";
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
+import { SYSTEM_ENTITY_TYPE_IDS } from "@/lib/entityTypes";
 import { NotFoundError } from "@/lib/services/_runtime/errors";
 import { PageShell } from "@/components/ui/PageShell";
 import { EntityFiche, type EntityFicheData } from "@/components/entities/EntityFiche";
@@ -62,7 +63,7 @@ export default async function EntityDetailPage({ params }: Params) {
           isArchived: false,
           OR: [
             { requiresEntityTypeId: entity.typeId },
-            entity.typeId === "etype_bien"
+            entity.typeId === SYSTEM_ENTITY_TYPE_IDS.bien
               ? { requiresEntityTypeId: null }
               : { requiresEntityTypeId: null, requiresProperty: false },
           ],

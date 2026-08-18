@@ -39,6 +39,8 @@ export default async function AudioLibraryDetailPage({ params }: Props) {
         name: library.name,
         type: library.type as "video" | "audio",
         metadataSchema: library.metadataSchema,
+        description: library.description,
+        tags: library.tags,
         rotationMode: library.rotationMode,
         rotationScope: library.rotationScope,
         maxUsageCount: library.maxUsageCount,

@@ -32,7 +32,6 @@ import { captureVideoPoster } from "./captureVideoPoster";
 import type { InstagramAccount, MediaLibrary } from "./types";
 import { normalizeCustomFields } from "@/lib/customFields";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
-import { isReservedSetTag } from "@/lib/rotation/sentinels";
 
 /**
  * Analyse les filenames pour suggérer un Dossier.
@@ -44,17 +43,20 @@ function suggestFromFilenames(files: File[]): { setTag?: string } {
 
   const matches = files.map((f) => {
     const base = f.name.toLowerCase().replace(/\.[^.]+$/, "");
-    return { setTag: matchPack(base) };
+    return { setTag: matchFolderName(base) };
   });
 
-  const packs = new Set(matches.map((m) => m.setTag).filter(Boolean));
+  const folderMatches = new Set(matches.map((m) => m.setTag).filter(Boolean));
 
   return {
-    setTag: packs.size === 1 ? Array.from(packs)[0] : undefined,
+    setTag: folderMatches.size === 1 ? Array.from(folderMatches)[0] : undefined,
   };
 }
 
-function matchPack(name: string): string | undefined {
+/** Détecte les conventions de nommage fichier "pack_x" / "set_x" / "session_x"
+ *  — indépendant du vocabulaire produit (« Dossier ») : ce sont des tokens
+ *  littéraux que les utilisateurs tapent déjà dans leurs noms de fichiers. */
+function matchFolderName(name: string): string | undefined {
   const pack = name.match(/\bpack[_-]([a-z0-9-]+)/);
   if (pack) return pack[1];
   const set = name.match(/\bset[_-]([a-z0-9-]+)/);
@@ -79,6 +81,16 @@ interface Props {
    */
   initialFiles?: File[] | null;
   onInitialFilesConsumed?: () => void;
+  /**
+   * Dossiers (setTag) et tags déjà connus de la lib, pour préremplir les
+   * Combobox. Le parent (MediaAssetsPanel) les a déjà en mémoire — passe-les
+   * pour éviter un fetch redondant. Si absents (ex : montage depuis
+   * MediaLibrariesPanel, qui ne les a pas sous la main), la modal fetch
+   * elle-même via /taxonomies (léger — juste les valeurs distinctes, pas la
+   * liste complète des assets).
+   */
+  existingPacks?: string[];
+  allTags?: string[];
 }
 
 export function MediaAssetsUploadModal({
@@ -89,6 +101,8 @@ export function MediaAssetsUploadModal({
   onUploaded,
   initialFiles,
   onInitialFilesConsumed,
+  existingPacks: existingPacksProp,
+  allTags: allTagsProp,
 }: Props) {
   const isVideo = library.type === "video";
   // Mode manuel (rotation "none") : on cache Catégorie + Pack et on affiche
@@ -109,9 +123,13 @@ export function MediaAssetsUploadModal({
   const [tagDraft, setTagDraft] = useState("");
   // Mode manuel — valeurs metadata saisies (key → value).
   const [uploadMetadata, setUploadMetadata] = useState<Record<string, string>>({});
-  // Phase γ — Combobox autocomplete : on fetch les dossiers/tags existants au mount.
-  const [existingPacks, setExistingPacks] = useState<string[]>([]);
-  const [existingTags, setExistingTags] = useState<string[]>([]);
+  // Phase γ — Combobox autocomplete : dossiers/tags existants pour préremplir.
+  // Fournis par le parent (existingPacksProp/allTagsProp) quand il les a déjà
+  // en mémoire ; sinon fallback fetch /taxonomies ci-dessous.
+  const [fetchedPacks, setFetchedPacks] = useState<string[]>([]);
+  const [fetchedTags, setFetchedTags] = useState<string[]>([]);
+  const existingPacks = existingPacksProp ?? fetchedPacks;
+  const existingTags = allTagsProp ?? fetchedTags;
   const [modalUploading, setModalUploading] = useState(false);
   const [modalProgress, setModalProgress] = useState<number | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -143,38 +161,29 @@ export function MediaAssetsUploadModal({
     return () => window.removeEventListener("keydown", handler);
   }, [open, modalUploading, onClose]);
 
-  // Phase γ — au mount du modal, fetch les dossiers déjà utilisés dans la lib
-  // pour pré-remplir l'autocomplete des Combobox. Léger : on lit juste les noms distincts.
+  // Fallback : seulement quand le parent n'a pas fourni existingPacks/allTags
+  // (ex : montage depuis MediaLibrariesPanel, qui ne les a pas en mémoire).
+  // Route légère /taxonomies — juste les valeurs distinctes, pas la liste
+  // complète des assets.
   useEffect(() => {
-    if (!open) return;
+    if (!open || existingPacksProp !== undefined || allTagsProp !== undefined) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/admin/libraries/media/${library.id}/assets`);
-        if (!res.ok) return;
-        // API retourne tags comme JSON string (pas array). On parse defensively.
-        const assets = (await res.json()) as Array<{ setTag: string | null; tags: unknown }>;
-        if (cancelled) return;
-        const packs = new Set<string>();
-        const tags = new Set<string>();
-        for (const a of assets) {
-          if (a.setTag && !isReservedSetTag(a.setTag)) packs.add(a.setTag);
-          // tags peut être string JSON OU array déjà parsé selon endpoint.
-          let parsed: string[] = [];
-          if (Array.isArray(a.tags)) parsed = a.tags as string[];
-          else if (typeof a.tags === "string") {
-            try { parsed = JSON.parse(a.tags) as string[]; } catch { parsed = []; }
-          }
-          parsed.forEach((t) => { if (typeof t === "string" && t.trim()) tags.add(t); });
-        }
-        setExistingPacks(Array.from(packs).sort());
-        setExistingTags(Array.from(tags).sort());
+        const res = await fetch(`/api/admin/libraries/media/${library.id}/taxonomies`);
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          packs: { value: string }[];
+          tags: { value: string }[];
+        };
+        setFetchedPacks(data.packs.map((p) => p.value));
+        setFetchedTags(data.tags.map((t) => t.value));
       } catch {
         /* fallback : Combobox marche avec allowCustom même sans options */
       }
     })();
     return () => { cancelled = true; };
-  }, [open, library.id]);
+  }, [open, library.id, existingPacksProp, allTagsProp]);
 
   // W4 : drop page-level → on PRÉ-REMPLIT la queue (recentFilenames + dropped
   // state) sans lancer l'upload. L'admin voit les fichiers + sa config

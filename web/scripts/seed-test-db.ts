@@ -284,11 +284,11 @@ async function main() {
     },
   });
 
-  // Assets vidéo : 3 fichiers avec set tags + tags + categories différents
+  // Assets vidéo : 3 fichiers avec set tags + tags différents
   for (const [i, spec] of [
-    { setTag: "INTRO", category: "Tenue 1", tags: ["intro", "extérieur"] },
-    { setTag: "OUTRO", category: "Tenue 1", tags: ["outro", "extérieur"] },
-    { setTag: "INTRO", category: "Tenue 2", tags: ["intro", "intérieur"] },
+    { setTag: "INTRO", tags: ["intro", "extérieur"] },
+    { setTag: "OUTRO", tags: ["outro", "extérieur"] },
+    { setTag: "INTRO", tags: ["intro", "intérieur"] },
   ].entries()) {
     await prisma.mediaAsset.upsert({
       where: { id: `test-media-asset-video-${i}` },
@@ -303,7 +303,6 @@ async function main() {
         duration: 5.0 + i,
         tags: JSON.stringify(spec.tags),
         setTag: spec.setTag,
-        category: spec.category,
         usageCount: i,
       },
     });

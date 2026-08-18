@@ -7,6 +7,7 @@ import { RenderResult } from "@/components/renders/RenderResult";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { getSlotFinalVideoUrl } from "@/lib/publications/finalVideo";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -35,7 +36,7 @@ export default async function RenderPage({ params }: Props) {
           id: true,
           title: true,
           account: { select: { handle: true } },
-          pattern: { select: { coverMode: true, coverConfig: true } },
+          ...slotEffectivePatternSelect,
           // Charge le dernier CaptionJob du slot pour résoudre la version finale
           // (captions incrustées si dispo, sinon vidéo brute).
           captionJobs: {
@@ -55,10 +56,10 @@ export default async function RenderPage({ params }: Props) {
   const userPerms = parsePermissions(userContext.effectiveUser.permissions);
   const hasCovers = isAdmin || userPerms.includes("covers");
 
-  // Lire Pattern.coverConfig (source de vérité Phase 1.8 — template.coverAutoConfig supprimé)
-  const slotPattern = render.publicationSlot?.pattern;
-  const patternCoverConfig = slotPattern?.coverMode === "autoPack" && slotPattern.coverConfig
-    ? (slotPattern.coverConfig as { enabled?: boolean })
+  // Lire la recette effective (source de vérité Phase 1.8 — template.coverAutoConfig supprimé)
+  const effPattern = render.publicationSlot ? resolveSlotEffectivePattern(render.publicationSlot) : null;
+  const patternCoverConfig = effPattern?.coverMode === "autoPack" && effPattern.coverConfig
+    ? (effPattern.coverConfig as { enabled?: boolean })
     : null;
   const coverAutoEnabled = patternCoverConfig?.enabled === true;
   if (!isAdmin) {

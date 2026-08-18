@@ -155,7 +155,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     expect(mockTemplateCoverPresetFindFirst).toHaveBeenCalledWith({
       where: { templateId: "tpl-1" },
       orderBy: { sortOrder: "asc" },
-      select: { id: true, config: true, name: true },
+      select: { id: true, name: true, config: true, templateId: true },
     });
     expect(mockCoverFramePackCreate).toHaveBeenCalled();
   });
@@ -214,7 +214,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     expect(mockTemplateCoverPresetFindFirst).toHaveBeenCalledWith({
       where: { templateId: "tpl-1" },
       orderBy: { sortOrder: "asc" },
-      select: { id: true, config: true, name: true },
+      select: { id: true, name: true, config: true, templateId: true },
     });
   });
 
@@ -286,7 +286,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     // → lookup via templateId_name avec templateId du pattern, pas du render
     expect(mockTemplateCoverPresetFindUnique).toHaveBeenCalledWith({
       where: { templateId_name: { templateId: "tpl-pattern", name: "Default" } },
-      select: { id: true, config: true, name: true },
+      select: { id: true, name: true, config: true, templateId: true },
     });
     expect(mockCoverFramePackCreate).toHaveBeenCalledOnce();
   });
@@ -314,7 +314,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     // findUnique appelé par ID (priorité Phase 3)
     expect(mockTemplateCoverPresetFindUnique).toHaveBeenCalledWith({
       where: { id: "preset-1" },
-      select: { id: true, config: true, name: true },
+      select: { id: true, name: true, config: true, templateId: true },
     });
     expect(mockCoverFramePackCreate).toHaveBeenCalledOnce();
   });

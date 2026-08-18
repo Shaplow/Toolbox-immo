@@ -20,44 +20,26 @@ import type {
   DescriptionPrompt,
   Template,
 } from "@prisma/client";
+import type { SlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
-export interface EffectivePattern {
+/**
+ * Vue « binding-centric » du pattern effectif — superset de
+ * {@link SlotEffectivePattern} (le type canonique, celui produit par
+ * `resolveSlotEffectivePattern`) enrichi de l'identité du binding et des
+ * champs planning/assignations qui n'existent qu'à ce niveau (jamais au
+ * niveau slot). Les champs partagés (label, source, needs*, cover*,
+ * requires*…) sont hérités par `Omit` plutôt que redéclarés — seuls
+ * `id`/`templateId` sont renommés ici pour coller au vocabulaire
+ * binding-centric : `templateId` désigne l'id du PatternTemplate lui-même
+ * (== `SlotEffectivePattern.id`), `builderTemplateId` l'id du Template
+ * builder référencé (== `SlotEffectivePattern.templateId`).
+ */
+export interface EffectivePattern extends Omit<SlotEffectivePattern, "id" | "templateId"> {
   // Identité de la liaison
   bindingId: string;
   templateId: string;
   accountId: string;
-
-  // Label visible
-  label: string;
-
-  // Recette (héritée du template, override-able au binding)
-  source: string;
   builderTemplateId: string | null;
-  captionPresetId: string | null;
-  descriptionPromptId: string | null;
-  coverMode: string;
-  coverConfig: unknown;
-
-  // Workflow flags (immuables au niveau binding pour le scope v1 ;
-  // les overrides per-slot existent pour ces flags)
-  /** Dérivé de needsCaptionsMode !== "none" — la colonne Boolean est morte (V2.3). */
-  needsCaptions: boolean;
-  needsCaptionsMode: string;
-  needsDescription: string;
-  /** Mode preFilled : clé du champ du Bien qui pré-remplit la légende. null si inactif. */
-  descriptionSourceFieldKey: string | null;
-  /** Mode fixed : texte de départ de la légende. null si inactif. */
-  descriptionFixedText: string | null;
-  needsAdminValidation: boolean;
-  needsClientValidation: boolean;
-  allowsClientRevision: boolean;
-  needsBrief: boolean;
-  /** Dérivé de source (manual_rushes ⇒ true). Conservé pour compat. */
-  needsRushes: boolean;
-  /** Recette nécessite un bien rattaché pour créer un slot/mission (legacy). */
-  requiresProperty: boolean;
-  /** Type de fiche exigé (remplace requiresProperty). null = aucun. */
-  requiresEntityTypeId: string | null;
 
   // Planning + assignations (toujours portés par le binding)
   dayOfWeek: number[];
@@ -113,70 +95,6 @@ export function resolveEffectivePattern(
     defaultAssigneeMonteurId: binding.defaultAssigneeMonteurId,
     defaultAssigneeCmId: binding.defaultAssigneeCmId,
     defaultAssigneeVideasteId: binding.defaultAssigneeVideasteId,
-  };
-}
-
-/**
- * Vue « à plat » d'un binding + template résolu — les consommateurs lisent
- * `pattern.captionPresetId`, etc. sans connaître la séparation
- * PatternTemplate / PatternBinding. (Ex-toLegacyPatternShape : les noms de
- * champs viennent du défunt AccountPattern, la shape reste la lingua franca
- * de la couche service / UI.)
- */
-export interface PatternView {
-  id: string;
-  accountId: string;
-  label: string;
-  source: string;
-  templateId: string | null;
-  captionPresetId: string | null;
-  descriptionPromptId: string | null;
-  coverMode: string;
-  coverConfig: unknown;
-  needsCaptions: boolean;
-  needsCaptionsMode: string;
-  needsDescription: string;
-  needsAdminValidation: boolean;
-  needsClientValidation: boolean;
-  allowsClientRevision: boolean;
-  needsBrief: boolean;
-  needsRushes: boolean;
-  dayOfWeek: number[];
-  publishTime: string;
-  isActive: boolean;
-  defaultAssigneeMonteurId: string | null;
-  defaultAssigneeCmId: string | null;
-  defaultAssigneeVideasteId: string | null;
-}
-
-export function toPatternView(
-  binding: BindingWithTemplate,
-): PatternView {
-  const e = resolveEffectivePattern(binding);
-  return {
-    id: e.bindingId,
-    accountId: e.accountId,
-    label: e.label,
-    source: e.source,
-    templateId: e.builderTemplateId,
-    captionPresetId: e.captionPresetId,
-    descriptionPromptId: e.descriptionPromptId,
-    coverMode: e.coverMode,
-    coverConfig: e.coverConfig,
-    needsCaptions: e.needsCaptions,
-    needsCaptionsMode: e.needsCaptionsMode,
-    needsDescription: e.needsDescription,
-    needsAdminValidation: e.needsAdminValidation,
-    needsClientValidation: e.needsClientValidation,
-    allowsClientRevision: e.allowsClientRevision,
-    needsBrief: e.needsBrief,
-    needsRushes: e.needsRushes,
-    dayOfWeek: e.dayOfWeek,
-    publishTime: e.publishTime,
-    isActive: e.isActive,
-    defaultAssigneeMonteurId: e.defaultAssigneeMonteurId,
-    defaultAssigneeCmId: e.defaultAssigneeCmId,
-    defaultAssigneeVideasteId: e.defaultAssigneeVideasteId,
   };
 }
 

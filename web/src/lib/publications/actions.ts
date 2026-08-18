@@ -211,7 +211,7 @@ export function canTriggerCover(ctx: ActionContext): ActionVerdict {
       visible: true,
       enabled: false,
       intent: "config-missing",
-      reason: "Aucun preset cover défini sur le pattern ou en override.",
+      reason: "Aucun preset cover défini sur le pattern (ni de preset par défaut sur le template).",
     };
   }
   if (!hasManualTarget(ctx)) {

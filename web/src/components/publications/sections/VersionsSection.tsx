@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast } from "@/components/ui/Toast";
 import { UPLOAD_LIMITS } from "@/lib/upload/limits";
+import { shortDatePaddedFr } from "@/lib/date/formatFr";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ function formatRelativeDate(date: string): string {
   if (minutes < 60) return `Il y a ${minutes} min`;
   if (hours < 24) return `Il y a ${hours}h`;
   if (days < 7) return `Il y a ${days}j`;
-  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+  return shortDatePaddedFr(d);
 }
 
 // ─── Composant card version ────────────────────────────────────────────────────

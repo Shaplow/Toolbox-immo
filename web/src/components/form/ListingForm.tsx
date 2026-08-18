@@ -6,6 +6,7 @@ import { UNSECTIONED_FORM_SECTION_ID, computeSectionFieldStyles, getFieldPlaceme
 import type { SchemaField, TemplateFormSection } from "@/types/template";
 import type { LibraryPrefillContext, LibraryAssetOption, MetadataDrivenLink } from "@/types/libraryPrefill";
 import { buildRenderRequestBody } from "@/lib/generate/buildRenderRequestBody";
+import { canOverride, PROVENANCE_KEY, type ProvenanceMap, type ValueProvenance } from "@/lib/generate/provenance";
 import { LibraryFieldInput } from "@/components/form/LibraryPicker";
 import { FieldInput } from "@/components/form/FieldInputs";
 import { ListingFormVariantCard } from "@/components/form/ListingFormVariantCard";
@@ -23,6 +24,9 @@ interface Props {
   formSections: TemplateFormSection[];
   mediaFieldAspectRatios?: Record<string, number>;
   initialValues?: Record<string, unknown>;
+  /** Provenance par clé de `initialValues` (fiche, fiche tournage, DataEntry…) —
+   *  voir lib/generate/provenance.ts. Pilote le badge affiché par FieldInput. */
+  initialProvenance?: ProvenanceMap;
   libraryPrefillContext?: LibraryPrefillContext;
   /** Quand true, la génération se lance automatiquement au montage sans afficher le formulaire. */
   autoSubmit?: boolean;
@@ -61,7 +65,7 @@ function resolveInitialFieldValue(field: SchemaField, initialValue: unknown): un
   return "";
 }
 
-export function ListingForm({ templateId, currentUserId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext: initialLibraryPrefillContext, autoSubmit, instagramAccounts = [], templateNeedsAccount = false, accountId: accountIdProp, slotId: slotIdProp }: Props) {
+export function ListingForm({ templateId, currentUserId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, initialProvenance, libraryPrefillContext: initialLibraryPrefillContext, autoSubmit, instagramAccounts = [], templateNeedsAccount = false, accountId: accountIdProp, slotId: slotIdProp }: Props) {
   // Phase 2.3 : prefill contexte — peut être chargé côté client après sélection IG.
   const [libraryPrefillContext, setLibraryPrefillContext] = useState<LibraryPrefillContext | undefined>(
     initialLibraryPrefillContext,
@@ -73,11 +77,26 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   );
   const [prefillLoading, setPrefillLoading] = useState(false);
 
-  // Keys of data fields pre-filled from a DataEntry (drives badge display)
-  const libraryPrefilledKeys = useMemo(
-    () => new Set(libraryPrefillContext?.prefilledDataKeys ?? []),
-    [libraryPrefillContext],
-  );
+  // Provenance par clé (fiche, fiche tournage, DataEntry, métadonnées d'asset,
+  // édition manuelle) — pilote le badge affiché par FieldInput. Amorcée avec
+  // `initialProvenance` (posé côté serveur) puis étendue pour les champs
+  // `metadataSource` (résolus depuis un asset au submit) qui n'ont pas déjà
+  // une provenance plus forte.
+  const [provenance, setProvenance] = useState<ProvenanceMap>(() => {
+    const base: ProvenanceMap = { ...(initialProvenance ?? {}) };
+    for (const field of schema) {
+      if (!field.metadataSource) continue;
+      if (!canOverride(base[field.key], "assetMetadata")) continue;
+      base[field.key] = "assetMetadata";
+    }
+    return base;
+  });
+
+  /** Toute édition (utilisateur ou auto-résolution) passe par ici pour garder
+   *  `provenance` synchronisée — respecte la précédence (`canOverride`). */
+  const markProvenance = useCallback((key: string, value: ValueProvenance) => {
+    setProvenance((prev) => (canOverride(prev[key], value) ? { ...prev, [key]: value } : prev));
+  }, []);
 
   // Track which library asset is currently selected per field key
   const [librarySelections, setLibrarySelections] = useState<Record<string, LibraryAssetOption | null>>(
@@ -128,6 +147,10 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           slotId: slotIdProp ?? null,
           listingId: null,
           initialValues: values,
+          // La route rejoue buildSlotPrefill sur le même slot — lui transmettre
+          // la provenance suivie évite qu'une édition manuelle (ou une valeur de
+          // fiche déjà posée) soit écrasée par le recalcul.
+          provenance,
         }),
         signal: controller.signal,
       });
@@ -135,32 +158,23 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         const data = await res.json() as {
           context: LibraryPrefillContext | null;
           updatedInitialValues: Record<string, unknown>;
+          provenance?: ProvenanceMap;
         };
         // Garde anti-stale : si un autre changement a déjà overridé l'aborter,
         // ce résultat est obsolète — ignore-le.
         if (prefillAbortRef.current !== controller) return;
         if (data.context) {
           setLibraryPrefillContext(data.context);
-          // Injecter les suggestions dans les valeurs du form
-          const newSuggestions = data.context.initialSuggestions ?? {};
-          setLibrarySelections((prev) => ({ ...prev, ...newSuggestions }));
-          setValues((prev) => {
-            const patch: Record<string, unknown> = {};
-            // 1) URLs médias depuis initialSuggestions.
-            for (const [k, v] of Object.entries(newSuggestions)) {
-              if (v?.url) patch[k] = v.url;
-            }
-            // 2) Champs data depuis updatedInitialValues, scopés aux clés
-            //    réellement prefill par la DataEntry (évite d'écraser ce que
-            //    l'user a tapé sur d'autres champs).
-            for (const key of data.context?.prefilledDataKeys ?? []) {
-              if (data.updatedInitialValues[key] !== undefined) {
-                patch[key] = data.updatedInitialValues[key];
-              }
-            }
-            return Object.keys(patch).length > 0 ? { ...prev, ...patch } : prev;
-          });
+          setLibrarySelections((prev) => ({ ...prev, ...(data.context?.initialSuggestions ?? {}) }));
         }
+        // `updatedInitialValues`/`provenance` couvrent TOUTE la précédence
+        // (fiche, tournage, mission, DataEntry) recalculée serveur avec les
+        // valeurs/provenance courantes du form en couche la plus haute — un
+        // simple merge ne peut donc pas écraser une édition manuelle.
+        if (Object.keys(data.updatedInitialValues ?? {}).length > 0) {
+          setValues((prev) => ({ ...prev, ...data.updatedInitialValues }));
+        }
+        if (data.provenance) setProvenance(data.provenance);
       } else {
         toast.error("Impossible de charger les suggestions pour ce compte.");
       }
@@ -336,22 +350,36 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           if (res.ok) {
             const asset = await res.json() as { id: string; url: string; filename: string; metadata?: Record<string, string | number | null> } | null;
             if (asset) {
+              // Calculé hors de l'updater setValues : la liste des clés à
+              // retagger "assetMetadata" sert ensuite à setProvenance, un
+              // updater séparé.
+              const metadataPatch: Record<string, unknown> = { [link.targetFieldKey]: asset.url };
+              const metadataProvenanceKeys: string[] = [link.targetFieldKey];
+              // Also populate schema fields with metadataSource pointing at this library
+              // (e.g. adre, surface fields in the intro) — only if currently empty.
+              if (asset.metadata) {
+                for (const schemaField of schema) {
+                  if (schemaField.metadataSource?.libraryId !== link.libraryId) continue;
+                  const metaValue = asset.metadata[schemaField.metadataSource.metadataKey];
+                  if (metaValue === null || metaValue === undefined) continue;
+                  const existing = values[schemaField.key];
+                  if (existing !== undefined && existing !== null && existing !== "") continue;
+                  metadataPatch[schemaField.key] = String(metaValue);
+                  metadataProvenanceKeys.push(schemaField.key);
+                }
+              }
               setLibrarySelections((prev) => ({ ...prev, [link.targetFieldKey]: asset }));
-              setValues((prev) => {
-                const patch: Record<string, unknown> = { [link.targetFieldKey]: asset.url };
-                // Also populate schema fields with metadataSource pointing at this library
-                // (e.g. adre, surface fields in the intro) — only if currently empty.
-                if (asset.metadata) {
-                  for (const schemaField of schema) {
-                    if (schemaField.metadataSource?.libraryId !== link.libraryId) continue;
-                    const metaValue = asset.metadata[schemaField.metadataSource.metadataKey];
-                    if (metaValue === null || metaValue === undefined) continue;
-                    const existing = prev[schemaField.key];
-                    if (existing !== undefined && existing !== null && existing !== "") continue;
-                    patch[schemaField.key] = String(metaValue);
+              setValues((prev) => ({ ...prev, ...metadataPatch }));
+              setProvenance((prev) => {
+                const next = { ...prev };
+                let changed = false;
+                for (const k of metadataProvenanceKeys) {
+                  if (canOverride(next[k], "assetMetadata")) {
+                    next[k] = "assetMetadata";
+                    changed = true;
                   }
                 }
-                return { ...prev, ...patch };
+                return changed ? next : prev;
               });
             }
           }
@@ -484,13 +512,16 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
     setGenerating(true);
     try {
       let listingId = listingIdRef.current;
+      // La provenance voyage sous la clé réservée PROVENANCE_KEY, à l'intérieur
+      // de `data` — c'est bien `jsonData` qui la porte, pas une colonne dédiée.
+      const listingData = { ...values, [PROVENANCE_KEY]: provenance };
 
       if (!listingId) {
         // First generate: create a new listing
         const listingRes = await fetch("/api/listings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ templateId, data: values }),
+          body: JSON.stringify({ templateId, data: listingData }),
         });
         if (!listingRes.ok && listingRes.headers.get("content-type")?.includes("text/html")) {
           setSubmitErrors([`Erreur serveur ${listingRes.status} — voir la console Next.js`]);
@@ -517,7 +548,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         await fetch(`/api/listings/${listingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: values }),
+          body: JSON.stringify({ data: listingData }),
         });
       }
 
@@ -736,6 +767,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                       currentSelection={librarySelections[field.key] ?? null}
                       onSelect={(asset) => {
                         setLibrarySelections((prev) => ({ ...prev, [field.key]: asset }));
+                        markProvenance(field.key, "manual");
                         handleChange(field.key, asset.url);
                       }}
                       error={errors[field.key]}
@@ -755,11 +787,10 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                       focalPoint={(field.type === "image" || field.type === "video") ? (values[field.key + "_focalpoint"] as { x: number; y: number } | null) ?? null : null}
                       error={errors[field.key]}
                       uploadProgress={uploadProgress[field.key] ?? null}
-                      onChange={(v) => handleChange(field.key, v)}
-                      onUpload={(f) => handleChange(field.key, f)}
+                      onChange={(v) => { markProvenance(field.key, "manual"); handleChange(field.key, v); }}
+                      onUpload={(f) => { markProvenance(field.key, "manual"); handleChange(field.key, f); }}
                       onFocalChange={(fp) => handleChange(field.key + "_focalpoint", fp)}
-                      fromLibrary={libraryPrefilledKeys.has(field.key)}
-                      fromAsset={Boolean(field.metadataSource?.metadataKey)}
+                      provenance={provenance[field.key]}
                     />
                   )}
                 </div>

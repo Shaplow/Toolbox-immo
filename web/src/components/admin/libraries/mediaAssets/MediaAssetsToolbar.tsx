@@ -23,11 +23,10 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { Chip } from "@/components/ui/Chip";
-import type { InstagramAccount, MediaLibrary, SortKey } from "./types";
+import type { InstagramAccount, SortKey } from "./types";
 import { useMediaLibraryPermissions } from "./mediaLibraryPermissions";
 
 interface Props {
-  library: MediaLibrary;
   isVideo: boolean;
   loading: boolean;
   assetsCount: number;
@@ -64,7 +63,6 @@ const SORT_OPTIONS = [
 ];
 
 export function MediaAssetsToolbar({
-  library: _library,
   isVideo,
   loading,
   assetsCount,
@@ -90,8 +88,6 @@ export function MediaAssetsToolbar({
   isAdvanced,
   onToggleAdvanced,
 }: Props) {
-  void _library;
-
   const { canManageAssets } = useMediaLibraryPermissions();
 
   const accountOptions = [
@@ -118,7 +114,7 @@ export function MediaAssetsToolbar({
           {isAdvanced ? "Avancé activé" : "Avancé"}
         </Chip>
         <div className="flex items-center gap-2 flex-wrap">
-        {isVideo && isAdvanced && canManageAssets && (
+        {isVideo && canManageAssets && (
           <div className="relative">
             <Button
               variant="secondary"
@@ -130,7 +126,7 @@ export function MediaAssetsToolbar({
             </Button>
             {autocutPendingCount > 0 && (
               <span
-                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-warning-600 text-white text-[10px] font-semibold leading-none shadow-[0_0_0_2px_rgba(255,255,255,1),0_2px_4px_rgba(245,158,107,0.4)]"
+                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-warning-600 text-white text-[10px] font-semibold leading-none ring-2 ring-card shadow-sm"
                 title={`${autocutPendingCount} analyse${autocutPendingCount > 1 ? "s" : ""} à valider`}
               >
                 {autocutPendingCount > 99 ? "99+" : autocutPendingCount}
@@ -140,7 +136,7 @@ export function MediaAssetsToolbar({
         )}
         {canManageAssets && (
           <Button variant="primary" size="sm" icon={Upload} onClick={onOpenUpload}>
-            {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
+            {isVideo ? "Ajouter des vidéos" : "Ajouter des pistes"}
           </Button>
         )}
         </div>
@@ -219,7 +215,7 @@ export function MediaAssetsToolbar({
                 icon={CheckSquare}
                 size="sm"
               >
-                {selectMode ? `${selectMode ? "✓" : ""} Sélection` : "Sélectionner"}
+                {selectMode ? "✓ Sélection" : "Sélectionner"}
               </Chip>
             )}
           </div>

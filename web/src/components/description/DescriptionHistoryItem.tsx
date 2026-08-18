@@ -15,6 +15,7 @@
 import { useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import type { DescriptionJobRow } from "./DescriptionTool";
+import { shortDateFr } from "@/lib/date/formatFr";
 
 interface Props {
   job: DescriptionJobRow;
@@ -74,7 +75,7 @@ export function DescriptionHistoryItem({ job }: Props) {
           </span>
         </button>
         <span className="text-[11px] text-muted-foreground shrink-0">
-          {new Date(job.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+          {shortDateFr(job.createdAt)}
         </span>
         {isDone && job.result && (
           <button

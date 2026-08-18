@@ -27,8 +27,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
  * Phase 9 V2 — Le drawer modal (PatternTemplateForm dans Drawer) reste utilisé
  * pour la création rapide depuis le catalogue ou la cascade depuis le picker
  * binding. Pour l'édition, l'écran complet est mieux : 18 champs + ConfirmDialog
- * d'impact + section "Comptes liés" lazy-loaded scrollait trop dans un drawer
- * 640px.
+ * d'impact + section "Comptes liés" scrollait trop dans un drawer 640px.
+ *
+ * `initial` porte tout ce dont PatternTemplateForm a besoin (y compris
+ * `bindings` + `updatedBy`) — pas de refetch lazy côté client au montage.
  */
 export default async function PatternEditPage({ params }: PageProps) {
   const userContext = await getUserContext();
@@ -42,6 +44,17 @@ export default async function PatternEditPage({ params }: PageProps) {
     include: {
       _count: { select: { bindings: true } },
       updatedBy: { select: { id: true, name: true } },
+      bindings: {
+        select: {
+          id: true,
+          accountId: true,
+          publishTime: true,
+          isActive: true,
+          customLabel: true,
+          defaultAssigneeMonteurId: true,
+          account: { select: { id: true, name: true, handle: true } },
+        },
+      },
     },
   });
   if (!tpl) notFound();
@@ -77,6 +90,7 @@ export default async function PatternEditPage({ params }: PageProps) {
         templateId: tpl.templateId,
         captionPresetId: tpl.captionPresetId,
         descriptionPromptId: tpl.descriptionPromptId,
+        descriptionSourceFieldKey: tpl.descriptionSourceFieldKey,
         descriptionFixedText: tpl.descriptionFixedText,
         coverMode: tpl.coverMode,
         needsDescription: tpl.needsDescription,
@@ -90,6 +104,11 @@ export default async function PatternEditPage({ params }: PageProps) {
         notes: tpl.notes,
         bindingCount: tpl._count.bindings,
         autoSaveToLibraryId: tpl.autoSaveToLibraryId ?? null,
+        bindings: tpl.bindings,
+        updatedBy:
+          tpl.updatedBy && tpl.updatedAt
+            ? { name: tpl.updatedBy.name, at: tpl.updatedAt.toISOString() }
+            : null,
       }}
       builderTemplates={builderTemplates}
       captionPresets={captionPresets}

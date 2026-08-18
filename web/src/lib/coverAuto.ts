@@ -12,6 +12,8 @@ import { logActivity, type ActivityType } from "@/lib/services/slot/activity";
 import { notifyUser } from "@/lib/sseStore";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
+import { parsePatternCoverConfig, resolveCoverPreset } from "@/lib/publications/coverMode";
+import { enrichListingWithEntityFields, loadRenderEntityContext } from "@/lib/renderer/enrichListingWithEntityFields";
 import type { ListingData } from "@/types/listing";
 import type { AnyBlock, CoverAutoConfig, ImageBlock, SchemaField, TemplateJSON, TextBlock, VideoBlock, VideoSequenceSlot } from "@/types/template";
 
@@ -748,47 +750,19 @@ export async function triggerAutoCoverPackForRender(
   // restent supportés (legacy), mais si absents on utilise le preset par défaut
   // (sortOrder min). Chaque template a maintenant 1 config cover unique
   // auto-créée dans le builder.
-  const coverConfigJson = (slotPattern.coverConfig ?? {}) as {
-    enabled?: boolean;
-    coverPresetId?: string;
-    coverPresetName?: string;
-  };
+  const patternTemplateId = slotPattern.templateId ?? templateId;
 
   // enabled = true par défaut quand coverMode === autoPack. Le toggle pattern
   // a été retiré (redondant avec le mode). On n'arrête que si explicitement
   // false (legacy).
-  if (coverConfigJson.enabled === false) {
+  if (!parsePatternCoverConfig(slotPattern.coverConfig).enabled) {
     console.info(
       `[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverConfig_disabled (legacy explicit false)`,
     );
     return;
   }
 
-  const presetId = coverConfigJson.coverPresetId;
-  const presetName = coverConfigJson.coverPresetName;
-  const patternTemplateId = slotPattern.templateId ?? templateId;
-  let preset: { id: string; config: unknown; name: string } | null = null;
-
-  if (presetId) {
-    preset = await prisma.templateCoverPreset.findUnique({
-      where: { id: presetId },
-      select: { id: true, config: true, name: true },
-    });
-  }
-  if (!preset && presetName) {
-    preset = await prisma.templateCoverPreset.findUnique({
-      where: { templateId_name: { templateId: patternTemplateId, name: presetName } },
-      select: { id: true, config: true, name: true },
-    });
-  }
-  if (!preset) {
-    // Fallback principal : preset par défaut du template (sortOrder min)
-    preset = await prisma.templateCoverPreset.findFirst({
-      where: { templateId: patternTemplateId },
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, config: true, name: true },
-    });
-  }
+  const preset = await resolveCoverPreset({ coverConfig: slotPattern.coverConfig, templateId: patternTemplateId });
 
   if (!preset) {
     console.warn(
@@ -983,7 +957,9 @@ export async function renderFinalCover(
   if (!candidate) throw new Error("Frame candidate introuvable");
 
   let templateJson = normalizeTemplateJSON(JSON.parse(pack.render.template.jsonData) as TemplateJSON);
-  const listingData = safeJson<ListingData>(pack.render.listing.jsonData, {} as ListingData);
+  const rawListingData = safeJson<ListingData>(pack.render.listing.jsonData, {} as ListingData);
+  const entityContext = await loadRenderEntityContext(pack.render.publicationSlotId);
+  const listingData = enrichListingWithEntityFields(rawListingData, templateJson.schema ?? [], entityContext);
   const usedAssets = safeJson<{ videoAssets?: Record<string, string> }>(pack.render.usedAssets, {});
   const assetIds = [...new Set(Object.values(usedAssets.videoAssets ?? {}))];
   const assets = assetIds.length > 0
@@ -1048,7 +1024,9 @@ export async function buildCoverOverlayPreviewHtml(packId: string): Promise<stri
   }
 
   let templateJson = normalizeTemplateJSON(JSON.parse(pack.render.template.jsonData) as TemplateJSON);
-  const listingData = safeJson<ListingData>(pack.render.listing.jsonData, {} as ListingData);
+  const rawListingData = safeJson<ListingData>(pack.render.listing.jsonData, {} as ListingData);
+  const entityContext = await loadRenderEntityContext(pack.render.publicationSlotId);
+  const listingData = enrichListingWithEntityFields(rawListingData, templateJson.schema ?? [], entityContext);
   const usedAssets = safeJson<{ videoAssets?: Record<string, string> }>(pack.render.usedAssets, {});
   const assetIds = [...new Set(Object.values(usedAssets.videoAssets ?? {}))];
   const assets = assetIds.length > 0

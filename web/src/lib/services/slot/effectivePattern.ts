@@ -102,29 +102,11 @@ export function resolveSlotEffectivePattern(
   slot: SlotWithEffectivePattern,
 ): SlotEffectivePattern | null {
   if (slot.patternBinding) {
+    // EffectivePattern est un superset de SlotEffectivePattern (Omit<id |
+    // templateId> + champs binding) — seuls id/templateId sont renommés
+    // entre les deux shapes, le reste se propage tel quel via le spread.
     const e = resolveEffectivePattern(slot.patternBinding);
-    return {
-      id: e.templateId,
-      label: e.label,
-      source: e.source,
-      templateId: e.builderTemplateId,
-      captionPresetId: e.captionPresetId,
-      descriptionPromptId: e.descriptionPromptId,
-      coverMode: e.coverMode,
-      coverConfig: e.coverConfig,
-      needsCaptions: e.needsCaptions,
-      needsCaptionsMode: e.needsCaptionsMode,
-      needsDescription: e.needsDescription,
-      descriptionSourceFieldKey: e.descriptionSourceFieldKey,
-      descriptionFixedText: e.descriptionFixedText,
-      needsAdminValidation: e.needsAdminValidation,
-      needsClientValidation: e.needsClientValidation,
-      allowsClientRevision: e.allowsClientRevision,
-      needsBrief: e.needsBrief,
-      needsRushes: e.needsRushes,
-      requiresProperty: e.requiresProperty,
-      requiresEntityTypeId: e.requiresEntityTypeId,
-    };
+    return { ...e, id: e.templateId, templateId: e.builderTemplateId };
   }
   if (slot.patternTemplate) {
     const t = slot.patternTemplate;

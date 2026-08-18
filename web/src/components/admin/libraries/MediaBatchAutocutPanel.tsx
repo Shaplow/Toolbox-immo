@@ -3,10 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, CheckCircle2, Loader2, Play, RefreshCw,
-  Square, CheckSquare, AlertTriangle, Wand2, ChevronRight,
-  X, Trash2,
+  AlertTriangle, Wand2, ChevronRight, X, Trash2,
 } from "lucide-react";
 import { AutocutReviewCard, type AutocutJob } from "./AutocutReviewCard";
+import { formatTimecode } from "@/lib/time";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { ButtonIcon } from "@/components/ui/ButtonIcon";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Switch } from "@/components/ui/Switch";
+import { Slider } from "@/components/ui/Slider";
+import { Pagination } from "@/components/ui/Pagination";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useConfirm } from "@/components/ui/useConfirm";
 
 interface MediaAsset {
   id: string;
@@ -35,16 +46,7 @@ type AssetWithJobStatus = MediaAsset & {
   cutDuration: number | null;
 };
 
-function fmt(s: number | null): string {
-  if (s === null) return "";
-  const m = Math.floor(s / 60);
-  const sec = Math.round(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-}
-
 const POLL_INTERVAL_MS = 5000;
-
-import { useConfirm } from "@/components/ui/useConfirm";
 
 export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -201,13 +203,6 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
       if (applyPollRef.current) clearTimeout(applyPollRef.current);
     };
   }, [appliedJobs, view, library.id]);
-
-  // ── Escape to close ───────────────────────────────────────────────────────
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
 
   // ── Actions sélection ────────────────────────────────────────────────────
   const toggleSelect = (id: string) => {
@@ -378,366 +373,310 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   const statusLabel = (asset: AssetWithJobStatus) => {
     switch (asset.autocutStatus) {
       case "none": return null;
-      case "pending": return <span className="text-xs text-warning-700 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> En attente</span>;
-      case "processing": return <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Analyse…</span>;
-      case "done": return <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 size={10} /> Analysé</span>;
-      case "failed": return <span className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> Erreur</span>;
+      case "pending": return (
+        <span className="text-xs text-warning-700 flex items-center gap-1 justify-end">
+          <Loader2 size={10} className="animate-spin" /> En attente
+        </span>
+      );
+      case "processing": return (
+        <span className="text-xs text-info-600 flex items-center gap-1 justify-end">
+          <Loader2 size={10} className="animate-spin" /> Analyse…
+        </span>
+      );
+      case "done": return <Badge variant="success" icon={CheckCircle2}>Analysé</Badge>;
+      case "failed": return <Badge variant="danger" icon={AlertTriangle}>Erreur</Badge>;
       case "cut": return (
-        <span className="text-xs text-muted-foreground flex items-center gap-1">
+        <span className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
           ✂ Coupé{asset.cutDuration != null ? <span className="text-muted-foreground">· {asset.cutDuration}s</span> : null}
         </span>
       );
     }
   };
 
-  // ── Rendu vue sélection ───────────────────────────────────────────────────
-  if (view === "select") {
-    return (
-      <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto">
-        <div
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mt-8 mb-8 flex flex-col"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-            <div className="flex items-center gap-2">
-              <Wand2 size={18} className="text-danger-700" />
-              <h2 className="text-base font-semibold text-foreground">Atelier Autocut</h2>
-              <span className="text-xs text-muted-foreground">— {library.name}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {doneCount > 0 && (
-                <button
-                  onClick={() => setView("review")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700"
-                >
-                  Valider les analyses ({doneCount}) <ChevronRight size={13} />
-                </button>
-              )}
-              {cutCount > 0 && (
-                <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
-                  ✂ {cutCount} coupé{cutCount > 1 ? "s" : ""}
-                </span>
-              )}
-              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          {/* Stats bar */}
-          {processingCount > 0 && (
-            <div className="px-6 py-2 bg-muted border-b border-border text-xs text-muted-foreground flex items-center gap-2">
-              <Loader2 size={11} className="animate-spin text-blue-500" />
-              <span>{processingCount} asset{processingCount > 1 ? "s" : ""} en cours d&apos;analyse…</span>
-            </div>
-          )}
-
-          {/* Toolbar */}
-          <div className="px-6 py-3 flex items-center gap-3 border-b border-gray-50">
-            <button
-              onClick={toggleAll}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            >
-              {selectedIds.size === selectableCount && selectableCount > 0
-                ? <CheckSquare size={14} className="text-info-700" />
-                : <Square size={14} />}
-              Tout sélectionner
-            </button>
-            <span className="text-xs text-muted-foreground">
-              {selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}
-              {selectedIds.size > 20 && (
-                <span className="ml-2 text-warning-700">
-                  · découpé en {Math.ceil(selectedIds.size / 20)} batches de 20 max
-                </span>
-              )}
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() => void loadAssets()}
-                className="p-1.5 rounded hover:bg-muted text-muted-foreground"
-                title="Rafraîchir"
-              >
-                <RefreshCw size={13} />
-              </button>
-              <button
-                onClick={() => void handleReset()}
-                disabled={resetting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50"
-                title="Supprimer toutes les analyses non-appliquées"
-              >
-                {resetting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                Réinitialiser
-              </button>
-              <button
-                onClick={() => void handleAnalyze()}
-                disabled={submitting || selectedIds.size === 0}
-                className="flex items-center gap-1.5 px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:opacity-50"
-              >
-                {submitting ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                Analyser ({selectedIds.size})
-              </button>
-            </div>
-          </div>
-
-          {/* Feedback */}
-          {submitError && (
-            <div className="mx-6 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-              {submitError}
-            </div>
-          )}
-          {resetResult && (
-            <div className="mx-6 mt-3 p-3 bg-warning-50 border border-warning-200 rounded-lg text-xs text-warning-700">
-              {resetResult.deleted} analyse{resetResult.deleted > 1 ? "s" : ""} supprimée{resetResult.deleted > 1 ? "s" : ""}.
-              Les fichiers déjà coupés sont préservés.
-            </div>
-          )}
-          {submitResult && (
-            <div className="mx-6 mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
-              {submitResult.batches} pack{submitResult.batches > 1 ? "s" : ""} soumis à RunPod
-              {submitResult.skipped > 0 && ` — ${submitResult.skipped} ignoré${submitResult.skipped > 1 ? "s" : ""} (déjà en cours)`}
-            </div>
-          )}
-
-          {/* Asset list */}
-          <div className="overflow-y-auto flex-1 max-h-[60vh]">
-            {loadingAssets ? (
-              <div className="flex items-center justify-center py-16 text-muted-foreground">
-                <Loader2 size={20} className="animate-spin" />
-              </div>
-            ) : loadError ? (
-              <div className="p-6 text-sm text-red-600">{loadError}</div>
-            ) : assets.length === 0 ? (
-              <div className="p-6 text-sm text-muted-foreground text-center">Aucun asset dans cette bibliothèque</div>
-            ) : (
-              <ul className="divide-y divide-gray-50">
-                {assets.map((asset) => {
-                  const isSelectable = asset.autocutStatus === "none" || asset.autocutStatus === "failed";
-                  const isCut = asset.autocutStatus === "cut";
-                  const isSelected = selectedIds.has(asset.id);
-                  return (
-                    <li
-                      key={asset.id}
-                      className={`flex items-center gap-3 px-6 py-2.5 transition-colors ${
-                        isSelectable ? "cursor-pointer hover:bg-muted"
-                        : isCut ? "bg-muted/50"
-                        : "opacity-60"
-                      }`}
-                      onClick={() => isSelectable && toggleSelect(asset.id)}
-                    >
-                      {isSelectable ? (
-                        isSelected
-                          ? <CheckSquare size={15} className="text-info-700 flex-shrink-0" />
-                          : <Square size={15} className="text-muted-foreground/60 flex-shrink-0" />
-                      ) : (
-                        <span className="w-[15px] flex-shrink-0" />
-                      )}
-                      <span className={`text-sm flex-1 truncate ${isCut ? "text-muted-foreground" : "text-foreground"}`}>
-                        {asset.filename}
-                      </span>
-                      {asset.duration !== null && (
-                        <span className="text-xs text-muted-foreground flex-shrink-0">{fmt(asset.duration)}</span>
-                      )}
-                      <span className="flex-shrink-0 w-32 text-right">
-                        {statusLabel(asset)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Rendu vue review ──────────────────────────────────────────────────────
   const pageSize = 20;
   const totalPages = Math.max(1, Math.ceil(reviewTotal / pageSize));
+  const allSelected = selectableCount > 0 && selectedIds.size === selectableCount;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto">
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mt-8 mb-8 flex flex-col max-h-[calc(100vh-4rem)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setView("select")}
-              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
-            >
-              <ArrowLeft size={16} />
-            </button>
-            <h2 className="text-base font-semibold text-foreground">
-              Review — {reviewTotal} à valider
-            </h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Audio options */}
-        <div className="mx-6 mt-3 px-4 py-3 bg-muted border border-border rounded-xl flex items-center gap-5 flex-wrap">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Audio</span>
-          <label className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={mixToMono}
-              onChange={(e) => setMixToMono(e.target.checked)}
-              className="rounded border-border text-info-700 focus:ring-info-200"
-            />
-            Mix mono
-          </label>
-          <label className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={normalize}
-              onChange={(e) => setNormalize(e.target.checked)}
-              className="rounded border-border text-info-700 focus:ring-info-200"
-            />
-            Normaliser
-          </label>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground w-16">Volume</span>
-            <input
-              type="range"
-              min={-12}
-              max={12}
-              step={0.5}
-              value={gainDb}
-              onChange={(e) => setGainDb(parseFloat(e.target.value))}
-              className="w-24 accent-indigo-600"
-            />
-            <span className="text-sm text-foreground w-14 text-right">
-              {gainDb > 0 ? `+${gainDb}` : gainDb} dB
-            </span>
-            {gainDb !== 0 && (
-              <button
-                onClick={() => setGainDb(0)}
-                className="text-xs text-muted-foreground hover:text-muted-foreground"
-              >
-                reset
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Review cards */}
-        <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
-          {loadingJobs ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground">
-              <Loader2 size={20} className="animate-spin" />
+    <>
+      <Modal open onClose={onClose} size="xl" className="flex flex-col max-h-[85vh]">
+        {view === "select" ? (
+          <>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Wand2 size={18} className="text-danger-700 shrink-0" />
+                <h2 className="text-[15px] font-semibold tracking-tight text-foreground truncate">Atelier Autocut</h2>
+                <span className="text-xs text-muted-foreground truncate">— {library.name}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {doneCount > 0 && (
+                  <Button size="sm" icon={ChevronRight} iconRight onClick={() => setView("review")}>
+                    Valider les analyses ({doneCount})
+                  </Button>
+                )}
+                {cutCount > 0 && (
+                  <Badge>✂ {cutCount} coupé{cutCount > 1 ? "s" : ""}</Badge>
+                )}
+                <ButtonIcon icon={X} label="Fermer" variant="ghost" size="sm" onClick={onClose} />
+              </div>
             </div>
-          ) : jobs.length === 0 ? (
-            <div className="py-12 text-center">
-              <CheckCircle2 size={32} className="text-green-400 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">
-                {reviewTotal === 0
-                  ? "Aucune analyse à valider pour le moment."
-                  : `${reviewTotal} analyse${reviewTotal > 1 ? "s" : ""} restante${reviewTotal > 1 ? "s" : ""} à valider.`}
-              </p>
-              {reviewTotal === 0 ? (
-                <button
-                  onClick={() => setView("select")}
-                  className="mt-4 text-sm text-info-700 hover:underline"
+
+            {/* Stats bar */}
+            {processingCount > 0 && (
+              <div className="px-5 py-2 bg-muted border-b border-border text-xs text-muted-foreground flex items-center gap-2 shrink-0">
+                <Loader2 size={11} className="animate-spin text-info-600" />
+                <span>{processingCount} asset{processingCount > 1 ? "s" : ""} en cours d&apos;analyse…</span>
+              </div>
+            )}
+
+            {/* Toolbar */}
+            <div className="px-5 py-3 flex items-center gap-3 border-b border-border shrink-0 flex-wrap">
+              <label className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground cursor-pointer select-none">
+                <Checkbox
+                  checked={allSelected ? true : selectedIds.size > 0 ? "indeterminate" : false}
+                  onChange={toggleAll}
+                  size="sm"
+                  label="Tout sélectionner"
+                />
+                Tout sélectionner
+              </label>
+              <span className="text-xs text-muted-foreground">
+                {selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}
+                {selectedIds.size > 20 && (
+                  <span className="ml-2 text-warning-700">
+                    · découpé en {Math.ceil(selectedIds.size / 20)} batches de 20 max
+                  </span>
+                )}
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <ButtonIcon icon={RefreshCw} label="Rafraîchir" variant="ghost" size="sm" onClick={() => void loadAssets()} />
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  icon={Trash2}
+                  loading={resetting}
+                  onClick={() => void handleReset()}
+                  title="Supprimer toutes les analyses non-appliquées"
                 >
-                  ← Retour à la sélection
-                </button>
+                  Réinitialiser
+                </Button>
+                <Button
+                  size="sm"
+                  icon={Play}
+                  loading={submitting}
+                  disabled={selectedIds.size === 0}
+                  onClick={() => void handleAnalyze()}
+                >
+                  Analyser ({selectedIds.size})
+                </Button>
+              </div>
+            </div>
+
+            {/* Feedback */}
+            {submitError && (
+              <Alert variant="danger" className="mx-5 mt-3 shrink-0">{submitError}</Alert>
+            )}
+            {resetResult && (
+              <Alert variant="warning" className="mx-5 mt-3 shrink-0">
+                {resetResult.deleted} analyse{resetResult.deleted > 1 ? "s" : ""} supprimée{resetResult.deleted > 1 ? "s" : ""}.
+                Les fichiers déjà coupés sont préservés.
+              </Alert>
+            )}
+            {submitResult && (
+              <Alert variant="success" className="mx-5 mt-3 shrink-0">
+                {submitResult.batches} pack{submitResult.batches > 1 ? "s" : ""} soumis à RunPod
+                {submitResult.skipped > 0 && ` — ${submitResult.skipped} ignoré${submitResult.skipped > 1 ? "s" : ""} (déjà en cours)`}
+              </Alert>
+            )}
+
+            {/* Asset list */}
+            <div className="overflow-y-auto flex-1 min-h-0">
+              {loadingAssets ? (
+                <div className="flex items-center justify-center py-16 text-muted-foreground">
+                  <Loader2 size={20} className="animate-spin" />
+                </div>
+              ) : loadError ? (
+                <div className="p-5">
+                  <EmptyState
+                    icon={AlertTriangle}
+                    title="Erreur de chargement"
+                    description={loadError}
+                    cta={{ label: "Réessayer", onClick: () => void loadAssets() }}
+                  />
+                </div>
+              ) : assets.length === 0 ? (
+                <div className="p-5">
+                  <EmptyState icon={Wand2} title="Aucun asset dans cette bibliothèque" />
+                </div>
               ) : (
-                <button
-                  onClick={() => { setReviewPage(1); void loadReviewQueue(1); }}
-                  className="mt-4 flex items-center gap-1.5 mx-auto text-sm text-info-700 hover:underline"
-                >
-                  Charger la suite <ChevronRight size={13} />
-                </button>
+                <ul className="divide-y divide-border">
+                  {assets.map((asset) => {
+                    const isSelectable = asset.autocutStatus === "none" || asset.autocutStatus === "failed";
+                    const isCut = asset.autocutStatus === "cut";
+                    const isSelected = selectedIds.has(asset.id);
+                    return (
+                      <li
+                        key={asset.id}
+                        className={`flex items-center gap-3 px-5 py-2.5 transition-colors ${
+                          isSelectable ? "cursor-pointer hover:bg-muted"
+                          : isCut ? "bg-muted/50"
+                          : "opacity-60"
+                        }`}
+                        onClick={() => isSelectable && toggleSelect(asset.id)}
+                      >
+                        {isSelectable ? (
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => toggleSelect(asset.id)}
+                            size="sm"
+                            label={`Sélectionner ${asset.filename}`}
+                          />
+                        ) : (
+                          <span className="w-4 flex-shrink-0" />
+                        )}
+                        <span className={`text-sm flex-1 truncate ${isCut ? "text-muted-foreground" : "text-foreground"}`}>
+                          {asset.filename}
+                        </span>
+                        {asset.duration !== null && (
+                          <span className="text-xs text-muted-foreground flex-shrink-0">{formatTimecode(asset.duration, { centiseconds: false })}</span>
+                        )}
+                        <span className="flex-shrink-0 w-32 flex justify-end">
+                          {statusLabel(asset)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
-          ) : (
-            jobs.map((job) => (
-              <AutocutReviewCard
-                key={job.id}
-                job={job}
-                knownTags={knownTags}
-                onAccept={handleAccept}
-                onSkip={handleSkip}
-              />
-            ))
-          )}
-
-          {/* Section de suivi des jobs appliqués — lignes compactes */}
-          {appliedJobs.length > 0 && (
-            <div className="mt-2">
-              <div className="flex items-center gap-2 mb-1.5">
-                <div className="flex-1 h-px bg-muted" />
-                <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide px-1 flex items-center gap-1.5">
-                  {appliedJobs.some((j) => !j.editJob?.status || j.editJob.status === "pending" || j.editJob.status === "processing") && (
-                    <Loader2 size={9} className="animate-spin" />
-                  )}
-                  En traitement ({appliedJobs.filter((j) => j.editJob?.status === "done").length}/{appliedJobs.length})
-                </span>
-                <div className="flex-1 h-px bg-muted" />
+          </>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <ButtonIcon icon={ArrowLeft} label="Retour à la sélection" variant="ghost" size="sm" onClick={() => setView("select")} />
+                <h2 className="text-[15px] font-semibold tracking-tight text-foreground truncate">
+                  Review — {reviewTotal} à valider
+                </h2>
               </div>
-              <ul className="flex flex-col gap-0.5">
-                {appliedJobs.map((job) => {
-                  const editStatus = job.editJob?.status ?? "pending";
-                  const isDone = editStatus === "done";
-                  const isFailed = editStatus === "failed";
-                  const dur =
-                    job.confirmedStart != null && job.confirmedEnd != null
-                      ? Math.round((job.confirmedEnd - job.confirmedStart) * 10) / 10
-                      : null;
-                  return (
-                    <li key={job.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted text-xs">
-                      {isDone ? (
-                        <CheckCircle2 size={11} className="text-green-500 flex-shrink-0" />
-                      ) : isFailed ? (
-                        <AlertTriangle size={11} className="text-red-500 flex-shrink-0" />
-                      ) : (
-                        <Loader2 size={11} className="animate-spin text-muted-foreground flex-shrink-0" />
-                      )}
-                      <span className="flex-1 truncate text-muted-foreground">{job.asset.filename}</span>
-                      {dur != null && isDone && (
-                        <span className="text-muted-foreground flex-shrink-0">{dur}s conservés</span>
-                      )}
-                      {isFailed && job.errorMsg && (
-                        <span className="text-red-400 truncate max-w-[160px]">{job.errorMsg}</span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+              <ButtonIcon icon={X} label="Fermer" variant="ghost" size="sm" onClick={onClose} />
             </div>
-          )}
-        </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground border-t border-border shrink-0">
-            <button
-              onClick={() => setReviewPage((p) => Math.max(1, p - 1))}
-              disabled={reviewPage === 1}
-              className="px-3 py-1 rounded border border-border hover:bg-muted disabled:opacity-40"
-            >
-              ←
-            </button>
-            <span className="text-xs text-muted-foreground">Page {reviewPage} / {totalPages}</span>
-            <button
-              onClick={() => setReviewPage((p) => Math.min(totalPages, p + 1))}
-              disabled={reviewPage === totalPages}
-              className="px-3 py-1 rounded border border-border hover:bg-muted disabled:opacity-40"
-            >
-              →
-            </button>
-          </div>
+            {/* Audio options */}
+            <div className="mx-5 mt-3 px-4 py-3 bg-muted border border-border rounded-xl flex items-center gap-5 flex-wrap shrink-0">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Audio</span>
+              <Switch checked={mixToMono} onChange={setMixToMono} label="Mix mono" size="sm" />
+              <Switch checked={normalize} onChange={setNormalize} label="Normaliser" size="sm" />
+              <div className="flex items-end gap-2">
+                <Slider
+                  label="Volume"
+                  value={gainDb}
+                  onChange={setGainDb}
+                  min={-12}
+                  max={12}
+                  step={0.5}
+                  unit=" dB"
+                  editable
+                  className="w-56"
+                />
+                {gainDb !== 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setGainDb(0)} className="mb-0.5">
+                    reset
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Review cards */}
+            <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1 min-h-0">
+              {loadingJobs ? (
+                <div className="flex items-center justify-center py-16 text-muted-foreground">
+                  <Loader2 size={20} className="animate-spin" />
+                </div>
+              ) : jobs.length === 0 ? (
+                <EmptyState
+                  icon={CheckCircle2}
+                  title={
+                    reviewTotal === 0
+                      ? "Aucune analyse à valider pour le moment."
+                      : `${reviewTotal} analyse${reviewTotal > 1 ? "s" : ""} restante${reviewTotal > 1 ? "s" : ""} à valider.`
+                  }
+                  cta={
+                    reviewTotal === 0
+                      ? { label: "Retour à la sélection", onClick: () => setView("select") }
+                      : { label: "Charger la suite", onClick: () => { setReviewPage(1); void loadReviewQueue(1); } }
+                  }
+                />
+              ) : (
+                jobs.map((job) => (
+                  <AutocutReviewCard
+                    key={job.id}
+                    job={job}
+                    knownTags={knownTags}
+                    onAccept={handleAccept}
+                    onSkip={handleSkip}
+                  />
+                ))
+              )}
+
+              {/* Section de suivi des jobs appliqués — lignes compactes */}
+              {appliedJobs.length > 0 && (
+                <div className="mt-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="flex-1 h-px bg-muted" />
+                    <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide px-1 flex items-center gap-1.5">
+                      {appliedJobs.some((j) => !j.editJob?.status || j.editJob.status === "pending" || j.editJob.status === "processing") && (
+                        <Loader2 size={9} className="animate-spin" />
+                      )}
+                      En traitement ({appliedJobs.filter((j) => j.editJob?.status === "done").length}/{appliedJobs.length})
+                    </span>
+                    <div className="flex-1 h-px bg-muted" />
+                  </div>
+                  <ul className="flex flex-col gap-0.5">
+                    {appliedJobs.map((job) => {
+                      const editStatus = job.editJob?.status ?? "pending";
+                      const isDone = editStatus === "done";
+                      const isFailed = editStatus === "failed";
+                      const dur =
+                        job.confirmedStart != null && job.confirmedEnd != null
+                          ? Math.round((job.confirmedEnd - job.confirmedStart) * 10) / 10
+                          : null;
+                      return (
+                        <li key={job.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted text-xs">
+                          {isDone ? (
+                            <CheckCircle2 size={11} className="text-success-600 flex-shrink-0" />
+                          ) : isFailed ? (
+                            <AlertTriangle size={11} className="text-danger-600 flex-shrink-0" />
+                          ) : (
+                            <Loader2 size={11} className="animate-spin text-muted-foreground flex-shrink-0" />
+                          )}
+                          <span className="flex-1 truncate text-muted-foreground">{job.asset.filename}</span>
+                          {dur != null && isDone && (
+                            <span className="text-muted-foreground flex-shrink-0">{dur}s conservés</span>
+                          )}
+                          {isFailed && job.errorMsg && (
+                            <span className="text-danger-600 truncate max-w-[160px]">{job.errorMsg}</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="px-5 py-3 border-t border-border shrink-0">
+                <Pagination page={reviewPage} total={reviewTotal} pageSize={pageSize} onPageChange={setReviewPage} />
+              </div>
+            )}
+          </>
         )}
-      </div>
+      </Modal>
       {confirmDialog}
-    </div>
+    </>
   );
 }

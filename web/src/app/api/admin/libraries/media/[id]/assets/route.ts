@@ -45,7 +45,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
           duration: true,
           tags: true,
           setTag: true,
-          category: true,
           usageCount: true,
           lastUsedAt: true,
           createdAt: true,

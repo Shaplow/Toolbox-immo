@@ -36,6 +36,7 @@ import { STATUS_LABELS } from "@/lib/slots/statusLabels";
 import type { SlotStatus } from "@/types/calendar";
 import { Section } from "@/components/ui/molecules/Section";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { dateFr, dayMonthLongFr } from "@/lib/date/formatFr";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,11 +75,7 @@ function relativeTime(isoDate: string): string {
   if (hours < 24) return `il y a ${hours}h`;
   if (days === 1) return "hier";
   if (days < 30) return `il y a ${days} jours`;
-  return new Date(isoDate).toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return dateFr(isoDate);
 }
 
 function statusLabel(key: unknown): string {
@@ -206,7 +203,7 @@ function activityLabel(type: string, payload: Record<string, unknown> | null): s
       const iso = typeof payload?.scheduledAt === "string" ? payload.scheduledAt : null;
       if (!iso) return "Sortie de banque · publication programmée";
       const d = new Date(iso);
-      const date = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+      const date = dayMonthLongFr(d);
       const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
       return `Sortie de banque · programmée le ${date} à ${time}`;
     }

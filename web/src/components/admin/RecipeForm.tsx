@@ -10,7 +10,9 @@
  * recette » et l'API atomique /recipes save les deux côtés ensemble.
  *
  * Tabs :
- *   1. Contenu       — champs du PatternTemplate (recette globale)
+ *   1. Contenu       — champs du PatternTemplate (recette globale), portés
+ *                       par <PatternTemplateFields> (partagé avec
+ *                       PatternTemplateForm — même champs, même validation).
  *   2. Planning      — horaires + jours + équipe par défaut + actif
  *   3. Spécifique    — overrides ponctuels (rare ; replié par défaut)
  *
@@ -19,8 +21,7 @@
  * partout.
  */
 
-import { useRecipeEntityBinding } from "@/components/admin/shared/useRecipeEntityBinding";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Save, Trash2, AlertTriangle, Sparkles, CalendarDays, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
@@ -29,37 +30,19 @@ import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
-import { TimePicker } from "@/components/ui/TimePicker";
 import {
-  CAPTIONS_MODE_LABELS_FR,
-  COVER_MODE_LABELS_FR,
-  NEEDS_DESCRIPTION_LABELS_FR,
-  SOURCE_HELP,
-  SOURCE_LABELS_FR,
-} from "@/lib/i18n/glossary";
-
-const DAYS = [
-  { value: 1, label: "Lun" },
-  { value: 2, label: "Mar" },
-  { value: 3, label: "Mer" },
-  { value: 4, label: "Jeu" },
-  { value: 5, label: "Ven" },
-  { value: 6, label: "Sam" },
-  { value: 7, label: "Dim" },
-];
-
-const SOURCE_OPTIONS = ["auto_template", "manual_rushes", "external_upload"];
-const CAPTIONS_MODE_OPTIONS = ["none", "auto", "manual"];
-const DESCRIPTION_MODE_OPTIONS = ["none", "manualWrite", "preFilled", "fixed", "autoGenerate"];
-const COVER_MODE_OPTIONS = ["none", "manualSelect", "autoPack", "monteurUpload"];
-
-const COVER_OVERRIDE_OPTIONS = [
-  { value: "", label: "Hérite de la recette" },
-  { value: "none", label: "Pas de cover" },
-  { value: "manualSelect", label: "Sélection libre (CM)" },
-  { value: "autoPack", label: "Pack auto → sélection" },
-  { value: "monteurUpload", label: "Upload par le monteur" },
-];
+  BindingScheduleFields,
+  type BindingScheduleValues,
+} from "@/components/admin/shared/BindingScheduleFields";
+import {
+  PatternTemplateFields,
+  decodePatternTemplateFields,
+  encodePatternTemplateFieldsPayload,
+  validateRecipeTemplate,
+  type PatternTemplateFieldValues,
+  type PatternTemplateFieldsPayload,
+} from "@/components/admin/shared/PatternTemplateFields";
+import { coverModeOverrideOptions } from "@/lib/i18n/glossary";
 
 export interface RecipeFormInitial {
   // Template
@@ -99,26 +82,7 @@ export interface RecipeFormInitial {
 }
 
 export interface RecipeFormValues {
-  template: {
-    label: string;
-    source: string;
-    templateId: string | null;
-    coverMode: string;
-    needsCaptionsMode: string;
-    needsDescription: string;
-    needsAdminValidation: boolean;
-    needsClientValidation: boolean;
-    allowsClientRevision: boolean;
-    needsBrief: boolean;
-    requiresProperty: boolean;
-    requiresEntityTypeId: string | null;
-    captionPresetId: string | null;
-    descriptionPromptId: string | null;
-    descriptionSourceFieldKey: string | null;
-    descriptionFixedText: string | null;
-    autoSaveToLibraryId: string | null;
-    notes: string | null;
-  };
+  template: PatternTemplateFieldsPayload;
   binding: {
     customLabel: string | null;
     dayOfWeek: number[];
@@ -175,45 +139,46 @@ export function RecipeForm({
 
   const [tab, setTab] = useState<"content" | "planning" | "advanced">("content");
 
-  // Template state
-  const [label, setLabel] = useState(initial.label);
-  const [source, setSource] = useState(initial.source);
-  const [templateId, setTemplateId] = useState(initial.templateId ?? "");
-  const [coverMode, setCoverMode] = useState(initial.coverMode);
-  const [needsCaptionsMode, setNeedsCaptionsMode] = useState(initial.needsCaptionsMode);
-  const [needsDescription, setNeedsDescription] = useState(initial.needsDescription);
-  const [needsAdminValidation, setNeedsAdminValidation] = useState(initial.needsAdminValidation);
-  const [needsClientValidation, setNeedsClientValidation] = useState(initial.needsClientValidation);
-  const [allowsClientRevision, setAllowsClientRevision] = useState(initial.allowsClientRevision);
-  const [needsBrief, setNeedsBrief] = useState(initial.needsBrief);
-  // Socle partagé RecipeForm/PatternTemplateForm (V2.6).
-  const { requiresEntityTypeId, setRequiresEntityTypeId, entityTypes, propertyFieldKeys } =
-    useRecipeEntityBinding({
-      initialRequiresEntityTypeId: initial.requiresEntityTypeId,
-      initialRequiresProperty: initial.requiresProperty,
-      needsDescription,
-    });
-  const [captionPresetId, setCaptionPresetId] = useState(initial.captionPresetId ?? "");
-  const [descriptionPromptId, setDescriptionPromptId] = useState(initial.descriptionPromptId ?? "");
-  const [descriptionSourceFieldKey, setDescriptionSourceFieldKey] = useState(
-    initial.descriptionSourceFieldKey ?? "",
+  // Template state — champs partagés avec PatternTemplateForm.
+  const [templateValues, setTemplateValues] = useState<PatternTemplateFieldValues>(() =>
+    decodePatternTemplateFields({
+      label: initial.label,
+      source: initial.source,
+      templateId: initial.templateId,
+      coverMode: initial.coverMode,
+      needsCaptionsMode: initial.needsCaptionsMode,
+      captionPresetId: initial.captionPresetId,
+      needsDescription: initial.needsDescription,
+      descriptionPromptId: initial.descriptionPromptId,
+      descriptionSourceFieldKey: initial.descriptionSourceFieldKey,
+      descriptionFixedText: initial.descriptionFixedText,
+      requiresEntityTypeId: initial.requiresEntityTypeId,
+      requiresProperty: initial.requiresProperty,
+      needsAdminValidation: initial.needsAdminValidation,
+      needsClientValidation: initial.needsClientValidation,
+      allowsClientRevision: initial.allowsClientRevision,
+      needsBrief: initial.needsBrief,
+      autoSaveToLibraryId: initial.autoSaveToLibraryId,
+      notes: initial.templateNotes,
+    }),
   );
-  const [descriptionFixedText, setDescriptionFixedText] = useState(
-    initial.descriptionFixedText ?? "",
-  );
-  const [autoSaveLibraryId, setAutoSaveLibraryId] = useState(initial.autoSaveToLibraryId ?? "");
-  const [templateNotes, setTemplateNotes] = useState(initial.templateNotes ?? "");
+  function updateTemplateValues(patch: Partial<PatternTemplateFieldValues>) {
+    setTemplateValues((prev) => ({ ...prev, ...patch }));
+  }
 
   // Binding state
   const [customLabel, setCustomLabel] = useState(initial.customLabel ?? "");
-  const [publishTime, setPublishTime] = useState(initial.publishTime);
-  const [dayOfWeek, setDayOfWeek] = useState<number[]>(
-    isCreating && initial.dayOfWeek.length === 0 ? [1, 2, 3, 4, 5] : initial.dayOfWeek,
-  );
+  const [schedule, setSchedule] = useState<BindingScheduleValues>({
+    publishTime: initial.publishTime,
+    dayOfWeek: isCreating && initial.dayOfWeek.length === 0 ? [1, 2, 3, 4, 5] : initial.dayOfWeek,
+    monteurId: initial.defaultAssigneeMonteurId ?? "",
+    cmId: initial.defaultAssigneeCmId ?? "",
+    videasteId: initial.defaultAssigneeVideasteId ?? "",
+  });
+  function updateSchedule(patch: Partial<BindingScheduleValues>) {
+    setSchedule((prev) => ({ ...prev, ...patch }));
+  }
   const [isActive, setIsActive] = useState(initial.isActive);
-  const [monteurId, setMonteurId] = useState(initial.defaultAssigneeMonteurId ?? "");
-  const [cmId, setCmId] = useState(initial.defaultAssigneeCmId ?? "");
-  const [videasteId, setVideasteId] = useState(initial.defaultAssigneeVideasteId ?? "");
   const [captionPresetOverride, setCaptionPresetOverride] = useState(
     initial.captionPresetIdOverride ?? "",
   );
@@ -226,56 +191,32 @@ export function RecipeForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function toggleDay(d: number) {
-    setDayOfWeek((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort(),
-    );
-  }
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!reuseMode && !label.trim()) {
-      setError("Le nom de la recette est requis.");
-      setTab("content");
-      return;
+    if (!reuseMode) {
+      const templateError = validateRecipeTemplate(templateValues);
+      if (templateError) {
+        setError(templateError);
+        setTab("content");
+        return;
+      }
     }
-    if (!publishTime) {
+    if (!schedule.publishTime) {
       setError("L'heure de publication est requise.");
       setTab("planning");
       return;
     }
     void onSave({
-      template: {
-        label: label.trim(),
-        source,
-        templateId: templateId || null,
-        coverMode,
-        needsCaptionsMode,
-        needsDescription,
-        needsAdminValidation,
-        needsClientValidation,
-        allowsClientRevision,
-        needsBrief,
-        requiresProperty: !!requiresEntityTypeId,
-        requiresEntityTypeId: requiresEntityTypeId || null,
-        captionPresetId: captionPresetId || null,
-        descriptionPromptId: descriptionPromptId || null,
-        descriptionSourceFieldKey:
-          needsDescription === "preFilled" ? descriptionSourceFieldKey.trim() || null : null,
-        descriptionFixedText:
-          needsDescription === "fixed" ? descriptionFixedText.trim() || null : null,
-        autoSaveToLibraryId: autoSaveLibraryId || null,
-        notes: templateNotes.trim() || null,
-      },
+      template: encodePatternTemplateFieldsPayload(templateValues),
       binding: {
         customLabel: customLabel.trim() || null,
-        dayOfWeek,
-        publishTime,
+        dayOfWeek: schedule.dayOfWeek,
+        publishTime: schedule.publishTime,
         isActive,
-        defaultAssigneeMonteurId: monteurId || null,
-        defaultAssigneeCmId: cmId || null,
-        defaultAssigneeVideasteId: videasteId || null,
+        defaultAssigneeMonteurId: schedule.monteurId || null,
+        defaultAssigneeCmId: schedule.cmId || null,
+        defaultAssigneeVideasteId: schedule.videasteId || null,
         captionPresetIdOverride: captionPresetOverride || null,
         descriptionPromptIdOverride: descriptionPromptOverride || null,
         coverModeOverride: coverModeOverride || null,
@@ -284,7 +225,7 @@ export function RecipeForm({
     });
   }
 
-  const headerTitle = customLabel.trim() || label.trim() || "Nouvelle recette";
+  const headerTitle = customLabel.trim() || templateValues.label.trim() || "Nouvelle recette";
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
@@ -329,90 +270,110 @@ export function RecipeForm({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-        {tab === "content" && (
-          <ContentTab
-            reuseMode={reuseMode}
-            sharedWarning={sharedWarning}
-            sharedWithCount={initial.sharedWithCount}
-            label={label}
-            setLabel={setLabel}
-            source={source}
-            setSource={setSource}
-            templateId={templateId}
-            setTemplateId={setTemplateId}
-            coverMode={coverMode}
-            setCoverMode={setCoverMode}
-            needsCaptionsMode={needsCaptionsMode}
-            setNeedsCaptionsMode={setNeedsCaptionsMode}
-            needsDescription={needsDescription}
-            setNeedsDescription={setNeedsDescription}
-            needsAdminValidation={needsAdminValidation}
-            setNeedsAdminValidation={setNeedsAdminValidation}
-            needsClientValidation={needsClientValidation}
-            setNeedsClientValidation={setNeedsClientValidation}
-            allowsClientRevision={allowsClientRevision}
-            setAllowsClientRevision={setAllowsClientRevision}
-            needsBrief={needsBrief}
-            setNeedsBrief={setNeedsBrief}
-            requiresEntityTypeId={requiresEntityTypeId}
-            setRequiresEntityTypeId={setRequiresEntityTypeId}
-            entityTypes={entityTypes}
-            captionPresetId={captionPresetId}
-            setCaptionPresetId={setCaptionPresetId}
-            descriptionPromptId={descriptionPromptId}
-            setDescriptionPromptId={setDescriptionPromptId}
-            descriptionSourceFieldKey={descriptionSourceFieldKey}
-            setDescriptionSourceFieldKey={setDescriptionSourceFieldKey}
-            descriptionFixedText={descriptionFixedText}
-            setDescriptionFixedText={setDescriptionFixedText}
-            propertyFieldKeys={propertyFieldKeys}
-            templateNotes={templateNotes}
-            setTemplateNotes={setTemplateNotes}
-            autoSaveLibraryId={autoSaveLibraryId}
-            setAutoSaveLibraryId={setAutoSaveLibraryId}
-            videoLibraries={videoLibraries}
-            builderTemplates={builderTemplates}
-            captionPresets={captionPresets}
-            descriptionPrompts={descriptionPrompts}
-          />
-        )}
+        {tab === "content" &&
+          (reuseMode ? (
+            <p className="text-[12px] text-muted-foreground">
+              Recette importée du catalogue — son contenu reste géré globalement.
+              Pour modifier le contenu, va sur /admin/patterns.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {sharedWarning && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-warning-50 border border-warning-200 text-warning-700 text-[12px]">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span>
+                    Recette utilisée par {initial.sharedWithCount} comptes. Les modifications
+                    de contenu s&apos;appliquent partout.
+                  </span>
+                </div>
+              )}
+              <PatternTemplateFields
+                values={templateValues}
+                onChange={updateTemplateValues}
+                builderTemplates={builderTemplates}
+                captionPresets={captionPresets}
+                descriptionPrompts={descriptionPrompts}
+                videoLibraries={videoLibraries}
+              />
+            </div>
+          ))}
 
         {tab === "planning" && (
-          <PlanningTab
-            customLabel={customLabel}
-            setCustomLabel={setCustomLabel}
-            labelFallback={label || "Recette"}
-            publishTime={publishTime}
-            setPublishTime={setPublishTime}
-            dayOfWeek={dayOfWeek}
-            toggleDay={toggleDay}
-            isActive={isActive}
-            setIsActive={setIsActive}
-            monteurId={monteurId}
-            setMonteurId={setMonteurId}
-            cmId={cmId}
-            setCmId={setCmId}
-            videasteId={videasteId}
-            setVideasteId={setVideasteId}
-            monteurs={monteurs}
-            cms={cms}
-            videastes={videastes}
-          />
+          <div className="space-y-4">
+            <FormField
+              label="Nom affiché pour ce compte"
+              help="Vide = hérite du nom global de la recette."
+            >
+              <Input
+                value={customLabel}
+                onChange={setCustomLabel}
+                placeholder={templateValues.label || "Recette"}
+              />
+            </FormField>
+
+            <BindingScheduleFields
+              values={schedule}
+              onChange={updateSchedule}
+              monteurs={monteurs}
+              cms={cms}
+              videastes={videastes}
+              dayOfWeekHelp={
+                schedule.dayOfWeek.length === 0
+                  ? "Aucun jour sélectionné : aucune génération auto, slots créés à la main."
+                  : undefined
+              }
+            />
+
+            <label className="flex items-center gap-3 p-2.5 rounded-md hover:bg-muted/40 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                className="h-4 w-4 rounded border-border"
+              />
+              <span className="text-[13px] text-foreground">
+                Recette active (sinon le cron ignore la génération auto)
+              </span>
+            </label>
+          </div>
         )}
 
         {tab === "advanced" && (
-          <AdvancedTab
-            captionPresetOverride={captionPresetOverride}
-            setCaptionPresetOverride={setCaptionPresetOverride}
-            descriptionPromptOverride={descriptionPromptOverride}
-            setDescriptionPromptOverride={setDescriptionPromptOverride}
-            coverModeOverride={coverModeOverride}
-            setCoverModeOverride={setCoverModeOverride}
-            bindingNotes={bindingNotes}
-            setBindingNotes={setBindingNotes}
-            captionPresets={captionPresets}
-            descriptionPrompts={descriptionPrompts}
-          />
+          <div className="space-y-4">
+            <p className="text-[12px] text-muted-foreground">
+              Dévie la recette pour ce compte uniquement. La majorité des comptes laissent ces champs hérités.
+            </p>
+            <FormField label="Preset captions (override)">
+              <Combobox
+                value={captionPresetOverride}
+                onChange={setCaptionPresetOverride}
+                options={[
+                  { value: "", label: "Hérite de la recette" },
+                  ...captionPresets.map((cp) => ({ value: cp.id, label: cp.name })),
+                ]}
+              />
+            </FormField>
+            <FormField label="Prompt description (override)">
+              <Combobox
+                value={descriptionPromptOverride}
+                onChange={setDescriptionPromptOverride}
+                options={[
+                  { value: "", label: "Hérite de la recette" },
+                  ...descriptionPrompts.map((dp) => ({ value: dp.id, label: dp.name })),
+                ]}
+              />
+            </FormField>
+            <FormField label="Mode cover (override)">
+              <Combobox
+                value={coverModeOverride}
+                onChange={setCoverModeOverride}
+                options={coverModeOverrideOptions()}
+              />
+            </FormField>
+            <FormField label="Notes de l'application (privées)">
+              <Textarea value={bindingNotes} onChange={setBindingNotes} rows={2} />
+            </FormField>
+          </div>
         )}
 
         {error && <p className="text-[12px] text-danger-700">{error}</p>}
@@ -442,447 +403,5 @@ export function RecipeForm({
         </div>
       </footer>
     </form>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface ContentTabProps {
-  reuseMode: boolean;
-  sharedWarning: boolean;
-  sharedWithCount: number;
-  label: string;
-  setLabel: (v: string) => void;
-  source: string;
-  setSource: (v: string) => void;
-  templateId: string;
-  setTemplateId: (v: string) => void;
-  coverMode: string;
-  setCoverMode: (v: string) => void;
-  needsCaptionsMode: string;
-  setNeedsCaptionsMode: (v: string) => void;
-  needsDescription: string;
-  setNeedsDescription: (v: string) => void;
-  needsAdminValidation: boolean;
-  setNeedsAdminValidation: (v: boolean) => void;
-  needsClientValidation: boolean;
-  setNeedsClientValidation: (v: boolean) => void;
-  allowsClientRevision: boolean;
-  setAllowsClientRevision: (v: boolean) => void;
-  needsBrief: boolean;
-  setNeedsBrief: (v: boolean) => void;
-  requiresEntityTypeId: string;
-  setRequiresEntityTypeId: (v: string) => void;
-  entityTypes: { id: string; name: string }[];
-  captionPresetId: string;
-  setCaptionPresetId: (v: string) => void;
-  descriptionPromptId: string;
-  setDescriptionPromptId: (v: string) => void;
-  descriptionSourceFieldKey: string;
-  setDescriptionSourceFieldKey: (v: string) => void;
-  descriptionFixedText: string;
-  setDescriptionFixedText: (v: string) => void;
-  propertyFieldKeys: { key: string; label: string }[];
-  templateNotes: string;
-  autoSaveLibraryId: string;
-  setAutoSaveLibraryId: (v: string) => void;
-  videoLibraries: { id: string; name: string }[];
-  setTemplateNotes: (v: string) => void;
-  builderTemplates: { id: string; name: string }[];
-  captionPresets: { id: string; name: string }[];
-  descriptionPrompts: { id: string; name: string }[];
-}
-
-function ContentTab(p: ContentTabProps) {
-  if (p.reuseMode) {
-    return (
-      <p className="text-[12px] text-muted-foreground">
-        Recette importée du catalogue — son contenu reste géré globalement.
-        Pour modifier le contenu, va sur /admin/patterns.
-      </p>
-    );
-  }
-  return (
-    <div className="space-y-4">
-      {p.sharedWarning && (
-        <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-warning-50 border border-warning-200 text-warning-700 text-[12px]">
-          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-          <span>
-            Recette utilisée par {p.sharedWithCount} comptes. Les modifications
-            de contenu s&apos;appliquent partout.
-          </span>
-        </div>
-      )}
-
-      <FormField label="Nom de la recette" required>
-        <Input value={p.label} onChange={p.setLabel} placeholder="Ex : Reels marché immo" />
-      </FormField>
-
-      <FormField label="Source" help={SOURCE_HELP[p.source]}>
-        <div className="flex flex-wrap gap-1.5">
-          {SOURCE_OPTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => p.setSource(s)}
-              className={`h-8 px-3 rounded-md text-[12px] font-medium border transition-colors ${
-                p.source === s
-                  ? "bg-foreground text-background border-foreground"
-                  : "bg-card text-foreground border-border hover:bg-muted"
-              }`}
-            >
-              {SOURCE_LABELS_FR[s] ?? s}
-            </button>
-          ))}
-        </div>
-      </FormField>
-
-      {p.source === "auto_template" && (
-        <FormField label="Template builder" help="Le rendu vidéo utilise ce template.">
-          <Combobox
-            value={p.templateId}
-            onChange={p.setTemplateId}
-            options={[
-              { value: "", label: "— Aucun —" },
-              ...p.builderTemplates.map((t) => ({ value: t.id, label: t.name })),
-            ]}
-          />
-        </FormField>
-      )}
-
-      <FormField label="Cover Instagram">
-        <Combobox
-          value={p.coverMode}
-          onChange={p.setCoverMode}
-          options={COVER_MODE_OPTIONS.map((m) => ({
-            value: m,
-            label: COVER_MODE_LABELS_FR[m] ?? m,
-          }))}
-        />
-      </FormField>
-
-      <FormField label="Sous-titres">
-        <Combobox
-          value={p.needsCaptionsMode}
-          onChange={p.setNeedsCaptionsMode}
-          options={CAPTIONS_MODE_OPTIONS.map((m) => ({
-            value: m,
-            label: CAPTIONS_MODE_LABELS_FR[m] ?? m,
-          }))}
-        />
-      </FormField>
-
-      {p.needsCaptionsMode === "auto" && (
-        <FormField label="Preset captions">
-          <Combobox
-            value={p.captionPresetId}
-            onChange={p.setCaptionPresetId}
-            options={[
-              { value: "", label: "— Preset par défaut —" },
-              ...p.captionPresets.map((cp) => ({ value: cp.id, label: cp.name })),
-            ]}
-          />
-        </FormField>
-      )}
-
-      <FormField label="Description Instagram">
-        <Combobox
-          value={p.needsDescription}
-          onChange={p.setNeedsDescription}
-          options={DESCRIPTION_MODE_OPTIONS.map((m) => ({
-            value: m,
-            label: NEEDS_DESCRIPTION_LABELS_FR[m] ?? m,
-          }))}
-        />
-      </FormField>
-
-      {p.needsDescription === "autoGenerate" && (
-        <FormField label="Prompt description">
-          <Combobox
-            value={p.descriptionPromptId}
-            onChange={p.setDescriptionPromptId}
-            options={[
-              { value: "", label: "— Prompt par défaut —" },
-              ...p.descriptionPrompts.map((dp) => ({ value: dp.id, label: dp.name })),
-            ]}
-          />
-        </FormField>
-      )}
-
-      {p.needsDescription === "preFilled" && (
-        <FormField
-          label="Champ de la fiche qui pré-remplit la légende"
-          help="La légende démarre avec la valeur de ce champ de la fiche rattachée. Réécrite à chaque changement de fiche."
-        >
-          <Combobox
-            value={p.descriptionSourceFieldKey}
-            onChange={p.setDescriptionSourceFieldKey}
-            allowCustom
-            placeholder="ex : description"
-            options={p.propertyFieldKeys.map((f) => ({
-              value: f.key,
-              label: f.label === f.key ? f.key : `${f.label} · ${f.key}`,
-            }))}
-          />
-        </FormField>
-      )}
-
-      {p.needsDescription === "fixed" && (
-        <FormField
-          label="Texte pré-rempli (fixe)"
-          help="Pré-remplit la légende à la création, indépendamment de la fiche. Le CM peut l'ajuster ensuite."
-        >
-          <Textarea
-            value={p.descriptionFixedText}
-            onChange={(v) => p.setDescriptionFixedText(v)}
-            rows={5}
-            placeholder="Texte de légende par défaut…"
-          />
-        </FormField>
-      )}
-
-      <FormField
-        label="Exige une fiche"
-        help="Une fiche de ce type doit être rattachée pour créer un slot depuis cette recette."
-      >
-        <Combobox
-          value={p.requiresEntityTypeId}
-          onChange={p.setRequiresEntityTypeId}
-          options={[
-            { value: "", label: "Aucune" },
-            ...p.entityTypes.map((t) => ({ value: t.id, label: t.name })),
-          ]}
-        />
-      </FormField>
-
-      <FormField label="Workflow">
-        <div className="space-y-1.5 text-[12.5px]">
-          <FlagCheckbox
-            checked={p.needsBrief}
-            onChange={p.setNeedsBrief}
-            label="Brief obligatoire avant production"
-          />
-          <FlagCheckbox
-            checked={p.needsAdminValidation}
-            onChange={p.setNeedsAdminValidation}
-            label="Validation admin avant publication"
-          />
-          <FlagCheckbox
-            checked={p.needsClientValidation}
-            onChange={p.setNeedsClientValidation}
-            label="Validation client avant publication"
-          />
-          <FlagCheckbox
-            checked={p.allowsClientRevision}
-            onChange={p.setAllowsClientRevision}
-            label="Client peut demander une révision"
-          />
-        </div>
-      </FormField>
-
-      <FormField
-        label="Auto-save sortie vers bibliothèque"
-        help="La sortie de génération est copiée automatiquement en tant que média vidéo."
-      >
-        <Combobox
-          value={p.autoSaveLibraryId}
-          onChange={p.setAutoSaveLibraryId}
-          options={[
-            { value: "", label: "Aucune (désactivé)" },
-            ...p.videoLibraries.map((lib) => ({ value: lib.id, label: lib.name })),
-          ]}
-        />
-      </FormField>
-
-      <FormField label="Notes (privées)">
-        <Textarea value={p.templateNotes} onChange={p.setTemplateNotes} rows={2} />
-      </FormField>
-    </div>
-  );
-}
-
-function FlagCheckbox({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-}) {
-  return (
-    <label className="flex items-center gap-2 cursor-pointer hover:bg-muted/40 rounded-md px-2 py-1">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 rounded border-border"
-      />
-      <span className="text-foreground">{label}</span>
-    </label>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface PlanningTabProps {
-  customLabel: string;
-  setCustomLabel: (v: string) => void;
-  labelFallback: string;
-  publishTime: string;
-  setPublishTime: (v: string) => void;
-  dayOfWeek: number[];
-  toggleDay: (d: number) => void;
-  isActive: boolean;
-  setIsActive: (v: boolean) => void;
-  monteurId: string;
-  setMonteurId: (v: string) => void;
-  cmId: string;
-  setCmId: (v: string) => void;
-  videasteId: string;
-  setVideasteId: (v: string) => void;
-  monteurs: { id: string; name: string }[];
-  cms: { id: string; name: string }[];
-  videastes: { id: string; name: string }[];
-}
-
-function PlanningTab(p: PlanningTabProps) {
-  return (
-    <div className="space-y-4">
-      <FormField label="Nom affiché pour ce compte" help="Vide = hérite du nom global de la recette.">
-        <Input value={p.customLabel} onChange={p.setCustomLabel} placeholder={p.labelFallback} />
-      </FormField>
-
-      <FormField label="Heure de publication" required>
-        <TimePicker value={p.publishTime} onChange={p.setPublishTime} />
-      </FormField>
-
-      <FormField
-        label="Jours auto-générés"
-        help={
-          p.dayOfWeek.length === 0
-            ? "Aucun jour sélectionné : aucune génération auto, slots créés à la main."
-            : undefined
-        }
-      >
-        <div className="inline-flex gap-1.5 flex-wrap">
-          {DAYS.map((d) => {
-            const active = p.dayOfWeek.includes(d.value);
-            return (
-              <button
-                type="button"
-                key={d.value}
-                onClick={() => p.toggleDay(d.value)}
-                className={`h-8 px-3 rounded-md text-[12px] font-medium border transition-colors ${
-                  active
-                    ? "bg-foreground text-background border-foreground"
-                    : "bg-card text-foreground border-border hover:bg-muted"
-                }`}
-              >
-                {d.label}
-              </button>
-            );
-          })}
-        </div>
-      </FormField>
-
-      <FormField label="Vidéaste défaut">
-        <Combobox
-          value={p.videasteId}
-          onChange={p.setVideasteId}
-          options={[
-            { value: "", label: "— Aucun —" },
-            ...p.videastes.map((u) => ({ value: u.id, label: u.name })),
-          ]}
-        />
-      </FormField>
-      <FormField label="Monteur défaut">
-        <Combobox
-          value={p.monteurId}
-          onChange={p.setMonteurId}
-          options={[
-            { value: "", label: "— Aucun —" },
-            ...p.monteurs.map((u) => ({ value: u.id, label: u.name })),
-          ]}
-        />
-      </FormField>
-      <FormField label="CM défaut">
-        <Combobox
-          value={p.cmId}
-          onChange={p.setCmId}
-          options={[
-            { value: "", label: "— Aucun —" },
-            ...p.cms.map((u) => ({ value: u.id, label: u.name })),
-          ]}
-        />
-      </FormField>
-
-      <label className="flex items-center gap-3 p-2.5 rounded-md hover:bg-muted/40 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={p.isActive}
-          onChange={(e) => p.setIsActive(e.target.checked)}
-          className="h-4 w-4 rounded border-border"
-        />
-        <span className="text-[13px] text-foreground">
-          Recette active (sinon le cron ignore la génération auto)
-        </span>
-      </label>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface AdvancedTabProps {
-  captionPresetOverride: string;
-  setCaptionPresetOverride: (v: string) => void;
-  descriptionPromptOverride: string;
-  setDescriptionPromptOverride: (v: string) => void;
-  coverModeOverride: string;
-  setCoverModeOverride: (v: string) => void;
-  bindingNotes: string;
-  setBindingNotes: (v: string) => void;
-  captionPresets: { id: string; name: string }[];
-  descriptionPrompts: { id: string; name: string }[];
-}
-
-function AdvancedTab(p: AdvancedTabProps) {
-  return (
-    <div className="space-y-4">
-      <p className="text-[12px] text-muted-foreground">
-        Dévie la recette pour ce compte uniquement. La majorité des comptes laissent ces champs hérités.
-      </p>
-      <FormField label="Preset captions (override)">
-        <Combobox
-          value={p.captionPresetOverride}
-          onChange={p.setCaptionPresetOverride}
-          options={[
-            { value: "", label: "Hérite de la recette" },
-            ...p.captionPresets.map((cp) => ({ value: cp.id, label: cp.name })),
-          ]}
-        />
-      </FormField>
-      <FormField label="Prompt description (override)">
-        <Combobox
-          value={p.descriptionPromptOverride}
-          onChange={p.setDescriptionPromptOverride}
-          options={[
-            { value: "", label: "Hérite de la recette" },
-            ...p.descriptionPrompts.map((dp) => ({ value: dp.id, label: dp.name })),
-          ]}
-        />
-      </FormField>
-      <FormField label="Mode cover (override)">
-        <Combobox
-          value={p.coverModeOverride}
-          onChange={p.setCoverModeOverride}
-          options={COVER_OVERRIDE_OPTIONS}
-        />
-      </FormField>
-      <FormField label="Notes de l'application (privées)">
-        <Textarea value={p.bindingNotes} onChange={p.setBindingNotes} rows={2} />
-      </FormField>
-    </div>
   );
 }

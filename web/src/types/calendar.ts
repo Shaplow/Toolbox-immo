@@ -79,7 +79,13 @@ export interface PublicationSlot {
     coverMode?: string;
     /** Type de fiche exigé par la recette (null = aucun). */
     requiresEntityTypeId?: string | null;
-    /** Legacy — true sans requiresEntityTypeId ⇒ type « Bien ». */
+    /**
+     * Legacy — true sans requiresEntityTypeId ⇒ type « Bien ». Champs bruts
+     * conservés tels quels (miroir de SlotEffectivePattern renvoyé par l'API
+     * calendrier) plutôt que pré-résolus en un champ dérivé unique — les
+     * lecteurs passent par `requiredEntityTypeId()` (lib/publications/
+     * entityRequirement.ts), source unique du fallback.
+     */
     requiresProperty?: boolean;
   } | null;
   assigneeVideasteId?: string | null;

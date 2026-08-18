@@ -16,30 +16,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Rocket, X } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Combobox } from "@/components/ui/Combobox";
-import { FormField } from "@/components/ui/FormField";
-import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
-
-const DAYS = [
-  { value: 1, label: "Lun" },
-  { value: 2, label: "Mar" },
-  { value: 3, label: "Mer" },
-  { value: 4, label: "Jeu" },
-  { value: 5, label: "Ven" },
-  { value: 6, label: "Sam" },
-  { value: 7, label: "Dim" },
-];
+import {
+  BindingScheduleFields,
+  type AssigneeOption,
+  type BindingScheduleValues,
+} from "@/components/admin/shared/BindingScheduleFields";
 
 interface AccountOption {
   id: string;
   name: string;
   handle: string;
-}
-
-interface AssigneeOption {
-  id: string;
-  name: string;
 }
 
 interface Props {
@@ -68,11 +55,16 @@ export function DeployTemplateModal({
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [publishTime, setPublishTime] = useState("10:00");
-  const [dayOfWeek, setDayOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
-  const [monteurId, setMonteurId] = useState<string>("");
-  const [cmId, setCmId] = useState<string>("");
-  const [videasteId, setVideasteId] = useState<string>("");
+  const [schedule, setSchedule] = useState<BindingScheduleValues>({
+    publishTime: "10:00",
+    dayOfWeek: [1, 2, 3, 4, 5],
+    monteurId: "",
+    cmId: "",
+    videasteId: "",
+  });
+  function updateSchedule(patch: Partial<BindingScheduleValues>) {
+    setSchedule((prev) => ({ ...prev, ...patch }));
+  }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -157,12 +149,6 @@ export function DeployTemplateModal({
     setSelectedAccountIds(new Set());
   }
 
-  function toggleDay(d: number) {
-    setDayOfWeek((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort(),
-    );
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -177,11 +163,11 @@ export function DeployTemplateModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accountIds: [...selectedAccountIds],
-          publishTime,
-          dayOfWeek,
-          defaultAssigneeMonteurId: monteurId || null,
-          defaultAssigneeCmId: cmId || null,
-          defaultAssigneeVideasteId: videasteId || null,
+          publishTime: schedule.publishTime,
+          dayOfWeek: schedule.dayOfWeek,
+          defaultAssigneeMonteurId: schedule.monteurId || null,
+          defaultAssigneeCmId: schedule.cmId || null,
+          defaultAssigneeVideasteId: schedule.videasteId || null,
         }),
       });
       if (!res.ok) {
@@ -284,78 +270,15 @@ export function DeployTemplateModal({
           )}
         </div>
 
-        {/* Planning */}
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <FormField label="Heure de publication" required>
-            <Input
-              id="deploy-time"
-              type="time"
-              value={publishTime}
-              onChange={setPublishTime}
-              required
-            />
-          </FormField>
-          <FormField label="Jours auto-générés">
-            <div className="inline-flex gap-1 flex-wrap">
-              {DAYS.map((d) => {
-                const active = dayOfWeek.includes(d.value);
-                return (
-                  <button
-                    type="button"
-                    key={d.value}
-                    onClick={() => toggleDay(d.value)}
-                    className={`h-7 px-2 rounded-md text-[11.5px] font-medium border transition-colors ${
-                      active
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-card text-foreground border-border hover:bg-muted"
-                    }`}
-                  >
-                    {d.label}
-                  </button>
-                );
-              })}
-            </div>
-          </FormField>
-        </div>
-
-        {/* Assignées */}
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          <FormField label="Vidéaste défaut">
-            <Combobox
-              value={videasteId}
-              onChange={setVideasteId}
-              options={[
-                { value: "", label: "— Aucun —" },
-                ...(data?.videastes ?? []).map((u) => ({
-                  value: u.id,
-                  label: u.name,
-                })),
-              ]}
-            />
-          </FormField>
-          <FormField label="Monteur défaut">
-            <Combobox
-              value={monteurId}
-              onChange={setMonteurId}
-              options={[
-                { value: "", label: "— Aucun —" },
-                ...(data?.monteurs ?? []).map((u) => ({
-                  value: u.id,
-                  label: u.name,
-                })),
-              ]}
-            />
-          </FormField>
-          <FormField label="CM défaut">
-            <Combobox
-              value={cmId}
-              onChange={setCmId}
-              options={[
-                { value: "", label: "— Aucun —" },
-                ...(data?.cms ?? []).map((u) => ({ value: u.id, label: u.name })),
-              ]}
-            />
-          </FormField>
+        {/* Planning & équipe */}
+        <div className="mt-4">
+          <BindingScheduleFields
+            values={schedule}
+            onChange={updateSchedule}
+            monteurs={data?.monteurs ?? []}
+            cms={data?.cms ?? []}
+            videastes={data?.videastes ?? []}
+          />
         </div>
 
         {error && <p className="mt-3 text-[12px] text-danger-700">{error}</p>}

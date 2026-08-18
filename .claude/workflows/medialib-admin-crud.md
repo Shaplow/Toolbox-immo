@@ -52,7 +52,7 @@ flowchart LR
 ### CRUD MediaLibrary
 | Méthode | Path | Effets |
 |---|---|---|
-| GET | `/api/admin/libraries/media` | Liste + previewAssets 4 derniers |
+| GET | `/api/admin/libraries/media` | Liste + previewAssets (1 cover vidéo la plus récente) |
 | POST | `/api/admin/libraries/media` | Crée (name, type video/audio, tags, setSequence) |
 | PATCH | `/api/admin/libraries/media/[id]` | Update rotation/metadataSchema/maxUsageCount |
 | DELETE | `/api/admin/libraries/media/[id]` | Cascade R2 cleanup + suppression DB |
@@ -73,7 +73,6 @@ flowchart LR
 ### Rotation & Autocut
 | Méthode | Path | Effets |
 |---|---|---|
-| POST | `/.../[id]/reset-usage` | Reset all usageCount=0, lastUsedAt=null |
 | GET | `/.../[id]/simulate-rotation?accountId=X` | Next pick + reason + cursor state |
 | GET | `/.../[id]/autocut-queue` | Pending review jobs + counts |
 | POST | `/.../[id]/autocut-packs` | Batch submit Whisper (MediaAutocutBatch) |

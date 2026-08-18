@@ -10,10 +10,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  resolveEffectivePattern,
-  toPatternView,
-} from "@/lib/services/pattern/resolveEffective";
+import { resolveEffectivePattern } from "@/lib/services/pattern/resolveEffective";
 
 function makeTemplate(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -151,23 +148,5 @@ describe("resolveEffectivePattern", () => {
       makeBinding({ patternTemplate: makeTemplate({ source: "external_upload" }) }),
     );
     expect(evExt.needsRushes).toBe(false);
-  });
-});
-
-describe("toPatternView", () => {
-  it("Projette les valeurs résolues sur l'ancien contrat AccountPattern", () => {
-
-    const legacy = toPatternView(
-      makeBinding({
-        customLabel: "Variante",
-        captionPresetIdOverride: "cap-B",
-      }),
-    );
-    expect(legacy.id).toBe("binding-1");
-    expect(legacy.accountId).toBe("account-A");
-    expect(legacy.label).toBe("Variante");
-    expect(legacy.captionPresetId).toBe("cap-B");
-    expect(legacy.source).toBe("auto_template");
-    expect(legacy.needsRushes).toBe(false);
   });
 });

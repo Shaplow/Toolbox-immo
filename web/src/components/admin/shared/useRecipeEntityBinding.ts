@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * useRecipeEntityBinding — socle partagé RecipeForm / PatternTemplateForm
- * (V2.6). Encapsule les 3 blocs qui étaient copiés-collés à l'identique dans
- * les deux formulaires de recette :
- *  1. state « Exige une fiche » (select de type, compat legacy
- *     requiresProperty → « Bien ») ;
- *  2. fetch de la liste des types de fiche (/api/entity-types) ;
- *  3. fetch des clés de champs suggérées pour le mode description
- *     « preFilled » (/api/entity-types/[id]/field-keys), rechargé quand le
- *     type requis change — saisie libre autorisée en aval (la fiche peut ne
- *     pas exister encore).
+ * useRecipeEntityBinding — socle partagé de fetch pour le champ « Exige une
+ * fiche » de PatternTemplateFields (RecipeForm / PatternTemplateForm).
+ *
+ * Pur hook de data-fetching : la valeur `requiresEntityTypeId` est possédée
+ * par le formulaire appelant (contrôlée), ce hook ne fait que résoudre :
+ *  1. la liste des types de fiche (/api/entity-types) ;
+ *  2. les clés de champ suggérées pour le mode description « preFilled »
+ *     (/api/entity-types/[id]/field-keys), rechargées quand le type requis
+ *     change — saisie libre autorisée en aval (la fiche peut ne pas exister
+ *     encore).
+ *
+ * Le fallback legacy `requiresProperty` → « Bien » est résolu en amont par
+ * `requiredEntityTypeId()` (lib/publications/entityRequirement.ts), pas ici.
  */
 import { useEffect, useState } from "react";
 
@@ -25,15 +28,11 @@ export interface PropertyFieldKey {
 }
 
 export function useRecipeEntityBinding(opts: {
-  initialRequiresEntityTypeId: string | null | undefined;
-  initialRequiresProperty: boolean | null | undefined;
+  /** Id du type de fiche requis courant ("" = aucun). */
+  requiresEntityTypeId: string;
   /** Mode description courant — les field-keys ne se chargent qu'en "preFilled". */
   needsDescription: string;
 }) {
-  const [requiresEntityTypeId, setRequiresEntityTypeId] = useState(
-    opts.initialRequiresEntityTypeId ?? (opts.initialRequiresProperty ? "etype_bien" : ""),
-  );
-
   const [entityTypes, setEntityTypes] = useState<EntityTypeOption[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -53,8 +52,8 @@ export function useRecipeEntityBinding(opts: {
   }, []);
 
   const [propertyFieldKeys, setPropertyFieldKeys] = useState<PropertyFieldKey[]>([]);
+  const { requiresEntityTypeId, needsDescription } = opts;
   const fieldKeysTypeId = requiresEntityTypeId || "etype_bien";
-  const { needsDescription } = opts;
   useEffect(() => {
     if (needsDescription !== "preFilled") return;
     let cancelled = false;
@@ -74,5 +73,5 @@ export function useRecipeEntityBinding(opts: {
     };
   }, [needsDescription, fieldKeysTypeId]);
 
-  return { requiresEntityTypeId, setRequiresEntityTypeId, entityTypes, propertyFieldKeys };
+  return { entityTypes, propertyFieldKeys };
 }

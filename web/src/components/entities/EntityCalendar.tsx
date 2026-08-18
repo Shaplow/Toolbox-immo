@@ -8,6 +8,7 @@ import { toast } from "@/components/ui/Toast";
 import { EntityCard } from "./EntityCard";
 import { CreateEntityModal } from "./CreateEntityModal";
 import type { EntitySummary, EntityTypeSummary } from "@/types/entities";
+import { shortDateFr, dateFr } from "@/lib/date/formatFr";
 
 interface Option {
   id: string;
@@ -87,10 +88,7 @@ export function EntityCalendar({ type, isAdmin, accounts, videastes, monteurs, c
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const now = new Date();
 
-  const weekLabel = `${weekStart.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} – ${addDays(
-    weekStart,
-    6,
-  ).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}`;
+  const weekLabel = `${shortDateFr(weekStart)} – ${dateFr(addDays(weekStart, 6))}`;
 
   const typeNamePlural = type.namePlural ?? type.name;
 

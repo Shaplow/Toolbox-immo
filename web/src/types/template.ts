@@ -561,6 +561,22 @@ export interface SchemaField {
     /** Clé dans MediaAsset.metadata (ex: "prix", "surface"). */
     metadataKey: string;
   };
+  /**
+   * Source automatique depuis la fiche (Entity) rattachée au PublicationSlot
+   * du render. Quand défini, la valeur du champ est re-résolue LIVE à chaque
+   * rendu (avant validateConformite) depuis `slot.entity` (fiche data) ou
+   * `slot.shootEntity` (fiche tournage) — jamais figée dans listingData.
+   * Une provenance `"manual"` sur ce champ (voir `lib/generate/provenance.ts`)
+   * bloque cette résolution : l'intention explicite de l'utilisateur prime.
+   */
+  entitySource?: {
+    /** "data" → `slot.entityId` (fiche data) ; "shoot" → `slot.shootEntityId` (fiche tournage). */
+    slot: "data" | "shoot";
+    /** Clé dans `Entity.fields` (ex: "prix", "surface"). */
+    fieldKey: string;
+    /** Type de fiche indicatif — sert uniquement à suggérer des clés dans le builder, non bloquant au rendu. */
+    entityTypeId?: string;
+  };
 }
 
 export type TemplateSectionColumnCount = 1 | 2 | 3 | 4 | 5;

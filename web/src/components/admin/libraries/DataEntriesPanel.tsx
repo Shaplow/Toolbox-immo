@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Upload, Download, Plus, Trash2, Search } from "lucide-react";
+import { Upload, Download, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { Input } from "@/components/ui/Input";
+import { Alert } from "@/components/ui/Alert";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { toast } from "@/components/ui/Toast";
 import { DataEntriesSpreadsheet } from "@/components/admin/libraries/dataEntries/DataEntriesSpreadsheet";
 
@@ -126,6 +128,7 @@ export function DataEntriesPanel({ libraryId, libraryName = "bibliotheque", fiel
   // appliqué avant le scoping accès, comme accountFilter.
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
@@ -164,17 +167,18 @@ export function DataEntriesPanel({ libraryId, libraryName = "bibliotheque", fiel
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const entriesUrl = accountFilter
         ? `/api/admin/libraries/data/${libraryId}/entries?accountId=${encodeURIComponent(accountFilter)}`
         : `/api/admin/libraries/data/${libraryId}/entries`;
       const entriesRes = await fetch(entriesUrl);
-      if (entriesRes.ok) {
-        const data = await entriesRes.json() as DataEntry[];
-        setEntries(data);
-      }
+      if (!entriesRes.ok) throw new Error(`Erreur serveur (HTTP ${entriesRes.status})`);
+      const data = await entriesRes.json() as DataEntry[];
+      setEntries(data);
     } catch (err) {
       console.error("[DataEntriesPanel] load error:", err);
+      setLoadError(err instanceof Error ? err.message : "Erreur de chargement");
     } finally {
       setLoading(false);
     }
@@ -547,22 +551,45 @@ export function DataEntriesPanel({ libraryId, libraryName = "bibliotheque", fiel
         </div>
       </div>
 
-      {/* Alerts */}
+      {/* Erreur de chargement — même pattern Alert + retry que MediaLibrariesPanel/DataLibrariesPanel. */}
+      {loadError && (
+        <Alert
+          variant="danger"
+          title="Impossible de charger les fiches"
+          className="mb-4"
+          actions={
+            <Button variant="secondary" size="sm" onClick={() => void load()}>
+              Réessayer
+            </Button>
+          }
+        >
+          {loadError}
+        </Alert>
+      )}
+
+      {/* Alerts import */}
       {importError && (
-        <div className="mb-4 rounded-xl bg-danger-50/70 px-3 py-2.5 text-[12px] text-danger-700 ">
+        <Alert variant="danger" className="mb-4" onDismiss={() => setImportError(null)}>
           {importError}
-        </div>
+        </Alert>
       )}
       {importSuccess && (
-        <div className="mb-4 rounded-xl bg-success-50/70 px-3 py-2.5 text-[12px] text-success-700 ">
+        <Alert variant="success" className="mb-4" onDismiss={() => setImportSuccess(null)}>
           {importSuccess}
-        </div>
+        </Alert>
       )}
 
       {loading ? (
-        <div className="rounded-2xl bg-card border border-border py-12  flex items-center justify-center text-muted-foreground gap-3">
-          <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-          <span className="text-[12.5px]">Chargement…</span>
+        <div className="rounded-2xl bg-card border border-border p-4 space-y-2.5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton shape="block" className="h-4 w-4 rounded shrink-0" />
+              <Skeleton className="w-28 shrink-0" />
+              {Array.from({ length: 3 }).map((_, j) => (
+                <Skeleton key={j} className="flex-1" />
+              ))}
+            </div>
+          ))}
         </div>
       ) : entries.length === 0 ? (
         <div className="rounded-2xl bg-card border border-border p-8  text-center">
@@ -598,22 +625,6 @@ export function DataEntriesPanel({ libraryId, libraryName = "bibliotheque", fiel
         </div>
       ) : (
         <>
-          {/* Bulk action bar — delete + accès comptes IG. Apparaît quand ≥1 fiche sélectionnée. */}
-          {bulk.selectedIds.size > 0 && (
-            <div className="mb-3 rounded-xl px-3 py-2 bg-info-50/60  flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-[12.5px] font-medium text-info-700">
-                {bulk.selectedIds.size} fiche{bulk.selectedIds.size > 1 ? "s" : ""} sélectionnée{bulk.selectedIds.size > 1 ? "s" : ""}
-              </p>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={bulk.clearSelection}>
-                  Désélectionner
-                </Button>
-                <Button variant="danger" size="sm" icon={Trash2} onClick={() => void handleBulkDelete()}>
-                  Supprimer
-                </Button>
-              </div>
-            </div>
-          )}
           <DataEntriesSpreadsheet
             libraryId={libraryId}
             entries={visibleEntries}
@@ -624,14 +635,15 @@ export function DataEntriesPanel({ libraryId, libraryName = "bibliotheque", fiel
             focusBottomSignal={focusBottomSignal}
             accounts={accounts}
           />
-          {/* Sticky bar bulk (Dossier / accès) — dès qu'une fiche est
-              sélectionnée (le sélecteur compte est masqué si aucun compte). */}
+          {/* Sticky bar bulk (Dossier / accès / suppression) — dès qu'une fiche
+              est sélectionnée (le sélecteur compte est masqué si aucun compte). */}
           {bulk.selectedIds.size > 0 && (
             <DataEntriesBulkActionBar
               bulk={bulk}
               allVisibleIds={visibleEntries.map((e) => e.id)}
               accounts={accounts}
               setTagOptions={setTagOptions}
+              onBulkDelete={handleBulkDelete}
             />
           )}
         </>

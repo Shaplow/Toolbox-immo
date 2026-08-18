@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { Check, X, Loader2, AlertTriangle, Play, Pause, SkipBack, SkipForward, Expand, Shrink } from "lucide-react";
+import { useState, useCallback, useMemo } from "react";
+import { Check, X, Loader2, AlertTriangle, Expand, Shrink } from "lucide-react";
+import { TrimPlayer } from "@/components/ui/molecules/TrimPlayer";
+import { formatTimecode, round2 } from "@/lib/time";
+import { Button } from "@/components/ui/Button";
+import { Chip } from "@/components/ui/Chip";
+import { Badge } from "@/components/ui/Badge";
 
 export interface AutocutJob {
   id: string;
@@ -30,22 +35,6 @@ interface Props {
   knownTags?: string[];
   onAccept: (jobId: string, confirmedStart: number, confirmedEnd: number, tags: string[]) => Promise<void>;
   onSkip: (jobId: string) => Promise<void>;
-}
-
-function fmt(s: number): string {
-  const abs = Math.abs(s);
-  const m = Math.floor(abs / 60);
-  const sec = Math.floor(abs % 60);
-  const cs = Math.round((abs % 1) * 100).toString().padStart(2, "0");
-  return `${m}:${String(sec).padStart(2, "0")}.${cs}`;
-}
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.min(hi, Math.max(lo, v));
-}
-
-function round2(v: number) {
-  return Math.round(v * 100) / 100;
 }
 
 // ── Détection de prises multiples ─────────────────────────────────────────────
@@ -180,250 +169,6 @@ function detectTakes(segments: TranscriptSegment[], totalDuration: number): Take
   });
 }
 
-// ── Lecteur vidéo contraint entre trimStart et trimEnd ────────────────────────
-interface TrimPlayerProps {
-  trimStart: number;
-  trimEnd: number;
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  /** Timestamp (absolu) de fin du dernier mot Whisper — affiché comme marqueur sur le scrubber. */
-  lastWordEnd?: number | null;
-  /** Mode rush complet : joue sur [0, fullDuration], affiche zone cut en overlay */
-  fullRush?: boolean;
-  /** Durée totale du fichier (utilisée en mode fullRush) */
-  fullDuration?: number;
-  /** Timecodes du cut — affichés comme zone indigo + traits sur le scrubber en mode fullRush */
-  cutStart?: number;
-  cutEnd?: number;
-}
-
-function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = false, fullDuration, cutStart, cutEnd }: TrimPlayerProps) {
-  // Durée native lue depuis l'élément vidéo — fallback quand fullDuration non fourni
-  const [videoNativeDuration, setVideoNativeDuration] = useState<number>(0);
-
-  // En mode fullRush, le player joue sur [0, fullDuration] sans contrainte
-  const effectiveStart = fullRush ? 0 : trimStart;
-  const resolvedEnd = fullDuration ?? (videoNativeDuration > 0 ? videoNativeDuration : trimEnd);
-  const effectiveEnd = fullRush ? resolvedEnd : trimEnd;
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(trimStart);
-  const scrubBarRef = useRef<HTMLDivElement>(null);
-  const rafIdRef = useRef<number>(0);
-
-  // Refs pour accéder aux valeurs courantes dans les event listeners sans stale closure
-  const trimStartRef = useRef(trimStart);
-  const trimEndRef = useRef(trimEnd);
-  useEffect(() => { trimStartRef.current = fullRush ? 0 : trimStart; }, [trimStart, fullRush]);
-  useEffect(() => { trimEndRef.current = fullRush ? resolvedEnd : trimEnd; }, [trimEnd, fullRush, resolvedEnd]);
-
-  // Seek au nouveau trimStart quand il change (sauf en mode fullRush)
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v || fullRush) return;
-    if (!isPlaying) {
-      try { v.currentTime = trimStart; } catch { /* ok */ }
-      setCurrentTime(trimStart);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimStart, fullRush]);
-
-  // Quand trimEnd change en cours de lecture, la contrainte sera appliquée par timeupdate
-
-  // Montage : seek initial + RAF loop pendant la lecture.
-  // requestAnimationFrame (~16ms) remplace timeupdate (~250ms) pour stopper
-  // précisément à trimEnd sans laisser la vidéo déborder.
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-
-    const handleLoaded = () => {
-      try { v.currentTime = trimStartRef.current; } catch { /* ok */ }
-      setCurrentTime(trimStartRef.current);
-    };
-
-    const tick = () => {
-      const ct = v.currentTime;
-      const end = trimEndRef.current;
-      const start = trimStartRef.current;
-      if (ct >= end) {
-        v.pause();
-        try { v.currentTime = end; } catch { /* ok */ }
-        setIsPlaying(false);
-        setCurrentTime(end);
-        return; // pas de RAF suivant → boucle stoppée
-      }
-      if (ct < start) {
-        try { v.currentTime = start; } catch { /* ok */ }
-      }
-      setCurrentTime(ct);
-      rafIdRef.current = requestAnimationFrame(tick);
-    };
-
-    const handlePlay = () => {
-      setIsPlaying(true);
-      rafIdRef.current = requestAnimationFrame(tick);
-    };
-    const handlePause = () => {
-      setIsPlaying(false);
-      cancelAnimationFrame(rafIdRef.current);
-      setCurrentTime(v.currentTime);
-    };
-    const handleEnded = () => {
-      setIsPlaying(false);
-      cancelAnimationFrame(rafIdRef.current);
-      setCurrentTime(trimStartRef.current);
-    };
-
-    // Capture la durée native pour le mode fullRush sans fullDuration fourni
-    const captureDuration = () => {
-      if (v.duration && isFinite(v.duration)) setVideoNativeDuration(v.duration);
-    };
-    if (v.readyState >= 1) { handleLoaded(); captureDuration(); }
-    else v.addEventListener("loadedmetadata", () => { handleLoaded(); captureDuration(); }, { once: true });
-
-    v.addEventListener("play", handlePlay);
-    v.addEventListener("pause", handlePause);
-    v.addEventListener("ended", handleEnded);
-
-    return () => {
-      cancelAnimationFrame(rafIdRef.current);
-      v.removeEventListener("play", handlePlay);
-      v.removeEventListener("pause", handlePause);
-      v.removeEventListener("ended", handleEnded);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const togglePlay = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (isPlaying) { v.pause(); return; }
-    const ct = v.currentTime;
-    if (ct < effectiveStart || ct >= effectiveEnd) {
-      try { v.currentTime = effectiveStart; } catch { /* ok */ }
-    }
-    void v.play();
-  }, [isPlaying, effectiveStart, effectiveEnd, videoRef]);
-
-  const seekToStart = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    try { v.currentTime = effectiveStart; } catch { /* ok */ }
-    setCurrentTime(effectiveStart);
-  }, [effectiveStart, videoRef]);
-
-  const seekToEnd = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    const t = Math.max(effectiveStart, effectiveEnd - 0.04);
-    try { v.currentTime = t; } catch { /* ok */ }
-    setCurrentTime(t);
-  }, [effectiveStart, effectiveEnd, videoRef]);
-
-  // Scrubber : clic ou drag pour seeker dans [trimStart, trimEnd]
-  const handleScrubClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const bar = scrubBarRef.current;
-    const v = videoRef.current;
-    if (!bar || !v) return;
-    const rect = bar.getBoundingClientRect();
-    const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
-    const target = effectiveStart + ratio * (effectiveEnd - effectiveStart);
-    try { v.currentTime = target; } catch { /* ok */ }
-    setCurrentTime(target);
-  }, [effectiveStart, effectiveEnd, videoRef]);
-
-  const trimDuration = effectiveEnd - effectiveStart;
-  const progress = trimDuration > 0 ? clamp((currentTime - effectiveStart) / trimDuration, 0, 1) : 0;
-
-  return (
-    <div className="flex flex-col gap-2">
-
-      {/* Barre de progression — zone de clic élargie pour faciliter le scrub */}
-      <div className="py-1.5 cursor-pointer" onClick={handleScrubClick}>
-        <div ref={scrubBarRef} className="relative h-3 bg-muted rounded-full">
-          <div
-            className="absolute inset-y-0 left-0 bg-info-600 rounded-full"
-            style={{ width: `${progress * 100}%` }}
-          />
-        {/* Zone du cut en mode rush complet */}
-        {fullRush && cutStart != null && cutEnd != null && trimDuration > 0 && (
-          <div
-            className="absolute inset-y-0 bg-info-200/50 pointer-events-none rounded-sm"
-            style={{
-              left: `${((cutStart - effectiveStart) / trimDuration) * 100}%`,
-              width: `${((cutEnd - cutStart) / trimDuration) * 100}%`,
-            }}
-          />
-        )}
-        {fullRush && cutStart != null && trimDuration > 0 && (
-          <div
-            className="absolute inset-y-0 w-0.5 bg-green-500 pointer-events-none"
-            style={{ left: `${((cutStart - effectiveStart) / trimDuration) * 100}%` }}
-            title={`Début cut : ${fmt(cutStart)}`}
-          />
-        )}
-        {fullRush && cutEnd != null && trimDuration > 0 && (
-          <div
-            className="absolute inset-y-0 w-0.5 bg-red-400 pointer-events-none"
-            style={{ left: `${((cutEnd - effectiveStart) / trimDuration) * 100}%` }}
-            title={`Fin cut : ${fmt(cutEnd)}`}
-          />
-        )}
-        {/* Marqueur "dernier mot" — la zone après ce trait est le padding Whisper (~0.2s).
-             Ne pas couper avant ce marqueur pour éviter de tronquer la parole. */}
-        {lastWordEnd != null && lastWordEnd > effectiveStart && lastWordEnd < effectiveEnd && (
-          <div
-            className="absolute inset-y-0 w-0.5 bg-warning-600 rounded-full opacity-90 pointer-events-none"
-            style={{ left: `${((lastWordEnd - effectiveStart) / trimDuration) * 100}%` }}
-            title={`Dernier mot : +${fmt(lastWordEnd - effectiveStart)} (${fmt(lastWordEnd)})`}
-          />
-        )}
-          {/* Curseur */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white border-2 border-info-600 rounded-full shadow-sm"
-            style={{ left: `calc(${progress * 100}% - 7px)` }}
-          />
-        </div>
-      </div>
-
-      {/* Contrôles */}
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={togglePlay}
-          className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-900 text-white hover:bg-gray-700 flex-shrink-0 transition-colors"
-        >
-          {isPlaying ? <Pause size={13} /> : <Play size={13} />}
-        </button>
-        <span className="text-xs text-muted-foreground tabular-nums flex-1 pl-0.5">
-          {fmt(currentTime)}
-          <span className="text-muted-foreground/60 mx-1">/</span>
-          {fmt(trimDuration)}
-        </span>
-        <button
-          onClick={seekToStart}
-          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          title="Aller au début du cut"
-        >
-          <SkipBack size={14} />
-        </button>
-        <button
-          onClick={seekToEnd}
-          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          title="Aller à la fin du cut"
-        >
-          <SkipForward size={14} />
-        </button>
-      </div>
-      {/* Légende: fin de parole détectée par Whisper */}
-      {!fullRush && lastWordEnd != null && lastWordEnd > effectiveStart && lastWordEnd < effectiveEnd && (
-        <div className="flex items-center gap-1.5 text-xs text-warning-700">
-          <span className="w-2 h-2 rounded-full bg-warning-600 flex-shrink-0" />
-          Fin de parole détectée
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Carte principale ──────────────────────────────────────────────────────────
 export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
   const { asset } = job;
@@ -459,46 +204,25 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
 
   const [trimStart, setTrimStart] = useState(initStart);
   const [trimEnd, setTrimEnd] = useState(initEnd);
-  const [startInput, setStartInput] = useState(initStart.toFixed(2));
-  const [endInput, setEndInput] = useState(initEnd.toFixed(2));
   const [saving, setSaving] = useState(false);
   const [selectedTakeIndex, setSelectedTakeIndex] = useState(takes.length > 1 ? bestIdx : 0);
   const [showFullRush, setShowFullRush] = useState(false);
   const [pendingTags, setPendingTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-
   // Texte affiché : celui de la prise sélectionnée, ou full transcript si prise unique
   const transcriptText = takes.length > 1
     ? (takes[selectedTakeIndex]?.text ?? null)
     : (transcript?.map((s) => s.text).join(" ").trim() ?? null);
 
-  const applyStart = useCallback((v: number) => {
-    const clamped = round2(clamp(v, 0, trimEnd - 0.1));
-    setTrimStart(clamped);
-    setStartInput(clamped.toFixed(2));
-  }, [trimEnd]);
-
-  const applyEnd = useCallback((v: number) => {
-    const hi = duration > 0 ? duration : trimStart + 3600;
-    const clamped = round2(clamp(v, trimStart + 0.1, hi));
-    setTrimEnd(clamped);
-    setEndInput(clamped.toFixed(2));
-  }, [trimStart, duration]);
-
   const handleSelectTake = useCallback((idx: number) => {
     const take = takes[idx];
     if (!take) return;
     setSelectedTakeIndex(idx);
-    // applyStart/applyEnd sont définis plus haut dans le même composant
-    const newStart = round2(clamp(take.start, 0, take.end - 0.1));
-    const newEnd = round2(clamp(take.end, take.start + 0.1, duration > 0 ? duration : take.end + 1));
-    setTrimStart(newStart); setStartInput(newStart.toFixed(2));
-    setTrimEnd(newEnd); setEndInput(newEnd.toFixed(2));
-    const v = videoRef.current;
-    if (v) { try { v.currentTime = newStart; } catch { /* ok */ } }
-  }, [takes, duration, videoRef]);
+    // TrimPlayer re-seek automatiquement sur le nouveau trimStart (prop contrôlée).
+    setTrimStart(round2(take.start));
+    setTrimEnd(round2(take.end));
+  }, [takes]);
 
   const handleAccept = async () => {
     // Commettre le texte libre non validé avant d'envoyer
@@ -523,67 +247,72 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
     const isFailed = editStatus === "failed";
     const isPending = !isDone && !isFailed;
     return (
-      <div className="border border-border rounded-xl p-4 bg-white opacity-80">
+      <div className="border border-border rounded-xl p-4 bg-card opacity-80">
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-foreground font-medium truncate max-w-xs">{asset.filename}</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0 ${isDone ? "bg-green-100 text-green-700" : isFailed ? "bg-red-100 text-red-700" : "bg-warning-100 text-warning-700"}`}>
-            {isPending && <Loader2 size={9} className="animate-spin" />}
+          <Badge variant={isDone ? "success" : isFailed ? "danger" : "warning"} className="flex-shrink-0">
+            {isPending && <Loader2 size={9} className="animate-spin mr-0.5" />}
             {isDone ? "✓ Appliqué" : isFailed ? "✗ Erreur" : "En cours…"}
-          </span>
+          </Badge>
         </div>
         {isDone && (
           <p className="mt-1 text-xs text-muted-foreground">
-            {asset.filename} remplacé sur R2 · {job.confirmedStart !== null && job.confirmedEnd !== null ? `${fmt(job.confirmedEnd - job.confirmedStart)} conservés` : ""}
+            {asset.filename} remplacé sur R2 · {job.confirmedStart !== null && job.confirmedEnd !== null ? `${formatTimecode(job.confirmedEnd - job.confirmedStart)} conservés` : ""}
           </p>
         )}
         {isFailed && job.errorMsg && (
-          <p className="mt-1 text-xs text-red-500 truncate">{job.errorMsg}</p>
+          <p className="mt-1 text-xs text-danger-600 truncate">{job.errorMsg}</p>
         )}
       </div>
     );
   }
 
   return (
-    <div className="border border-border rounded-xl bg-white">
+    <div className="border border-border rounded-xl bg-card">
       {/* Filename + toggle rush */}
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <span className="text-sm font-medium text-foreground truncate max-w-sm">{asset.filename}</span>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {duration > 0 && <span className="text-xs text-muted-foreground">{fmt(duration)}</span>}
-          <button
-            onClick={() => setShowFullRush(v => !v)}
-            className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors ${
-              showFullRush
-                ? "bg-info-50 text-info-700 border-info-200"
-                : "text-muted-foreground border-border hover:text-muted-foreground hover:border-border"
-            }`}
-            title={showFullRush ? "Revenir au mode coupé" : "Voir le rush complet"}
+          {duration > 0 && <span className="text-xs text-muted-foreground">{formatTimecode(duration)}</span>}
+          <Chip
+            icon={showFullRush ? Shrink : Expand}
+            selected={showFullRush}
+            onClick={() => setShowFullRush((v) => !v)}
+            size="sm"
           >
-            {showFullRush ? <Shrink size={11} /> : <Expand size={11} />}
             {showFullRush ? "Rush coupé" : "Rush complet"}
-          </button>
+          </Chip>
         </div>
       </div>
 
       <div className="p-4">
         <div className="flex gap-4 items-start">
-          {/* Colonne gauche : vidéo portrait + scrubber + contrôles */}
-          <div className="w-44 shrink-0 flex flex-col gap-2">
-            {/* aspect-[9/16] réserve la hauteur immédiatement sans attendre les métadonnées
-                → overflow-hidden de la card ne clippe plus TrimPlayer par accident */}
-            <div className="relative rounded-lg overflow-hidden bg-gray-900 aspect-[9/16]">
-              <video ref={videoRef} src={asset.url} className="absolute inset-0 w-full h-full object-contain" preload="metadata" />
-            </div>
+          {/* Colonne gauche : vidéo portrait + scrubber + contrôles.
+              w-72 (au lieu de l'ancien w-44) : la primitive TrimPlayer partagée
+              a une rangée de contrôles (timecodes + nudge) plus dense que
+              l'ancien scrubber maison — trop de contenu pour 176px. */}
+          <div className="w-72 shrink-0 flex flex-col gap-2">
             <TrimPlayer
-              trimStart={trimStart}
-              trimEnd={trimEnd}
-              videoRef={videoRef}
-              lastWordEnd={lastWordEnd}
-              fullRush={showFullRush}
-              fullDuration={duration > 0 ? duration : undefined}
-              cutStart={trimStart}
-              cutEnd={trimEnd}
+              src={asset.url}
+              aspect="9:16"
+              fps={25}
+              start={trimStart}
+              end={trimEnd}
+              onChange={(s, e) => { setTrimStart(s); setTrimEnd(e); }}
+              constrainPlayback={!showFullRush}
+              markers={lastWordEnd != null ? [{
+                time: lastWordEnd,
+                tone: "warning",
+                label: `Dernier mot : ${formatTimecode(lastWordEnd)}`,
+              }] : undefined}
             />
+            {/* Légende : fin de parole détectée par Whisper */}
+            {lastWordEnd != null && lastWordEnd > trimStart && lastWordEnd < trimEnd && (
+              <div className="flex items-center gap-1.5 text-xs text-warning-700">
+                <span className="w-2 h-2 rounded-full bg-warning-600 flex-shrink-0" />
+                Fin de parole détectée
+              </div>
+            )}
           </div>
 
           {/* Colonne droite : prises, transcript, réglages */}
@@ -597,24 +326,18 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                   const isSelected = idx === selectedTakeIndex;
                   const isBest = idx === bestIdx;
                   const scoreColor = take.score >= 70
-                    ? (isSelected ? "text-green-200" : "text-green-600")
+                    ? "text-success-600"
                     : take.score >= 45
-                    ? (isSelected ? "text-warning-200" : "text-warning-700")
-                    : (isSelected ? "text-red-200" : "text-red-500");
+                    ? "text-warning-700"
+                    : "text-danger-600";
                   return (
-                    <button
-                      key={idx}
-                      onClick={() => handleSelectTake(idx)}
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-colors ${
-                        isSelected
-                          ? "bg-gray-900 text-white border-gray-900"
-                          : "bg-white text-muted-foreground border-border hover:border-info-200 hover:bg-info-50"
-                      }`}
-                    >
-                      <span>Prise {take.index}</span>
-                      {isBest && <span className={isSelected ? "text-warning-200" : "text-warning-600"}>★</span>}
-                      <span className={scoreColor}>{take.score}%</span>
-                    </button>
+                    <Chip key={idx} selected={isSelected} onClick={() => handleSelectTake(idx)} size="sm">
+                      <span className="inline-flex items-center gap-1">
+                        <span>Prise {take.index}</span>
+                        {isBest && <span className="text-warning-600">★</span>}
+                        <span className={scoreColor}>{take.score}%</span>
+                      </span>
+                    </Chip>
                   );
                 })}
               </div>
@@ -630,70 +353,14 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
             <p className="text-xs text-muted-foreground italic">Pas de transcription disponible</p>
           )}
           {job.errorMsg && (
-            <div className="flex items-center gap-1.5 text-xs text-red-600">
+            <div className="flex items-center gap-1.5 text-xs text-danger-600">
               <AlertTriangle size={12} />
               <span className="truncate">{job.errorMsg}</span>
             </div>
           )}
 
-          {/* Timing inputs */}
-          <div className="flex items-end gap-3 pt-1">
-            {/* Début */}
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground font-medium">Début (s)</span>
-              <div className="flex items-center border border-border rounded-lg overflow-hidden bg-white">
-                <button
-                  className="px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border-r border-border transition-colors text-base font-semibold leading-none"
-                  onClick={() => applyStart(trimStart - 0.04)}
-                  title="− 1 image (0.04 s)"
-                >−</button>
-                <input
-                  type="number" step="0.01" value={startInput}
-                  onChange={(e) => setStartInput(e.target.value)}
-                  onBlur={() => { const v = parseFloat(startInput); if (!isNaN(v)) applyStart(v); else setStartInput(trimStart.toFixed(2)); }}
-                  className="w-16 text-center text-sm py-1.5 focus:outline-none focus:bg-info-50 transition-colors"
-                />
-                <button
-                  className="px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border-l border-border transition-colors text-base font-semibold leading-none"
-                  onClick={() => applyStart(trimStart + 0.04)}
-                  title="+ 1 image (0.04 s)"
-                >+</button>
-              </div>
-            </div>
-
-            <span className="text-muted-foreground/60 mt-4 text-sm">→</span>
-
-            {/* Fin */}
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground font-medium">Fin (s)</span>
-              <div className="flex items-center border border-border rounded-lg overflow-hidden bg-white">
-                <button
-                  className="px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border-r border-border transition-colors text-base font-semibold leading-none"
-                  onClick={() => applyEnd(trimEnd - 0.04)}
-                  title="− 1 image (0.04 s)"
-                >−</button>
-                <input
-                  type="number" step="0.01" value={endInput}
-                  onChange={(e) => setEndInput(e.target.value)}
-                  onBlur={() => { const v = parseFloat(endInput); if (!isNaN(v)) applyEnd(v); else setEndInput(trimEnd.toFixed(2)); }}
-                  className="w-16 text-center text-sm py-1.5 focus:outline-none focus:bg-info-50 transition-colors"
-                />
-                <button
-                  className="px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border-l border-border transition-colors text-base font-semibold leading-none"
-                  onClick={() => applyEnd(trimEnd + 0.04)}
-                  title="+ 1 image (0.04 s)"
-                >+</button>
-              </div>
-            </div>
-
-            {/* Durée */}
-            <div className="flex flex-col gap-1 ml-auto">
-              <span className="text-xs text-muted-foreground font-medium">Durée</span>
-              <div className="flex items-center h-[38px] px-3 bg-info-50 rounded-lg border border-info-100">
-                <span className="text-sm font-semibold text-info-700 tabular-nums">{fmt(Math.max(0, trimEnd - trimStart))}</span>
-              </div>
-            </div>
-          </div>
+          {/* Timing (début/fin/durée, nudge frame par frame) : géré par
+              TrimPlayer dans la colonne gauche — plus de doublon d'inputs ici. */}
 
           {/* Tags */}
           <div className="flex flex-col gap-1.5 pt-0.5">
@@ -703,43 +370,33 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                 {(knownTags ?? []).map((t) => {
                   const active = pendingTags.includes(t);
                   return (
-                    <button
+                    <Chip
                       key={t}
-                      type="button"
+                      size="sm"
+                      selected={active}
                       onClick={() =>
                         setPendingTags((prev) =>
                           active ? prev.filter((x) => x !== t) : [...prev, t]
                         )
                       }
-                      className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
-                        active
-                          ? "bg-gray-900 text-white border-gray-900"
-                          : "bg-white text-muted-foreground border-border hover:border-info-200 hover:bg-info-50"
-                      }`}
                     >
                       {t}
-                    </button>
+                    </Chip>
                   );
                 })}
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-white px-2 py-1 min-h-[32px]">
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 min-h-[32px]">
               {pendingTags
                 .filter((t) => !(knownTags ?? []).includes(t))
                 .map((t) => (
-                  <span
+                  <Chip
                     key={t}
-                    className="flex items-center gap-0.5 px-2 py-0.5 bg-info-100 text-info-700 rounded-full text-xs"
+                    size="sm"
+                    onRemove={() => setPendingTags((prev) => prev.filter((x) => x !== t))}
                   >
                     {t}
-                    <button
-                      type="button"
-                      onClick={() => setPendingTags((prev) => prev.filter((x) => x !== t))}
-                      className="ml-0.5 hover:text-info-700 font-medium"
-                    >
-                      ×
-                    </button>
-                  </span>
+                  </Chip>
                 ))}
               <input
                 type="text"
@@ -755,7 +412,7 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                     setTagInput("");
                   }
                 }}
-                className="flex-1 min-w-[80px] text-xs focus:outline-none bg-transparent placeholder-gray-300"
+                className="flex-1 min-w-[80px] text-xs focus:outline-none bg-transparent placeholder-muted-foreground/50"
               />
             </div>
           </div>
@@ -765,20 +422,12 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
 
       {/* Actions */}
       <div className="px-4 py-3 border-t border-border flex items-center justify-between">
-        <button
-          onClick={() => void handleSkip()} disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground border border-border rounded-lg hover:bg-muted disabled:opacity-50"
-        >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
+        <Button variant="outline" size="sm" icon={X} loading={saving} onClick={() => void handleSkip()}>
           Passer
-        </button>
-        <button
-          onClick={() => void handleAccept()} disabled={saving}
-          className="flex items-center gap-1.5 px-4 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50"
-        >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+        </Button>
+        <Button size="sm" icon={Check} loading={saving} onClick={() => void handleAccept()}>
           Valider
-        </button>
+        </Button>
       </div>
     </div>
   );

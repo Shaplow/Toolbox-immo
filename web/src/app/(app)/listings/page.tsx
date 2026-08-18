@@ -22,13 +22,9 @@ const LISTING_INCLUDE = {
       errorMsg: true,
       createdAt: true,
       coverFramePack: { select: { id: true, status: true } },
-      // Phase 1.8 : la cover auto est désormais portée par le pattern du slot,
-      // pas par le template. On joint pattern.coverMode pour activer le bouton
-      // "Générer Cover" sur les renders dont le slot a un pattern coverMode=auto.
       publicationSlot: {
         select: {
           id: true,
-          pattern: { select: { coverMode: true } },
         },
       },
     },
@@ -217,8 +213,6 @@ export default async function ListingsPage({ searchParams }: PageProps) {
       errorMsg: r.errorMsg ?? null,
       createdAt: r.createdAt.toISOString(),
       coverPack: r.coverFramePack ? { id: r.coverFramePack.id, status: r.coverFramePack.status } : null,
-      // Cover auto activée si le slot lié a un pattern coverMode=autoPack (Phase 2.5).
-      coverAutoEnabled: r.publicationSlot?.pattern?.coverMode === "autoPack",
       // Présent → render rattaché à une publication : pas de suppression depuis
       // /listings, passer par la fiche /publications/[id].
       linkedSlotId: r.publicationSlot?.id ?? null,

@@ -4,15 +4,19 @@
  * DataEntriesBulkActionBar — barre d'action sticky bottom affichée en mode
  * sélection multiple sur les DataEntry.
  *
- * Mirror visuel de MediaAssetsBulkActionBar (mediaAssets/) : bulk Dossier +
- * accès comptes IG. La logique (sélection + handlers) vit dans
- * useBulkEditDataEntries.
+ * Bâtie sur la primitive partagée BulkActionBar (shared/) — même skeleton
+ * que MediaAssetsBulkActionBar (mediaAssets/), qui reste hors périmètre de
+ * cette extraction. Regroupe désormais aussi la suppression bulk (avant :
+ * barre inline concurrente dans DataEntriesPanel, retirée — deux barres
+ * affichées en même temps pour la même sélection). La logique
+ * (sélection + handlers) vit dans useBulkEditDataEntries.
  */
 
 import { useState } from "react";
-import { Square, CheckSquare, X, Layers } from "lucide-react";
+import { Layers, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
+import { BulkActionBar } from "@/components/admin/libraries/shared/BulkActionBar";
 import type { InstagramAccount } from "@/components/admin/libraries/DataEntriesPanel";
 import type { UseBulkEditDataEntriesResult } from "./useBulkEditDataEntries";
 
@@ -23,6 +27,8 @@ interface Props {
   accounts: InstagramAccount[];
   /** Valeurs de Dossier existantes — suggestions du Combobox bulk. */
   setTagOptions?: string[];
+  /** Supprime les fiches sélectionnées — confirmation + reload gérés par le caller (DataEntriesPanel). */
+  onBulkDelete: () => void | Promise<void>;
 }
 
 export function DataEntriesBulkActionBar({
@@ -30,6 +36,7 @@ export function DataEntriesBulkActionBar({
   allVisibleIds,
   accounts,
   setTagOptions = [],
+  onBulkDelete,
 }: Props) {
   const {
     selectedIds,
@@ -44,6 +51,7 @@ export function DataEntriesBulkActionBar({
   void _toggleSelect; // exposé par le hook, utilisé dans la spreadsheet
 
   const [setTagInput, setSetTagInput] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const allSelected = allVisibleIds.length > 0 && selectedIds.size === allVisibleIds.length;
 
@@ -55,98 +63,94 @@ export function DataEntriesBulkActionBar({
     }
   }
 
+  async function handleDeleteClick() {
+    setDeleting(true);
+    try {
+      await onBulkDelete();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 bg-card border border-border border-t border-border/80 shadow-[0_-4px_24px_-4px_rgba(15,23,42,0.12)] px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-      {/* Gauche : compteur + tout sélectionner */}
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          type="button"
-          onClick={handleToggleAll}
-          className="flex items-center gap-1.5 text-xs text-info-700 hover:underline"
+    <BulkActionBar
+      selectedCount={selectedIds.size}
+      allSelected={allSelected}
+      onToggleSelectAll={handleToggleAll}
+      onCancel={clearSelection}
+    >
+      {/* Bulk Dossier */}
+      <div className="flex items-center gap-1">
+        <div className="w-[180px]">
+          <Combobox
+            value={setTagInput}
+            onChange={setSetTagInput}
+            options={setTagOptions.map((s) => ({ value: s, label: s, icon: Layers }))}
+            allowCustom
+            placeholder="Dossier…"
+            emptyMessage="Tapez un nom de dossier"
+            disabled={bulkApplying}
+          />
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={bulkApplying}
+          onClick={() => {
+            void handleBulkApplyFields({ setTag: setTagInput });
+            setSetTagInput("");
+          }}
         >
-          {allSelected ? <CheckSquare size={12} /> : <Square size={12} />}
-          {allSelected ? "Tout désélectionner" : "Tout sélectionner"}
-        </button>
-        {selectedIds.size > 0 && (
-          <span className="text-xs font-semibold text-info-700 bg-info-50 border border-info-200 px-2 py-0.5 rounded-full">
-            {selectedIds.size} sélectionné{selectedIds.size > 1 ? "es" : "e"}
-          </span>
-        )}
+          Dossier
+        </Button>
       </div>
 
-      {/* Centre : actions (uniquement quand des items sont sélectionnés) */}
-      {selectedIds.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 flex-1">
-          {/* Bulk Dossier */}
-          <div className="flex items-center gap-1">
-            <div className="w-[180px]">
-              <Combobox
-                value={setTagInput}
-                onChange={setSetTagInput}
-                options={setTagOptions.map((s) => ({ value: s, label: s, icon: Layers }))}
-                allowCustom
-                placeholder="Dossier…"
-                emptyMessage="Tapez un nom de dossier"
-                disabled={bulkApplying}
-              />
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={bulkApplying}
-              onClick={() => {
-                void handleBulkApplyFields({ setTag: setTagInput });
-                setSetTagInput("");
-              }}
-            >
-              Dossier
-            </Button>
-          </div>
+      <span className="h-5 w-px bg-border" aria-hidden />
 
-          <span className="h-5 w-px bg-border" aria-hidden />
-
-          {/* Sélecteur compte IG pour add */}
-          {accounts.length > 0 && (
-            <div className="w-[220px]">
-              <Combobox
-                value=""
-                onChange={(accountId) => {
-                  if (!accountId) return;
-                  void handleBulkApplyAccess("add", accountId);
-                }}
-                options={accounts.map((a) => ({
-                  value: a.id,
-                  label: `@${a.handle} — ${a.name}`,
-                  keywords: [a.handle, a.name],
-                }))}
-                placeholder="Ajouter un compte…"
-                emptyMessage="Aucun compte"
-                disabled={bulkApplying}
-              />
-            </div>
-          )}
-
-          {/* Retirer tous les accès → global */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void handleBulkApplyAccess("remove_all")}
+      {/* Sélecteur compte IG pour add */}
+      {accounts.length > 0 && (
+        <div className="w-[220px]">
+          <Combobox
+            value=""
+            onChange={(accountId) => {
+              if (!accountId) return;
+              void handleBulkApplyAccess("add", accountId);
+            }}
+            options={accounts.map((a) => ({
+              value: a.id,
+              label: `@${a.handle} — ${a.name}`,
+              keywords: [a.handle, a.name],
+            }))}
+            placeholder="Ajouter un compte…"
+            emptyMessage="Aucun compte"
             disabled={bulkApplying}
-            loading={bulkApplying}
-          >
-            Retirer tous accès
-          </Button>
+          />
         </div>
       )}
 
-      {/* Droite : annuler */}
-      <button
-        type="button"
-        onClick={clearSelection}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-muted-foreground sm:ml-auto"
+      {/* Retirer tous les accès → global */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => void handleBulkApplyAccess("remove_all")}
+        disabled={bulkApplying}
+        loading={bulkApplying}
       >
-        <X size={12} /> Annuler sélection
-      </button>
-    </div>
+        Retirer tous accès
+      </Button>
+
+      <span className="h-5 w-px bg-border" aria-hidden />
+
+      <Button
+        variant="danger"
+        size="sm"
+        icon={Trash2}
+        onClick={() => void handleDeleteClick()}
+        disabled={deleting}
+        loading={deleting}
+      >
+        Supprimer
+      </Button>
+    </BulkActionBar>
   );
 }

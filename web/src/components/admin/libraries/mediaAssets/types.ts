@@ -17,7 +17,6 @@ export interface MediaAsset {
   duration: number | null;
   tags: string[];
   setTag: string | null;
-  category: string | null;
   usageCount: number;
   lastUsedAt: string | null;
   createdAt: string;
@@ -44,6 +43,9 @@ export interface MediaLibrary {
   type: "video" | "audio";
   /** JSON MetadataField[] */
   metadataSchema?: string;
+  description?: string | null;
+  /** JSON string[] — tags de type template. */
+  tags?: string;
   /** "auto" | "override" | "none" | null. "none" = sélection manuelle via metadata. */
   rotationMode?: string | null;
   /** "per_account" (defaut) | "shared". Détermine si le cursor est par compte ou global. */
@@ -73,4 +75,12 @@ export interface SetGroup {
   accessibleCount: number;
   lastUsed: string | null;
   isAccessible: boolean;
+}
+
+/** Cover d'une MediaLibraryRow (MediaLibrariesPanel) — 1er asset vidéo le
+ *  plus récent, renvoyé par GET /api/admin/libraries/media. */
+export interface PreviewAsset {
+  id: string;
+  url: string;
+  mimeType: string;
 }

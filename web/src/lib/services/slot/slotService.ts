@@ -35,12 +35,10 @@ import { BULK_PUBLISHABLE_STATUSES } from "@/lib/publications/constants";
 import {
   resolveSlotEffectivePattern,
   slotEffectivePatternSelect,
+  type SlotEffectivePattern,
 } from "@/lib/services/slot/effectivePattern";
-import { resolveEffectivePattern, type EffectivePattern } from "@/lib/services/pattern/resolveEffective";
-import {
-  resolvePreFilledDescription,
-  resolveFixedDescription,
-} from "@/lib/publications/preFilledDescription";
+import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
+import { resolvePrefilledCaption } from "@/lib/publications/preFilledDescription";
 import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
 import { deleteR2Prefix, r2Configured } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
@@ -180,6 +178,7 @@ export async function createSlot(
     assigneeVideasteId: string | null;
     defaultAssigneeMonteurId: string | null;
     defaultAssigneeCmId: string | null;
+    fields: string | null;
   } | null = null;
   if (input.eventId) {
     shootEvent = await prisma.entity.findUnique({
@@ -192,6 +191,9 @@ export async function createSlot(
         assigneeVideasteId: true,
         defaultAssigneeMonteurId: true,
         defaultAssigneeCmId: true,
+        // Légende « Pré-remplie (modèle) » : fiche tournage < fiche data
+        // (même précédence que le pré-remplissage de génération).
+        fields: true,
       },
     });
     if (!shootEvent) throw new NotFoundError("Tournage");
@@ -251,21 +253,9 @@ export async function createSlot(
   // Titre par défaut = label de la recette quand l'admin n'en saisit pas.
   let patternLabel: string | null = null;
 
-  let resolvedPattern: {
-    accountId: string;
-    source: string;
-    captionPresetId: string | null;
-    descriptionPromptId: string | null;
-    needsCaptionsMode: string;
-    needsDescription: string;
-    descriptionSourceFieldKey: string | null;
-    descriptionFixedText: string | null;
-    coverMode: string;
-    coverConfig: unknown;
-    defaultAssigneeMonteurId: string | null;
-    defaultAssigneeCmId: string | null;
-    defaultAssigneeVideasteId: string | null;
-  } | null = null;
+  // Type canonique (superset produit par resolveSlotEffectivePattern) plutôt
+  // qu'une redéclaration champ-à-champ — cf. les deux branches ci-dessous.
+  let resolvedPattern: SlotEffectivePattern | null = null;
 
   // Missions — si une recette GLOBALE (patternTemplateId) est fournie AVEC un
   // compte, et qu'un binding existe pour (compte, recette), on l'utilise : la
@@ -288,7 +278,7 @@ export async function createSlot(
   }
 
   // Résolution du pattern via PatternBinding (canonique).
-  let resolvedBindingId: string | null = effectiveBindingId;
+  const resolvedBindingId: string | null = effectiveBindingId;
   if (effectiveBindingId) {
     const binding = await prisma.patternBinding.findUnique({
       where: { id: effectiveBindingId },
@@ -303,10 +293,19 @@ export async function createSlot(
       );
     }
     const t = binding.patternTemplate;
+    // Résolution partagée binding + overrides via le helper canonique (même
+    // chemin que patchSlot). NB : le label prend désormais le customLabel du
+    // binding s'il existe (cohérent avec toutes les surfaces d'affichage —
+    // avant, le label brut du template fuyait ici).
+    resolvedPattern = resolveSlotEffectivePattern({
+      patternBinding: binding,
+      patternTemplate: null,
+    });
+    patternLabel = resolvedPattern?.label ?? t.label;
     // Guard : si la recette exige une fiche (d'un type donné), bloquer la
     // création sans fiche conforme (couvre le calendrier / AddSlotModal).
     {
-      const requiredTypeId = t.requiresEntityTypeId ?? (t.requiresProperty ? "etype_bien" : null);
+      const requiredTypeId = requiredEntityTypeId(resolvedPattern);
       if (requiredTypeId) {
         if (!input.propertyId) throw new ValidationError("Cette recette nécessite une fiche");
         if (resolvedEntityTypeId !== requiredTypeId) {
@@ -314,27 +313,7 @@ export async function createSlot(
         }
       }
     }
-    // Résolution partagée binding + overrides (V2.2). NB : le label prend
-    // désormais le customLabel du binding s'il existe (cohérent avec toutes
-    // les surfaces d'affichage — avant, le label brut du template fuyait ici).
-    const e = resolveEffectivePattern(binding);
-    patternLabel = e.label;
-    resolvedPattern = {
-      accountId: e.accountId,
-      source: e.source,
-      captionPresetId: e.captionPresetId,
-      descriptionPromptId: e.descriptionPromptId,
-      needsCaptionsMode: e.needsCaptionsMode,
-      needsDescription: e.needsDescription,
-      descriptionSourceFieldKey: e.descriptionSourceFieldKey,
-      descriptionFixedText: e.descriptionFixedText,
-      coverMode: e.coverMode,
-      coverConfig: e.coverConfig,
-      defaultAssigneeMonteurId: e.defaultAssigneeMonteurId,
-      defaultAssigneeCmId: e.defaultAssigneeCmId,
-      defaultAssigneeVideasteId: e.defaultAssigneeVideasteId,
-    };
-    initialStatus = mapSourceToInitialStatus(e.source);
+    initialStatus = mapSourceToInitialStatus(t.source);
     if (!resolvedAssigneeMonteurId && binding.defaultAssigneeMonteurId) {
       resolvedAssigneeMonteurId = binding.defaultAssigneeMonteurId;
     }
@@ -357,26 +336,17 @@ export async function createSlot(
       throw new ValidationError("Recette archivée : impossible de créer une mission dessus");
     }
     patternLabel = template.label;
-    resolvedPattern = {
-      accountId: input.accountId ?? "",
-      source: template.source,
-      captionPresetId: template.captionPresetId,
-      descriptionPromptId: template.descriptionPromptId,
-      needsCaptionsMode: template.needsCaptionsMode,
-      needsDescription: template.needsDescription,
-      descriptionSourceFieldKey: template.descriptionSourceFieldKey,
-      descriptionFixedText: template.descriptionFixedText,
-      coverMode: template.coverMode,
-      coverConfig: template.coverConfig,
-      defaultAssigneeMonteurId: null,
-      defaultAssigneeCmId: null,
-      defaultAssigneeVideasteId: null,
-    };
+    // Même helper canonique que la branche binding ci-dessus et patchSlot —
+    // branche 2 de resolveSlotEffectivePattern (patternTemplate direct,
+    // missions account-less).
+    resolvedPattern = resolveSlotEffectivePattern({
+      patternBinding: null,
+      patternTemplate: template,
+    });
     initialStatus = mapSourceToInitialStatus(template.source);
     // Guard : si la recette exige une fiche (d'un type donné), bloquer.
     {
-      const requiredTypeId =
-        template.requiresEntityTypeId ?? (template.requiresProperty ? "etype_bien" : null);
+      const requiredTypeId = requiredEntityTypeId(resolvedPattern);
       if (requiredTypeId) {
         if (!input.propertyId) throw new ValidationError("Cette recette nécessite une fiche");
         if (resolvedEntityTypeId !== requiredTypeId) {
@@ -450,26 +420,26 @@ export async function createSlot(
     );
   }
 
-  // Pré-remplissage de la légende. Deux modes :
-  //  - "preFilled" : si un bien est rattaché et que la recette désigne un champ
-  //    source, on démarre la légende avec la valeur du champ du bien.
-  //  - "fixed" : texte fixe stocké sur la recette, indépendant du bien (aucune
-  //    garde propertyId) — copie one-shot à la création.
-  // L'input.description explicite (rare à la création) reste prioritaire.
+  // Pré-remplissage de la légende « Pré-remplie (modèle) » — modèle
+  // `descriptionFixedText` avec interpolation `{{clé}}` résolu contre les
+  // champs mergés (fiche tournage < fiche data), ou alias legacy
+  // `descriptionSourceFieldKey` (cf. `resolvePrefilledCaption`). Copie
+  // one-shot à la création. L'input.description explicite (rare à la
+  // création) reste prioritaire.
   let prefilledDescription: string | null = null;
-  if (input.propertyId && !input.description && resolvedNeedsDescription === "preFilled") {
-    prefilledDescription = resolvePreFilledDescription(
+  if (!input.description) {
+    const mergedFields = {
+      ...safeJSON<Record<string, unknown>>(shootEvent?.fields ?? null, {}),
+      ...safeJSON<Record<string, unknown>>(propertyFields, {}),
+    };
+    prefilledDescription = resolvePrefilledCaption(
       {
-        needsDescription: "preFilled",
+        needsDescription: resolvedNeedsDescription,
+        descriptionFixedText: resolvedPattern?.descriptionFixedText ?? null,
         descriptionSourceFieldKey: resolvedPattern?.descriptionSourceFieldKey ?? null,
       },
-      propertyFields,
+      mergedFields,
     );
-  } else if (!input.description && resolvedNeedsDescription === "fixed") {
-    prefilledDescription = resolveFixedDescription({
-      needsDescription: "fixed",
-      descriptionFixedText: resolvedPattern?.descriptionFixedText ?? null,
-    });
   }
 
   // Guard cover-mode retiré (fix regression post-QW1) : le runtime
@@ -1064,9 +1034,14 @@ export async function patchSlot(
       captionPresetIdOverride: true,
       descriptionPromptIdOverride: true,
       coverModeOverride: true,
+      // Légende « Pré-remplie (modèle) » : fiche tournage (fixe depuis la
+      // création, jamais patchée) < fiche data — même précédence que
+      // createSlot et le pré-remplissage de génération.
+      shootEntity: { select: { fields: true } },
       // La résolution effective merge template + binding overrides côté code
-      // (resolveEffectivePattern — include full requis).
-      patternBinding: { include: { patternTemplate: true } },
+      // (resolveSlotEffectivePattern, 3 branches : binding → patternTemplate
+      // direct [missions account-less] → null — cf. plus bas).
+      ...slotEffectivePatternSelect,
     },
   });
 
@@ -1246,10 +1221,15 @@ export async function patchSlot(
   //      peut être incohérente sans alerte.
   // NB : clé API `patternBindingId` (ex-`patternId`, renommée V1 17/08) —
   // la valeur est un id de PatternBinding (canonique).
-  let effectivePattern: EffectivePattern | null = null;
-  if (slot.patternBinding) {
-    effectivePattern = resolveEffectivePattern(slot.patternBinding);
-  }
+  //
+  // Résolution via le helper partagé à 3 branches (binding → patternTemplate
+  // direct → null). La branche patternTemplate direct est indispensable pour
+  // les missions account-less (patternBindingId null + patternTemplateId
+  // non-null) : une résolution inline à 2 branches ne la couvrait pas et
+  // produisait un effectivePattern=null incorrect pour ces slots — faisant
+  // throw à tort les gardes cross-field ci-dessous quand un override
+  // "auto"/"autoGenerate" laisse le preset/prompt hérité du template.
+  let effectivePattern: SlotEffectivePattern | null = resolveSlotEffectivePattern(slot);
   if (typeof patternBindingId === "string" && patternBindingId !== "") {
     const binding = await prisma.patternBinding.findUnique({
       where: { id: patternBindingId },
@@ -1268,7 +1248,10 @@ export async function patchSlot(
         "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
       );
     }
-    effectivePattern = resolveEffectivePattern(binding);
+    effectivePattern = resolveSlotEffectivePattern({
+      patternBinding: binding,
+      patternTemplate: null,
+    });
   }
   // patternBindingId="" / null : reset l'effective pattern à null pour la validation.
   if (patternBindingId === null || patternBindingId === "") {
@@ -1323,39 +1306,35 @@ export async function patchSlot(
   // déjà `description` explicitement (édition manuelle simultanée) ou détache le
   // bien (propertyId null).
   //
-  // IMPORTANT : on ne se base PAS sur `resolvedNeedsDescription` ci-dessus car
-  // son `effectivePattern` inline n'a que 2 branches (pattern legacy + binding)
-  // et ignore la branche `patternTemplate` (missions account-less créées depuis
-  // une recette globale). On résout donc le pattern effectif via le helper
-  // partagé `resolveSlotEffectivePattern` (3 branches) — sans lui, le prefill ne
-  // se déclenchait jamais pour une mission, qui est pourtant le cas d'usage
-  // central « choisir un bien lié sur une mission ».
+  // Se base sur `effectivePattern` (résolution unique ci-dessus, 3 branches
+  // binding → patternTemplate direct → null) — couvre aussi le prefill pour
+  // une mission account-less, cas d'usage central « choisir un bien lié sur
+  // une mission ».
   let prefilledDescription: string | undefined;
   if (typeof propertyId === "string" && propertyId && description === undefined) {
-    const [patternSlot, property] = await Promise.all([
-      prisma.publicationSlot.findUnique({
-        where: { id },
-        select: slotEffectivePatternSelect,
-      }),
-      // Phase 5 : la fiche (Entity) porte les valeurs — clé API `propertyId`.
-      prisma.entity.findUnique({
-        where: { id: propertyId },
-        select: { fields: true },
-      }),
-    ]);
-    const eff = patternSlot ? resolveSlotEffectivePattern(patternSlot) : null;
+    // Phase 5 : la fiche (Entity) porte les valeurs — clé API `propertyId`.
+    const property = await prisma.entity.findUnique({
+      where: { id: propertyId },
+      select: { fields: true },
+    });
     // Override per-slot (body ou existant) prime sur le pattern effectif.
-    const effNeedsDescription = postUpdateNeedsDescription ?? eff?.needsDescription ?? "none";
-    if (effNeedsDescription === "preFilled") {
-      const value = resolvePreFilledDescription(
-        {
-          needsDescription: "preFilled",
-          descriptionSourceFieldKey: eff?.descriptionSourceFieldKey ?? null,
-        },
-        property?.fields ?? null,
-      );
-      if (value != null) prefilledDescription = value;
-    }
+    const effNeedsDescription =
+      postUpdateNeedsDescription ?? effectivePattern?.needsDescription ?? "none";
+    // Fiche tournage (fixe, chargée au select initial) < fiche data
+    // (rattachée par ce PATCH) — même précédence que createSlot.
+    const mergedFields = {
+      ...safeJSON<Record<string, unknown>>(slot.shootEntity?.fields ?? null, {}),
+      ...safeJSON<Record<string, unknown>>(property?.fields ?? null, {}),
+    };
+    const value = resolvePrefilledCaption(
+      {
+        needsDescription: effNeedsDescription,
+        descriptionFixedText: effectivePattern?.descriptionFixedText ?? null,
+        descriptionSourceFieldKey: effectivePattern?.descriptionSourceFieldKey ?? null,
+      },
+      mergedFields,
+    );
+    if (value != null) prefilledDescription = value;
   }
 
   // Guard cover-mode retiré (idem createSlot ci-dessus) : le runtime

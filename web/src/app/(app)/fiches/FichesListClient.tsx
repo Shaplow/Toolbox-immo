@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Table, type TableColumn } from "@/components/ui/Table";
 import { Tabs } from "@/components/ui/Tabs";
 import { toast } from "@/components/ui/Toast";
+import { dateFr } from "@/lib/date/formatFr";
 import { CreateEntityModal } from "@/components/entities/CreateEntityModal";
 import { EntityCalendar } from "@/components/entities/EntityCalendar";
 import {
@@ -132,11 +133,7 @@ export function FichesListClient({
       sortable: true,
       cell: (row) => (
         <span className="text-muted-foreground text-xs">
-          {new Date(row.updatedAt).toLocaleDateString("fr-FR", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          })}
+          {dateFr(row.updatedAt)}
         </span>
       ),
     });

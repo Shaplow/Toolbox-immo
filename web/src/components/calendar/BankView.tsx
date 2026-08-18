@@ -26,6 +26,7 @@ import { Chip } from "@/components/ui/Chip";
 import { STATUS_LABELS, type PublicationSlot, type SlotStatus } from "@/types/calendar";
 import { getPublicationPhase, PHASE_COLORS } from "@/lib/slots/phase";
 import { isReadyToSchedule } from "@/lib/slots/bankReady";
+import { shortDateFr } from "@/lib/date/formatFr";
 import { BulkScheduleModal } from "./BulkScheduleModal";
 
 interface BankViewProps {
@@ -373,7 +374,7 @@ function BankCard({
             {monteurName ? `Monteur · ${monteurName}` : "Sans monteur"}
           </span>
           <span className="font-mono tabular-nums shrink-0">
-            {updatedAt.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+            {shortDateFr(updatedAt)}
           </span>
         </div>
       </div>

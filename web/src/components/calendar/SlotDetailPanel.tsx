@@ -60,6 +60,7 @@ import { OverrideControl } from "@/components/ui/molecules/OverrideControl";
 import { toast } from "@/components/ui/Toast";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { resolveNextActionInfo } from "@/lib/publications/nextActionLabel";
+import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
 
 export type SlotDetailPanelMode = "admin" | "monteur" | "cm";
 
@@ -528,13 +529,15 @@ export function SlotDetailPanel({
         { id: "config", label: "Configuration", icon: SlidersHorizontal },
       ];
 
-  const dateLabel = scheduledDate
-    ? scheduledDate.toLocaleDateString("fr-FR", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-      })
-    : "En banque · non programmé";
+  // Format bespoke (weekday long + mois long, sans année) sans équivalent
+  // dans lib/date/formatFr.ts — laissé en l'état, pas de duplication ailleurs.
+  // eslint-disable-next-line no-restricted-syntax
+  const scheduledDateLabel = scheduledDate?.toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  const dateLabel = scheduledDate ? scheduledDateLabel : "En banque · non programmé";
   const timeLabel = scheduledDate
     ? scheduledDate.toLocaleTimeString("fr-FR", {
         hour: "2-digit",
@@ -785,10 +788,7 @@ export function SlotDetailPanel({
                 <SlotEntitySelect
                   slotId={slot.id}
                   initialPropertyId={slot.propertyId}
-                  requiredEntityTypeId={
-                    slot.pattern?.requiresEntityTypeId ??
-                    (slot.pattern?.requiresProperty ? "etype_bien" : null)
-                  }
+                  requiredEntityTypeId={requiredEntityTypeId(slot.pattern)}
                 />
               </FormField>
 

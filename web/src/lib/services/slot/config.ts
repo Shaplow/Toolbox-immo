@@ -125,8 +125,6 @@ interface PatternForAllNeeds {
   needsBrief: boolean;
   // Phase 5 — valeurs héritées pour les overrides one-off
   coverMode?: string;
-  /** coverConfig contient le coverPresetId (Phase 3) — passé en string nullable. */
-  coverPresetId?: string | null;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
 }
@@ -150,7 +148,6 @@ export interface SlotResolvedConfig {
   needsBrief: boolean;
   // Phase 5 — config one-off résolue (référence aux ressources)
   coverMode: string;
-  coverPresetId: string | null;
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   source: {
@@ -163,7 +160,6 @@ export interface SlotResolvedConfig {
     needsRushes: ResolveSource;
     needsBrief: ResolveSource;
     coverMode: ResolveSource;
-    coverPresetId: ResolveSource;
     captionPresetId: ResolveSource;
     descriptionPromptId: ResolveSource;
   };
@@ -192,7 +188,6 @@ export function resolveSlotConfig(
   const nb = resolveOverride(slot.needsBriefOverride, pattern?.needsBrief, false);
   // Phase 5 — overrides one-off
   const cm = resolveOverride(slot.coverModeOverride, pattern?.coverMode, "none");
-  const cpId = resolveOverride(undefined, pattern?.coverPresetId, null);
   const captPId = resolveOverride(slot.captionPresetIdOverride, pattern?.captionPresetId, null);
   const descPId = resolveOverride(slot.descriptionPromptIdOverride, pattern?.descriptionPromptId, null);
   return {
@@ -205,7 +200,6 @@ export function resolveSlotConfig(
     needsRushes: nr.value,
     needsBrief: nb.value,
     coverMode: cm.value,
-    coverPresetId: cpId.value,
     captionPresetId: captPId.value,
     descriptionPromptId: descPId.value,
     source: {
@@ -218,7 +212,6 @@ export function resolveSlotConfig(
       needsRushes: nr.source,
       needsBrief: nb.source,
       coverMode: cm.source,
-      coverPresetId: cpId.source,
       captionPresetId: captPId.source,
       descriptionPromptId: descPId.source,
     },

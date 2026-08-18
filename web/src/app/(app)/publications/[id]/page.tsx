@@ -10,6 +10,10 @@ import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
 import { syncSlotsPipelineStatuses } from "@/lib/services/slot/transitions";
 import { resolveSlotConfig } from "@/lib/services/slot/config";
+import { resolveCoverPreset } from "@/lib/publications/coverMode";
+import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
+import { buildEntityFieldEntries } from "@/lib/publications/entityFieldsSummary";
+import type { EntityFieldsSummary } from "@/lib/publications/entityFieldsSummary";
 import {
   resolveSlotEffectivePattern,
   slotEffectivePatternSelect,
@@ -69,9 +73,26 @@ export default async function PublicationPage({ params }: PageProps) {
           client: { select: { name: true } },
         },
       },
+      // Fiche data liée — pour le résumé lecture seule des champs (chantier
+      // « rendre visible le lien fiche→publication »).
+      entity: {
+        select: {
+          id: true,
+          label: true,
+          fields: true,
+          type: { select: { name: true, fieldSchema: true } },
+        },
+      },
       // Fiche tournage liée (si le reel en vient) — pour afficher ses
-      // rushs partagés + un back-link sur la fiche.
-      shootEntity: { select: { id: true, label: true } },
+      // rushs partagés + un back-link sur la fiche, et le résumé de champs.
+      shootEntity: {
+        select: {
+          id: true,
+          label: true,
+          fields: true,
+          type: { select: { name: true, fieldSchema: true } },
+        },
+      },
       // Recette effective (binding par compte, sinon template global des
       // missions) — fragment + résolution partagés (V2.2).
       ...slotEffectivePatternSelect,
@@ -171,8 +192,7 @@ export default async function PublicationPage({ params }: PageProps) {
 
   // Nom du type de fiche exigé par la recette — titre dynamique de la section
   // « Fiche » (ex-« Bien » hardcodé) + filtre du sélecteur SlotEntitySelect.
-  const requiredTypeIdForFiche =
-    patternView?.requiresEntityTypeId ?? (patternView?.requiresProperty ? "etype_bien" : null);
+  const requiredTypeIdForFiche = requiredEntityTypeId(patternView);
   const requiredEntityTypeName = requiredTypeIdForFiche
     ? ((
         await prisma.entityType.findUnique({
@@ -302,9 +322,13 @@ export default async function PublicationPage({ params }: PageProps) {
   // vidéaste du tournage ne doit voir ni ces rushs ni leurs métadonnées.
   let shootEvent: { id: string; title: string } | null = null;
   let eventRushes: ReturnType<typeof mapRush>[] = [];
+  // Accès à la fiche tournage — calculé une seule fois, réutilisé ci-dessous
+  // pour `canOpen` du résumé de champs (évite un 2e loadEntityForAccess).
+  let shootEntityCanOpen = false;
   if (slot.shootEntityId && slot.shootEntity) {
     const accessEntity = await loadEntityForAccess(slot.shootEntityId);
-    if (accessEntity && canUserAccessEntity(accessEntity, role, userId)) {
+    shootEntityCanOpen = !!accessEntity && canUserAccessEntity(accessEntity, role, userId);
+    if (shootEntityCanOpen) {
       shootEvent = { id: slot.shootEntity.id, title: slot.shootEntity.label };
       eventRushes = (
         await prisma.publicationRush.findMany({
@@ -316,6 +340,35 @@ export default async function PublicationPage({ params }: PageProps) {
         })
       ).map(mapRush);
     }
+  }
+
+  // Résumé lecture seule des champs des fiches rattachées (data + tournage) —
+  // rend visible ce qui alimente la génération/la légende sans devoir ouvrir
+  // la fiche dans un autre onglet. `canOpen` gate le lien « Ouvrir la fiche » :
+  // les types `visibility="admin"` (ex. « Bien ») ne sont ouvrables que par un
+  // ADMIN (cf. entityScope.ts) — pour les autres rôles cette section EST la
+  // seule vue possible sur ces valeurs, `canOpen` reste false et le lien est masqué.
+  const entitySummaries: EntityFieldsSummary[] = [];
+  if (slot.entity) {
+    const dataAccess = await loadEntityForAccess(slot.entity.id);
+    entitySummaries.push({
+      role: "data",
+      entityId: slot.entity.id,
+      label: slot.entity.label,
+      typeName: slot.entity.type.name,
+      fields: buildEntityFieldEntries(slot.entity.fields, slot.entity.type.fieldSchema),
+      canOpen: !!dataAccess && canUserAccessEntity(dataAccess, role, userId),
+    });
+  }
+  if (slot.shootEntity) {
+    entitySummaries.push({
+      role: "shoot",
+      entityId: slot.shootEntity.id,
+      label: slot.shootEntity.label,
+      typeName: slot.shootEntity.type.name,
+      fields: buildEntityFieldEntries(slot.shootEntity.fields, slot.shootEntity.type.fieldSchema),
+      canOpen: shootEntityCanOpen,
+    });
   }
 
   const versions = rawVersions.map((v) => ({
@@ -411,6 +464,19 @@ export default async function PublicationPage({ params }: PageProps) {
     },
     patternView,
   );
+  // Résolution serveur du preset cover effectif (id → nom → défaut du
+  // template — cf. resolveCoverPreset). Remplace l'ancien gate sur
+  // `coverConfig.coverPresetId` qui restait toujours null : aucun formulaire
+  // recette n'écrit ce champ, la fiche doit donc vérifier la résolvabilité
+  // réelle (avec fallback preset par défaut) pour activer le bouton "Lancer
+  // cover auto" (OneOffTriggerButtons).
+  const coverPresetResolvable =
+    resolvedConfig.coverMode === "autoPack"
+      ? !!(await resolveCoverPreset({
+          coverConfig: patternView?.coverConfig ?? null,
+          templateId: patternView?.templateId ?? null,
+        }))
+      : false;
   // Pattern "effectif" : pattern parent enrichi des valeurs résolues — utilisé
   // par computePublicationSteps + sections enfant qui lisent pattern.needs*.
   // Les overrides sont ainsi transparents pour la couche d'affichage.
@@ -535,6 +601,7 @@ export default async function PublicationPage({ params }: PageProps) {
   return (
     <PublicationFiche
       requiredEntityTypeName={requiredEntityTypeName}
+      entitySummaries={entitySummaries}
       slot={{
         id: slot.id,
         title: slot.title,
@@ -673,7 +740,7 @@ export default async function PublicationPage({ params }: PageProps) {
       }}
       resolvedConfig={{
         coverMode: resolvedConfig.coverMode,
-        coverPresetId: resolvedConfig.coverPresetId,
+        coverPresetResolvable,
         needsCaptionsMode: resolvedConfig.needsCaptionsMode,
         captionPresetId: resolvedConfig.captionPresetId,
       }}

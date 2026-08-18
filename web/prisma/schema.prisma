@@ -531,6 +531,8 @@ model MediaAsset {
   setTag         String?
   /// Catégorie de rotation : stockée par asset (permet le même nom de set dans plusieurs catégories).
   /// L'unité de rotation est le couple (category, setTag). Null = pas de catégorie assignée.
+  /// MORT — concept retiré Phase 3 (dossiers simples), purgé côté applicatif.
+  /// Drop préparé dans pending-drops/vague6-drops.sql.
   category       String?
   /// Nombre de fois utilisé dans une génération (agrégat global)
   usageCount     Int                @default(0)
@@ -866,6 +868,8 @@ model PublicationSlot {
   fields             String            @default("{}")
   /// Noms des champs définis par l'admin ou l'utilisateur (JSON string[])
   /// ex: ["adresse","prix","propriétaire"]
+  /// MORT — figé à "[]" (plus dans la whitelist PATCH, cf. slotScope.ts).
+  /// Drop préparé dans pending-drops/vague6-drops.sql.
   fieldSchema        String            @default("[]")
   /// Template lié (optionnel — peut être déterminé après création du slot)
   templateId         String?
@@ -891,6 +895,7 @@ model PublicationSlot {
   /// @deprecated P2 — remplacé par patternBindingId. Conservé tant que les
   /// slots historiques n'ont pas été backfillés (backfill fait via script
   /// migrate-patterns-to-templates puis cleanup release+1).
+  /// MORT — drop préparé dans pending-drops/vague6-drops.sql.
   patternId          String?
   pattern            AccountPattern?   @relation(fields: [patternId], references: [id], onDelete: SetNull)
   /// P2 — Liaison vers PatternBinding (recette appliquée au compte). Source
@@ -948,7 +953,8 @@ model PublicationSlot {
   /// "none" | "manualSelect" | "autoPack" | "monteurUpload"). null = hérite.
   coverModeOverride             String?
   /// Override per-slot de l'ID du preset cover utilisé. null = hérite.
-  /// MORT (V2.4, 17/08) — jamais écrit, plus aucune lecture. Drop N+1.
+  /// MORT (V2.4, 17/08) — jamais écrit, plus aucune lecture.
+  /// Drop préparé dans pending-drops/vague6-drops.sql.
   coverPresetIdOverride         String?
   coverPresetOverride           TemplateCoverPreset?    @relation("SlotCoverPresetOverride", fields: [coverPresetIdOverride], references: [id], onDelete: SetNull)
   /// Override per-slot de l'ID du preset captions utilisé. null = hérite.
@@ -1296,6 +1302,7 @@ model PatternTemplate {
   /// null = pas de texte fixe. Copie one-shot, jamais re-synchronisée.
   descriptionFixedText      String?
   /// @deprecated V8 — utiliser needsCaptionsMode.
+  /// MORT — drop préparé dans pending-drops/vague6-drops.sql.
   needsCaptions             Boolean     @default(false)
   /// "none" | "auto" | "manual"
   needsCaptionsMode         String      @default("none")
@@ -1305,6 +1312,10 @@ model PatternTemplate {
   needsBrief                Boolean     @default(false)
   /// Biens — la création d'un slot/mission depuis cette recette EXIGE un bien
   /// (propertyId). Validé dans createSlot ; bloque le submit côté UI.
+  /// MORT après backfill — drop préparé dans pending-drops/vague6-drops.sql
+  /// (backfill requiresEntityTypeId requis AVANT + retrait de l'écriture
+  /// miroir dans lib/services/pattern/patternTemplateInput.ts, aujourd'hui
+  /// volontairement conservée tant que le backfill n'a pas tourné en prod).
   requiresProperty          Boolean     @default(false)
   /// Phase 5 (métaobjet) — « cette recette exige une fiche de type X ».
   /// Remplace requiresProperty (migré : true → type « Bien »).
@@ -1318,8 +1329,8 @@ model PatternTemplate {
 
   /// DEPRECATED — les champs personnalisés vivent désormais uniquement sur le
   /// Bien (Property), plus sur la recette. Colonne conservée pour rétro-compat
-  /// (données historiques) mais n'est plus ni lue ni écrite. À droper dans une
-  /// future migration une fois les données historiques confirmées inutiles.
+  /// (données historiques) mais n'est plus ni lue ni écrite.
+  /// MORT — drop préparé dans pending-drops/vague6-drops.sql.
   fieldSchema String @default("[]")
 
   /// Missions — Bibliothèque de média cible pour l'auto-save de la sortie de
@@ -1377,7 +1388,8 @@ model PatternBinding {
 
   // Optional overrides per-account (rare — pour "même recette mais preset captions
   // différent pour ce compte". null = hérite du template).
-  /// MORT (V2.4, 17/08) — jamais réglable en UI, plus aucune lecture. Drop N+1.
+  /// MORT (V2.4, 17/08) — jamais réglable en UI, plus aucune lecture.
+  /// Drop préparé dans pending-drops/vague6-drops.sql.
   templateIdOverride          String?
   templateOverride            Template?          @relation("BindingTemplateOverride", fields: [templateIdOverride], references: [id], onDelete: SetNull)
   captionPresetIdOverride     String?
@@ -1402,7 +1414,10 @@ model PatternBinding {
 
 /// @deprecated P2 — remplacé par PatternTemplate + PatternBinding.
 /// Conservé pour rétrocompat des slots historiques (slot.patternId) le temps
-/// d'une release. À droper dans la migration suivante après vérification.
+/// d'une release.
+/// MORT — décommissionné (plan simplification D2) : zéro lecteur applicatif
+/// restant (re-vérifié par grep, vague 6). Drop préparé dans
+/// pending-drops/vague6-drops.sql.
 /// Pattern de publication par compte : combine la config de production (ex-ContentRecipe)
 /// et le planning hebdomadaire (ex-AccountPlan) sous une entité unique liée à un compte IG.
 model AccountPattern {

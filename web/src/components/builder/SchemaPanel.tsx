@@ -100,6 +100,21 @@ export function SchemaPanel() {
     [template.blocks]
   );
 
+  // Types de fiche pour le picker de source fiche (entitySource) — liste globale,
+  // indépendante du champ édité. Best-effort : si indisponible, le select reste
+  // vide mais entitySource.entityTypeId n'est qu'un hint, non bloquant.
+  const [entityTypes, setEntityTypes] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/entity-types");
+        if (!res.ok) return;
+        const data = await res.json() as { types: { id: string; name: string }[] };
+        setEntityTypes(data.types);
+      } catch { /* liste indisponible — le select reste vide */ }
+    })();
+  }, []);
+
   const [adding, setAdding] = useState(false);
   const [newField, setNewField] = useState<SchemaFieldDraft>({ key: "", ...EMPTY_SCHEMA_FIELD });
   const [newOptionsDraft, setNewOptionsDraft] = useState("");
@@ -461,6 +476,7 @@ export function SchemaPanel() {
               videoLibraries={videoLibraries}
               videoLibrariesLoading={videoLibrariesLoading}
               videoBlockOptions={videoBlockOptions}
+              entityTypes={entityTypes}
             />
             <div className="flex gap-2">
               <button
@@ -553,7 +569,7 @@ export function SchemaPanel() {
                             </span>
                             {isAutoDpe ? <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] text-emerald-700">auto DPE</span> : null}
                             {field.showIf ? <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] text-blue-600">cond</span> : null}
-                            {field.metadataSource?.metadataKey ? <span className="rounded-full bg-teal-50 border border-teal-100 px-1.5 py-0.5 text-[9px] text-teal-700">auto</span> : null}
+                            {(field.metadataSource?.metadataKey || field.entitySource?.fieldKey) ? <span className="rounded-full bg-teal-50 border border-teal-100 px-1.5 py-0.5 text-[9px] text-teal-700">auto</span> : null}
                           </div>
                           <p className="text-[10px] font-mono text-muted-foreground truncate mt-0.5">{field.key}</p>
                         </div>
@@ -606,6 +622,7 @@ export function SchemaPanel() {
                           videoLibraries={videoLibraries}
                           videoLibrariesLoading={videoLibrariesLoading}
                           videoBlockOptions={videoBlockOptions}
+                          entityTypes={entityTypes}
                         />
                       </div>
                     ) : null}
@@ -835,6 +852,7 @@ function SchemaFieldEditor({
   videoLibraries = [],
   videoLibrariesLoading = false,
   videoBlockOptions = [],
+  entityTypes = [],
 }: {
   mode: "create" | "edit";
   field: SchemaFieldDraft;
@@ -848,6 +866,7 @@ function SchemaFieldEditor({
   videoLibraries?: { id: string; name: string; metadataSchema: string }[];
   videoLibrariesLoading?: boolean;
   videoBlockOptions?: { id: string; name?: string; libraryId?: string }[];
+  entityTypes?: { id: string; name: string }[];
 }) {
   // Parsed metadata schemas per library
   const parsedLibrarySchemas = useMemo(
@@ -857,6 +876,28 @@ function SchemaFieldEditor({
     })),
     [videoLibraries]
   );
+  // Suggestions de clés pour le type de fiche choisi (entitySource) — saisie
+  // libre toujours autorisée : la fiche peut avoir des champs hors du schéma
+  // déclaré, ou aucun entityTypeId n'est choisi (hint indicatif seulement).
+  const [entityFieldKeys, setEntityFieldKeys] = useState<{ key: string; label: string }[]>([]);
+  const entityTypeIdForKeys = field.entitySource?.entityTypeId ?? "";
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!entityTypeIdForKeys) {
+        if (!cancelled) setEntityFieldKeys([]);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/entity-types/${entityTypeIdForKeys}/field-keys`);
+        if (!res.ok) return;
+        const data = await res.json() as { key: string; label: string }[];
+        if (!cancelled) setEntityFieldKeys(data);
+      } catch { /* suggestions indisponibles — la saisie libre reste possible */ }
+    })();
+    return () => { cancelled = true; };
+  }, [entityTypeIdForKeys]);
+
   const conditionFields = getConditionSourceFields(schema, mode === "edit" ? field.key : field.key || undefined);
   const selectedConditionField = schema.find((item) => item.key === field.showIf?.field);
   const conditionValueOptions = getConditionValueOptions(selectedConditionField);
@@ -1052,6 +1093,79 @@ function SchemaFieldEditor({
                 </button>
               )}
             </>
+          )}
+        </FieldGroup>
+      )}
+
+      {(field.type === "text" || field.type === "number") && (
+        <FieldGroup label="Source automatique (fiche)">
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            Résout la valeur en direct depuis la fiche (data ou tournage) rattachée au slot du render — rejouée à
+            chaque rendu, pas seulement figée au moment du formulaire. Une valeur saisie manuellement dans le
+            formulaire prime toujours sur cette source.
+          </p>
+          {field.entitySource ? (
+            <div className="space-y-1.5">
+              <select
+                value={field.entitySource.slot}
+                onChange={(e) => onFieldChange({ entitySource: { ...field.entitySource!, slot: e.target.value as "data" | "shoot" } })}
+                className="w-full border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="data">Fiche data</option>
+                <option value="shoot">Fiche tournage</option>
+              </select>
+              <select
+                value={field.entitySource.entityTypeId ?? ""}
+                onChange={(e) => onFieldChange({ entitySource: { ...field.entitySource!, entityTypeId: e.target.value || undefined } })}
+                className="w-full border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="">— Type de fiche (indicatif, pour les suggestions) —</option>
+                {entityTypes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">Clé du champ dans la fiche</span>
+                <input
+                  type="text"
+                  list={`entity-source-field-keys-${mode}-${field.key || "new"}`}
+                  value={field.entitySource.fieldKey}
+                  onChange={(e) => onFieldChange({ entitySource: { ...field.entitySource!, fieldKey: e.target.value } })}
+                  placeholder="ex: prix"
+                  className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+                <datalist id={`entity-source-field-keys-${mode}-${field.key || "new"}`}>
+                  {entityFieldKeys.map((f) => (
+                    <option key={f.key} value={f.key}>{f.label}</option>
+                  ))}
+                </datalist>
+              </label>
+              {field.entitySource.fieldKey && (
+                <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] text-emerald-700">
+                  <span className="font-medium">Lié : </span>
+                  {field.entitySource.slot === "data" ? "Fiche data" : "Fiche tournage"}
+                  {" · "}
+                  {entityFieldKeys.find((f) => f.key === field.entitySource!.fieldKey)?.label ?? (
+                    <code className="font-mono">{field.entitySource.fieldKey}</code>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => onFieldChange({ entitySource: undefined })}
+                className="w-full text-left px-2.5 py-2 rounded-lg border border-dashed border-border text-muted-foreground text-[10px] hover:bg-muted transition-colors"
+              >
+                Retirer la source fiche
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onFieldChange({ entitySource: { slot: "data", fieldKey: "" } })}
+              className="w-full text-left px-2.5 py-2 rounded-lg border border-dashed border-indigo-300 text-indigo-600 text-[10px] hover:bg-indigo-50 transition-colors"
+            >
+              + Lier à un champ de fiche
+            </button>
           )}
         </FieldGroup>
       )}

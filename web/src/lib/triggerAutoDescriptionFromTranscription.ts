@@ -29,8 +29,9 @@ import {
   segmentsToText,
   readTranscriptText,
 } from "@/lib/transcription/transcriptText";
-import { callClaude } from "@/lib/llm/client";
-import { SYSTEM_PROMPT_DESCRIPTION } from "@/lib/llm/prompts";
+import { DESCRIPTION_LABELS, SYSTEM_PROMPT_DESCRIPTION } from "@/lib/llm/prompts";
+import { normalizeRecipeKind, validateRecipeInputs } from "@/lib/llm/recipes";
+import { runDescriptionForSlot } from "@/lib/services/description/runDescriptionForSlot";
 import { logActivity } from "@/lib/services/slot/activity";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
@@ -105,7 +106,8 @@ type SkipReason =
   | "r2_not_configured"
   | "no_anthropic_key"
   | "awaiting_client_validation"
-  | "client_review_in_flight";
+  | "client_review_in_flight"
+  | "recipe_incompatible_with_inputs";
 
 function logSkip(jobId: string, reason: SkipReason, extra?: Record<string, unknown>) {
   console.info(
@@ -393,6 +395,45 @@ export async function triggerAutoDescriptionForTranscription(
     console.info(`[autoDescription] transcript résolu via ${transcriptSource} (${transcriptText.length} chars) pour ${transcriptionJobId}`);
   }
 
+  // Recette effective : dispatcher partagé avec la route manuelle
+  // (`lib/services/description/runDescriptionForSlot.ts`) — avant ce fix,
+  // l'auto-trigger ignorait totalement `recipeKind`/`recipeConfig` du prompt
+  // et construisait son message en dur (recipe implicite `transcript_only`).
+  // Un prompt configuré en `context_enriched` ou `two_pass_reformulate` se
+  // comporte désormais à l'identique, qu'il soit lancé à la main ou par la
+  // chaîne auto.
+  const recipeKind = normalizeRecipeKind((prompt as { recipeKind?: string }).recipeKind);
+
+  // Image de référence : la frame de fallback extraite ci-dessus (§3), s'il y
+  // en a une — le cas « transcript vide → décrit la frame » reste couvert.
+  const image = fallbackFrame
+    ? {
+        base64: fallbackFrame.base64,
+        mimeType: fallbackFrame.mediaType,
+        dataUrl: `data:${fallbackFrame.mediaType};base64,${fallbackFrame.base64}`,
+      }
+    : null;
+
+  // Garde recette/image AVANT tout DescriptionJob PROCESSING : une recette
+  // qui exige une image (transcript_and_frame / transcript_multi_frame) sans
+  // frame disponible ici (le fallback ne s'extrait que si le transcript est
+  // vide, cf. §3) n'est pas une erreur infra — c'est une config de recette
+  // incompatible avec ce slot, matérialisée en FAILED comme les autres
+  // erreurs de config ci-dessus (no_prompt_resolved, prompt_inactive…).
+  const recipeError = validateRecipeInputs({ recipeKind, hasImage: !!image });
+  if (recipeError) {
+    logSkip(transcriptionJobId, "recipe_incompatible_with_inputs", { slotId, recipeKind });
+    await createFailedJob({
+      userId: job.userId,
+      slotId,
+      transcriptionId: job.id,
+      promptId,
+      promptSnapshot: prompt.prompt,
+      errorMsg: `${recipeError} (recette « ${recipeKind} » du prompt configuré sur la recette).`,
+    });
+    return;
+  }
+
   // ── 4. Lifecycle visible : QUEUED → PROCESSING → COMPLETED/FAILED ────────
   const lifecycleJob = await prisma.descriptionJob.create({
     data: {
@@ -413,31 +454,19 @@ export async function triggerAutoDescriptionForTranscription(
     slotId,
   });
 
-  // Construit le user message — 2 modes :
-  //  - transcript présent : recipe = transcript_only
-  //  - transcript vide + fallbackFrame : recipe = frame_only (image décrit la
-  //    publication, ex. vidéo immobilier silencieuse)
-  const userMessage = transcriptText
-    ? `${prompt.prompt}\n\nTranscription :\n${transcriptText}`
-    : `${prompt.prompt}\n\nLa vidéo ne contient pas de parole. Base-toi UNIQUEMENT sur l'image jointe (une frame extraite de la vidéo). Décris ce que tu vois — n'invente rien qui n'est pas visible.`;
-
-  // Client Claude partagé (`lib/llm/client.ts`) : le system prompt était
-  // auparavant recopié ici à l'identique de la route description — troisième
-  // copie de la même chaîne, avec dérive garantie à la première évolution.
-  const image = fallbackFrame
-    ? {
-        base64: fallbackFrame.base64,
-        mimeType: fallbackFrame.mediaType,
-        dataUrl: `data:${fallbackFrame.mediaType};base64,${fallbackFrame.base64}`,
-      }
-    : null;
-
   let result: string;
   try {
-    result = await callClaude({
-      system: SYSTEM_PROMPT_DESCRIPTION,
-      userMessage,
+    result = await runDescriptionForSlot({
+      promptText: prompt.prompt,
+      recipeKind: (prompt as { recipeKind?: string }).recipeKind,
+      recipeConfig: (prompt as { recipeConfig?: unknown }).recipeConfig,
+      slotId,
+      transcriptText,
       image,
+      model: "claude",
+      system: SYSTEM_PROMPT_DESCRIPTION,
+      labels: DESCRIPTION_LABELS,
+      logPrefix: "[autoDescription]",
     });
   } catch (err) {
     console.error(`[autoDescription] Claude call failed for slot=${slotId}:`, err);

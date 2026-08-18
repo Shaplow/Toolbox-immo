@@ -18,11 +18,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
-import { Chip } from "@/components/ui/Chip";
-import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
-import { Textarea } from "@/components/ui/Textarea";
-import { FormField } from "@/components/ui/FormField";
 import { resolveRotationMode } from "@/lib/rotation/rotationMode";
 
 import { toast } from "@/components/ui/Toast";
@@ -30,6 +26,8 @@ import { Copy, Link2, RefreshCw, RotateCw, Settings2, SlidersHorizontal, Trash2 
 import type { CustomField } from "@/lib/customFields";
 import { normalizeCustomFields, validateCustomFields } from "@/lib/customFields";
 import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
+import { LibraryIdentitySection } from "./shared/LibraryIdentitySection";
+import { RotationSettingsSection } from "./shared/RotationSettingsSection";
 
 interface DataLibrarySettings {
   id: string;
@@ -223,80 +221,35 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
         />
 
         {tab === "identity" && (
-        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
-            Identité
-          </h3>
-          <FormField label="Nom" required>
-            <Input value={name} onChange={setName} placeholder="Nom de la bibliothèque" />
-          </FormField>
-          <FormField label="Description (optionnel)">
-            <Textarea
-              value={description}
-              onChange={setDescription}
-              rows={3}
-              placeholder="À quoi sert cette bibliothèque…"
-            />
-          </FormField>
-        </section>
+          <LibraryIdentitySection
+            name={name}
+            onNameChange={setName}
+            namePlaceholder="Nom de la bibliothèque"
+            description={description}
+            onDescriptionChange={setDescription}
+            descriptionRows={3}
+          />
         )}
 
         {tab === "rotation" && (
-        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
-            <RotateCw size={11} /> Tirage
-          </h3>
-          <FormField label="Tirage automatique">
-            <div className="flex gap-1.5 flex-wrap">
-              {(["auto", "none"] as const).map((m) => (
-                <Chip
-                  key={m}
-                  variant={rotationMode === m ? "sky" : "default"}
-                  selected={rotationMode === m}
-                  onClick={() => setRotationMode(m)}
-                  size="sm"
-                >
-                  {m === "auto" ? "Auto · par dossier" : "Aucun"}
-                </Chip>
-              ))}
-            </div>
-            <p className="text-[10.5px] text-muted-foreground mt-1.5 leading-relaxed">
-              {rotationMode === "auto"
-                ? "Toolbox pioche dans le dossier servi le moins récemment, puis la fiche la moins récemment utilisée dedans."
-                : "Pas de tirage auto. La sélection se fait manuellement au moment de la génération."}
-            </p>
-          </FormField>
-          <FormField label="Comment elles tournent" help="Indépendant : chaque compte avance dans son propre cycle. Partagé : tous les comptes consomment le même.">
-            <div className="flex gap-1.5">
-              {(["per_account", "shared"] as const).map((s) => (
-                <Chip
-                  key={s}
-                  variant={rotationScope === s ? "sky" : "default"}
-                  selected={rotationScope === s}
-                  onClick={() => setRotationScope(s)}
-                  size="sm"
-                >
-                  {s === "per_account" ? "Indépendant par compte" : "Partagé entre comptes"}
-                </Chip>
-              ))}
-            </div>
-          </FormField>
-          <FormField
-            label="Consommation max par fiche"
-            help={
-              rotationScope === "per_account"
-                ? "Laisser vide = rotation infinie. Sinon, chaque compte voit chaque fiche max N fois avant qu'elle sorte de la rotation pour ce compte."
-                : "Laisser vide = rotation infinie. Sinon, chaque fiche est utilisée max N fois au total (tous comptes confondus) avant d'être retirée."
-            }
-          >
-            <Input
-              value={maxUsageCount}
-              onChange={setMaxUsageCount}
-              placeholder="Vide = infini"
-              type="number"
-            />
-          </FormField>
-        </section>
+          <RotationSettingsSection
+            mode={rotationMode}
+            onModeChange={setRotationMode}
+            scope={rotationScope}
+            onScopeChange={setRotationScope}
+            maxUsageCount={maxUsageCount}
+            onMaxUsageCountChange={setMaxUsageCount}
+            turnoverLabel="Comment elles tournent"
+            unit={{ singular: "fiche" }}
+            modeHelp={{
+              auto: "Toolbox pioche dans le dossier servi le moins récemment, puis la fiche la moins récemment utilisée dedans.",
+              none: "Pas de tirage auto. La sélection se fait manuellement au moment de la génération.",
+            }}
+            maxUsageHelp={{
+              per_account: "Laisser vide = rotation infinie. Sinon, chaque compte voit chaque fiche max N fois avant qu'elle sorte de la rotation pour ce compte.",
+              shared: "Laisser vide = rotation infinie. Sinon, chaque fiche est utilisée max N fois au total (tous comptes confondus) avant d'être retirée.",
+            }}
+          />
         )}
 
         {tab === "fields" && (

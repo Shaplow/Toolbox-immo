@@ -75,8 +75,8 @@ flowchart LR
 |---|---|---|
 | POST | `/.../campaigns/[id]/import` | CSV/XLSX multipart, ExcelJS dynamic import, force flag |
 | POST | `/.../campaigns/[id]/reset` | Reset global OU per-account |
-| GET | `/.../libraries/[libraryId]/export` | ZIP export (includeFiles, includeUsage) |
-| POST | `/.../libraries/import` | Import ZIP mode "new" ou "merge" |
+
+Routes ZIP export/import génériques (`GET /.../libraries/[libraryId]/export`, `POST /.../libraries/import`) **supprimées (purge 2026-08, code mort — 0 appelant UI)**. `lib/libraryExport.ts` / `lib/libraryImport.ts` restent dans le repo mais n'ont plus de consommateur applicatif.
 
 ### Bulk edit access comptes IG (Phase 3.C, commit `9913bb1`)
 | Méthode | Path | Effets |
@@ -95,8 +95,6 @@ Pas de log activity (action admin technique). Pas d'effet rotation immédiat (le
 - `[id]/route.ts:13-35` — `validateFieldsSchema()` (tableau, keys uniques lowercase alphanumeric, types text/number/url/textarea, reserved keys interdits)
 - `import/route.ts:194-230` — `parseCSV()` (quoted cells, `;` ou `,`, sanitizeKey/sanitizeValue, slugify NFD accents)
 - `import/route.ts:13-54` — `readFileAsCSVText()` (XLSX via ExcelJS dynamic OR CSV `.text()`)
-- `lib/libraryExport.ts:127` — `safeJsonParse()` + `sanitizeFilename()`
-- `lib/libraryImport.ts:50` — `isValidManifest()` (version=1 + libraryType) + `validateR2Key()` anti path-traversal
 
 ## Modèles Prisma
 

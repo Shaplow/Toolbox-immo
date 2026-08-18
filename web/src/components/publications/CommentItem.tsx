@@ -22,6 +22,7 @@ import { useConfirm } from "@/components/ui/useConfirm";
 import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
 import { toast } from "@/components/ui/Toast";
+import { dateFr } from "@/lib/date/formatFr";
 
 export interface CommentData {
   id: string;
@@ -51,11 +52,7 @@ function relativeTime(isoDate: string): string {
   if (hours < 24) return `il y a ${hours}h`;
   if (days === 1) return "hier";
   if (days < 30) return `il y a ${days} jours`;
-  return new Date(isoDate).toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return dateFr(isoDate);
 }
 
 function initials(name: string | null, email: string | null): string {

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, MessageSquare, Pencil, X, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -44,6 +46,9 @@ type PromptRow = {
   recipeConfig?: { frameCount?: number; contextFieldKeys?: string[] } | null;
 };
 
+type EntityTypeOption = { id: string; name: string };
+type FieldKeyOption = { key: string; label: string };
+
 /**
  * Panneau CRUD des prompts IA, paramétré par usage.
  *
@@ -68,7 +73,63 @@ export function DescriptionPromptsPanel({
   const [formPrompt, setFormPrompt] = useState("");
   const [formRecipeKind, setFormRecipeKind] = useState<RecipeKind>("transcript_only");
   const [formFrameCount, setFormFrameCount] = useState<number>(4);
+  const [formContextFieldKeys, setFormContextFieldKeys] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Types de fiche + clés de champ suggérées pour l'éditeur de
+  // `contextFieldKeys` (recette context_enriched) — même route que le champ
+  // « Champ de la fiche » du formulaire recette (entity-types/[id]/field-keys).
+  const [entityTypes, setEntityTypes] = useState<EntityTypeOption[]>([]);
+  const [fieldKeysEntityTypeId, setFieldKeysEntityTypeId] = useState("");
+  const [fieldKeyOptions, setFieldKeyOptions] = useState<FieldKeyOption[]>([]);
+
+  useEffect(() => {
+    if (formRecipeKind !== "context_enriched" || entityTypes.length > 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch("/api/entity-types");
+        if (!r.ok) return;
+        const data = (await r.json()) as { types: EntityTypeOption[] };
+        if (!cancelled) {
+          setEntityTypes(data.types);
+          setFieldKeysEntityTypeId((current) => current || data.types[0]?.id || "");
+        }
+      } catch {
+        /* liste indisponible — la sélection par clé reste vide */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [formRecipeKind, entityTypes.length]);
+
+  useEffect(() => {
+    if (!fieldKeysEntityTypeId) {
+      setFieldKeyOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch(`/api/entity-types/${fieldKeysEntityTypeId}/field-keys`);
+        if (!r.ok) return;
+        const data = (await r.json()) as FieldKeyOption[];
+        if (!cancelled) setFieldKeyOptions(data);
+      } catch {
+        /* suggestions indisponibles */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fieldKeysEntityTypeId]);
+
+  const toggleContextFieldKey = (key: string) => {
+    setFormContextFieldKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  };
 
   const openCreate = () => {
     setEditingId(null);
@@ -76,6 +137,7 @@ export function DescriptionPromptsPanel({
     setFormPrompt("");
     setFormRecipeKind("transcript_only");
     setFormFrameCount(4);
+    setFormContextFieldKeys([]);
     setCreating(true);
   };
 
@@ -85,6 +147,7 @@ export function DescriptionPromptsPanel({
     setFormPrompt(p.prompt);
     setFormRecipeKind(p.recipeKind ?? "transcript_only");
     setFormFrameCount(p.recipeConfig?.frameCount ?? 4);
+    setFormContextFieldKeys(p.recipeConfig?.contextFieldKeys ?? []);
     setEditingId(p.id);
   };
 
@@ -100,8 +163,15 @@ export function DescriptionPromptsPanel({
     }
     setSaving(true);
 
+    // Bug fix (constat #3) : avant, seul transcript_multi_frame écrivait une
+    // config — context_enriched écrivait toujours `null`, écrasant silencieusement
+    // tout `contextFieldKeys` existant à chaque édition du prompt (nom, texte…).
     const recipeConfig =
-      formRecipeKind === "transcript_multi_frame" ? { frameCount: formFrameCount } : null;
+      formRecipeKind === "transcript_multi_frame"
+        ? { frameCount: formFrameCount }
+        : formRecipeKind === "context_enriched" && formContextFieldKeys.length > 0
+          ? { contextFieldKeys: formContextFieldKeys }
+          : null;
 
     try {
       if (creating) {
@@ -211,11 +281,17 @@ export function DescriptionPromptsPanel({
           recipeKind={formRecipeKind}
           availableRecipes={availableRecipes}
           frameCount={formFrameCount}
+          contextFieldKeys={formContextFieldKeys}
+          entityTypes={entityTypes}
+          fieldKeysEntityTypeId={fieldKeysEntityTypeId}
+          fieldKeyOptions={fieldKeyOptions}
           saving={saving}
           onName={setFormName}
           onPrompt={setFormPrompt}
           onRecipeKind={setFormRecipeKind}
           onFrameCount={setFormFrameCount}
+          onToggleContextFieldKey={toggleContextFieldKey}
+          onFieldKeysEntityTypeId={setFieldKeysEntityTypeId}
           onSave={() => void handleSave()}
           onCancel={cancelForm}
           label="Créer"
@@ -242,11 +318,17 @@ export function DescriptionPromptsPanel({
                   recipeKind={formRecipeKind}
                   availableRecipes={availableRecipes}
                   frameCount={formFrameCount}
+                  contextFieldKeys={formContextFieldKeys}
+                  entityTypes={entityTypes}
+                  fieldKeysEntityTypeId={fieldKeysEntityTypeId}
+                  fieldKeyOptions={fieldKeyOptions}
                   saving={saving}
                   onName={setFormName}
                   onPrompt={setFormPrompt}
                   onRecipeKind={setFormRecipeKind}
                   onFrameCount={setFormFrameCount}
+                  onToggleContextFieldKey={toggleContextFieldKey}
+                  onFieldKeysEntityTypeId={setFieldKeysEntityTypeId}
                   onSave={() => void handleSave()}
                   onCancel={cancelForm}
                   label="Enregistrer"
@@ -315,11 +397,17 @@ function PromptForm({
   recipeKind,
   availableRecipes,
   frameCount,
+  contextFieldKeys,
+  entityTypes,
+  fieldKeysEntityTypeId,
+  fieldKeyOptions,
   saving,
   onName,
   onPrompt,
   onRecipeKind,
   onFrameCount,
+  onToggleContextFieldKey,
+  onFieldKeysEntityTypeId,
   onSave,
   onCancel,
   label,
@@ -330,11 +418,18 @@ function PromptForm({
   /** Recettes proposées — restreintes pour les prompts de brief. */
   availableRecipes: readonly RecipeKind[];
   frameCount: number;
+  /** Clés de champ fiche injectées par la recette context_enriched — vide = tous les champs. */
+  contextFieldKeys: string[];
+  entityTypes: EntityTypeOption[];
+  fieldKeysEntityTypeId: string;
+  fieldKeyOptions: FieldKeyOption[];
   saving: boolean;
   onName: (v: string) => void;
   onPrompt: (v: string) => void;
   onRecipeKind: (v: RecipeKind) => void;
   onFrameCount: (v: number) => void;
+  onToggleContextFieldKey: (key: string) => void;
+  onFieldKeysEntityTypeId: (id: string) => void;
   onSave: () => void;
   onCancel: () => void;
   label: string;
@@ -375,6 +470,44 @@ function PromptForm({
             value={String(frameCount)}
             onChange={(v) => onFrameCount(Math.min(6, Math.max(1, parseInt(v, 10) || 1)))}
           />
+        </FormField>
+      )}
+      {recipeKind === "context_enriched" && (
+        <FormField
+          label="Champs de fiche injectés"
+          help="Aucune sélection = tous les champs non vides de la fiche du slot. Parcourt les clés par type de fiche à titre de suggestion — la sélection s'applique quel que soit le type réel de la fiche au moment de la génération."
+        >
+          <div className="space-y-2">
+            <Select
+              value={fieldKeysEntityTypeId}
+              onChange={onFieldKeysEntityTypeId}
+              placeholder="— Type de fiche —"
+              options={entityTypes.map((t) => ({ value: t.id, label: t.name }))}
+            />
+            {fieldKeyOptions.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {fieldKeyOptions.map((f) => (
+                  <Chip
+                    key={f.key}
+                    size="sm"
+                    selected={contextFieldKeys.includes(f.key)}
+                    onClick={() => onToggleContextFieldKey(f.key)}
+                  >
+                    {f.label === f.key ? f.key : `${f.label} · ${f.key}`}
+                  </Chip>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                Aucun champ pour ce type de fiche.
+              </p>
+            )}
+            {contextFieldKeys.length > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                {contextFieldKeys.length} champ{contextFieldKeys.length > 1 ? "s" : ""} sélectionné{contextFieldKeys.length > 1 ? "s" : ""}.
+              </p>
+            )}
+          </div>
         </FormField>
       )}
       <div className="flex items-center gap-2">

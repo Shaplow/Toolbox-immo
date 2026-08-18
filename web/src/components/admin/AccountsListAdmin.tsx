@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Chip } from "@/components/ui/Chip";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { AccountPeekDrawer } from "./AccountPeekDrawer";
+import { dateFr } from "@/lib/date/formatFr";
 
 interface AccountItem {
   id: string;
@@ -33,13 +34,7 @@ interface Props {
 
 function formatLastPublished(iso: string | null): string {
   if (!iso) return "Jamais publié";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return dateFr(iso);
 }
 
 /** Initiales du handle pour l'avatar (max 2 caractères). */

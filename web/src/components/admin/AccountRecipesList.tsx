@@ -23,18 +23,15 @@ import {
 import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
-import { Combobox } from "@/components/ui/Combobox";
 import { Drawer } from "@/components/ui/Drawer";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
 import { toast } from "@/components/ui/Toast";
 import { RecipeForm, type RecipeFormInitial, type RecipeFormValues } from "./RecipeForm";
 import { BulkReplaceAssigneeModal } from "./BulkReplaceAssigneeModal";
 import { PatternPeekDrawer } from "./PatternPeekDrawer";
 import { SOURCE_LABELS_FR, SOURCE_VARIANT } from "@/lib/i18n/glossary";
-
-const DAYS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+import { DAY_LABELS } from "@/types/calendar";
 
 export interface RecipeItem {
   /** Clé stable React : bindingId si lié, sinon `tpl-<templateId>`. */
@@ -109,8 +106,6 @@ interface Props {
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
 }
-
-const REUSE_FROM_CATALOG_VALUE = "__reuse__";
 
 interface EditingState {
   bindingId: string | null;
@@ -205,8 +200,6 @@ export function AccountRecipesList({
   const router = useRouter();
   const [recipes, setRecipes] = useState<RecipeItem[]>(initialRecipes);
   const [editing, setEditing] = useState<EditingState | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerChoice, setPickerChoice] = useState<string>("");
   const [bulkReplaceOpen, setBulkReplaceOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [peekTemplateId, setPeekTemplateId] = useState<string | null>(null);
@@ -386,11 +379,6 @@ export function AccountRecipesList({
           <Button variant="primary" size="sm" icon={Plus} onClick={openCreateNew}>
             Nouvelle recette
           </Button>
-          {catalogTemplates.length > 0 && (
-            <Button variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>
-              Importer du catalogue
-            </Button>
-          )}
         </div>
       </header>
 
@@ -421,51 +409,6 @@ export function AccountRecipesList({
         patternTemplateId={peekTemplateId}
         onClose={() => setPeekTemplateId(null)}
       />
-
-      {pickerOpen && (
-        <Modal open onClose={() => setPickerOpen(false)} size="md">
-          <div className="p-5">
-            <h3 className="text-[16px] font-semibold text-foreground">
-              Importer une recette du catalogue
-            </h3>
-            <p className="mt-1 text-[12px] text-muted-foreground">
-              Réutilise une recette globale existante. Tu définiras le planning et l&apos;équipe ensuite.
-            </p>
-            <div className="mt-4">
-              <Combobox
-                value={pickerChoice}
-                onChange={setPickerChoice}
-                options={[
-                  { value: "", label: "— Choisir une recette —" },
-                  ...catalogTemplates.map((t) => ({
-                    value: t.id,
-                    label: `${t.label} · ${SOURCE_LABELS_FR[t.source] ?? t.source}`,
-                  })),
-                ]}
-              />
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setPickerOpen(false)}>
-                Annuler
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                disabled={!pickerChoice || pickerChoice === REUSE_FROM_CATALOG_VALUE}
-                onClick={() => {
-                  if (!pickerChoice) return;
-                  openReuse(pickerChoice);
-                  setPickerOpen(false);
-                  setPickerChoice("");
-                }}
-              >
-                Continuer
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
 
       {bulkReplaceOpen && (
         <BulkReplaceAssigneeModal
@@ -569,7 +512,7 @@ function RecipeCard({ recipe: r, pendingToggle, onClick, onPeek, onToggle }: Rec
             <span>
               {r.dayOfWeek.length === 0
                 ? "Pas de planning auto"
-                : r.dayOfWeek.map((d) => DAYS[d] ?? `J${d}`).join(" · ")}
+                : r.dayOfWeek.map((d) => DAY_LABELS[d - 1] ?? `J${d}`).join(" · ")}
             </span>
           </p>
         ) : (

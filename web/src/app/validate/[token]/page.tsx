@@ -15,6 +15,7 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { verifyClientValidationToken, hashToken } from "@/lib/publications/clientValidation";
 import { resolveClientValidationConfig } from "@/lib/services/slot/config";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 import { getSlotFinalVideoUrl } from "@/lib/publications/finalVideo";
 import { ValidationActions } from "./ValidationActions";
 
@@ -60,13 +61,7 @@ export default async function ValidatePage({ params }: PageProps) {
       needsClientValidationOverride: true,
       allowsClientRevisionOverride: true,
       account: { select: { handle: true, name: true, client: { select: { name: true } } } },
-      pattern: {
-        select: {
-          label: true,
-          needsClientValidation: true,
-          allowsClientRevision: true,
-        },
-      },
+      ...slotEffectivePatternSelect,
       render: { select: { videoUrl: true, pngUrl: true } },
       // Fix bug 2026-05-30 : take: 5 pour pouvoir distinguer le dernier
       // CaptionJob COMPLETED (utilisé pour la vidéo envoyée au client) du
@@ -87,13 +82,15 @@ export default async function ValidatePage({ params }: PageProps) {
 
   if (!slot) notFound();
 
+  const effPattern = resolveSlotEffectivePattern(slot);
+
   // Configuration validation (override prime sur pattern)
   const config = resolveClientValidationConfig(
     {
       needsClientValidationOverride: slot.needsClientValidationOverride,
       allowsClientRevisionOverride: slot.allowsClientRevisionOverride,
     },
-    slot.pattern,
+    effPattern,
   );
 
   // Vidéo finale (avec captions si dispo) — on cherche le dernier CaptionJob
@@ -128,7 +125,7 @@ export default async function ValidatePage({ params }: PageProps) {
           {/* ── Preview vidéo / image ──────────────────────────────────────── */}
           <section className="bg-white rounded-xl border border-border p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-foreground mb-3">
-              {slot.pattern?.label ?? slot.title ?? "Publication"}
+              {effPattern?.label ?? slot.title ?? "Publication"}
             </h2>
             <p className="text-xs text-muted-foreground mb-4">
               {slot.scheduledAt ? (

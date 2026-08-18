@@ -15,7 +15,7 @@
  * été backfillés en DB (migration 20260817200000) et retirés du type.
  */
 
-import type { SlotStatus } from "@/types/roles";
+import { TERMINAL_STATUSES, type SlotStatus } from "@/types/roles";
 import type { PublicationPhase } from "@/lib/slots/phase";
 import type { MacroStep } from "@/lib/slots/macroStep";
 
@@ -227,6 +227,17 @@ export const STATUS_OWNER: Record<SlotStatus, SlotOwnerRole> = derive("owner");
 export const NEXT_ACTION: Record<SlotStatus, string | null> = derive("nextAction");
 export const STATUS_GROUP: Record<SlotStatus, "todo" | "in_progress" | "done" | "blocked"> =
   derive("group");
+
+/**
+ * Statuts « actifs » du pipeline (KPI « En cours ») : tout statut non
+ * terminal, BLOCKED inclus (décision produit — un slot bloqué reste une
+ * publication active, pas une publication finie). Dérivé de SLOT_STATUS_META
+ * + TERMINAL_STATUSES pour qu'un futur ajout de statut ne puisse pas
+ * silencieusement en sortir sans qu'on y touche.
+ */
+export const ACTIVE_PIPELINE_STATUSES: SlotStatus[] = (
+  Object.keys(SLOT_STATUS_META) as SlotStatus[]
+).filter((status) => !(TERMINAL_STATUSES as readonly string[]).includes(status));
 
 /**
  * Owner contextuel : enrichit le méta avec l'état d'assignation.

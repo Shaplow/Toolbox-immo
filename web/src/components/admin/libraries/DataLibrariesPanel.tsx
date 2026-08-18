@@ -18,6 +18,8 @@ import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { Chip } from "@/components/ui/Chip";
+import { Alert } from "@/components/ui/Alert";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { rotationScopeLabel } from "@/lib/i18n/glossary";
 import { DataLibrarySettingsDrawer } from "./DataLibrarySettingsDrawer";
 
@@ -157,26 +159,25 @@ export function DataLibrariesPanel() {
 
       {/* Error */}
       {loadError && (
-        <div className="rounded-xl bg-danger-50/70 p-3 ">
-          <p className="text-[12.5px] font-semibold text-danger-700">
-            Impossible de charger les bibliothèques
-          </p>
-          <p className="text-[11px] font-mono text-danger-700 mt-1">{loadError}</p>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="text-[11px] text-danger-700 underline mt-2"
-          >
-            Réessayer
-          </button>
-        </div>
+        <Alert
+          variant="danger"
+          title="Impossible de charger les bibliothèques"
+          actions={
+            <Button variant="secondary" size="sm" onClick={() => void load()}>
+              Réessayer
+            </Button>
+          }
+        >
+          {loadError}
+        </Alert>
       )}
 
       {/* Loading */}
       {loading ? (
-        <div className="rounded-2xl bg-card border border-border py-16  flex items-center justify-center text-muted-foreground gap-3">
-          <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-          <span className="text-[12.5px]">Chargement…</span>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <DataLibraryCardSkeleton key={i} />
+          ))}
         </div>
       ) : libraries.length === 0 ? (
         <div className="rounded-2xl bg-card border border-border p-8 ">
@@ -292,6 +293,24 @@ export function DataLibrariesPanel() {
       />
 
       {confirmDialog}
+    </div>
+  );
+}
+
+// ─── DataLibraryCardSkeleton ───────────────────────────────────────────────
+
+function DataLibraryCardSkeleton() {
+  return (
+    <div className="flex flex-col gap-2.5 p-3.5 rounded-2xl bg-card border border-border">
+      <div className="flex items-start gap-2.5">
+        <Skeleton shape="block" className="h-9 w-9 rounded-xl shrink-0" />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <Skeleton className="w-2/3" />
+          <Skeleton className="w-1/3" />
+        </div>
+      </div>
+      <Skeleton shape="block" className="h-12 w-full rounded-xl" />
+      <Skeleton className="w-1/2" />
     </div>
   );
 }

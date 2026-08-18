@@ -54,8 +54,6 @@ export type RenderRow = {
   errorMsg: string | null;
   createdAt: string;
   coverPack: { id: string; status: string } | null;
-  /** Cover auto activée si le slot lié a un pattern avec coverMode=auto (Phase 1.8). */
-  coverAutoEnabled: boolean;
   /** Slot auquel ce render est rattaché — bloque la suppression admin depuis /listings. */
   linkedSlotId: string | null;
 };

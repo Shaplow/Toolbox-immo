@@ -17,6 +17,7 @@ import {
   NEEDS_DESCRIPTION_LABELS_FR,
   CAPTIONS_MODE_LABELS_FR,
 } from "@/lib/i18n/glossary";
+import { dateFr } from "@/lib/date/formatFr";
 
 export interface PatternPeekData {
   id: string;
@@ -51,11 +52,7 @@ export interface PatternPeekData {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return dateFr(iso);
 }
 
 export function PatternSummaryCard({ data }: { data: PatternPeekData }) {

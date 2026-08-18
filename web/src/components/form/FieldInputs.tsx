@@ -21,6 +21,17 @@
 import { useEffect, useState, useRef } from "react";
 import type { SchemaField } from "@/types/template";
 import { UPLOAD_LIMITS, formatMaxSize } from "@/lib/upload/limits";
+import { Badge } from "@/components/ui/Badge";
+import type { ValueProvenance } from "@/lib/generate/provenance";
+
+/** Libellés FR du badge de provenance — "manual" n'affiche jamais de badge
+ *  (valeur déjà établie par une action explicite, pas une suggestion). */
+const PROVENANCE_BADGE_LABELS: Record<Exclude<ValueProvenance, "manual">, string> = {
+  entity: "Fiche",
+  shootEntity: "Fiche tournage",
+  dataEntry: "Bibliothèque",
+  assetMetadata: "Auto (média)",
+};
 
 const DEFAULT_MEDIA_PREVIEW_ASPECT_RATIO = 16 / 9;
 const MAX_MEDIA_PREVIEW_HEIGHT = 420;
@@ -408,8 +419,8 @@ export function AudioFieldInput({
 
 // ─────────────────────────────────────────────────────────────────────────
 // FieldInput — orchestrateur qui choisit le bon sous-composant selon
-// field.type. Le wrapper externe (label + badges optionnel/conditionnel
-// /from-library/from-asset + helper text + error) reste ici.
+// field.type. Le wrapper externe (label + badges optionnel/conditionnel/
+// provenance + helper text + error) reste ici.
 // ─────────────────────────────────────────────────────────────────────────
 
 export function FieldInput({
@@ -422,8 +433,7 @@ export function FieldInput({
   onChange,
   onUpload,
   onFocalChange,
-  fromLibrary,
-  fromAsset,
+  provenance,
 }: {
   field: SchemaField;
   value: unknown;
@@ -434,8 +444,9 @@ export function FieldInput({
   onChange: (v: unknown) => void;
   onUpload: (f: File) => void;
   onFocalChange?: (fp: { x: number; y: number }) => void;
-  fromLibrary?: boolean;
-  fromAsset?: boolean;
+  /** Provenance de la valeur courante (fiche, tournage, bibliothèque, média…) —
+   *  pilote le badge. `undefined`/`"manual"` n'affiche rien. */
+  provenance?: ValueProvenance;
 }) {
   const isConditional = Boolean(field.showIf);
   const helperText = field.description || (isConditional
@@ -461,17 +472,10 @@ export function FieldInput({
             conditionnel
           </span>
         )}
-        {fromLibrary && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-info-200 bg-info-50 px-2 py-0.5 text-[10px] font-medium text-info-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-info-200" />
-            depuis la bibliothèque
-          </span>
-        )}
-        {fromAsset && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-info-200 bg-info-50 px-2 py-0.5 text-[10px] font-medium text-info-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-info-200" />
-            depuis l&apos;asset
-          </span>
+        {provenance && provenance !== "manual" && (
+          <Badge variant="info" size="sm" dot>
+            {PROVENANCE_BADGE_LABELS[provenance]}
+          </Badge>
         )}
       </div>
 

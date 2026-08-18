@@ -27,6 +27,7 @@ import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
+import { numericDateFr } from "@/lib/date/formatFr";
 import {
   FolderOpen,
   Layers,
@@ -55,11 +56,6 @@ interface Props {
   accounts: InstagramAccount[];
   inline: UseAssetInlineEditsResult;
   onOpenTrim?: (asset: MediaAsset) => void;
-  /** Si fournie : autres assets du même set, pour permettre de naviguer entre les vidéos d'un pack
-      sans fermer/rouvrir le drawer. La liste contient l'asset courant + ses voisins. */
-  setAssets?: MediaAsset[];
-  /** Callback pour switcher l'asset affiché (utile avec setAssets). */
-  onSwitchAsset?: (asset: MediaAsset) => void;
 }
 
 export function MediaAssetDetailDrawer({
@@ -71,8 +67,6 @@ export function MediaAssetDetailDrawer({
   accounts,
   inline,
   onOpenTrim,
-  setAssets,
-  onSwitchAsset,
 }: Props) {
   const { canManageAssets } = useMediaLibraryPermissions();
   // États locaux contrôlés pour les inputs — sync sur asset change.
@@ -117,41 +111,6 @@ export function MediaAssetDetailDrawer({
     <Drawer open={open} onClose={onClose} side="right" size="lg">
       <Drawer.Header onClose={onClose}>Détails du fichier</Drawer.Header>
       <Drawer.Body className="space-y-4">
-        {/* Navigateur entre les assets du set — uniquement si setAssets fourni (> 1). */}
-        {setAssets && setAssets.length > 1 && onSwitchAsset && (
-          <div className="rounded-xl bg-card border border-border px-3 py-2 ">
-            <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1.5 inline-flex items-center gap-1">
-              <Layers size={10} />
-              Vidéos du groupe
-              <span className="font-normal normal-case tracking-normal text-muted-foreground">({setAssets.length})</span>
-            </p>
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
-              {setAssets.map((a, idx) => {
-                const isCurrent = a.id === asset.id;
-                return (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => onSwitchAsset(a)}
-                    title={a.filename}
-                    className={[
-                      "shrink-0 h-12 w-9 rounded-md overflow-hidden bg-gray-200 relative transition-all",
-                      isCurrent
-                        ? "ring-2 ring-info-200 ring-offset-1 ring-offset-white scale-105"
-                        : "ring-1 ring-gray-200 hover:ring-gray-400",
-                    ].join(" ")}
-                  >
-                    <video src={`${a.url}#t=0.5`} muted preload="metadata" className="h-full w-full object-cover" />
-                    <span className={`absolute bottom-0.5 right-0.5 text-[8px] font-mono tabular-nums px-1 rounded ${isCurrent ? "bg-info-600 text-white" : "bg-black/60 text-white"}`}>
-                      {idx + 1}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Aperçu média — surface noire OK (média = noir naturel), ring spéculaire glass. */}
         <div className="rounded-2xl overflow-hidden bg-gray-900/95 ">
           {isVideo ? (
@@ -176,7 +135,7 @@ export function MediaAssetDetailDrawer({
             <span>{(asset.mimeType || "").split("/")[1]?.toUpperCase() || "?"}</span>
             <span className="text-muted-foreground/60">·</span>
             <span>
-              Utilisé {asset.usageCount} fois{asset.lastUsedAt ? ` · ${new Date(asset.lastUsedAt).toLocaleDateString("fr-FR")}` : ""}
+              Utilisé {asset.usageCount} fois{asset.lastUsedAt ? ` · ${numericDateFr(asset.lastUsedAt)}` : ""}
             </span>
           </p>
         </div>
