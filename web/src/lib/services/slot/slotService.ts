@@ -38,7 +38,8 @@ import {
   type SlotEffectivePattern,
 } from "@/lib/services/slot/effectivePattern";
 import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
-import { resolvePrefilledCaption } from "@/lib/publications/preFilledDescription";
+import { resolveCaptionWithDataLibrary } from "@/lib/publications/captionDataLibrary";
+import { claimDataEntryForCaption } from "@/lib/contentLibraryResolver";
 import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
 import { deleteR2Prefix, r2Configured } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
@@ -422,24 +423,31 @@ export async function createSlot(
 
   // Pré-remplissage de la légende « Pré-remplie (modèle) » — modèle
   // `descriptionFixedText` avec interpolation `{{clé}}` résolu contre les
-  // champs mergés (fiche tournage < fiche data), ou alias legacy
-  // `descriptionSourceFieldKey` (cf. `resolvePrefilledCaption`). Copie
-  // one-shot à la création. L'input.description explicite (rare à la
-  // création) reste prioritaire.
+  // champs de la fiche tournage / fiche data (+ éventuelle DataEntry tirée
+  // depuis `descriptionDataLibraryId`, cf. `captionDataLibrary.ts`), ou alias
+  // legacy `descriptionSourceFieldKey`. Copie one-shot à la création.
+  // L'input.description explicite (rare à la création) reste prioritaire.
   let prefilledDescription: string | null = null;
+  let prefilledCaptionEntry: { entryId: string; setTag: string | null; libraryId: string } | null = null;
+  let prefilledCaptionDrewNew = false;
   if (!input.description) {
-    const mergedFields = {
-      ...safeJSON<Record<string, unknown>>(shootEvent?.fields ?? null, {}),
-      ...safeJSON<Record<string, unknown>>(propertyFields, {}),
-    };
-    prefilledDescription = resolvePrefilledCaption(
-      {
+    const { caption, usedEntry, drewNewEntry } = await resolveCaptionWithDataLibrary({
+      config: {
         needsDescription: resolvedNeedsDescription,
         descriptionFixedText: resolvedPattern?.descriptionFixedText ?? null,
         descriptionSourceFieldKey: resolvedPattern?.descriptionSourceFieldKey ?? null,
+        descriptionDataLibraryId: resolvedPattern?.descriptionDataLibraryId ?? null,
       },
-      mergedFields,
-    );
+      accountId: input.accountId,
+      storedEntry: null,
+      shootEntityFieldsJson: shootEvent?.fields ?? null,
+      entityFieldsJson: propertyFields,
+    });
+    prefilledDescription = caption;
+    if (usedEntry) {
+      prefilledCaptionEntry = { entryId: usedEntry.entryId, setTag: usedEntry.setTag, libraryId: usedEntry.libraryId };
+      prefilledCaptionDrewNew = drewNewEntry;
+    }
   }
 
   // Guard cover-mode retiré (fix regression post-QW1) : le runtime
@@ -485,6 +493,10 @@ export async function createSlot(
       patternTemplateId: resolvedBindingId ? null : (input.patternTemplateId ?? null),
       // Phase 5 — fiche source de données (clé API `propertyId`, colonne `entityId`).
       entityId: input.propertyId ?? null,
+      // Légende « Pré-remplie » — DataEntry tirée depuis la bibliothèque de
+      // données de la recette (drewNewEntry seulement : aucune entrée
+      // mémorisée à la création, une réutilisation n'a pas de sens ici).
+      captionDataEntryId: prefilledCaptionDrewNew ? prefilledCaptionEntry!.entryId : null,
       assigneeMonteurId: resolvedAssigneeMonteurId,
       assigneeCmId: resolvedAssigneeCmId,
       assigneeVideasteId: resolvedAssigneeVideasteId,
@@ -515,6 +527,24 @@ export async function createSlot(
       account: { select: { id: true, name: true, handle: true } },
     },
   });
+
+  // Claim + audit best-effort, HORS create : le slot existe déjà et reste
+  // correct même si le claim échoue (pas de revert, cf. claimDataEntryForCaption).
+  if (prefilledCaptionDrewNew && prefilledCaptionEntry) {
+    await claimDataEntryForCaption(prefilledCaptionEntry.entryId, input.accountId ?? null);
+    await logActivity(prisma, {
+      slotId: slot.id,
+      actorId: ctx.actualUser.id,
+      type: "DESCRIPTION_PREFILLED",
+      payload: {
+        trigger: "create",
+        entryId: prefilledCaptionEntry.entryId,
+        setTag: prefilledCaptionEntry.setTag,
+        libraryId: prefilledCaptionEntry.libraryId,
+        accountId: input.accountId ?? null,
+      },
+    });
+  }
 
   return {
     ...slot,
@@ -1022,6 +1052,7 @@ export async function patchSlot(
     select: {
       id: true,
       status: true,
+      accountId: true,
       // Banque : on a besoin du scheduledAt actuel pour détecter la transition
       // null → date (promotion depuis la banque vers le calendrier).
       scheduledAt: true,
@@ -1038,6 +1069,9 @@ export async function patchSlot(
       // création, jamais patchée) < fiche data — même précédence que
       // createSlot et le pré-remplissage de génération.
       shootEntity: { select: { fields: true } },
+      // DataEntry mémorisée (tirage précédent) — reuse au re-rattachement
+      // (idempotent) plutôt que de retirer systématiquement.
+      captionDataEntry: { select: { id: true, fields: true, setTag: true, libraryId: true } },
       // La résolution effective merge template + binding overrides côté code
       // (resolveSlotEffectivePattern, 3 branches : binding → patternTemplate
       // direct [missions account-less] → null — cf. plus bas).
@@ -1311,6 +1345,11 @@ export async function patchSlot(
   // une mission account-less, cas d'usage central « choisir un bien lié sur
   // une mission ».
   let prefilledDescription: string | undefined;
+  // DataEntry effectivement utilisée (nouvellement tirée ou réutilisée) — sert
+  // à enrichir le payload DESCRIPTION_PREFILLED ci-dessous et, si nouvellement
+  // tirée, à persister captionDataEntryId + claim post-commit.
+  let prefilledCaptionEntry: { entryId: string; setTag: string | null; libraryId: string } | null = null;
+  let prefilledCaptionDrewNew = false;
   if (typeof propertyId === "string" && propertyId && description === undefined) {
     // Phase 5 : la fiche (Entity) porte les valeurs — clé API `propertyId`.
     const property = await prisma.entity.findUnique({
@@ -1321,20 +1360,28 @@ export async function patchSlot(
     const effNeedsDescription =
       postUpdateNeedsDescription ?? effectivePattern?.needsDescription ?? "none";
     // Fiche tournage (fixe, chargée au select initial) < fiche data
-    // (rattachée par ce PATCH) — même précédence que createSlot.
-    const mergedFields = {
-      ...safeJSON<Record<string, unknown>>(slot.shootEntity?.fields ?? null, {}),
-      ...safeJSON<Record<string, unknown>>(property?.fields ?? null, {}),
-    };
-    const value = resolvePrefilledCaption(
-      {
+    // (rattachée par ce PATCH) < DataEntry mémorisée (comble les trous) —
+    // même précédence que createSlot, cf. `resolveCaptionWithDataLibrary`.
+    // `storedEntry` = l'entrée déjà mémorisée sur le slot : re-rattacher une
+    // fiche RÉ-INTERPOLE la même entrée avec des champs frais (idempotent) ;
+    // un slot sans entrée mémorisée déclenche un premier tirage.
+    const { caption, usedEntry, drewNewEntry } = await resolveCaptionWithDataLibrary({
+      config: {
         needsDescription: effNeedsDescription,
         descriptionFixedText: effectivePattern?.descriptionFixedText ?? null,
         descriptionSourceFieldKey: effectivePattern?.descriptionSourceFieldKey ?? null,
+        descriptionDataLibraryId: effectivePattern?.descriptionDataLibraryId ?? null,
       },
-      mergedFields,
-    );
-    if (value != null) prefilledDescription = value;
+      accountId: slot.accountId,
+      storedEntry: slot.captionDataEntry,
+      shootEntityFieldsJson: slot.shootEntity?.fields ?? null,
+      entityFieldsJson: property?.fields ?? null,
+    });
+    if (caption != null) prefilledDescription = caption;
+    if (usedEntry) {
+      prefilledCaptionEntry = { entryId: usedEntry.entryId, setTag: usedEntry.setTag, libraryId: usedEntry.libraryId };
+      prefilledCaptionDrewNew = drewNewEntry;
+    }
   }
 
   // Guard cover-mode retiré (idem createSlot ci-dessus) : le runtime
@@ -1432,6 +1479,12 @@ export async function patchSlot(
         updateData.entityId =
           propertyId === "" || propertyId === null ? null : (propertyId as string);
       }
+      // Légende « Pré-remplie » — DataEntry NOUVELLEMENT tirée seulement : une
+      // réutilisation (prefilledCaptionEntry non-null, drewNewEntry=false)
+      // laisse captionDataEntryId inchangé, il pointe déjà dessus.
+      if (prefilledCaptionDrewNew && prefilledCaptionEntry) {
+        updateData.captionDataEntryId = prefilledCaptionEntry.entryId;
+      }
 
       const u = await tx.publicationSlot.update({
         where: { id },
@@ -1485,7 +1538,20 @@ export async function patchSlot(
           slotId: id,
           actorId,
           type: "DESCRIPTION_PREFILLED",
-          payload: { propertyId: propertyId as string, length: prefilledDescription.length },
+          payload: {
+            propertyId: propertyId as string,
+            length: prefilledDescription.length,
+            // Traçabilité DataEntry (nouvellement tirée ou réutilisée) —
+            // absent si la recette n'a pas de bibliothèque de données.
+            ...(prefilledCaptionEntry
+              ? {
+                  entryId: prefilledCaptionEntry.entryId,
+                  setTag: prefilledCaptionEntry.setTag,
+                  libraryId: prefilledCaptionEntry.libraryId,
+                  reusedEntry: !prefilledCaptionDrewNew,
+                }
+              : {}),
+          },
         });
       }
 
@@ -1498,6 +1564,14 @@ export async function patchSlot(
       err instanceof Error ? `Échec de la sauvegarde : ${err.message}` : "Échec de la sauvegarde",
       500,
     );
+  }
+
+  // Claim d'usage DataEntry best-effort, APRÈS le commit de la transaction —
+  // le slot est déjà correct même si le claim échoue (pas de revert, cf.
+  // claimDataEntryForCaption). Seulement pour une entrée NOUVELLEMENT tirée :
+  // une réutilisation a déjà été claim à son propre tirage initial.
+  if (prefilledCaptionDrewNew && prefilledCaptionEntry) {
+    await claimDataEntryForCaption(prefilledCaptionEntry.entryId, slot.accountId);
   }
 
   // Cancel cascade : si on passe à CANCELLED, marquer les jobs en cours comme

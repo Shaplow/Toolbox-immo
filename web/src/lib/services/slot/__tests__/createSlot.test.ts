@@ -28,6 +28,14 @@ const mockBindingFindFirst = vi.fn().mockResolvedValue(null);
 const mockPatternTemplateFindUnique = vi.fn().mockResolvedValue(null);
 // Fiche (Entity, Phase 5) — validation existence/archivage du propertyId (clé API).
 const mockEntityFindUnique = vi.fn().mockResolvedValue({ id: "prop-1", typeId: "etype_bien", isArchived: false, fields: "{}" });
+const mockActivityCreate = vi.fn();
+// Légende bibliothèque de données (Phase 2) — orchestrateur + claim, mockés
+// directement (cf. skill : ce module ne fait aucune écriture, le claim est
+// à la charge de l'appelant). Passthrough par défaut vers l'implémentation
+// réelle (pure quand descriptionDataLibraryId est absent) pour ne pas casser
+// les tests existants qui n'utilisent aucune bibliothèque.
+const mockResolveCaptionWithDataLibrary = vi.fn();
+const mockClaimDataEntryForCaption = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -50,7 +58,36 @@ vi.mock("@/lib/prisma", () => ({
     entity: {
       findUnique: (...args: unknown[]) => mockEntityFindUnique(...args),
     },
+    publicationActivity: {
+      create: (...args: unknown[]) => mockActivityCreate(...args),
+    },
   },
+}));
+
+vi.mock("@/lib/publications/captionDataLibrary", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/publications/captionDataLibrary")>();
+  return {
+    ...actual,
+    // Wrapper LAZY (jamais invoqué au chargement du module — seulement à
+    // l'appel réel, bien après l'exécution de `const mockX = vi.fn()` en tête
+    // de fichier). Poser l'implémentation par défaut ICI plutôt qu'au niveau
+    // top du factory évite un throw "Cannot access before initialization" :
+    // le factory tourne dès la résolution de l'import (avant que les const
+    // "mock*" du fichier de test n'aient été évaluées), un appel eager à
+    // `.mockImplementation` à ce moment-là taperait dans la TDZ.
+    resolveCaptionWithDataLibrary: (
+      ...args: Parameters<typeof actual.resolveCaptionWithDataLibrary>
+    ) => {
+      if (!mockResolveCaptionWithDataLibrary.getMockImplementation()) {
+        mockResolveCaptionWithDataLibrary.mockImplementation(actual.resolveCaptionWithDataLibrary);
+      }
+      return mockResolveCaptionWithDataLibrary(...args);
+    },
+  };
+});
+
+vi.mock("@/lib/contentLibraryResolver", () => ({
+  claimDataEntryForCaption: (...args: unknown[]) => mockClaimDataEntryForCaption(...args),
 }));
 
 import { createSlot } from "@/lib/services/slot/slotService";
@@ -128,6 +165,11 @@ beforeEach(() => {
   mockBindingFindFirst.mockReset().mockResolvedValue(null);
   mockPatternTemplateFindUnique.mockReset().mockResolvedValue(null);
   mockEntityFindUnique.mockReset().mockResolvedValue({ id: "prop-1", typeId: "etype_bien", isArchived: false, fields: "{}" });
+  mockActivityCreate.mockReset();
+  // mockClear (pas mockReset) : garde le passthrough par défaut posé dans
+  // vi.mock ci-dessus, ne vide que l'historique d'appels.
+  mockResolveCaptionWithDataLibrary.mockClear();
+  mockClaimDataEntryForCaption.mockReset().mockResolvedValue(true);
 
   // Mock par défaut : create renvoie un objet stub plausible
   mockSlotCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
@@ -763,6 +805,124 @@ describe("createSlot — description fixe (mode fixed)", () => {
     });
     const slot = await createSlot({ patternTemplateId: "tpl-fixed" }, makeAdminCtx());
     expect(slot.description).toBeNull();
+  });
+});
+
+// ─── Légende bibliothèque de données (Phase 2) ──────────────────────────────
+
+describe("createSlot — légende pré-remplie depuis une DataLibrary", () => {
+  const tplWithLibrary = {
+    id: "tpl-lib",
+    label: "Recette bibliothèque",
+    source: "auto_template",
+    isArchived: false,
+    captionPresetId: null,
+    descriptionPromptId: null,
+    needsCaptions: false,
+    needsDescription: "preFilled",
+    descriptionSourceFieldKey: null,
+    descriptionFixedText: "Bienvenue {{ville}}",
+    descriptionDataLibraryId: "lib-1",
+    coverMode: "none",
+    coverConfig: null,
+    fieldSchema: "[]",
+    requiresProperty: false,
+  };
+
+  it("recette avec descriptionDataLibraryId + tirage → captionDataEntryId persisté + claim appelé + activité loggée", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce(tplWithLibrary);
+    mockResolveCaptionWithDataLibrary.mockResolvedValueOnce({
+      caption: "Bienvenue Paris",
+      usedEntry: { entryId: "entry-1", fields: { ville: "Paris" }, setTag: "vitrine", libraryId: "lib-1" },
+      drewNewEntry: true,
+    });
+
+    const slot = await createSlot(
+      { accountId: "account-A", patternTemplateId: "tpl-lib" },
+      makeAdminCtx(),
+    );
+
+    expect(slot.description).toBe("Bienvenue Paris");
+    expect(slot.captionDataEntryId).toBe("entry-1");
+    expect(mockClaimDataEntryForCaption).toHaveBeenCalledWith("entry-1", "account-A");
+    expect(mockActivityCreate).toHaveBeenCalled();
+    const call = mockActivityCreate.mock.calls.find(
+      (c) => (c[0] as { data?: { type?: string } }).data?.type === "DESCRIPTION_PREFILLED",
+    );
+    expect(call).toBeDefined();
+    const payloadRaw = (call![0] as { data: { payload: unknown } }).data.payload;
+    const payload = typeof payloadRaw === "string" ? JSON.parse(payloadRaw) : payloadRaw;
+    expect(payload).toMatchObject({
+      trigger: "create",
+      entryId: "entry-1",
+      setTag: "vitrine",
+      libraryId: "lib-1",
+      accountId: "account-A",
+    });
+  });
+
+  it("recette avec descriptionDataLibraryId mais résolution vide → aucun claim, aucune activité, description inchangée", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce(tplWithLibrary);
+    mockResolveCaptionWithDataLibrary.mockResolvedValueOnce({
+      caption: null,
+      usedEntry: null,
+      drewNewEntry: false,
+    });
+
+    const slot = await createSlot(
+      { accountId: "account-A", patternTemplateId: "tpl-lib" },
+      makeAdminCtx(),
+    );
+
+    expect(slot.description).toBeNull();
+    expect(slot.captionDataEntryId).toBeNull();
+    expect(mockClaimDataEntryForCaption).not.toHaveBeenCalled();
+    expect(mockActivityCreate).not.toHaveBeenCalled();
+  });
+
+  it("claim en échec (best-effort) ne fait pas échouer la création du slot", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce(tplWithLibrary);
+    mockResolveCaptionWithDataLibrary.mockResolvedValueOnce({
+      caption: "Bienvenue Paris",
+      usedEntry: { entryId: "entry-1", fields: { ville: "Paris" }, setTag: "vitrine", libraryId: "lib-1" },
+      drewNewEntry: true,
+    });
+    mockClaimDataEntryForCaption.mockResolvedValueOnce(false);
+
+    const slot = await createSlot(
+      { accountId: "account-A", patternTemplateId: "tpl-lib" },
+      makeAdminCtx(),
+    );
+
+    expect(slot.description).toBe("Bienvenue Paris");
+    expect(slot.captionDataEntryId).toBe("entry-1");
+  });
+
+  it("recette SANS descriptionDataLibraryId → comportement inchangé (résolution réelle, non mockée), aucun claim", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce({
+      id: "tpl-fixed-2",
+      label: "Recette texte fixe",
+      source: "auto_template",
+      isArchived: false,
+      captionPresetId: null,
+      descriptionPromptId: null,
+      needsCaptions: false,
+      needsDescription: "fixed",
+      descriptionSourceFieldKey: null,
+      descriptionFixedText: "Visitez ce bien d'exception ✨",
+      descriptionDataLibraryId: null,
+      coverMode: "none",
+      coverConfig: null,
+      fieldSchema: "[]",
+      requiresProperty: false,
+    });
+
+    const slot = await createSlot({ patternTemplateId: "tpl-fixed-2" }, makeAdminCtx());
+
+    expect(slot.description).toBe("Visitez ce bien d'exception ✨");
+    expect(slot.captionDataEntryId).toBeNull();
+    expect(mockClaimDataEntryForCaption).not.toHaveBeenCalled();
+    expect(mockActivityCreate).not.toHaveBeenCalled();
   });
 });
 

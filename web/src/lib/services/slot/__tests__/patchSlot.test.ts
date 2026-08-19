@@ -30,6 +30,14 @@ const mockActivityCreate = vi.fn();
 const mockTransaction = vi.fn();
 // patchSlot résout l'effective pattern via PatternBinding (canonique).
 const mockBindingFindUnique = vi.fn().mockResolvedValue(null);
+// Fiche (Entity, Phase 5) — bloc de (re)rattachement propertyId.
+const mockEntityFindUnique = vi.fn().mockResolvedValue({ fields: "{}" });
+// Légende bibliothèque de données (Phase 2) — orchestrateur + claim, mockés
+// directement. Passthrough par défaut vers l'implémentation réelle (pure
+// quand descriptionDataLibraryId est absent) pour ne pas casser les tests
+// existants qui ne touchent pas propertyId.
+const mockResolveCaptionWithDataLibrary = vi.fn();
+const mockClaimDataEntryForCaption = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -44,11 +52,35 @@ vi.mock("@/lib/prisma", () => ({
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
     },
+    entity: {
+      findUnique: (...args: unknown[]) => mockEntityFindUnique(...args),
+    },
     publicationActivity: {
       create: (...args: unknown[]) => mockActivityCreate(...args),
     },
     $transaction: (cb: unknown) => mockTransaction(cb),
   },
+}));
+
+vi.mock("@/lib/publications/captionDataLibrary", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/publications/captionDataLibrary")>();
+  return {
+    ...actual,
+    // Wrapper LAZY — cf. createSlot.test.ts pour l'explication détaillée
+    // (un `.mockImplementation` eager ici tape dans la TDZ des const "mock*").
+    resolveCaptionWithDataLibrary: (
+      ...args: Parameters<typeof actual.resolveCaptionWithDataLibrary>
+    ) => {
+      if (!mockResolveCaptionWithDataLibrary.getMockImplementation()) {
+        mockResolveCaptionWithDataLibrary.mockImplementation(actual.resolveCaptionWithDataLibrary);
+      }
+      return mockResolveCaptionWithDataLibrary(...args);
+    },
+  };
+});
+
+vi.mock("@/lib/contentLibraryResolver", () => ({
+  claimDataEntryForCaption: (...args: unknown[]) => mockClaimDataEntryForCaption(...args),
 }));
 
 // Import APRES le mock
@@ -116,6 +148,7 @@ interface SlotFixture {
     needsDescription: string;
     descriptionSourceFieldKey: string | null;
     descriptionFixedText: string | null;
+    descriptionDataLibraryId: string | null;
     needsAdminValidation: boolean;
     needsClientValidation: boolean;
     allowsClientRevision: boolean;
@@ -123,6 +156,10 @@ interface SlotFixture {
     requiresProperty: boolean;
     requiresEntityTypeId: string | null;
   } | null;
+  /** Fiche tournage (fixe) — fiche data < fiche tournage, cf. captionDataLibrary. */
+  shootEntity: { fields: string } | null;
+  /** DataEntry mémorisée par un tirage précédent (légende bibliothèque). */
+  captionDataEntry: { id: string; fields: string; setTag: string | null; libraryId: string } | null;
 }
 
 /** PatternBinding mock complet (chemin canonique du changement de recette). */
@@ -164,6 +201,7 @@ function makeTemplateRow(over: Record<string, unknown> = {}) {
     needsDescription: "none",
     descriptionSourceFieldKey: null,
     descriptionFixedText: null,
+    descriptionDataLibraryId: null,
     needsAdminValidation: false,
     needsClientValidation: false,
     allowsClientRevision: false,
@@ -202,6 +240,8 @@ function makeSlot(overrides: Partial<SlotFixture> = {}): SlotFixture {
       },
     },
     patternTemplate: null,
+    shootEntity: null,
+    captionDataEntry: null,
     ...overrides,
   };
 }
@@ -212,8 +252,13 @@ beforeEach(() => {
   mockSlotUpdateMany.mockReset();
   mockBindingFindUnique.mockReset().mockResolvedValue(null);
   mockUserFindUnique.mockReset();
+  mockEntityFindUnique.mockReset().mockResolvedValue({ fields: "{}" });
   mockActivityCreate.mockReset();
   mockTransaction.mockReset();
+  // mockClear (pas mockReset) : garde le passthrough par défaut posé dans
+  // vi.mock ci-dessus, ne vide que l'historique d'appels.
+  mockResolveCaptionWithDataLibrary.mockClear();
+  mockClaimDataEntryForCaption.mockReset().mockResolvedValue(true);
 
   // Default : update renvoie le slot mis à jour
   mockSlotUpdate.mockImplementation(({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
@@ -517,6 +562,115 @@ describe("patchSlot — mission account-less (patternBindingId null, patternTemp
     await expect(
       patchSlot("slot-1", { notes: "test" }, makeUserCtx("ADMIN")),
     ).rejects.toBeInstanceOf(ValidationError);
+  });
+});
+
+// ─── Légende bibliothèque de données (Phase 2) ──────────────────────────────
+// Rattachement/re-rattachement d'une fiche (propertyId fourni, description
+// omise) sur une recette avec descriptionDataLibraryId — cf.
+// `resolveCaptionWithDataLibrary` (mocké directement, cf. beforeEach).
+
+describe("patchSlot — légende pré-remplie depuis une DataLibrary (rattachement de fiche)", () => {
+  function makeSlotWithLibrary(overrides: Partial<SlotFixture> = {}) {
+    return makeSlot({
+      patternBinding: null,
+      patternTemplate: makeTemplateRow({
+        needsDescription: "preFilled",
+        descriptionFixedText: "Bonjour {{ville}}",
+        descriptionDataLibraryId: "lib-1",
+      }),
+      ...overrides,
+    });
+  }
+
+  it("entrée déjà mémorisée (captionDataEntry) → réutilisée sans re-tirer, captionDataEntryId inchangé, aucun claim", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlotWithLibrary({
+        captionDataEntry: { id: "entry-old", fields: '{"ville":"Lyon"}', setTag: "vitrine", libraryId: "lib-1" },
+      }),
+    );
+    mockEntityFindUnique.mockResolvedValueOnce({ fields: '{"prix":"200000"}' });
+    mockResolveCaptionWithDataLibrary.mockResolvedValueOnce({
+      caption: "Bonjour Lyon",
+      usedEntry: { entryId: "entry-old", fields: { ville: "Lyon" }, setTag: "vitrine", libraryId: "lib-1" },
+      drewNewEntry: false,
+    });
+
+    const result = await patchSlot("slot-1", { propertyId: "prop-1" }, makeUserCtx("ADMIN"));
+
+    expect(result.description).toBe("Bonjour Lyon");
+    // storedEntry transmis = l'entrée mémorisée sur le slot (reuse, pas de redraw).
+    expect(mockResolveCaptionWithDataLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "account-A",
+        storedEntry: { id: "entry-old", fields: '{"ville":"Lyon"}', setTag: "vitrine", libraryId: "lib-1" },
+      }),
+    );
+    // Pas de redraw → pas de nouvelle entrée à persister.
+    const updateCallData = mockSlotUpdate.mock.calls[0]![0] as { data: Record<string, unknown> };
+    expect(updateCallData.data).not.toHaveProperty("captionDataEntryId");
+    expect(mockClaimDataEntryForCaption).not.toHaveBeenCalled();
+
+    const call = mockActivityCreate.mock.calls.find(
+      (c) => (c[0] as { data?: { type?: string } }).data?.type === "DESCRIPTION_PREFILLED",
+    );
+    expect(call).toBeDefined();
+    const payloadRaw = (call![0] as { data: { payload: unknown } }).data.payload;
+    const payload = typeof payloadRaw === "string" ? JSON.parse(payloadRaw) : payloadRaw;
+    expect(payload).toMatchObject({ entryId: "entry-old", reusedEntry: true });
+  });
+
+  it("aucune entrée mémorisée → premier tirage, captionDataEntryId persisté, claim appelé post-commit", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlotWithLibrary({ captionDataEntry: null }),
+    );
+    mockResolveCaptionWithDataLibrary.mockResolvedValueOnce({
+      caption: "Bonjour Nice",
+      usedEntry: { entryId: "entry-new", fields: { ville: "Nice" }, setTag: "vitrine", libraryId: "lib-1" },
+      drewNewEntry: true,
+    });
+
+    const result = await patchSlot("slot-1", { propertyId: "prop-1" }, makeUserCtx("ADMIN"));
+
+    expect(result.description).toBe("Bonjour Nice");
+    expect(result.captionDataEntryId).toBe("entry-new");
+    expect(mockClaimDataEntryForCaption).toHaveBeenCalledWith("entry-new", "account-A");
+
+    const call = mockActivityCreate.mock.calls.find(
+      (c) => (c[0] as { data?: { type?: string } }).data?.type === "DESCRIPTION_PREFILLED",
+    );
+    const payloadRaw = (call![0] as { data: { payload: unknown } }).data.payload;
+    const payload = typeof payloadRaw === "string" ? JSON.parse(payloadRaw) : payloadRaw;
+    expect(payload).toMatchObject({ entryId: "entry-new", reusedEntry: false });
+  });
+
+  it("claim en échec (best-effort) ne fait pas échouer le PATCH", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlotWithLibrary({ captionDataEntry: null }),
+    );
+    mockResolveCaptionWithDataLibrary.mockResolvedValueOnce({
+      caption: "Bonjour Nice",
+      usedEntry: { entryId: "entry-new", fields: { ville: "Nice" }, setTag: "vitrine", libraryId: "lib-1" },
+      drewNewEntry: true,
+    });
+    mockClaimDataEntryForCaption.mockResolvedValueOnce(false);
+
+    const result = await patchSlot("slot-1", { propertyId: "prop-1" }, makeUserCtx("ADMIN"));
+
+    expect(result.description).toBe("Bonjour Nice");
+    expect(result.captionDataEntryId).toBe("entry-new");
+  });
+
+  it("détachement de la fiche (propertyId: null) → pas de résolution de légende, aucun claim", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlotWithLibrary({ captionDataEntry: { id: "entry-old", fields: "{}", setTag: null, libraryId: "lib-1" } }),
+    );
+
+    const result = await patchSlot("slot-1", { propertyId: null }, makeUserCtx("ADMIN"));
+
+    expect(result).toBeDefined();
+    expect(mockResolveCaptionWithDataLibrary).not.toHaveBeenCalled();
+    expect(mockClaimDataEntryForCaption).not.toHaveBeenCalled();
   });
 });
 
