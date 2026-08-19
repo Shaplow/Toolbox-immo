@@ -338,6 +338,13 @@ export interface PublicationFicheProps {
   /** V6.6.2 — Status transcription pour DescriptionSection (évite "Lancer
    *  la chaîne" trompeur quand transcription PROCESSING). */
   transcriptionJobStatus?: string | null;
+  /** Phase 4 — la recette référence une DataLibrary pour la légende
+   *  (indépendant du fait qu'une entrée ait déjà été tirée). */
+  hasCaptionLibrary?: boolean;
+  /** Phase 4 — provenance de l'entrée actuellement mémorisée sur le slot
+   *  (via `captionDataEntry`, pas l'activity). null = pas encore tirée, ou
+   *  bibliothèque/entrée supprimée depuis. */
+  captionEntry?: { setTag: string | null; libraryName: string } | null;
 }
 
 export function PublicationFiche({
@@ -375,6 +382,8 @@ export function PublicationFiche({
   currentUserRole,
   aiConfig,
   transcriptionJobStatus,
+  hasCaptionLibrary,
+  captionEntry,
 }: PublicationFicheProps) {
   // F4 — Destructure local des permissions pour garder les call sites
   // historiques inchangés (`{canEditRender}` etc.). Le grouping est dans
@@ -813,6 +822,8 @@ export function PublicationFiche({
                 hasCurrentVersion={!!currentVersionId}
                 needsClientValidation={clientValidation.needsClientValidation}
                 transcriptionJobStatus={transcriptionJobStatus}
+                hasCaptionLibrary={hasCaptionLibrary ?? false}
+                captionEntry={captionEntry ?? null}
               />
             )}
 

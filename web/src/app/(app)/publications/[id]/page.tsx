@@ -93,6 +93,17 @@ export default async function PublicationPage({ params }: PageProps) {
           type: { select: { name: true, fieldSchema: true } },
         },
       },
+      // Phase 4 — provenance de la légende tirée depuis une bibliothèque de
+      // données (DataLibrary/DataEntry). Lu via la relation (pas l'activity) :
+      // plus simple, et toujours juste après un SetNull (bibliothèque/entrée
+      // supprimée ⇒ FK cassée ⇒ relation null automatiquement).
+      captionDataEntry: {
+        select: {
+          id: true,
+          setTag: true,
+          library: { select: { id: true, name: true } },
+        },
+      },
       // Recette effective (binding par compte, sinon template global des
       // missions) — fragment + résolution partagés (V2.2).
       ...slotEffectivePatternSelect,
@@ -493,6 +504,21 @@ export default async function PublicationPage({ params }: PageProps) {
       }
     : null;
 
+  // Phase 4 — provenance de la légende tirée depuis la bibliothèque de
+  // données. `hasCaptionLibrary` reflète la config de la recette (une
+  // bibliothèque est référencée), indépendamment du fait qu'une entrée ait
+  // déjà été tirée — couvre les slots auto du calendrier, créés sans
+  // pré-remplissage. `captionEntry` reflète l'entrée réellement mémorisée
+  // sur le slot (via la relation, pas l'activity : toujours juste après un
+  // SetNull si la bibliothèque/entrée a été supprimée entre-temps).
+  const hasCaptionLibrary = effectivePattern?.descriptionDataLibraryId != null;
+  const captionEntry = slot.captionDataEntry
+    ? {
+        setTag: slot.captionDataEntry.setTag,
+        libraryName: slot.captionDataEntry.library?.name ?? "bibliothèque supprimée",
+      }
+    : null;
+
   const [activeValidationToken, validationRounds] = await Promise.all([
     prisma.clientValidationToken.findFirst({
       where: { slotId: id, revokedAt: null, expiresAt: { gt: new Date() } },
@@ -755,6 +781,8 @@ export default async function PublicationPage({ params }: PageProps) {
         hasGPT: !!process.env.OPENAI_API_KEY,
       }}
       transcriptionJobStatus={transcriptionJobStatus}
+      hasCaptionLibrary={hasCaptionLibrary}
+      captionEntry={captionEntry}
     />
   );
 }

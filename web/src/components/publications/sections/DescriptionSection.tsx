@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, ExternalLink, Save, Check, Sparkles, Loader2, Copy, Pencil, RefreshCw, AlertCircle, ShieldCheck } from "lucide-react";
+import { FileText, ExternalLink, Save, Check, Sparkles, Loader2, Copy, Pencil, RefreshCw, AlertCircle, ShieldCheck, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Section } from "@/components/ui/molecules/Section";
 import { FormField } from "@/components/ui/FormField";
@@ -89,6 +89,13 @@ interface Props {
   storageKey?: string;
   defaultOpen?: boolean;
   collapsible?: boolean;
+  /** Phase 4 — la recette référence une DataLibrary pour la légende
+   *  (indépendant du fait qu'une entrée ait déjà été tirée pour ce slot). */
+  hasCaptionLibrary?: boolean;
+  /** Phase 4 — provenance de l'entrée mémorisée sur le slot (via
+   *  `captionDataEntry`). null = pas encore tirée, ou bibliothèque/entrée
+   *  supprimée depuis. */
+  captionEntry?: { setTag: string | null; libraryName: string } | null;
 }
 
 interface PromptOption {
@@ -130,6 +137,8 @@ function DescriptionSectionInner({
   storageKey,
   defaultOpen = true,
   collapsible = false,
+  hasCaptionLibrary = false,
+  captionEntry = null,
 }: Props) {
   const router = useRouter();
   const isAutoMode = pattern?.needsDescription === "autoGenerate";
@@ -143,6 +152,8 @@ function DescriptionSectionInner({
   const [retryingChain, setRetryingChain] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
   const [showRecomputeConfirm, setShowRecomputeConfirm] = useState(false);
+  const [redrawing, setRedrawing] = useState(false);
+  const [showRedrawConfirm, setShowRedrawConfirm] = useState(false);
   const [value, setValue] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -389,17 +400,25 @@ function DescriptionSectionInner({
    * Recalcule la légende « Pré-remplie »/« fixe » depuis les valeurs FRAÎCHES
    * des fiches rattachées — comble l'écart avec la copie one-shot faite au
    * (re)rattachement de fiche (cf. POST /recompute-caption).
+   *
+   * `redraw` généralise l'action pour couvrir aussi « Tirer une nouvelle » :
+   * false = réutilise l'entrée bibliothèque mémorisée (ou en tire une si
+   * aucune), true = consomme une nouvelle entrée et remplace la mémorisée.
    */
-  async function handleRecompute() {
-    setRecomputing(true);
+  async function handleRecompute(redraw: boolean) {
+    if (redraw) setRedrawing(true);
+    else setRecomputing(true);
     try {
       const res = await fetch(`/api/publications/${slot.id}/recompute-caption`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redraw }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         updated?: boolean;
         description?: string | null;
+        entry?: { entryId: string; setTag: string | null; libraryId: string; isNew: boolean } | null;
         message?: string;
       };
       if (!res.ok) {
@@ -409,7 +428,16 @@ function DescriptionSectionInner({
       if (data.updated && typeof data.description === "string") {
         setValue(data.description);
         setSaved(false);
-        toast.success("Légende recalculée depuis la fiche.");
+        const folderLabel = data.entry ? data.entry.setTag ?? "(sans dossier)" : null;
+        toast.success(
+          redraw
+            ? folderLabel
+              ? `Nouvelle fiche tirée — dossier « ${folderLabel} ».`
+              : "Nouvelle fiche tirée."
+            : folderLabel
+              ? `Légende recalculée — dossier « ${folderLabel} ».`
+              : "Légende recalculée depuis la fiche."
+        );
       } else {
         toast.info(data.message ?? "Aucune valeur exploitable — légende inchangée.");
       }
@@ -418,7 +446,9 @@ function DescriptionSectionInner({
       toast.error(err instanceof Error ? err.message : "Erreur réseau");
     } finally {
       setRecomputing(false);
+      setRedrawing(false);
       setShowRecomputeConfirm(false);
+      setShowRedrawConfirm(false);
     }
   }
 
@@ -681,25 +711,54 @@ function DescriptionSectionInner({
           /* ── Mode manuel OU édition après preview ─────────────────────────── */
           <>
             {(isPreFilled || isFixed) && (
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-[11px] text-muted-foreground">
-                  Copiée depuis la fiche rattachée au rattachement (création
-                  ou changement de fiche) — une édition des champs de la
-                  fiche ensuite ne se répercute pas automatiquement ici.
-                  Utilise « Recalculer » pour resynchroniser, ou ajuste
-                  librement le texte ci-dessous.
-                </p>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => setShowRecomputeConfirm(true)}
-                    className="inline-flex items-center gap-1 shrink-0 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors"
-                    title="Recalcule la légende depuis les valeurs actuelles de la fiche"
-                  >
-                    <RefreshCw size={11} />
-                    Recalculer
-                  </button>
+              <div className="space-y-1.5">
+                {hasCaptionLibrary && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {captionEntry ? (
+                      <>
+                        Fiche de données :{" "}
+                        <span className="font-medium text-foreground">{captionEntry.libraryName}</span>
+                        {" · dossier "}
+                        <span className="font-medium text-foreground">
+                          {captionEntry.setTag ?? "(sans dossier)"}
+                        </span>
+                      </>
+                    ) : (
+                      <>Aucune fiche de données mémorisée — « Recalculer » en tirera une.</>
+                    )}
+                  </p>
                 )}
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    {hasCaptionLibrary
+                      ? "Alimentée par une fiche tirée dans une bibliothèque en rotation — elle varie par compte et retourne au fil des publications. Utilise « Recalculer » pour rafraîchir le texte depuis la fiche mémorisée, ou « Tirer une nouvelle » pour en consommer une autre."
+                      : "Copiée depuis la fiche rattachée au rattachement (création ou changement de fiche) — une édition des champs de la fiche ensuite ne se répercute pas automatiquement ici. Utilise « Recalculer » pour resynchroniser, ou ajuste librement le texte ci-dessous."}
+                  </p>
+                  {canEdit && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowRecomputeConfirm(true)}
+                        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors"
+                        title="Recalcule la légende depuis les valeurs actuelles de la fiche"
+                      >
+                        <RefreshCw size={11} />
+                        Recalculer
+                      </button>
+                      {hasCaptionLibrary && (
+                        <button
+                          type="button"
+                          onClick={() => setShowRedrawConfirm(true)}
+                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors"
+                          title="Tire une nouvelle fiche de la bibliothèque pour cette légende"
+                        >
+                          <Shuffle size={11} />
+                          Tirer une nouvelle
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             <Textarea
@@ -926,8 +985,19 @@ function DescriptionSectionInner({
         confirmLabel="Recalculer"
         cancelLabel="Annuler"
         loading={recomputing}
-        onConfirm={() => void handleRecompute()}
+        onConfirm={() => void handleRecompute(false)}
         onCancel={() => setShowRecomputeConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={showRedrawConfirm}
+        title="Tirer une nouvelle fiche ?"
+        description="Consommer une nouvelle fiche de la bibliothèque ? L'actuelle restera comptée comme utilisée."
+        confirmLabel="Tirer une nouvelle"
+        cancelLabel="Annuler"
+        loading={redrawing}
+        onConfirm={() => void handleRecompute(true)}
+        onCancel={() => setShowRedrawConfirm(false)}
       />
     </Section>
   );
