@@ -237,6 +237,63 @@ describe("resolvePrefilledCaptionFromEntities", () => {
       ),
     ).toBeNull();
   });
+
+  describe("4e source — dataEntryFieldsJson (fill-only, entity > shootEntity > dataEntry)", () => {
+    it("entrée seule (aucune fiche rattachée) → ses champs résolvent le modèle", () => {
+      expect(
+        resolvePrefilledCaptionFromEntities(
+          config,
+          null,
+          null,
+          JSON.stringify({ adresse: "Depuis l'entrée data", prix: "290 000 €" }),
+        ),
+      ).toBe("🏡 Depuis l'entrée data — 290 000 €");
+    });
+
+    it("entrée + fiches : la fiche (entity/shootEntity) prime sur l'entrée en cas de collision", () => {
+      const shootFields = JSON.stringify({ adresse: "Adresse tournage" });
+      const entityFields = JSON.stringify({ prix: "350 000 €" });
+      const dataFields = JSON.stringify({ adresse: "Adresse entrée (ignorée)", prix: "999 €" });
+      expect(
+        resolvePrefilledCaptionFromEntities(config, shootFields, entityFields, dataFields),
+      ).toBe("🏡 Adresse tournage — 350 000 €");
+    });
+
+    it("valeur BLANCHE (\"\") de fiche ne masque PAS la valeur de l'entrée (fill-only, pas un spread)", () => {
+      // La fiche data porte `prix: ""` (volontairement vide) — un simple
+      // spread `{...dataEntry, ...shoot, ...entity}` laisserait ce "" gagner
+      // et écraserait silencieusement la valeur de l'entrée.
+      const entityFields = JSON.stringify({ adresse: "12 rue de la Paix", prix: "" });
+      const dataFields = JSON.stringify({ prix: "350 000 €" });
+      expect(
+        resolvePrefilledCaptionFromEntities(config, null, entityFields, dataFields),
+      ).toBe("🏡 12 rue de la Paix — 350 000 €");
+    });
+
+    it("absence d'entrée (undefined) → comportement 3-sources inchangé", () => {
+      const shootFields = JSON.stringify({ adresse: "Ancienne adresse (tournage)" });
+      const entityFields = JSON.stringify({ adresse: "12 rue de la Paix", prix: "350 000 €" });
+      expect(resolvePrefilledCaptionFromEntities(config, shootFields, entityFields)).toBe(
+        resolvePrefilledCaptionFromEntities(config, shootFields, entityFields, undefined),
+      );
+      expect(resolvePrefilledCaptionFromEntities(config, shootFields, entityFields)).toBe(
+        "🏡 12 rue de la Paix — 350 000 €",
+      );
+    });
+
+    it("mode legacy \"fixed\" (alias descriptionSourceFieldKey) : l'entrée comble le champ absent de la fiche", () => {
+      const legacyConfig = {
+        needsDescription: "fixed",
+        descriptionFixedText: null,
+        descriptionSourceFieldKey: "description",
+      };
+      const entityFields = JSON.stringify({ autreChamp: "peu importe" });
+      const dataFields = JSON.stringify({ description: "Depuis l'entrée data tirée." });
+      expect(
+        resolvePrefilledCaptionFromEntities(legacyConfig, null, entityFields, dataFields),
+      ).toBe("Depuis l'entrée data tirée.");
+    });
+  });
 });
 
 describe("normalizeFixedText", () => {

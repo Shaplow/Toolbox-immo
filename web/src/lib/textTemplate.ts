@@ -10,6 +10,11 @@ export type TextTemplateSegment =
 
 const VARIABLE_RE = /^[A-Za-z_]\w*$/;
 
+/** Expose la forme valide d'une clé de variable `{{clé}}` du moteur de templating. */
+export function isValidTemplateVariableKey(key: string): boolean {
+  return VARIABLE_RE.test(key);
+}
+
 function parseIfBlock(input: string, start: number): { segment: TextTemplateSegment; end: number } | null {
   const headerEnd = input.indexOf("}}", start);
   if (headerEnd === -1) return null;

@@ -34,6 +34,8 @@ export interface SlotEffectivePattern {
   descriptionSourceFieldKey: string | null;
   /** Mode fixed : texte de départ de la légende. null si inactif. */
   descriptionFixedText: string | null;
+  /** Mode preFilled : bibliothèque de données tirée pour alimenter les {{clé}}. null = pas de tirage. */
+  descriptionDataLibraryId: string | null;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
@@ -62,6 +64,7 @@ const TEMPLATE_PATTERN_SELECT = {
   needsDescription: true,
   descriptionSourceFieldKey: true,
   descriptionFixedText: true,
+  descriptionDataLibraryId: true,
   needsAdminValidation: true,
   needsClientValidation: true,
   allowsClientRevision: true,
@@ -124,6 +127,7 @@ export function resolveSlotEffectivePattern(
       needsDescription: t.needsDescription,
       descriptionSourceFieldKey: t.descriptionSourceFieldKey,
       descriptionFixedText: t.descriptionFixedText,
+      descriptionDataLibraryId: t.descriptionDataLibraryId,
       needsAdminValidation: t.needsAdminValidation,
       needsClientValidation: t.needsClientValidation,
       allowsClientRevision: t.allowsClientRevision,

@@ -82,6 +82,9 @@ export function resolveEffectivePattern(
     needsDescription: t.needsDescription,
     descriptionSourceFieldKey: t.descriptionSourceFieldKey,
     descriptionFixedText: t.descriptionFixedText,
+    // Pas de branche d'override binding : la variation par compte passe par
+    // rotationScope=per_account côté DataLibrary, pas par un override ici.
+    descriptionDataLibraryId: t.descriptionDataLibraryId,
     needsAdminValidation: t.needsAdminValidation,
     needsClientValidation: t.needsClientValidation,
     allowsClientRevision: t.allowsClientRevision,

@@ -1104,6 +1104,66 @@ export async function advanceDataUsageOnSubmit(
 }
 
 /**
+ * Claim d'usage DataEntry au moment de l'AFFECTATION d'une légende (attache
+ * `captionDataEntryId` sur un slot) — pas au submit d'un render. Une légende
+ * assignée est déjà « consommée » : il n'y aura jamais de webhook DONE pour
+ * la faire avancer via `recordLibraryUsage`, donc on écrit `usageCount` ET
+ * `lastUsedAt` d'un coup ici, tel quel — réplique exacte du bloc DataEntry de
+ * `recordLibraryUsage` (web/src/lib/recordLibraryUsage.ts). Sans l'écriture
+ * `usageCount`, le burn-once (`maxUsageCount`) resterait inopérant pour les
+ * légendes (contrairement à `advanceDataUsageOnSubmit`, qui ne stampe
+ * volontairement que `lastUsedAt` en attendant le DONE d'un vrai render).
+ *
+ * Pas de revert : la consommation à l'affectation est finale (décision
+ * produit). Best-effort — ne throw jamais, retourne `false` sur toute erreur
+ * ou garde défensive (entry/lib introuvable, rotation désactivée).
+ */
+export async function claimDataEntryForCaption(
+  entryId: string,
+  accountId: string | null | undefined,
+): Promise<boolean> {
+  try {
+    const entry = await prisma.dataEntry.findUnique({
+      where: { id: entryId },
+      select: { library: { select: { rotationMode: true, rotationScope: true } } },
+    });
+    if (!entry?.library) return false;
+    if (resolveRotationMode(entry.library).mode === "none") return false;
+
+    const isShared = entry.library.rotationScope === "shared";
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      await tx.dataEntry.update({
+        where: { id: entryId },
+        data: { usageCount: { increment: 1 }, lastUsedAt: now },
+      });
+      if (accountId) {
+        await tx.dataEntryUsage.upsert({
+          where: { entryId_accountId: { entryId, accountId } },
+          update: { usageCount: { increment: 1 }, lastUsedAt: now },
+          create: { entryId, accountId, usageCount: 1, lastUsedAt: now },
+        });
+      }
+      // Scope shared : mirror exact de recordLibraryUsage — sans cette 2e
+      // écriture sous la sentinelle, le LRU shared re-pioche toujours la
+      // même entrée (le tri par dossier ne voit jamais cet usage).
+      if (isShared) {
+        await tx.dataEntryUsage.upsert({
+          where: { entryId_accountId: { entryId, accountId: SHARED_DATA_USAGE_ACCOUNT_ID } },
+          update: { usageCount: { increment: 1 }, lastUsedAt: now },
+          create: { entryId, accountId: SHARED_DATA_USAGE_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
+        });
+      }
+    });
+    return true;
+  } catch (err) {
+    console.warn(`[claimDataEntryForCaption] claim failed entry=${entryId}:`, err);
+    return false;
+  }
+}
+
+/**
  * Stamps MediaAssetUsage.lastUsedAt for the submitted audio asset at form submission time.
  * Called from POST /api/renders. Returns the prev/claimed state for the CAS revert.
  * (Phase 3 : le verrou de sérialisation AccountLibraryCursor a été retiré —

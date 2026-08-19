@@ -13,12 +13,15 @@ import { describe, it, expect, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import {
   validatePatternTemplateInput,
+  toPatternTemplateCreateData,
+  toPatternTemplateUpdateData,
   type PatternTemplateInputPayload,
 } from "@/lib/services/pattern/patternTemplateInput";
 
 function makeFakePrisma(opts: {
   entityType?: unknown;
   mediaLibrary?: { id: string; type: string } | null;
+  dataLibrary?: { id: string } | null;
 } = {}): PrismaClient {
   return {
     entityType: {
@@ -26,6 +29,9 @@ function makeFakePrisma(opts: {
     },
     mediaLibrary: {
       findUnique: vi.fn().mockResolvedValue(opts.mediaLibrary ?? null),
+    },
+    dataLibrary: {
+      findUnique: vi.fn().mockResolvedValue(opts.dataLibrary ?? null),
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any as PrismaClient;
@@ -134,5 +140,46 @@ describe("validatePatternTemplateInput", () => {
       prisma,
     );
     expect(err).toBe("template.label vide interdit");
+  });
+
+  it("descriptionDataLibraryId inexistante → erreur", async () => {
+    const prisma = makeFakePrisma({ dataLibrary: null });
+    const err = await validatePatternTemplateInput(
+      validPayload({ descriptionDataLibraryId: "datalib-inconnue" }),
+      { requireAll: true },
+      prisma,
+    );
+    expect(err).toMatch(/descriptionDataLibraryId.*introuvable/i);
+  });
+
+  it("descriptionDataLibraryId existante → accepté (pas de contrôle de type)", async () => {
+    const prisma = makeFakePrisma({ dataLibrary: { id: "datalib-1" } });
+    const err = await validatePatternTemplateInput(
+      validPayload({ descriptionDataLibraryId: "datalib-1" }),
+      { requireAll: true },
+      prisma,
+    );
+    expect(err).toBeNull();
+  });
+});
+
+describe("toPatternTemplateCreateData / toPatternTemplateUpdateData — mapping descriptionDataLibraryId", () => {
+  it("create : reprend descriptionDataLibraryId tel quel, null par défaut", () => {
+    expect(
+      toPatternTemplateCreateData(validPayload({ descriptionDataLibraryId: "datalib-1" }), "user-1")
+        .descriptionDataLibraryId,
+    ).toBe("datalib-1");
+    expect(toPatternTemplateCreateData(validPayload(), "user-1").descriptionDataLibraryId).toBeNull();
+  });
+
+  it("update : absent du payload → champ omis (pas touché) ; présent (y compris null) → appliqué", () => {
+    expect(toPatternTemplateUpdateData({}, "user-1")).not.toHaveProperty("descriptionDataLibraryId");
+    expect(
+      toPatternTemplateUpdateData({ descriptionDataLibraryId: "datalib-2" }, "user-1")
+        .descriptionDataLibraryId,
+    ).toBe("datalib-2");
+    expect(
+      toPatternTemplateUpdateData({ descriptionDataLibraryId: null }, "user-1").descriptionDataLibraryId,
+    ).toBeNull();
   });
 });

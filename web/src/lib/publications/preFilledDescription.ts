@@ -25,6 +25,7 @@
 
 import { resolveTextTemplate } from "@/lib/textTemplate";
 import { resolveSystemTokens } from "@/lib/systemTokens";
+import { isEmptyValue } from "@/lib/generate/provenance";
 import type { ListingData } from "@/types/listing";
 
 /**
@@ -123,15 +124,33 @@ function parseFields(
  * (re)calcul soit partagée entre les call sites qui la déclenchent (create,
  * patch au rattachement, `POST /api/publications/[id]/recompute-caption`)
  * au lieu de réimplémenter la fusion à chaque endroit.
+ *
+ * @param dataEntryFieldsJson Champs d'une DataEntry tirée (cf.
+ *   `lib/publications/captionDataLibrary.ts`), 4e source OPTIONNELLE.
+ *   Fusion **fill-only** (pas un spread) : une clé de l'entrée ne comble que
+ *   les trous du merge fiche tournage/fiche data — jamais elle n'écrase une
+ *   valeur déjà présente, y compris une valeur vide (`""`) volontairement
+ *   laissée par une fiche (cf. `canAssignFieldValue` /
+ *   `lib/generate/provenance.ts`, même garde que le pré-remplissage de
+ *   génération). Précédence résultante : entity > shootEntity > dataEntry.
  */
 export function resolvePrefilledCaptionFromEntities(
   config: PrefilledCaptionConfig,
   shootEntityFieldsJson: string | Record<string, unknown> | null | undefined,
   entityFieldsJson: string | Record<string, unknown> | null | undefined,
+  dataEntryFieldsJson?: string | Record<string, unknown> | null,
 ): string | null {
-  const mergedFields = {
+  const mergedFields: Record<string, unknown> = {
     ...(parseFields(shootEntityFieldsJson) ?? {}),
     ...(parseFields(entityFieldsJson) ?? {}),
   };
+  const dataFields = parseFields(dataEntryFieldsJson);
+  if (dataFields) {
+    for (const [key, value] of Object.entries(dataFields)) {
+      if (isEmptyValue(mergedFields[key])) {
+        mergedFields[key] = value;
+      }
+    }
+  }
   return resolvePrefilledCaption(config, mergedFields);
 }

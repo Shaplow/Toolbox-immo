@@ -43,6 +43,7 @@ export interface PatternTemplateInputPayload {
   descriptionPromptId?: string | null;
   descriptionSourceFieldKey?: string | null;
   descriptionFixedText?: string | null;
+  descriptionDataLibraryId?: string | null;
   coverMode?: string;
   needsDescription?: string;
   needsCaptionsMode?: string;
@@ -116,6 +117,14 @@ export async function validatePatternTemplateInput(
     }
   }
 
+  if (body.descriptionDataLibraryId) {
+    const dataLib = await prisma.dataLibrary.findUnique({
+      where: { id: body.descriptionDataLibraryId },
+      select: { id: true },
+    });
+    if (!dataLib) return `${fieldPrefix}descriptionDataLibraryId : bibliothèque de données introuvable`;
+  }
+
   return null;
 }
 
@@ -132,6 +141,7 @@ export function toPatternTemplateCreateData(
     descriptionPromptId: payload.descriptionPromptId ?? null,
     descriptionSourceFieldKey: normalizeSourceFieldKey(payload.descriptionSourceFieldKey),
     descriptionFixedText: normalizeFixedText(payload.descriptionFixedText),
+    descriptionDataLibraryId: payload.descriptionDataLibraryId ?? null,
     coverMode: payload.coverMode ?? "none",
     needsDescription: payload.needsDescription ?? "none",
     needsCaptionsMode: payload.needsCaptionsMode ?? "none",
@@ -162,6 +172,9 @@ export function toPatternTemplateUpdateData(
       : {}),
     ...(payload.descriptionFixedText !== undefined
       ? { descriptionFixedText: normalizeFixedText(payload.descriptionFixedText) }
+      : {}),
+    ...(payload.descriptionDataLibraryId !== undefined
+      ? { descriptionDataLibraryId: payload.descriptionDataLibraryId }
       : {}),
     ...(payload.coverMode !== undefined ? { coverMode: payload.coverMode } : {}),
     ...(payload.needsDescription !== undefined ? { needsDescription: payload.needsDescription } : {}),

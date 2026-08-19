@@ -14,18 +14,25 @@ const mockDataLibraryFindUnique = vi.fn();
 const mockDataEntryFindUnique = vi.fn();
 const mockUsageFindUnique = vi.fn();
 const mockUsageUpsert = vi.fn();
+const mockDataEntryUpdate = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
     dataLibrary: { findUnique: (...args: unknown[]) => mockDataLibraryFindUnique(...args) },
-    dataEntry: { findUnique: (...args: unknown[]) => mockDataEntryFindUnique(...args) },
+    dataEntry: {
+      findUnique: (...args: unknown[]) => mockDataEntryFindUnique(...args),
+      update: (...args: unknown[]) => mockDataEntryUpdate(...args),
+    },
     dataEntryUsage: {
       findUnique: (...args: unknown[]) => mockUsageFindUnique(...args),
       upsert: (...args: unknown[]) => mockUsageUpsert(...args),
     },
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) =>
       cb({
+        dataEntry: {
+          update: (...args: unknown[]) => mockDataEntryUpdate(...args),
+        },
         dataEntryUsage: {
           findUnique: (...args: unknown[]) => mockUsageFindUnique(...args),
           upsert: (...args: unknown[]) => mockUsageUpsert(...args),
@@ -34,7 +41,11 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { selectDataEntry, advanceDataUsageOnSubmit } from "@/lib/contentLibraryResolver";
+import {
+  selectDataEntry,
+  advanceDataUsageOnSubmit,
+  claimDataEntryForCaption,
+} from "@/lib/contentLibraryResolver";
 import { SHARED_DATA_USAGE_ACCOUNT_ID } from "@/lib/rotation/sentinels";
 
 function sqlTextOfCall(callIndex: number): string {
@@ -181,5 +192,76 @@ describe("advanceDataUsageOnSubmit — claim au submit", () => {
   it("entry supprimée entre prefill et submit → null silencieux", async () => {
     mockDataEntryFindUnique.mockResolvedValue(null);
     expect(await advanceDataUsageOnSubmit("e-ghost", "acc-1")).toBeNull();
+  });
+});
+
+describe("claimDataEntryForCaption — claim final à l'affectation d'une légende", () => {
+  it("per_account : incrémente usageCount+lastUsedAt global ET la ligne compte réel", async () => {
+    mockDataEntryFindUnique.mockResolvedValue({
+      library: { rotationMode: "auto", rotationScope: "per_account" },
+    });
+    const ok = await claimDataEntryForCaption("e1", "acc-1");
+    expect(ok).toBe(true);
+    expect(mockDataEntryUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "e1" },
+        data: expect.objectContaining({ usageCount: { increment: 1 } }),
+      }),
+    );
+    expect(mockUsageUpsert).toHaveBeenCalledTimes(1);
+    expect(mockUsageUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { entryId_accountId: { entryId: "e1", accountId: "acc-1" } },
+      }),
+    );
+  });
+
+  it("shared : double upsert — compte réel ET sentinelle __shared__data__", async () => {
+    mockDataEntryFindUnique.mockResolvedValue({
+      library: { rotationMode: "auto", rotationScope: "shared" },
+    });
+    const ok = await claimDataEntryForCaption("e1", "acc-1");
+    expect(ok).toBe(true);
+    expect(mockUsageUpsert).toHaveBeenCalledTimes(2);
+    expect(mockUsageUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { entryId_accountId: { entryId: "e1", accountId: "acc-1" } },
+      }),
+    );
+    expect(mockUsageUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { entryId_accountId: { entryId: "e1", accountId: SHARED_DATA_USAGE_ACCOUNT_ID } },
+      }),
+    );
+  });
+
+  it("sans compte : seul le compteur global est écrit, aucun upsert DataEntryUsage", async () => {
+    mockDataEntryFindUnique.mockResolvedValue({
+      library: { rotationMode: "auto", rotationScope: "per_account" },
+    });
+    const ok = await claimDataEntryForCaption("e1", undefined);
+    expect(ok).toBe(true);
+    expect(mockDataEntryUpdate).toHaveBeenCalledTimes(1);
+    expect(mockUsageUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rotationMode='none' → false, aucune écriture", async () => {
+    mockDataEntryFindUnique.mockResolvedValue({
+      library: { rotationMode: "none", rotationScope: "per_account" },
+    });
+    const ok = await claimDataEntryForCaption("e1", "acc-1");
+    expect(ok).toBe(false);
+    expect(mockDataEntryUpdate).not.toHaveBeenCalled();
+    expect(mockUsageUpsert).not.toHaveBeenCalled();
+  });
+
+  it("entry introuvable → false sans throw", async () => {
+    mockDataEntryFindUnique.mockResolvedValue(null);
+    expect(await claimDataEntryForCaption("e-ghost", "acc-1")).toBe(false);
+  });
+
+  it("erreur DB → false sans throw (best-effort)", async () => {
+    mockDataEntryFindUnique.mockRejectedValue(new Error("db down"));
+    await expect(claimDataEntryForCaption("e1", "acc-1")).resolves.toBe(false);
   });
 });
