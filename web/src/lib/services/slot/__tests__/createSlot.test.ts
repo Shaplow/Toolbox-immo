@@ -823,11 +823,32 @@ describe("createSlot — légende pré-remplie depuis une DataLibrary", () => {
     descriptionSourceFieldKey: null,
     descriptionFixedText: "Bienvenue {{ville}}",
     descriptionDataLibraryId: "lib-1",
+    descriptionDataSetTag: "RTEXT12",
     coverMode: "none",
     coverConfig: null,
     fieldSchema: "[]",
     requiresProperty: false,
   };
+
+  it("le dossier épinglé de la recette est transmis à l'orchestrateur", async () => {
+    mockPatternTemplateFindUnique.mockResolvedValueOnce(tplWithLibrary);
+    mockResolveCaptionWithDataLibrary.mockResolvedValueOnce({
+      caption: "Bienvenue Paris",
+      usedEntry: null,
+      drewNewEntry: false,
+    });
+
+    await createSlot({ accountId: "account-A", patternTemplateId: "tpl-lib" }, makeAdminCtx());
+
+    expect(mockResolveCaptionWithDataLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          descriptionDataLibraryId: "lib-1",
+          descriptionDataSetTag: "RTEXT12",
+        }),
+      }),
+    );
+  });
 
   it("recette avec descriptionDataLibraryId + tirage → captionDataEntryId persisté + claim appelé + activité loggée", async () => {
     mockPatternTemplateFindUnique.mockResolvedValueOnce(tplWithLibrary);

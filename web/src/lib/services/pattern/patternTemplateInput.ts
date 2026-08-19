@@ -44,6 +44,7 @@ export interface PatternTemplateInputPayload {
   descriptionSourceFieldKey?: string | null;
   descriptionFixedText?: string | null;
   descriptionDataLibraryId?: string | null;
+  descriptionDataSetTag?: string | null;
   coverMode?: string;
   needsDescription?: string;
   needsCaptionsMode?: string;
@@ -58,6 +59,11 @@ export interface PatternTemplateInputPayload {
   autoSaveToLibraryId?: string | null;
   /** PATCH /patterns/[id] uniquement — ignoré par les routes /recipes qui ne l'envoient jamais. */
   isArchived?: boolean;
+}
+
+/** Dossier épinglé : trim, chaîne vide/blanche → null (= « tous les dossiers »). */
+function normalizeSetTag(value: string | null | undefined): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 export interface ValidatePatternTemplateInputOptions {
@@ -125,6 +131,27 @@ export async function validatePatternTemplateInput(
     if (!dataLib) return `${fieldPrefix}descriptionDataLibraryId : bibliothèque de données introuvable`;
   }
 
+  const setTag = normalizeSetTag(body.descriptionDataSetTag);
+  if (setTag) {
+    // Le dossier est une sous-sélection de la bibliothèque : les deux voyagent
+    // ensemble. Les deux surfaces d'écriture (RecipeForm, PatternTemplateForm)
+    // envoient toujours les deux champs — un payload qui n'aurait que le
+    // dossier est un appel malformé, pas un cas produit.
+    if (!body.descriptionDataLibraryId) {
+      return `${fieldPrefix}descriptionDataSetTag : un dossier ne peut être épinglé qu'avec une bibliothèque de données`;
+    }
+    // Existence réelle du dossier dans CETTE bibliothèque : sans ce contrôle,
+    // un dossier renommé ou vidé dégrade la recette en « aucun tirage »
+    // silencieux (le moteur ne fait aucun repli).
+    const folder = await prisma.dataEntry.findFirst({
+      where: { libraryId: body.descriptionDataLibraryId, setTag },
+      select: { id: true },
+    });
+    if (!folder) {
+      return `${fieldPrefix}descriptionDataSetTag : dossier « ${setTag} » introuvable dans cette bibliothèque de données`;
+    }
+  }
+
   return null;
 }
 
@@ -142,6 +169,10 @@ export function toPatternTemplateCreateData(
     descriptionSourceFieldKey: normalizeSourceFieldKey(payload.descriptionSourceFieldKey),
     descriptionFixedText: normalizeFixedText(payload.descriptionFixedText),
     descriptionDataLibraryId: payload.descriptionDataLibraryId ?? null,
+    // Le dossier n'existe pas sans bibliothèque.
+    descriptionDataSetTag: payload.descriptionDataLibraryId
+      ? normalizeSetTag(payload.descriptionDataSetTag)
+      : null,
     coverMode: payload.coverMode ?? "none",
     needsDescription: payload.needsDescription ?? "none",
     needsCaptionsMode: payload.needsCaptionsMode ?? "none",
@@ -175,6 +206,18 @@ export function toPatternTemplateUpdateData(
       : {}),
     ...(payload.descriptionDataLibraryId !== undefined
       ? { descriptionDataLibraryId: payload.descriptionDataLibraryId }
+      : {}),
+    // Le dossier suit toujours la bibliothèque : dès que l'un des deux est
+    // présent dans le payload, le dossier est réécrit (valeur fournie ou null).
+    // Changer de bibliothèque sans redonner de dossier dépingle donc — un
+    // dossier de la lib A n'existe pas dans la lib B.
+    ...(payload.descriptionDataLibraryId !== undefined || payload.descriptionDataSetTag !== undefined
+      ? {
+          descriptionDataSetTag:
+            payload.descriptionDataLibraryId === null
+              ? null
+              : normalizeSetTag(payload.descriptionDataSetTag),
+        }
       : {}),
     ...(payload.coverMode !== undefined ? { coverMode: payload.coverMode } : {}),
     ...(payload.needsDescription !== undefined ? { needsDescription: payload.needsDescription } : {}),

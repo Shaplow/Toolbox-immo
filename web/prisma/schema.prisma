@@ -1326,6 +1326,13 @@ model PatternTemplate {
   /// historique, aucun tirage).
   descriptionDataLibraryId  String?
   descriptionDataLibrary    DataLibrary? @relation("PatternTemplateDescriptionDataLibrary", fields: [descriptionDataLibraryId], references: [id], onDelete: SetNull)
+  /// Restreint le tirage aux fiches de CE dossier (DataEntry.setTag) au lieu de
+  /// faire tourner la rotation entre tous les dossiers de la bibliothèque —
+  /// une recette « RTEXT12 » ne sert que des légendes du dossier RTEXT12.
+  /// UI : « Dossier ». null = comportement historique (rotation inter-dossiers).
+  /// Pas de FK : setTag est une colonne texte libre, pas une table. Dossier
+  /// vidé ou renommé ⇒ plus aucun tirage, sans repli (cf. selectDataEntry).
+  descriptionDataSetTag     String?
   /// @deprecated V8 — utiliser needsCaptionsMode.
   /// MORT — drop préparé dans pending-drops/vague6-drops.sql.
   needsCaptions             Boolean     @default(false)

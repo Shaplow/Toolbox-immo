@@ -512,6 +512,9 @@ export default async function PublicationPage({ params }: PageProps) {
   // sur le slot (via la relation, pas l'activity : toujours juste après un
   // SetNull si la bibliothèque/entrée a été supprimée entre-temps).
   const hasCaptionLibrary = effectivePattern?.descriptionDataLibraryId != null;
+  // Dossier épinglé sur la recette : sert à signaler qu'une entrée mémorisée
+  // dans un autre dossier est périmée et sera remplacée au prochain recalcul.
+  const captionPinnedSetTag = effectivePattern?.descriptionDataSetTag ?? null;
   const captionEntry = slot.captionDataEntry
     ? {
         setTag: slot.captionDataEntry.setTag,
@@ -783,6 +786,7 @@ export default async function PublicationPage({ params }: PageProps) {
       transcriptionJobStatus={transcriptionJobStatus}
       hasCaptionLibrary={hasCaptionLibrary}
       captionEntry={captionEntry}
+      captionPinnedSetTag={captionPinnedSetTag}
     />
   );
 }

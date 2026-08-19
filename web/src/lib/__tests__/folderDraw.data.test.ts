@@ -144,6 +144,92 @@ describe("selectDataEntry — tirage dossier", () => {
   });
 });
 
+/**
+ * Dossier épinglé (PatternTemplate.descriptionDataSetTag) — miroir des cas
+ * `pinnedSetTag` de folderDraw.media.test.ts. L'invariant central : AUCUN repli
+ * inter-dossiers, sinon une recette « RTEXT12 » servirait du RTEXT7.
+ */
+describe("selectDataEntry — dossier épinglé", () => {
+  it("court-circuite la découverte : une seule requête, filtrée sur le dossier", async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ id: "e-pin", fields: '{"texte":"RTEXT12 #1"}' }]);
+    const r = await selectDataEntry("lib-1", undefined, "acc-1", { pinnedSetTag: "RTEXT12" });
+    expect(r).toEqual({
+      entryId: "e-pin",
+      fields: { texte: "RTEXT12 #1" },
+      resolvedSetTag: "RTEXT12",
+    });
+    expect(mockQueryRaw).toHaveBeenCalledTimes(1);
+    const sql = sqlTextOfCall(0);
+    expect(sql).toContain('de."setTag" =');
+    expect(sql).not.toContain("GROUP BY");
+    const params = (mockQueryRaw.mock.calls[0]?.[0] as { values?: unknown[] })?.values ?? [];
+    expect(params).toContain("RTEXT12");
+  });
+
+  it("dossier vide ou épuisé → null SANS repli sur les autres dossiers", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockQueryRaw.mockResolvedValueOnce([]);
+    const r = await selectDataEntry("lib-1", undefined, "acc-1", { pinnedSetTag: "RTEXT12" });
+    expect(r).toBeNull();
+    // Une seule requête = aucune découverte de secours n'a été tentée.
+    expect(mockQueryRaw).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('dossier épinglé "RTEXT12"'));
+    warn.mockRestore();
+  });
+
+  it("pinnedSetTag null / absent / blanc → découverte normale", async () => {
+    for (const options of [{ pinnedSetTag: null }, undefined, { pinnedSetTag: "   " }]) {
+      mockQueryRaw.mockReset();
+      mockQueryRaw
+        .mockResolvedValueOnce([{ setTag: "A" }])
+        .mockResolvedValueOnce([{ id: "e1", fields: "{}" }]);
+      const r = await selectDataEntry("lib-1", undefined, "acc-1", options);
+      expect(r?.resolvedSetTag).toBe("A");
+      expect(mockQueryRaw).toHaveBeenCalledTimes(2);
+      expect(sqlTextOfCall(0)).toContain("GROUP BY");
+    }
+  });
+
+  it("rotationMode='none' prime sur le dossier épinglé", async () => {
+    mockDataLibraryFindUnique.mockResolvedValue({
+      rotationMode: "none",
+      rotationScope: "per_account",
+      maxUsageCount: null,
+    });
+    expect(await selectDataEntry("lib-1", undefined, "acc-1", { pinnedSetTag: "RTEXT12" })).toBeNull();
+    expect(mockQueryRaw).not.toHaveBeenCalled();
+  });
+
+  it("burn-once per_account s'applique dans le dossier épinglé", async () => {
+    mockDataLibraryFindUnique.mockResolvedValue({
+      rotationMode: "auto",
+      rotationScope: "per_account",
+      maxUsageCount: 1,
+    });
+    mockQueryRaw.mockResolvedValueOnce([]);
+    await selectDataEntry("lib-1", undefined, "acc-1", { pinnedSetTag: "RTEXT12" });
+    expect(sqlTextOfCall(0)).toContain('FROM "DataEntryUsage" deu2');
+  });
+
+  it("scope shared : ancienneté sous la sentinelle même en dossier épinglé", async () => {
+    mockDataLibraryFindUnique.mockResolvedValue({
+      rotationMode: "auto",
+      rotationScope: "shared",
+      maxUsageCount: null,
+    });
+    mockQueryRaw.mockResolvedValueOnce([]);
+    await selectDataEntry("lib-1", undefined, "acc-1", { pinnedSetTag: "RTEXT12" });
+    const params = (mockQueryRaw.mock.calls[0]?.[0] as { values?: unknown[] })?.values ?? [];
+    expect(params).toContain(SHARED_DATA_USAGE_ACCOUNT_ID);
+  });
+
+  it("fields JSON corrompu dans le dossier épinglé → objet vide", async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ id: "e-pin", fields: "{invalid" }]);
+    const r = await selectDataEntry("lib-1", undefined, "acc-1", { pinnedSetTag: "RTEXT12" });
+    expect(r?.fields).toEqual({});
+  });
+});
+
 describe("advanceDataUsageOnSubmit — claim au submit", () => {
   it("per_account : stamp sous le compte réel avec snapshot", async () => {
     mockDataEntryFindUnique.mockResolvedValue({

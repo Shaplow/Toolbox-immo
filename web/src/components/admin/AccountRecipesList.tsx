@@ -58,6 +58,8 @@ export interface RecipeItem {
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
   descriptionFixedText: string | null;
+  descriptionDataLibraryId: string | null;
+  descriptionDataSetTag: string | null;
   templateNotes: string | null;
   // Binding
   customLabel: string | null;
@@ -132,6 +134,8 @@ function defaultRecipeFormInitial(): RecipeFormInitial {
     descriptionPromptId: null,
     descriptionSourceFieldKey: null,
     descriptionFixedText: null,
+    descriptionDataLibraryId: null,
+    descriptionDataSetTag: null,
     autoSaveToLibraryId: null,
     templateNotes: null,
     customLabel: null,
@@ -167,6 +171,8 @@ function recipeItemToFormInitial(r: RecipeItem): RecipeFormInitial {
     descriptionPromptId: r.descriptionPromptId,
     descriptionSourceFieldKey: r.descriptionSourceFieldKey,
     descriptionFixedText: r.descriptionFixedText,
+    descriptionDataLibraryId: r.descriptionDataLibraryId,
+    descriptionDataSetTag: r.descriptionDataSetTag,
     autoSaveToLibraryId: r.autoSaveToLibraryId,
     templateNotes: r.templateNotes,
     customLabel: r.customLabel,

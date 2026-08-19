@@ -96,6 +96,8 @@ interface Props {
    *  `captionDataEntry`). null = pas encore tirée, ou bibliothèque/entrée
    *  supprimée depuis. */
   captionEntry?: { setTag: string | null; libraryName: string } | null;
+  /** Dossier épinglé sur la recette (`descriptionDataSetTag`). null = tous. */
+  captionPinnedSetTag?: string | null;
 }
 
 interface PromptOption {
@@ -139,6 +141,7 @@ function DescriptionSectionInner({
   collapsible = false,
   hasCaptionLibrary = false,
   captionEntry = null,
+  captionPinnedSetTag = null,
 }: Props) {
   const router = useRouter();
   const isAutoMode = pattern?.needsDescription === "autoGenerate";
@@ -722,6 +725,13 @@ function DescriptionSectionInner({
                         <span className="font-medium text-foreground">
                           {captionEntry.setTag ?? "(sans dossier)"}
                         </span>
+                        {captionPinnedSetTag && captionEntry.setTag !== captionPinnedSetTag && (
+                          <>
+                            {" — hors du dossier épinglé "}
+                            <span className="font-medium text-foreground">{captionPinnedSetTag}</span>
+                            {", elle sera re-tirée au prochain recalcul"}
+                          </>
+                        )}
                       </>
                     ) : (
                       <>Aucune fiche de données mémorisée — « Recalculer » en tirera une.</>
@@ -750,7 +760,11 @@ function DescriptionSectionInner({
                           type="button"
                           onClick={() => setShowRedrawConfirm(true)}
                           className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors"
-                          title="Tire une nouvelle fiche de la bibliothèque pour cette légende"
+                          title={
+                            captionPinnedSetTag
+                              ? `Tire une autre fiche du dossier épinglé « ${captionPinnedSetTag} »`
+                              : "Tire une nouvelle fiche de la bibliothèque pour cette légende"
+                          }
                         >
                           <Shuffle size={11} />
                           Tirer une nouvelle

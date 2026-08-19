@@ -60,7 +60,11 @@ function referencedTemplateKeys(config: PrefilledCaptionConfig): Set<string> {
 }
 
 export async function resolveCaptionWithDataLibrary(params: {
-  config: PrefilledCaptionConfig & { descriptionDataLibraryId: string | null };
+  config: PrefilledCaptionConfig & {
+    descriptionDataLibraryId: string | null;
+    /** Dossier épinglé — le tirage ne sert que ce dossier. null = tous. */
+    descriptionDataSetTag: string | null;
+  };
   accountId: string | null | undefined;
   storedEntry: { id: string; fields: string; setTag: string | null; libraryId: string } | null;
   redraw?: boolean;
@@ -78,18 +82,37 @@ export async function resolveCaptionWithDataLibrary(params: {
   }
 
   const libraryId = config.descriptionDataLibraryId;
+  const pinnedSetTag = config.descriptionDataSetTag?.trim() || null;
 
   // b. Candidat : reuse du storedEntry si pas de redraw explicite, sinon tirage.
+  // La réutilisation exige que l'entrée mémorisée appartienne TOUJOURS à la
+  // config courante de la recette — sans cette garde, changer de bibliothèque
+  // ou épingler/changer de dossier n'aurait aucun effet sur les slots
+  // existants : ils ré-interpoleraient à vie une fiche de l'ancienne
+  // bibliothèque / d'un autre dossier.
+  // Note : quand AUCUN dossier n'est épinglé, le setTag de l'entrée n'entre pas
+  // dans la garde — sinon dépingler invaliderait tous les slots d'un coup.
   let candidate: { entryId: string; fields: Record<string, string>; setTag: string | null } | null = null;
   let drewNewEntry = false;
 
-  if (!redraw && storedEntry) {
+  const storedMatchesConfig =
+    !!storedEntry &&
+    storedEntry.libraryId === libraryId &&
+    (pinnedSetTag === null || storedEntry.setTag === pinnedSetTag);
+
+  if (!redraw && storedEntry && storedMatchesConfig) {
     candidate = {
       entryId: storedEntry.id,
       fields: parseEntryFields(storedEntry.fields),
       setTag: storedEntry.setTag,
     };
   } else {
+    if (!redraw && storedEntry && !storedMatchesConfig) {
+      console.warn(
+        `[resolveCaptionWithDataLibrary] entry=${storedEntry.id} (library=${storedEntry.libraryId}, dossier=${storedEntry.setTag ?? "—"}) ` +
+          `hors config courante (library=${libraryId}, dossier=${pinnedSetTag ?? "tous"}) — nouveau tirage.`,
+      );
+    }
     // f. Mission sans compte + bibliothèque per_account : on tire QUAND MÊME
     // (rotation globale dégradée) plutôt que de sauter le tirage — notre
     // claim écrit les compteurs GLOBAUX (DataEntry.usageCount/lastUsedAt),
@@ -106,7 +129,7 @@ export async function resolveCaptionWithDataLibrary(params: {
         );
       }
     }
-    const drawn = await selectDataEntry(libraryId, undefined, accountId ?? undefined);
+    const drawn = await selectDataEntry(libraryId, undefined, accountId ?? undefined, { pinnedSetTag });
     if (drawn) {
       candidate = { entryId: drawn.entryId, fields: drawn.fields, setTag: drawn.resolvedSetTag };
       drewNewEntry = true;

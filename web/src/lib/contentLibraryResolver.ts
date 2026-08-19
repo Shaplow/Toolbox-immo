@@ -1244,11 +1244,19 @@ export interface LibraryPrefill {
  *
  * @param libraryId  DataLibrary id (plus de campagne — DataEntry.libraryId direct).
  * @param rule       "manual" → null ; tout le reste → tirage dossier.
+ * @param options.pinnedSetTag  Dossier épinglé (PatternTemplate.descriptionDataSetTag) :
+ *   restreint le tirage à ce seul dossier, sans repli. Volontairement un objet
+ *   et non un 4e positionnel `string | null` comme selectMediaAssetFromFolder —
+ *   ici la valeur vient d'une colonne `String?` où `null` signifie « pas
+ *   d'épinglage », alors que côté média `null` signifie « épingler le dossier
+ *   sans nom ». L'objet rend la confusion impossible et exclut par construction
+ *   le ciblage de `setTag IS NULL` (besoin inexistant côté légendes).
  */
 export async function selectDataEntry(
   libraryId: string,
   rule: string | undefined,
   accountId: string | undefined,
+  options?: { pinnedSetTag?: string | null },
 ): Promise<{ entryId: string; fields: Record<string, string>; resolvedSetTag: string | null } | null> {
   if (rule === "manual") return null;
 
@@ -1275,6 +1283,15 @@ export async function selectDataEntry(
 
   type EntryRow = { id: string; fields: string };
 
+  /** Parse tolérant de la colonne `fields` (JSON corrompu → objet vide). */
+  function parseRowFields(raw: string | null): Record<string, string> {
+    try {
+      return JSON.parse(raw ?? "{}") as Record<string, string>;
+    } catch {
+      return {};
+    }
+  }
+
   async function pickFromFolder(setTag: string | null): Promise<EntryRow | null> {
     const setTagClause = setTag !== null
       ? Prisma.sql`AND de."setTag" = ${setTag}`
@@ -1298,6 +1315,22 @@ export async function selectDataEntry(
         ${burnFilter}
       ORDER BY de."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC LIMIT 1`);
     return rows[0] ?? null;
+  }
+
+  // --- Dossier épinglé (recette : PatternTemplate.descriptionDataSetTag) ---
+  // Court-circuite la découverte : on ne sert QUE ce dossier. Vide, inexistant
+  // ou épuisé (burn-once) ⇒ null, jamais de repli sur les autres dossiers —
+  // sinon une recette « RTEXT12 » servirait du RTEXT7 à la première pénurie.
+  const pinnedSetTag = options?.pinnedSetTag?.trim() || null;
+  if (pinnedSetTag) {
+    const row = await pickFromFolder(pinnedSetTag);
+    if (!row) {
+      console.warn(
+        `[selectDataEntry] library=${libraryId} dossier épinglé "${pinnedSetTag}" vide, inexistant ou épuisé — aucun tirage (pas de repli inter-dossiers).`,
+      );
+      return null;
+    }
+    return { entryId: row.id, fields: parseRowFields(row.fields), resolvedSetTag: pinnedSetTag };
   }
 
   // Découverte des dossiers, du moins récemment servi au plus récent
@@ -1329,13 +1362,7 @@ export async function selectDataEntry(
   for (const folder of folders) {
     const row = await pickFromFolder(folder.setTag);
     if (row) {
-      let fields: Record<string, string> = {};
-      try {
-        fields = JSON.parse(row.fields ?? "{}") as Record<string, string>;
-      } catch {
-        fields = {};
-      }
-      return { entryId: row.id, fields, resolvedSetTag: folder.setTag };
+      return { entryId: row.id, fields: parseRowFields(row.fields), resolvedSetTag: folder.setTag };
     }
   }
   return null;

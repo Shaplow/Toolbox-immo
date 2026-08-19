@@ -63,6 +63,10 @@ export interface RecipeFormInitial {
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
   descriptionFixedText: string | null;
+  /** Mode preFilled : bibliothèque dont une fiche est tirée pour la légende. */
+  descriptionDataLibraryId: string | null;
+  /** Dossier épinglé dans cette bibliothèque. null = tous les dossiers. */
+  descriptionDataSetTag: string | null;
   /** V2.6 — auto-save de la sortie de génération vers une MediaLibrary vidéo. */
   autoSaveToLibraryId: string | null;
   templateNotes: string | null;
@@ -152,6 +156,8 @@ export function RecipeForm({
       descriptionPromptId: initial.descriptionPromptId,
       descriptionSourceFieldKey: initial.descriptionSourceFieldKey,
       descriptionFixedText: initial.descriptionFixedText,
+      descriptionDataLibraryId: initial.descriptionDataLibraryId,
+      descriptionDataSetTag: initial.descriptionDataSetTag,
       requiresEntityTypeId: initial.requiresEntityTypeId,
       requiresProperty: initial.requiresProperty,
       needsAdminValidation: initial.needsAdminValidation,

@@ -97,6 +97,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       descriptionFixedText: effectivePattern?.descriptionFixedText ?? null,
       descriptionSourceFieldKey: effectivePattern?.descriptionSourceFieldKey ?? null,
       descriptionDataLibraryId: effectivePattern?.descriptionDataLibraryId ?? null,
+      descriptionDataSetTag: effectivePattern?.descriptionDataSetTag ?? null,
     },
     accountId: slot.accountId,
     storedEntry: slot.captionDataEntry,

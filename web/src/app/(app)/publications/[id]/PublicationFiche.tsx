@@ -345,6 +345,7 @@ export interface PublicationFicheProps {
    *  (via `captionDataEntry`, pas l'activity). null = pas encore tirée, ou
    *  bibliothèque/entrée supprimée depuis. */
   captionEntry?: { setTag: string | null; libraryName: string } | null;
+  captionPinnedSetTag?: string | null;
 }
 
 export function PublicationFiche({
@@ -384,6 +385,7 @@ export function PublicationFiche({
   transcriptionJobStatus,
   hasCaptionLibrary,
   captionEntry,
+  captionPinnedSetTag,
 }: PublicationFicheProps) {
   // F4 — Destructure local des permissions pour garder les call sites
   // historiques inchangés (`{canEditRender}` etc.). Le grouping est dans
@@ -824,6 +826,7 @@ export function PublicationFiche({
                 transcriptionJobStatus={transcriptionJobStatus}
                 hasCaptionLibrary={hasCaptionLibrary ?? false}
                 captionEntry={captionEntry ?? null}
+                captionPinnedSetTag={captionPinnedSetTag ?? null}
               />
             )}
 

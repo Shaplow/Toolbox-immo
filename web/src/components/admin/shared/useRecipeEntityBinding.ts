@@ -41,6 +41,8 @@ export interface DataLibraryOption {
   fieldsSchema: string;
   rotationScope: string;
   rotationMode: string;
+  /** Dossiers nommés (DataEntry.setTag non null) + nombre de fiches, tri naturel. */
+  folders: { setTag: string; count: number }[];
 }
 
 export function useRecipeEntityBinding(opts: {

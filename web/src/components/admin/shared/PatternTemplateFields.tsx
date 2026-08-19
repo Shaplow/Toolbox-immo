@@ -64,6 +64,7 @@ export interface PatternTemplateFieldValues {
   descriptionSourceFieldKey: string;
   descriptionFixedText: string;
   descriptionDataLibraryId: string;
+  descriptionDataSetTag: string;
   requiresEntityTypeId: string;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
@@ -86,6 +87,7 @@ export interface PatternTemplateFieldsSource {
   descriptionSourceFieldKey?: string | null;
   descriptionFixedText?: string | null;
   descriptionDataLibraryId?: string | null;
+  descriptionDataSetTag?: string | null;
   requiresEntityTypeId?: string | null;
   /** @deprecated Legacy — dérivé vers le type « Bien » via requiredEntityTypeId(). */
   requiresProperty?: boolean | null;
@@ -116,6 +118,7 @@ export interface PatternTemplateFieldsPayload {
   descriptionSourceFieldKey: string | null;
   descriptionFixedText: string | null;
   descriptionDataLibraryId: string | null;
+  descriptionDataSetTag: string | null;
   autoSaveToLibraryId: string | null;
   notes: string | null;
 }
@@ -153,6 +156,7 @@ export function decodePatternTemplateFields(
     descriptionSourceFieldKey: source?.descriptionSourceFieldKey ?? "",
     descriptionFixedText,
     descriptionDataLibraryId: source?.descriptionDataLibraryId ?? "",
+    descriptionDataSetTag: source?.descriptionDataSetTag ?? "",
     requiresEntityTypeId: requiredEntityTypeId(source) ?? "",
     needsAdminValidation: source?.needsAdminValidation ?? false,
     needsClientValidation: source?.needsClientValidation ?? false,
@@ -198,6 +202,10 @@ export function encodePatternTemplateFieldsPayload(
       values.needsDescription === "preFilled" ? values.descriptionFixedText.trim() || null : null,
     descriptionDataLibraryId:
       values.needsDescription === "preFilled" ? values.descriptionDataLibraryId || null : null,
+    descriptionDataSetTag:
+      values.needsDescription === "preFilled" && values.descriptionDataLibraryId
+        ? values.descriptionDataSetTag || null
+        : null,
     autoSaveToLibraryId: values.autoSaveToLibraryId || null,
     notes: values.notes.trim() || null,
   };
@@ -280,6 +288,14 @@ export function PatternTemplateFields({
     () => (selectedDataLibrary ? normalizeCustomFields(selectedDataLibrary.fieldsSchema) : []),
     [selectedDataLibrary],
   );
+  const libraryFolders = selectedDataLibrary?.folders ?? [];
+  // Dossier épinglé absent de la bibliothèque : renommé ou vidé depuis la
+  // configuration de la recette — plus aucun tirage possible (le moteur ne
+  // fait aucun repli), et l'enregistrement sera refusé par l'API.
+  const pinnedFolderMissing =
+    !!v.descriptionDataSetTag &&
+    !!selectedDataLibrary &&
+    !libraryFolders.some((f) => f.setTag === v.descriptionDataSetTag);
   const propertyFieldKeySet = useMemo(
     () => new Set(propertyFieldKeys.map((f) => f.key)),
     [propertyFieldKeys],
@@ -393,7 +409,12 @@ export function PatternTemplateFields({
             >
               <Combobox
                 value={v.descriptionDataLibraryId}
-                onChange={(val) => onChange({ descriptionDataLibraryId: val })}
+                // Le dossier appartient à la bibliothèque : changer de
+                // bibliothèque dépingle, sinon on garderait un dossier de la
+                // lib A sur la lib B (refusé à l'enregistrement).
+                onChange={(val) =>
+                  onChange({ descriptionDataLibraryId: val, descriptionDataSetTag: "" })
+                }
                 options={[
                   { value: "", label: "Aucune — champs de la fiche uniquement" },
                   ...dataLibraries.map((lib) => ({
@@ -404,6 +425,43 @@ export function PatternTemplateFields({
               />
             </FormField>
 
+            {v.descriptionDataLibraryId && (
+              <FormField
+                label="Dossier"
+                help={
+                  libraryFolders.length === 0
+                    ? "Aucun dossier nommé dans cette bibliothèque — la rotation parcourt toutes ses fiches. Renseignez la colonne « Dossier » de ses fiches pour pouvoir en épingler un."
+                    : "Par défaut la rotation alterne entre tous les dossiers de la bibliothèque. Épingler un dossier restreint le tirage à ses seules fiches — une recette « RTEXT12 » ne sert alors que des légendes du dossier RTEXT12."
+                }
+              >
+                <Combobox
+                  value={v.descriptionDataSetTag}
+                  onChange={(val) => onChange({ descriptionDataSetTag: val })}
+                  disabled={libraryFolders.length === 0}
+                  options={[
+                    { value: "", label: "Tous les dossiers — rotation entre dossiers (défaut)" },
+                    ...libraryFolders.map((f) => ({
+                      value: f.setTag,
+                      label: `${f.setTag} · ${f.count} fiche${f.count > 1 ? "s" : ""}`,
+                    })),
+                    // Dossier configuré mais disparu : on le garde visible
+                    // plutôt que de le faire retomber silencieusement sur
+                    // « Tous les dossiers » dans le select.
+                    ...(pinnedFolderMissing
+                      ? [{ value: v.descriptionDataSetTag, label: `${v.descriptionDataSetTag} · introuvable` }]
+                      : []),
+                  ]}
+                />
+              </FormField>
+            )}
+
+            {pinnedFolderMissing && (
+              <Alert variant="danger">
+                Le dossier « {v.descriptionDataSetTag} » n&apos;existe plus dans cette bibliothèque :
+                aucune fiche ne sera tirée et l&apos;enregistrement sera refusé. Choisissez un autre
+                dossier ou revenez à « Tous les dossiers ».
+              </Alert>
+            )}
             {selectedDataLibrary?.rotationScope === "shared" && (
               <Alert variant="warning">
                 Rotation partagée : tous les comptes recevront la même séquence de fiches. Passez
@@ -421,7 +479,7 @@ export function PatternTemplateFields({
               label="Modèle de légende"
               help={
                 v.descriptionDataLibraryId
-                  ? "À l'affectation (création de la publication ou rattachement de la fiche), une fiche de données est tirée de la bibliothèque et comptée comme utilisée ; ses champs remplissent les {{clé}}, la fiche rattachée primant en cas de clé commune. \"Recalculer\" ré-applique la même fiche avec les valeurs fraîches ; \"Tirer une nouvelle\" en consomme une autre."
+                  ? "À l'affectation (création de la publication ou rattachement de la fiche), une fiche de données est tirée de la bibliothèque et comptée comme utilisée ; ses champs remplissent les {{clé}}, la fiche rattachée primant en cas de clé commune. \"Recalculer\" ré-applique la même fiche avec les valeurs fraîches — sauf si elle ne correspond plus à la bibliothèque ou au dossier configurés ici, auquel cas une nouvelle est tirée ; \"Tirer une nouvelle\" en consomme une autre."
                   : "Copié dans la légende au rattachement de la fiche (création ou changement de fiche liée) — pas de resynchronisation automatique ensuite. Insère des clés de la fiche avec {{clé}} — non résolues, elles s'affichent vides. Depuis la publication, \"Recalculer\" resynchronise la légende sur les valeurs actuelles de la fiche."
               }
             >

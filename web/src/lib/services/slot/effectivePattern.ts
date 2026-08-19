@@ -36,6 +36,8 @@ export interface SlotEffectivePattern {
   descriptionFixedText: string | null;
   /** Mode preFilled : bibliothèque de données tirée pour alimenter les {{clé}}. null = pas de tirage. */
   descriptionDataLibraryId: string | null;
+  /** Dossier épinglé dans cette bibliothèque : le tirage ne sert que ce dossier. null = tous. */
+  descriptionDataSetTag: string | null;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
@@ -65,6 +67,7 @@ const TEMPLATE_PATTERN_SELECT = {
   descriptionSourceFieldKey: true,
   descriptionFixedText: true,
   descriptionDataLibraryId: true,
+  descriptionDataSetTag: true,
   needsAdminValidation: true,
   needsClientValidation: true,
   allowsClientRevision: true,
@@ -128,6 +131,7 @@ export function resolveSlotEffectivePattern(
       descriptionSourceFieldKey: t.descriptionSourceFieldKey,
       descriptionFixedText: t.descriptionFixedText,
       descriptionDataLibraryId: t.descriptionDataLibraryId,
+      descriptionDataSetTag: t.descriptionDataSetTag,
       needsAdminValidation: t.needsAdminValidation,
       needsClientValidation: t.needsClientValidation,
       allowsClientRevision: t.allowsClientRevision,

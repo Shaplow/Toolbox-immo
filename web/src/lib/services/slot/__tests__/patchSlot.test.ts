@@ -578,10 +578,32 @@ describe("patchSlot — légende pré-remplie depuis une DataLibrary (rattacheme
         needsDescription: "preFilled",
         descriptionFixedText: "Bonjour {{ville}}",
         descriptionDataLibraryId: "lib-1",
+        descriptionDataSetTag: "RTEXT12",
       }),
       ...overrides,
     });
   }
+
+  it("le dossier épinglé de la recette est transmis à l'orchestrateur", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(makeSlotWithLibrary());
+    mockEntityFindUnique.mockResolvedValueOnce({ fields: "{}" });
+    mockResolveCaptionWithDataLibrary.mockResolvedValueOnce({
+      caption: "Bonjour Lyon",
+      usedEntry: null,
+      drewNewEntry: false,
+    });
+
+    await patchSlot("slot-1", { propertyId: "prop-1" }, makeUserCtx("ADMIN"));
+
+    expect(mockResolveCaptionWithDataLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          descriptionDataLibraryId: "lib-1",
+          descriptionDataSetTag: "RTEXT12",
+        }),
+      }),
+    );
+  });
 
   it("entrée déjà mémorisée (captionDataEntry) → réutilisée sans re-tirer, captionDataEntryId inchangé, aucun claim", async () => {
     mockSlotFindUnique.mockResolvedValueOnce(

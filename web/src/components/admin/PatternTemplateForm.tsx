@@ -47,6 +47,10 @@ export interface PatternTemplateInitial {
   descriptionPromptId: string | null;
   descriptionSourceFieldKey?: string | null;
   descriptionFixedText?: string | null;
+  /** Mode preFilled : bibliothèque dont une fiche est tirée pour la légende. */
+  descriptionDataLibraryId?: string | null;
+  /** Dossier épinglé dans cette bibliothèque. null = tous les dossiers. */
+  descriptionDataSetTag?: string | null;
   coverMode: string;
   needsDescription: string;
   needsCaptionsMode: string;
@@ -204,6 +208,8 @@ export function PatternTemplateForm({
         initialValues.needsDescription !== values.needsDescription ||
         initialValues.descriptionSourceFieldKey !== values.descriptionSourceFieldKey ||
         initialValues.descriptionFixedText !== values.descriptionFixedText ||
+        initialValues.descriptionDataLibraryId !== values.descriptionDataLibraryId ||
+        initialValues.descriptionDataSetTag !== values.descriptionDataSetTag ||
         initialValues.autoSaveToLibraryId !== values.autoSaveToLibraryId);
     if (bindingCount > 0 && isStructuralChange) {
       setPendingValues(values);

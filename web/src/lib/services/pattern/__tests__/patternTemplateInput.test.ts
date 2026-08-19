@@ -22,6 +22,8 @@ function makeFakePrisma(opts: {
   entityType?: unknown;
   mediaLibrary?: { id: string; type: string } | null;
   dataLibrary?: { id: string } | null;
+  /** Une fiche du dossier demandé, ou null si le dossier n'existe pas. */
+  dataEntry?: { id: string } | null;
 } = {}): PrismaClient {
   return {
     entityType: {
@@ -32,6 +34,9 @@ function makeFakePrisma(opts: {
     },
     dataLibrary: {
       findUnique: vi.fn().mockResolvedValue(opts.dataLibrary ?? null),
+    },
+    dataEntry: {
+      findFirst: vi.fn().mockResolvedValue(opts.dataEntry ?? null),
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any as PrismaClient;
@@ -161,6 +166,48 @@ describe("validatePatternTemplateInput", () => {
     );
     expect(err).toBeNull();
   });
+
+  it("descriptionDataSetTag sans bibliothèque → erreur (le dossier est une sous-sélection)", async () => {
+    const prisma = makeFakePrisma({ dataLibrary: { id: "datalib-1" }, dataEntry: { id: "e1" } });
+    const err = await validatePatternTemplateInput(
+      validPayload({ descriptionDataSetTag: "RTEXT12" }),
+      { requireAll: true },
+      prisma,
+    );
+    expect(err).toMatch(/descriptionDataSetTag.*bibliothèque de données/i);
+  });
+
+  it("descriptionDataSetTag inexistant dans la bibliothèque → erreur", async () => {
+    const prisma = makeFakePrisma({ dataLibrary: { id: "datalib-1" }, dataEntry: null });
+    const err = await validatePatternTemplateInput(
+      validPayload({ descriptionDataLibraryId: "datalib-1", descriptionDataSetTag: "RTEXT99" }),
+      { requireAll: true },
+      prisma,
+    );
+    expect(err).toMatch(/dossier.*RTEXT99.*introuvable/i);
+  });
+
+  it("descriptionDataSetTag existant dans la bibliothèque → accepté", async () => {
+    const prisma = makeFakePrisma({ dataLibrary: { id: "datalib-1" }, dataEntry: { id: "e1" } });
+    const err = await validatePatternTemplateInput(
+      validPayload({ descriptionDataLibraryId: "datalib-1", descriptionDataSetTag: "RTEXT12" }),
+      { requireAll: true },
+      prisma,
+    );
+    expect(err).toBeNull();
+  });
+
+  it("descriptionDataSetTag blanc → ignoré (= tous les dossiers), aucune requête dossier", async () => {
+    const prisma = makeFakePrisma({ dataLibrary: { id: "datalib-1" } });
+    const err = await validatePatternTemplateInput(
+      validPayload({ descriptionDataLibraryId: "datalib-1", descriptionDataSetTag: "   " }),
+      { requireAll: true },
+      prisma,
+    );
+    expect(err).toBeNull();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((prisma as any).dataEntry.findFirst).not.toHaveBeenCalled();
+  });
 });
 
 describe("toPatternTemplateCreateData / toPatternTemplateUpdateData — mapping descriptionDataLibraryId", () => {
@@ -180,6 +227,51 @@ describe("toPatternTemplateCreateData / toPatternTemplateUpdateData — mapping 
     ).toBe("datalib-2");
     expect(
       toPatternTemplateUpdateData({ descriptionDataLibraryId: null }, "user-1").descriptionDataLibraryId,
+    ).toBeNull();
+  });
+});
+
+describe("mapping descriptionDataSetTag — le dossier suit toujours la bibliothèque", () => {
+  it("create : trimmé, et forcé à null sans bibliothèque", () => {
+    expect(
+      toPatternTemplateCreateData(
+        validPayload({ descriptionDataLibraryId: "datalib-1", descriptionDataSetTag: "  RTEXT12  " }),
+        "user-1",
+      ).descriptionDataSetTag,
+    ).toBe("RTEXT12");
+    expect(
+      toPatternTemplateCreateData(validPayload({ descriptionDataSetTag: "RTEXT12" }), "user-1")
+        .descriptionDataSetTag,
+    ).toBeNull();
+    expect(toPatternTemplateCreateData(validPayload(), "user-1").descriptionDataSetTag).toBeNull();
+  });
+
+  it("update : ni lib ni dossier dans le payload → champ omis", () => {
+    expect(toPatternTemplateUpdateData({}, "user-1")).not.toHaveProperty("descriptionDataSetTag");
+  });
+
+  it("update : bibliothèque retirée → dossier remis à null même s'il est fourni", () => {
+    expect(
+      toPatternTemplateUpdateData(
+        { descriptionDataLibraryId: null, descriptionDataSetTag: "RTEXT12" },
+        "user-1",
+      ).descriptionDataSetTag,
+    ).toBeNull();
+  });
+
+  it("update : bibliothèque changée sans dossier → dépinglage", () => {
+    expect(
+      toPatternTemplateUpdateData({ descriptionDataLibraryId: "datalib-2" }, "user-1")
+        .descriptionDataSetTag,
+    ).toBeNull();
+  });
+
+  it("update : dossier seul → appliqué trimmé ; chaîne blanche → null", () => {
+    expect(
+      toPatternTemplateUpdateData({ descriptionDataSetTag: " RTEXT1 " }, "user-1").descriptionDataSetTag,
+    ).toBe("RTEXT1");
+    expect(
+      toPatternTemplateUpdateData({ descriptionDataSetTag: "  " }, "user-1").descriptionDataSetTag,
     ).toBeNull();
   });
 });

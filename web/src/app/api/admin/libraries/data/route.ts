@@ -2,21 +2,50 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 
-// GET /api/admin/libraries/data — liste les DataLibrary (+ nombre de fiches)
+// GET /api/admin/libraries/data — liste les DataLibrary (+ nombre de fiches + dossiers)
 export async function GET() {
   const auth = await requireAdmin();
   if (auth.response) return auth.response;
 
   try {
-    const libraries = await prisma.dataLibrary.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        // Plan simplification Phase 4 — le wrapper DataCampaign est décommissionné,
-        // les fiches sont comptées directement (libraryId direct).
-        _count: { select: { entries: true } },
-      },
-    });
-    return NextResponse.json(libraries);
+    const [libraries, folderRows] = await Promise.all([
+      prisma.dataLibrary.findMany({
+        orderBy: { createdAt: "desc" },
+        include: {
+          // Plan simplification Phase 4 — le wrapper DataCampaign est décommissionné,
+          // les fiches sont comptées directement (libraryId direct).
+          _count: { select: { entries: true } },
+        },
+      }),
+      // Dossiers (DataEntry.setTag) de TOUTES les libs en une passe — alimente
+      // le picker « Dossier » des recettes (PatternTemplate.descriptionDataSetTag).
+      // Volontairement non filtré par DataEntryAccess : une recette est partagée
+      // par N comptes, le compte affiché est une indication de configuration et
+      // non une garantie de ce que le compte X verra au tirage (buildDataAccessFilter
+      // s'applique côté selectDataEntry).
+      prisma.dataEntry.groupBy({
+        by: ["libraryId", "setTag"],
+        where: { setTag: { not: null } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const foldersByLibrary = new Map<string, { setTag: string; count: number }[]>();
+    for (const row of folderRows) {
+      if (!row.setTag) continue;
+      const list = foldersByLibrary.get(row.libraryId) ?? [];
+      list.push({ setTag: row.setTag, count: row._count._all });
+      foldersByLibrary.set(row.libraryId, list);
+    }
+    // Tri naturel : RTEXT2 avant RTEXT10 — l'ordre alphabétique brut est
+    // illisible dès qu'une bibliothèque a 40 dossiers numérotés.
+    for (const list of foldersByLibrary.values()) {
+      list.sort((a, b) => a.setTag.localeCompare(b.setTag, "fr", { numeric: true }));
+    }
+
+    return NextResponse.json(
+      libraries.map((lib) => ({ ...lib, folders: foldersByLibrary.get(lib.id) ?? [] })),
+    );
   } catch (err) {
     console.error("[admin/libraries/data] GET error:", err);
     return NextResponse.json({ error: "Erreur serveur lors du chargement" }, { status: 500 });
