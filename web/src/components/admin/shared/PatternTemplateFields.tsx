@@ -19,18 +19,22 @@
  * lisible des deux qui coexistaient.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Database } from "lucide-react";
 import { useRecipeEntityBinding } from "@/components/admin/shared/useRecipeEntityBinding";
 import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
 import {
   computeTemplateEntityCoverage,
   type TemplateFieldCoverage,
 } from "@/lib/publications/templateEntityCoverage";
+import { normalizeCustomFields, type CustomField } from "@/lib/customFields";
+import { isValidTemplateVariableKey } from "@/lib/textTemplate";
 import type { SchemaField } from "@/types/template";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Chip } from "@/components/ui/Chip";
 import { Combobox } from "@/components/ui/Combobox";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
@@ -59,6 +63,7 @@ export interface PatternTemplateFieldValues {
   descriptionPromptId: string;
   descriptionSourceFieldKey: string;
   descriptionFixedText: string;
+  descriptionDataLibraryId: string;
   requiresEntityTypeId: string;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
@@ -80,6 +85,7 @@ export interface PatternTemplateFieldsSource {
   descriptionPromptId?: string | null;
   descriptionSourceFieldKey?: string | null;
   descriptionFixedText?: string | null;
+  descriptionDataLibraryId?: string | null;
   requiresEntityTypeId?: string | null;
   /** @deprecated Legacy — dérivé vers le type « Bien » via requiredEntityTypeId(). */
   requiresProperty?: boolean | null;
@@ -109,6 +115,7 @@ export interface PatternTemplateFieldsPayload {
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
   descriptionFixedText: string | null;
+  descriptionDataLibraryId: string | null;
   autoSaveToLibraryId: string | null;
   notes: string | null;
 }
@@ -145,6 +152,7 @@ export function decodePatternTemplateFields(
     descriptionPromptId: source?.descriptionPromptId ?? "",
     descriptionSourceFieldKey: source?.descriptionSourceFieldKey ?? "",
     descriptionFixedText,
+    descriptionDataLibraryId: source?.descriptionDataLibraryId ?? "",
     requiresEntityTypeId: requiredEntityTypeId(source) ?? "",
     needsAdminValidation: source?.needsAdminValidation ?? false,
     needsClientValidation: source?.needsClientValidation ?? false,
@@ -188,6 +196,8 @@ export function encodePatternTemplateFieldsPayload(
     descriptionSourceFieldKey: null,
     descriptionFixedText:
       values.needsDescription === "preFilled" ? values.descriptionFixedText.trim() || null : null,
+    descriptionDataLibraryId:
+      values.needsDescription === "preFilled" ? values.descriptionDataLibraryId || null : null,
     autoSaveToLibraryId: values.autoSaveToLibraryId || null,
     notes: values.notes.trim() || null,
   };
@@ -257,13 +267,41 @@ export function PatternTemplateFields({
   descriptionPrompts,
   videoLibraries,
 }: PatternTemplateFieldsProps) {
-  const { entityTypes, propertyFieldKeys } = useRecipeEntityBinding({
+  const { entityTypes, propertyFieldKeys, dataLibraries } = useRecipeEntityBinding({
     requiresEntityTypeId: v.requiresEntityTypeId,
     needsDescription: v.needsDescription,
   });
 
+  const selectedDataLibrary = useMemo(
+    () => dataLibraries.find((lib) => lib.id === v.descriptionDataLibraryId) ?? null,
+    [dataLibraries, v.descriptionDataLibraryId],
+  );
+  const libraryFieldKeys = useMemo(
+    () => (selectedDataLibrary ? normalizeCustomFields(selectedDataLibrary.fieldsSchema) : []),
+    [selectedDataLibrary],
+  );
+  const propertyFieldKeySet = useMemo(
+    () => new Set(propertyFieldKeys.map((f) => f.key)),
+    [propertyFieldKeys],
+  );
+  // Remplacement du modèle par une seule variable {{clé}} — confirmé si le
+  // modèle actuel n'est pas vide pour éviter d'écraser un texte déjà rédigé.
+  const [pendingFullCaptionKey, setPendingFullCaptionKey] = useState<string | null>(null);
+
   return (
     <div className="space-y-5">
+      <ConfirmDialog
+        open={pendingFullCaptionKey !== null}
+        title="Remplacer le modèle de légende ?"
+        description={`Le modèle actuel sera remplacé par {{${pendingFullCaptionKey}}} — la fiche de données tirée fournira la légende complète.`}
+        confirmLabel="Remplacer"
+        onConfirm={() => {
+          if (pendingFullCaptionKey) onChange({ descriptionFixedText: `{{${pendingFullCaptionKey}}}` });
+          setPendingFullCaptionKey(null);
+        }}
+        onCancel={() => setPendingFullCaptionKey(null)}
+      />
+
       {/* Identité */}
       <div className="space-y-4">
         <FormField label="Nom de la recette" required>
@@ -348,38 +386,129 @@ export function PatternTemplateFields({
         </FormField>
 
         {v.needsDescription === "preFilled" && (
-          <FormField
-            label="Modèle de légende"
-            help={
-              "Copié dans la légende au rattachement de la fiche (création ou changement de fiche liée) — pas de resynchronisation automatique ensuite. Insère des clés de la fiche avec {{clé}} — non résolues, elles s'affichent vides. Depuis la publication, \"Recalculer\" resynchronise la légende sur les valeurs actuelles de la fiche."
-            }
-          >
-            <Textarea
-              value={v.descriptionFixedText}
-              onChange={(val) => onChange({ descriptionFixedText: val })}
-              rows={5}
-              placeholder={"🏡 Nouveau bien à {{adresse}} — {{prix}}, tourné le {{date_tournage}}"}
-            />
-            {propertyFieldKeys.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {propertyFieldKeys.map((f) => (
-                  <Chip
-                    key={f.key}
-                    size="sm"
-                    onClick={() =>
-                      onChange({
-                        descriptionFixedText: v.descriptionFixedText
-                          ? `${v.descriptionFixedText} {{${f.key}}}`
-                          : `{{${f.key}}}`,
-                      })
-                    }
-                  >
-                    {f.label === f.key ? f.key : `${f.label} · ${f.key}`}
-                  </Chip>
-                ))}
-              </div>
+          <>
+            <FormField
+              label="Bibliothèque de données (légendes tournantes)"
+              help="Optionnel. À chaque affectation, une fiche est tirée de la bibliothèque pour fournir des clés supplémentaires au modèle, en plus de la fiche rattachée."
+            >
+              <Combobox
+                value={v.descriptionDataLibraryId}
+                onChange={(val) => onChange({ descriptionDataLibraryId: val })}
+                options={[
+                  { value: "", label: "Aucune — champs de la fiche uniquement" },
+                  ...dataLibraries.map((lib) => ({
+                    value: lib.id,
+                    label: `${lib.name} · ${lib.templateType}`,
+                  })),
+                ]}
+              />
+            </FormField>
+
+            {selectedDataLibrary?.rotationScope === "shared" && (
+              <Alert variant="warning">
+                Rotation partagée : tous les comptes recevront la même séquence de fiches. Passez
+                la bibliothèque en « par compte » dans ses réglages pour varier par compte
+                Instagram.
+              </Alert>
             )}
-          </FormField>
+            {selectedDataLibrary?.rotationMode === "none" && (
+              <Alert variant="warning">
+                Tirage désactivé sur cette bibliothèque — aucune fiche ne sera tirée.
+              </Alert>
+            )}
+
+            <FormField
+              label="Modèle de légende"
+              help={
+                v.descriptionDataLibraryId
+                  ? "À l'affectation (création de la publication ou rattachement de la fiche), une fiche de données est tirée de la bibliothèque et comptée comme utilisée ; ses champs remplissent les {{clé}}, la fiche rattachée primant en cas de clé commune. \"Recalculer\" ré-applique la même fiche avec les valeurs fraîches ; \"Tirer une nouvelle\" en consomme une autre."
+                  : "Copié dans la légende au rattachement de la fiche (création ou changement de fiche liée) — pas de resynchronisation automatique ensuite. Insère des clés de la fiche avec {{clé}} — non résolues, elles s'affichent vides. Depuis la publication, \"Recalculer\" resynchronise la légende sur les valeurs actuelles de la fiche."
+              }
+            >
+              <Textarea
+                value={v.descriptionFixedText}
+                onChange={(val) => onChange({ descriptionFixedText: val })}
+                rows={5}
+                placeholder={"🏡 Nouveau bien à {{adresse}} — {{prix}}, tourné le {{date_tournage}}"}
+              />
+              <div className="space-y-3 mt-2">
+                {propertyFieldKeys.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1">
+                      Champs de la fiche
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {propertyFieldKeys.map((f) => (
+                        <Chip
+                          key={f.key}
+                          size="sm"
+                          onClick={() =>
+                            onChange({
+                              descriptionFixedText: v.descriptionFixedText
+                                ? `${v.descriptionFixedText} {{${f.key}}}`
+                                : `{{${f.key}}}`,
+                            })
+                          }
+                        >
+                          {f.label === f.key ? f.key : `${f.label} · ${f.key}`}
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {v.descriptionDataLibraryId && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1">
+                      Champs de la bibliothèque
+                    </p>
+                    {libraryFieldKeys.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Définissez le schéma des champs de la bibliothèque pour voir ses clés ici.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {libraryFieldKeys
+                          .filter((f) => f.type === "textarea")
+                          .map((f) => (
+                            <DataLibraryFieldChip
+                              key={`full-${f.key}`}
+                              field={f}
+                              collides={propertyFieldKeySet.has(f.key)}
+                              onClick={() => {
+                                if (v.descriptionFixedText.trim()) {
+                                  setPendingFullCaptionKey(f.key);
+                                } else {
+                                  onChange({ descriptionFixedText: `{{${f.key}}}` });
+                                }
+                              }}
+                            >
+                              Légende complète · {f.key}
+                            </DataLibraryFieldChip>
+                          ))}
+                        {libraryFieldKeys.map((f) => (
+                          <DataLibraryFieldChip
+                            key={f.key}
+                            field={f}
+                            collides={propertyFieldKeySet.has(f.key)}
+                            onClick={() =>
+                              onChange({
+                                descriptionFixedText: v.descriptionFixedText
+                                  ? `${v.descriptionFixedText} {{${f.key}}}`
+                                  : `{{${f.key}}}`,
+                              })
+                            }
+                          >
+                            {f.label === f.key ? f.key : `${f.label} · ${f.key}`}
+                          </DataLibraryFieldChip>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </FormField>
+          </>
         )}
 
         <FormField
@@ -504,6 +633,47 @@ function WorkflowToggle({
         <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
       </div>
     </label>
+  );
+}
+
+// ── Chips d'insertion de clé — champs de la bibliothèque de données ────────
+//
+// Distinguées visuellement des chips « champs de la fiche » par l'icône
+// Database + le style `selected` (accent primary) de Chip, sans toucher au
+// composant partagé. Une clé qui ne matche pas `isValidTemplateVariableKey`
+// (rare — le schéma de bibliothèque est déjà plus strict que le moteur de
+// template) rend la chip non cliquable ; une clé qui existe aussi côté fiche
+// reste cliquable mais rappelle en tooltip que la fiche prime au tirage.
+
+function DataLibraryFieldChip({
+  field,
+  collides,
+  onClick,
+  children,
+}: {
+  field: CustomField;
+  collides: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const invalid = !isValidTemplateVariableKey(field.key);
+  const title = invalid
+    ? `{{${field.key}}} n'accepte que lettres/chiffres/_ — renommez-la dans la bibliothèque`
+    : collides
+      ? "La valeur de la fiche primera si elle est remplie."
+      : undefined;
+  return (
+    <span title={title}>
+      <Chip
+        size="sm"
+        icon={Database}
+        selected
+        className={invalid ? "opacity-40" : undefined}
+        onClick={invalid ? undefined : onClick}
+      >
+        {children}
+      </Chip>
+    </span>
   );
 }
 

@@ -2,7 +2,8 @@
 
 /**
  * useRecipeEntityBinding — socle partagé de fetch pour le champ « Exige une
- * fiche » de PatternTemplateFields (RecipeForm / PatternTemplateForm).
+ * fiche » et le champ « Bibliothèque de données (légendes tournantes) » de
+ * PatternTemplateFields (RecipeForm / PatternTemplateForm).
  *
  * Pur hook de data-fetching : la valeur `requiresEntityTypeId` est possédée
  * par le formulaire appelant (contrôlée), ce hook ne fait que résoudre :
@@ -10,7 +11,11 @@
  *  2. les clés de champ suggérées pour le mode description « preFilled »
  *     (/api/entity-types/[id]/field-keys), rechargées quand le type requis
  *     change — saisie libre autorisée en aval (la fiche peut ne pas exister
- *     encore).
+ *     encore) ;
+ *  3. les bibliothèques de données disponibles pour le picker de légendes
+ *     tournantes (/api/admin/libraries/data), un seul fetch alimentant à la
+ *     fois le picker, les chips de clés et les warnings de rotation — chargé
+ *     seulement en mode « preFilled » comme (2).
  *
  * Le fallback legacy `requiresProperty` → « Bien » est résolu en amont par
  * `requiredEntityTypeId()` (lib/publications/entityRequirement.ts), pas ici.
@@ -25,6 +30,17 @@ export interface EntityTypeOption {
 export interface PropertyFieldKey {
   key: string;
   label: string;
+}
+
+/** Projection de DataLibrary utile au picker + chips + warnings de rotation. */
+export interface DataLibraryOption {
+  id: string;
+  name: string;
+  templateType: string;
+  /** JSON brut `CustomField[]` — à décoder avec `normalizeCustomFields`. */
+  fieldsSchema: string;
+  rotationScope: string;
+  rotationMode: string;
 }
 
 export function useRecipeEntityBinding(opts: {
@@ -73,5 +89,24 @@ export function useRecipeEntityBinding(opts: {
     };
   }, [needsDescription, fieldKeysTypeId]);
 
-  return { entityTypes, propertyFieldKeys };
+  const [dataLibraries, setDataLibraries] = useState<DataLibraryOption[]>([]);
+  useEffect(() => {
+    if (needsDescription !== "preFilled") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch("/api/admin/libraries/data");
+        if (!r.ok) return;
+        const data = (await r.json()) as DataLibraryOption[];
+        if (!cancelled) setDataLibraries(data);
+      } catch {
+        /* bibliothèques indisponibles — le picker reste vide */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsDescription]);
+
+  return { entityTypes, propertyFieldKeys, dataLibraries };
 }
