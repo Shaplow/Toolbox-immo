@@ -267,6 +267,10 @@ model Render {
   transcriptionJob  TranscriptionJob?
   /// Pack de frames cover préparé automatiquement après ce render (si coverAutoConfig activé)
   coverFramePack    CoverFramePack?
+
+  /// Créé en SQL brut par 20260801090000_slot_current_render sans être déclaré
+  /// ici : la dérive faisait proposer son DROP à chaque `migrate dev`.
+  @@index([publicationSlotId])
 }
 
 enum RenderStatus {
@@ -672,6 +676,8 @@ model DataLibrary {
   campaigns       DataCampaign[]
   entries         DataEntry[]                @relation("DataLibraryEntries")
   cursors         AccountDataLibraryCursor[]
+  /// Recettes qui tirent une fiche de cette bibliothèque pour leur légende.
+  captionPatternTemplates PatternTemplate[]  @relation("PatternTemplateDescriptionDataLibrary")
 }
 
 /// Cycle de données (ex: "RPI Q1 2026"). Une fiche active à la fois par library.
@@ -723,6 +729,8 @@ model DataEntry {
   updatedAt   DateTime          @updatedAt
   accesses    DataEntryAccess[]
   usages      DataEntryUsage[]
+  /// Publications dont la légende a été tirée de cette fiche.
+  captionSlots PublicationSlot[]            @relation("SlotCaptionDataEntry")
 
   @@index([libraryId])
 }
@@ -927,6 +935,13 @@ model PublicationSlot {
   /// Phase 5 (métaobjet) — fiche tournage (ex-eventId, ids repris).
   shootEntityId      String?
   shootEntity        Entity?           @relation("SlotShootEntity", fields: [shootEntityId], references: [id], onDelete: SetNull)
+  /// Fiche de données consommée pour la légende, figée au moment de
+  /// l'affectation (cf. PatternTemplate.descriptionDataLibraryId). Rend
+  /// « Recalculer » idempotent : on ré-interpole CETTE fiche avec les valeurs
+  /// fraîches, tandis que « Tirer une nouvelle » (redraw) la remplace.
+  /// SetNull si l'entrée est supprimée — le prochain recalcul re-tire alors.
+  captionDataEntryId String?
+  captionDataEntry   DataEntry?        @relation("SlotCaptionDataEntry", fields: [captionDataEntryId], references: [id], onDelete: SetNull)
 
   /// Override per-slot de needsAdminValidation du pattern. null = hérite.
   /// Phase 2.3 : permet d'activer la validation admin du montage (status
@@ -1018,6 +1033,7 @@ model PublicationSlot {
   @@index([eventId])
   @@index([entityId])
   @@index([shootEntityId])
+  @@index([captionDataEntryId])
 }
 
 /// Bien immobilier (UI = « Bien ») — fiche de données PARTAGÉE, référencée par
@@ -1301,6 +1317,15 @@ model PatternTemplate {
   /// bien) qui pré-remplit la légende (slot.description) à la création du slot.
   /// null = pas de texte fixe. Copie one-shot, jamais re-synchronisée.
   descriptionFixedText      String?
+  /// Mode "preFilled" : bibliothèque de données dont une fiche est tirée à
+  /// l'affectation (création du slot / rattachement de fiche / recalcul) pour
+  /// alimenter les {{clé}} du modèle de légende. Le tirage réutilise le moteur
+  /// de rotation existant (LRU par dossier, rotationScope shared|per_account) :
+  /// c'est ce qui fait varier les légendes par compte Instagram.
+  /// null = modèle résolu sur les seules fiches rattachées (comportement
+  /// historique, aucun tirage).
+  descriptionDataLibraryId  String?
+  descriptionDataLibrary    DataLibrary? @relation("PatternTemplateDescriptionDataLibrary", fields: [descriptionDataLibraryId], references: [id], onDelete: SetNull)
   /// @deprecated V8 — utiliser needsCaptionsMode.
   /// MORT — drop préparé dans pending-drops/vague6-drops.sql.
   needsCaptions             Boolean     @default(false)
