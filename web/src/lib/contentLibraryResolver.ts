@@ -42,6 +42,20 @@ type PrismaQueryClient = Pick<typeof prisma, '$queryRaw'>;
  * Notes :
  *   - `ma` est l'alias attendu pour MediaAsset dans la query appelante.
  *   - Le helper retourne du SQL préfixé `AND` — à concaténer après un WHERE.
+ *
+ * Mirror croisé (A.3, P5 hardening 21/08) : `web/src/app/api/libraries/[libraryId]/assets/route.ts`
+ * (picker « Changer » du form de génération) rejoue la MÊME sémantique
+ * d'accès en Prisma ORM via `buildAssetsAccessWhere`
+ * (`lib/generate/libraryAssetsQuery.ts`) — même repli strict (pool public
+ * uniquement) quand `accountId` est absent. Une version antérieure de ce
+ * fix relâchait ce filtre côté picker (A.2 : « montrer tout » plutôt que
+ * replier sur le pool public), au motif que c'est une liste que l'user
+ * choisit consciemment (revalidée au submit par `validateManualAssetSelection`) —
+ * revert suite à revue de sécurité : ça exposait la vignette/lecture d'assets
+ * restreints à un autre client à tout user authentifié ouvrant le picker
+ * sans compte sélectionné, ce que `validateManualAssetSelection` ne referme
+ * pas (elle bloque l'USAGE au submit, pas la preview). Garder les deux
+ * fragments en phase si la sémantique d'accès change ici.
  */
 export function buildAccessFilter(accountId: string | undefined): Prisma.Sql {
   return accountId
@@ -60,9 +74,20 @@ export function buildAccessFilter(accountId: string | undefined): Prisma.Sql {
  * `(sans dossier)` (`setTag IS NULL`), traité comme un dossier normal.
  *
  * Tri : le dossier servi le moins récemment d'abord —
- *   1. MAX(lastUsedAt) ASC NULLS FIRST (un dossier jamais servi passe devant ;
- *      après usage, son MAX devient récent → il redescend naturellement :
- *      anti-répétition douce sans aucun état de curseur) ;
+ *   0. has_unused DESC (P8, régression 2026-08-21 : un dossier contenant au
+ *      moins un asset jamais servi passe TOUJOURS devant, même si son
+ *      MAX(lastUsedAt) est récent. Sans ce critère, `MAX()` ignore les NULL :
+ *      un dossier « à moitié neuf » — 1 asset servi hier + 9 neufs — est
+ *      classé comme entièrement consommé, et un dossier 100% consommé il y a
+ *      3 semaines passe devant lui → on resert du déjà-vu alors que du stock
+ *      neuf attend. Réintroduit du commit 6b435b3 (13/08), supprimé par
+ *      inadvertance au refactor « dossiers simples » 86a18d0 (16/08). Pas de
+ *      filtre `disabled` dans le COUNT : le WHERE (accessFilter) l'exclut déjà
+ *      de la sous-requête.) ;
+ *   1. MAX(lastUsedAt) ASC NULLS FIRST (parmi ceux à égalité sur has_unused,
+ *      un dossier jamais servi passe devant ; après usage, son MAX devient
+ *      récent → il redescend naturellement : anti-répétition douce sans aucun
+ *      état de curseur) ;
  *   2. MIN(createdAt) ASC (parmi les jamais-servis, ordre d'upload) ;
  *   3. setTag ASC NULLS LAST (tiebreaker déterministe, LPAD numérique).
  *
@@ -84,13 +109,19 @@ function buildFolderDiscoveryQuery(opts: {
   const usageJoin = usageAccountId
     ? Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}`
     : Prisma.empty;
+  // « Jamais servi » = aucune ligne d'usage pour ce compte (ou, sans clé
+  // d'usage, MediaAsset.lastUsedAt lui-même directement).
+  const unusedExpr = usageAccountId
+    ? Prisma.sql`mau."lastUsedAt" IS NULL`
+    : Prisma.sql`ma."lastUsedAt" IS NULL`;
 
   return Prisma.sql`
     SELECT sub."setTag"
     FROM (
       SELECT ma."setTag",
              ${lastUsedExpr} AS last_used,
-             MIN(ma."createdAt") AS folder_created_at
+             MIN(ma."createdAt") AS folder_created_at,
+             COUNT(*) FILTER (WHERE ${unusedExpr}) > 0 AS has_unused
       FROM "MediaAsset" ma
       ${usageJoin}
       WHERE ma."libraryId" = ${libraryId}
@@ -100,7 +131,8 @@ function buildFolderDiscoveryQuery(opts: {
       GROUP BY ma."setTag"
       HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
     ) sub
-    ORDER BY sub.last_used ASC NULLS FIRST,
+    ORDER BY sub.has_unused DESC,
+             sub.last_used ASC NULLS FIRST,
              sub.folder_created_at ASC NULLS LAST,
              CASE WHEN sub."setTag" ~ '^[0-9]+$' THEN LPAD(sub."setTag", 20, '0') ELSE sub."setTag" END ASC NULLS LAST`;
 }
@@ -152,12 +184,21 @@ export async function selectAndClaimMediaAsset(
     // concurrents qui attendent l'unlock (post-commit). Pour per_account :
     // upsert MediaAssetUsage avec lastUsedAt=now. Pour shared :
     // increment MediaAsset.usageCount.
-    if (accountId) {
+    //
+    // Fix #7 (P8 rotation) : `picked.claimAccountId` (posé uniquement par la
+    // branche theme_sequence de selectMediaAssetWithLock) prime sur
+    // `accountId` — c'est la clé sur laquelle la découverte par dossier a
+    // trié (sentinelle __shared__ en scope shared), le claim DOIT stamper la
+    // même sous peine de désynchroniser découverte et claim. Toutes les
+    // autres stratégies laissent `claimAccountId` undefined → comportement
+    // historique inchangé (claim sous `accountId` tel quel).
+    const claimAccountId = picked.claimAccountId ?? accountId;
+    if (claimAccountId) {
       await tx.mediaAssetUsage.upsert({
-        where: { assetId_accountId: { assetId: picked.id, accountId } },
+        where: { assetId_accountId: { assetId: picked.id, accountId: claimAccountId } },
         create: {
           assetId: picked.id,
-          accountId,
+          accountId: claimAccountId,
           usageCount: 1,
           lastUsedAt: new Date(),
         },
@@ -176,7 +217,7 @@ export async function selectAndClaimMediaAsset(
       });
     }
 
-    return picked;
+    return { id: picked.id, url: picked.url, filename: picked.filename, metadata: picked.metadata };
   });
 }
 
@@ -189,7 +230,16 @@ async function selectMediaAssetWithLock(args: {
   accountId?: string;
   excludeAssetIds?: string[];
   minDuration?: number;
-}): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null> } | null> {
+}): Promise<{
+  id: string; url: string; filename: string; metadata: Record<string, string | number | null>;
+  /** Fix #7 (P8 rotation) : clé sous laquelle le claim (posé par le caller
+   *  `selectAndClaimMediaAsset`) doit stamper `MediaAssetUsage.lastUsedAt` —
+   *  set uniquement par la branche theme_sequence (dossier), pour rester
+   *  cohérent avec la clé sur laquelle la découverte a trié (sentinelle
+   *  __shared__ en scope shared). Absent pour toutes les autres stratégies :
+   *  le caller retombe alors sur son défaut historique (`accountId`). */
+  claimAccountId?: string;
+} | null> {
   const { tx, libraryId, rule, formData, accountId, excludeAssetIds, minDuration } = args;
   const config = normalizeRule(rule);
   const { strategy } = config;
@@ -197,7 +247,7 @@ async function selectMediaAssetWithLock(args: {
 
   const lib = await tx.mediaLibrary.findUnique({
     where: { id: libraryId },
-    select: { maxUsageCount: true, rotationMode: true },
+    select: { maxUsageCount: true, rotationMode: true, rotationScope: true },
   });
   if (lib?.rotationMode === "none") return null;
 
@@ -210,6 +260,68 @@ async function selectMediaAssetWithLock(args: {
   const durationFrag = minDuration != null && minDuration > 0
     ? Prisma.sql`AND ma.duration >= ${minDuration}`
     : Prisma.sql``;
+
+  type AssetRow = { id: string; url: string; filename: string; metadata: string };
+
+  // Fix #7 (P8 rotation) : avant cette branche, un VideoBlock simple (hors
+  // sequence template) avec la stratégie "theme_sequence" (ex.
+  // resolveVideoBlockAsset → selectAndClaimMediaAsset) tombait dans le `else`
+  // générique ci-dessous (least_used global, sans notion de dossier) — aucun
+  // tirage par dossier, aucun warn, symptôme identique à #2. On branche ici le
+  // même tirage par dossier que selectMediaAssetFromFolder (découverte +
+  // pioche LRU intra-dossier), dans la MÊME transaction et sous le MÊME verrou
+  // FOR UPDATE SKIP LOCKED que les autres stratégies — pas de CAS nécessaire,
+  // la sérialisation est déjà garantie par le lock ligne. `claimAccountId` est
+  // remonté au caller (`selectAndClaimMediaAsset`) pour que le claim stampe la
+  // MÊME clé que la découverte (compte réel en per_account, sentinelle
+  // __shared__ en shared) — sans ça, la découverte shared trierait sur
+  // __shared__ mais le claim écrirait sous le compte réel : le dossier ne
+  // redescendrait jamais dans la pile (même bug que #2, au niveau du claim).
+  if (strategy === "theme_sequence") {
+    const isSharedScope = lib?.rotationScope === "shared";
+    const usageAccountId = isSharedScope ? SHARED_USAGE_ACCOUNT_ID : accountId;
+    // Burn-once dossier : même règle que selectMediaAssetFromFolder (compte
+    // réel en per_account, global ma.usageCount en shared). minDuration est
+    // baked dedans (pattern folder-draw établi) plutôt que ré-appliqué via
+    // durationFrag, pour éviter une double condition redondante.
+    const folderBurnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, isSharedScope ? undefined : accountId, minDuration);
+
+    const folders = await tx.$queryRaw<{ setTag: string | null }[]>(
+      buildFolderDiscoveryQuery({ libraryId, usageAccountId, accessFilter, burnFilter: folderBurnFilter, tagFrag }),
+    );
+    for (const folder of folders) {
+      const setTagClause = folder.setTag !== null
+        ? Prisma.sql`AND ma."setTag" = ${folder.setTag}`
+        : Prisma.sql`AND ma."setTag" IS NULL`;
+      const usageJoin = usageAccountId
+        ? Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}`
+        : Prisma.sql``;
+      const pickOrderClause = usageAccountId
+        ? Prisma.sql`ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`
+        : Prisma.sql`ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`;
+      const rows = await tx.$queryRaw<AssetRow[]>(Prisma.sql`
+        SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
+        ${usageJoin}
+        WHERE ma."libraryId" = ${libraryId}
+          ${setTagClause}
+          ${tagFrag}
+          ${excludeFrag}
+          ${accessFilter}
+          ${folderBurnFilter}
+        ${pickOrderClause}
+        LIMIT 1
+        FOR UPDATE OF ma SKIP LOCKED`);
+      if (rows[0]) {
+        let metadata: Record<string, string | number | null> = {};
+        try { metadata = JSON.parse(rows[0].metadata ?? "{}") as Record<string, string | number | null>; } catch { /* keep empty */ }
+        return {
+          id: rows[0].id, url: rows[0].url, filename: rows[0].filename, metadata,
+          ...(usageAccountId ? { claimAccountId: usageAccountId } : {}),
+        };
+      }
+    }
+    return null;
+  }
 
   // Ordering selon strategy. FOR UPDATE SKIP LOCKED appliqué à la fin.
   let orderClause: Prisma.Sql;
@@ -232,7 +344,6 @@ async function selectMediaAssetWithLock(args: {
     }
   }
 
-  type AssetRow = { id: string; url: string; filename: string; metadata: string };
   const rows = await tx.$queryRaw<AssetRow[]>(
     Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
       ${joinClause}
@@ -331,6 +442,13 @@ function buildTagFragment(
  * - per-account (accountId fourni) : COUNT depuis MediaAssetUsage par compte.
  * - global (no accountId) : COUNT depuis MediaAsset.usageCount.
  * - maxUsageCount null/<=0 : pas de filtre (rotation infinie).
+ *
+ * Mirror croisé (A.3, P5 hardening 21/08) : `web/src/app/api/libraries/[libraryId]/assets/route.ts`
+ * rejoue cette sémantique en Prisma ORM via `buildAssetsBurnWhere` +
+ * `resolveBurnAccountId` (`lib/generate/libraryAssetsQuery.ts`) — même défaut
+ * scope-aware que `selectMediaAssetFromFolder` (compteur global pour les libs
+ * `shared`, jamais la sentinelle). Garder les deux fragments en phase si la
+ * sémantique burn-once change ici.
  */
 export function buildBurnFilter(maxUsageCount: number | null, accountId?: string, minDuration?: number): Prisma.Sql {
   // Phase 4 gap fix : combine burn + duration en un seul fragment pour économiser
@@ -555,11 +673,20 @@ export async function selectMediaAssetFromFolder(
   if (!library) return null;
   if (resolveRotationMode(library, "selectMediaAssetFromFolder").mode === "none") return null;
 
-  // Clé d'ancienneté usage : compte réel (per_account) ou sentinel __shared__.
-  const effectiveUsageId = usageAccountId ?? accountId;
+  const isSharedScope = library.rotationScope === "shared";
+
+  // Fix #2 (P8 rotation) : clé d'ancienneté usage — compte réel explicite si
+  // fourni par l'appelant, sinon dérivée du scope de LA BIBLIOTHÈQUE elle-même
+  // (sentinelle __shared__ en shared, compte réel en per_account) plutôt que de
+  // retomber bêtement sur `accountId`. Cette fonction charge déjà
+  // `rotationScope` : le défaut se fixe donc ici, pas chez les appelants.
+  // Sans ce défaut scope-aware, la redécouverte render-time
+  // (generateRender.ts, usageAccountId=undefined) triait une lib shared sur le
+  // compte réel — vide la plupart du temps — et resservait toujours le même
+  // dossier.
+  const effectiveUsageId = usageAccountId ?? (isSharedScope ? SHARED_USAGE_ACCOUNT_ID : accountId);
 
   // Burn-once — per_account : par compte réel ; shared : global (ma.usageCount).
-  const isSharedScope = library.rotationScope === "shared";
   const burnAccountId = isSharedScope ? undefined : accountId;
   const burnFilter = buildBurnFilter(library.maxUsageCount ?? null, burnAccountId, minDuration);
 
@@ -748,9 +875,17 @@ export async function resolveLibraryPrefill(
         let pinnedSetTag: string | null | undefined = undefined;
         for (const b of blocks) {
           const rule = normalizeRule(b.selectionRule);
+          // Fix #5 (P8 rotation) : accès (2e arg) = TOUJOURS le compte réel,
+          // jamais effectiveAccountId(libId) — qui vaut undefined en scope
+          // shared. buildAccessFilter s'appuie sur la visibilité du compte,
+          // pas sur la clé d'ancienneté (6e arg, déjà correcte via
+          // effectiveCursorAccountId) : passer undefined ici réduisait le pool
+          // prefill shared aux seuls assets sans restriction de compte, alors
+          // que le render-time (generateRender.ts) passe lui le compte réel —
+          // pools divergents form/render.
           const suggestion = await selectMediaAssetFromFolder(
             libId,
-            effectiveAccountId(libId),
+            accountId,
             undefined,
             pinnedSetTag,
             rule,
@@ -821,9 +956,10 @@ export async function resolveLibraryPrefill(
           const rule = normalizeRule(s.selectionRule);
           // Phase 4 : passe slot.maxDuration comme minimum requis pour l'asset.
           const slotMinDuration = s.maxDuration && s.maxDuration > 0 ? s.maxDuration : undefined;
+          // Fix #5 (P8 rotation) : idem ci-dessus — compte réel en 2e arg.
           const suggestion = await selectMediaAssetFromFolder(
             libId,
-            effectiveAccountId(libId),
+            accountId,
             undefined,
             pinnedSetTag,
             rule,
@@ -998,7 +1134,10 @@ export type MediaUsageClaimState = {
 
 export async function advanceMediaUsageOnSubmit(
   videoAssetIds: string[],
-  accountId: string,
+  /** Fix #4 (P8 rotation) : optionnel — une lib `shared` claim quand même
+   *  (sous la sentinelle), seule une lib `per_account` sans compte est
+   *  réellement sautée. */
+  accountId: string | undefined,
 ): Promise<{ prevMediaUsageStates: MediaUsageClaimState[] }> {
   const states: MediaUsageClaimState[] = [];
   if (videoAssetIds.length === 0) return { prevMediaUsageStates: states };
@@ -1013,6 +1152,16 @@ export async function advanceMediaUsageOnSubmit(
   for (const asset of assets) {
     const usageAccountId =
       asset.library.rotationScope === "shared" ? SHARED_USAGE_ACCOUNT_ID : accountId;
+    // Lib shared : usageAccountId toujours défini (sentinelle) → claim posé
+    // même sans compte réel. Lib per_account sans compte : rien à claimer sous
+    // — on avertit et on passe au suivant plutôt que d'écrire sous une clé
+    // invalide ou de crasher.
+    if (!usageAccountId) {
+      console.warn(
+        `[advanceMediaUsageOnSubmit] asset=${asset.id} lib per_account sans accountId — claim ignoré (l'asset ne redescendra pas dans la pile de rotation pour ce compte).`,
+      );
+      continue;
+    }
     try {
       let prevLastUsedAt: string | null = null;
       await prisma.$transaction(async (tx) => {
@@ -1333,20 +1482,27 @@ export async function selectDataEntry(
     return { entryId: row.id, fields: parseRowFields(row.fields), resolvedSetTag: pinnedSetTag };
   }
 
-  // Découverte des dossiers, du moins récemment servi au plus récent
-  // (même tri que buildFolderDiscoveryQuery côté média).
+  // Découverte des dossiers, du moins récemment servi au plus récent (même
+  // tri que buildFolderDiscoveryQuery côté média, has_unused inclus — P8).
   const lastUsedExpr = usageAccountId
     ? Prisma.sql`MAX(deu."lastUsedAt")`
     : Prisma.sql`MAX(de."lastUsedAt")`;
   const usageJoin = usageAccountId
     ? Prisma.sql`LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${usageAccountId}`
     : Prisma.empty;
+  // « Jamais servie » = aucune ligne d'usage pour ce compte (ou, sans clé
+  // d'usage, DataEntry.lastUsedAt lui-même). Pas de filtre disabled : DataEntry
+  // n'en a pas.
+  const unusedExpr = usageAccountId
+    ? Prisma.sql`deu."lastUsedAt" IS NULL`
+    : Prisma.sql`de."lastUsedAt" IS NULL`;
   const folders = await prisma.$queryRaw<{ setTag: string | null }[]>(Prisma.sql`
     SELECT sub."setTag"
     FROM (
       SELECT de."setTag",
              ${lastUsedExpr} AS last_used,
-             MIN(de."createdAt") AS folder_created_at
+             MIN(de."createdAt") AS folder_created_at,
+             COUNT(*) FILTER (WHERE ${unusedExpr}) > 0 AS has_unused
       FROM "DataEntry" de
       ${usageJoin}
       WHERE de."libraryId" = ${libraryId}
@@ -1355,7 +1511,8 @@ export async function selectDataEntry(
       GROUP BY de."setTag"
       HAVING COUNT(*) > 0
     ) sub
-    ORDER BY sub.last_used ASC NULLS FIRST,
+    ORDER BY sub.has_unused DESC,
+             sub.last_used ASC NULLS FIRST,
              sub.folder_created_at ASC NULLS LAST,
              CASE WHEN sub."setTag" ~ '^[0-9]+$' THEN LPAD(sub."setTag", 20, '0') ELSE sub."setTag" END ASC NULLS LAST`);
 

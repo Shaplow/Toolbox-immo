@@ -109,12 +109,32 @@ describe("selectDataEntry — tirage dossier", () => {
     expect(r?.fields).toEqual({});
   });
 
-  it("découverte triée least-recently-served NULLS FIRST (usage per-account)", async () => {
+  it("découverte triée has_unused DESC puis least-recently-served NULLS FIRST (usage per-account)", async () => {
     mockQueryRaw.mockResolvedValueOnce([]);
     await selectDataEntry("lib-1", undefined, "acc-1");
     const sql = sqlTextOfCall(0);
-    expect(sql).toContain("ORDER BY sub.last_used ASC NULLS FIRST");
+    // P8 (régression 21/08) : has_unused DESC doit être le tout premier
+    // critère de tri, avant l'ancienneté — sinon un dossier « à moitié neuf »
+    // (MAX(lastUsedAt) récent malgré du stock jamais servi) reste classé
+    // derrière un dossier 100% consommé depuis longtemps.
+    expect(sql).toContain("ORDER BY sub.has_unused DESC");
+    expect(sql).toContain("sub.last_used ASC NULLS FIRST");
+    expect(sql.indexOf("has_unused DESC")).toBeLessThan(sql.indexOf("sub.last_used ASC NULLS FIRST"));
     expect(sql).toContain('MAX(deu."lastUsedAt")');
+  });
+
+  it("P8 — has_unused projeté via COUNT FILTER sur l'expression d'usage (per-account)", async () => {
+    mockQueryRaw.mockResolvedValueOnce([]);
+    await selectDataEntry("lib-1", undefined, "acc-1");
+    const sql = sqlTextOfCall(0);
+    expect(sql).toContain('COUNT(*) FILTER (WHERE deu."lastUsedAt" IS NULL) > 0 AS has_unused');
+  });
+
+  it("P8 — has_unused retombe sur DataEntry.lastUsedAt sans clé d'usage (preview admin)", async () => {
+    mockQueryRaw.mockResolvedValueOnce([]);
+    await selectDataEntry("lib-1", undefined, undefined);
+    const sql = sqlTextOfCall(0);
+    expect(sql).toContain('COUNT(*) FILTER (WHERE de."lastUsedAt" IS NULL) > 0 AS has_unused');
   });
 
   it("scope shared : ancienneté via la sentinelle __shared__data__, burn global", async () => {

@@ -128,23 +128,40 @@ describe("selectMediaAssetFromFolder — flux de tirage", () => {
     expect(await selectMediaAssetFromFolder("lib-1", "acc-1")).toBeNull();
   });
 
-  it("le SQL de découverte trie least-recently-served NULLS FIRST, tie-break createdAt puis setTag", async () => {
+  it("le SQL de découverte trie has_unused DESC en premier, puis least-recently-served NULLS FIRST, tie-break createdAt puis setTag", async () => {
     mockQueryRaw.mockResolvedValueOnce([]);
     await selectMediaAssetFromFolder("lib-1", "acc-1");
     const sql = sqlTextOfCall(0);
-    expect(sql).toContain("ORDER BY sub.last_used ASC NULLS FIRST");
+    // P8 (régression 21/08, commit 6b435b3 réintroduit après suppression au
+    // refactor « dossiers simples » 86a18d0) : has_unused DESC doit être le
+    // TOUT PREMIER critère de tri — sinon MAX(lastUsedAt) ignore les NULL et
+    // un dossier « à moitié neuf » (1 asset servi + N neufs) est classé comme
+    // entièrement consommé, resservant du déjà-vu devant du stock neuf.
+    expect(sql).toContain("ORDER BY sub.has_unused DESC");
+    expect(sql).toContain("sub.last_used ASC NULLS FIRST");
     expect(sql).toContain("sub.folder_created_at ASC NULLS LAST");
     expect(sql).toContain("LPAD");
+    expect(sql.indexOf("has_unused DESC")).toBeLessThan(sql.indexOf("sub.last_used ASC NULLS FIRST"));
     // Ancienneté per-account via MediaAssetUsage (clé = accountId réel ici).
     expect(sql).toContain('MAX(mau."lastUsedAt")');
   });
 
-  it("sans accountId (preview admin) : ancienneté globale (pas de JOIN usage)", async () => {
+  it("P8 — has_unused projeté via COUNT FILTER sur l'expression d'usage (per-account)", async () => {
+    mockQueryRaw.mockResolvedValueOnce([]);
+    await selectMediaAssetFromFolder("lib-1", "acc-1");
+    const sql = sqlTextOfCall(0);
+    expect(sql).toContain('COUNT(*) FILTER (WHERE mau."lastUsedAt" IS NULL) > 0 AS has_unused');
+    // Pas de filtre disabled dans le COUNT : le WHERE (accessFilter) l'exclut déjà.
+    expect(sql).not.toContain('NOT ma."disabled" AND mau."lastUsedAt" IS NULL');
+  });
+
+  it("sans accountId (preview admin) : ancienneté globale (pas de JOIN usage), has_unused sur MediaAsset.lastUsedAt", async () => {
     mockQueryRaw.mockResolvedValueOnce([]);
     await selectMediaAssetFromFolder("lib-1", undefined);
     const sql = sqlTextOfCall(0);
     expect(sql).toContain('MAX(ma."lastUsedAt")');
     expect(sql).not.toContain("MediaAssetUsage mau ON");
+    expect(sql).toContain('COUNT(*) FILTER (WHERE ma."lastUsedAt" IS NULL) > 0 AS has_unused');
   });
 
   it("burn-once per_account : le filtre d'usage max apparaît dans la découverte", async () => {
@@ -173,6 +190,42 @@ describe("selectMediaAssetFromFolder — flux de tirage", () => {
     mockQueryRaw.mockResolvedValueOnce([]);
     await selectMediaAssetFromFolder("lib-1", "acc-1", undefined, undefined, undefined, undefined, 12);
     expect(sqlTextOfCall(0)).toContain("ma.duration IS NULL OR ma.duration >=");
+  });
+
+  // Fix #2 (P8 rotation) : le défaut de clé d'usage se fixe DANS
+  // selectMediaAssetFromFolder — la fonction charge déjà rotationScope, donc
+  // aucun appelant ne devrait avoir à passer explicitement la sentinelle.
+  // Corrige la redécouverte render-time (generateRender.ts) qui appelle
+  // sans 6e argument (usageAccountId=undefined).
+  it("P8 fix #2 — scope shared SANS usageAccountId explicite : ancienneté sous la sentinelle __shared__ par défaut", async () => {
+    mockMediaLibraryFindUnique.mockResolvedValue({
+      maxUsageCount: null,
+      rotationScope: "shared",
+      rotationMode: "auto",
+    });
+    mockQueryRaw.mockResolvedValueOnce([]);
+    // Pas de 6e argument (usageAccountId) — c'est exactement l'appel de
+    // generateRender.ts:1352 (redécouverte render-time).
+    await selectMediaAssetFromFolder("lib-1", "acc-1");
+    const params = (mockQueryRaw.mock.calls[0]?.[0] as { values?: unknown[] })?.values ?? [];
+    // "acc-1" reste présent (accessFilter, visibilité — toujours le compte
+    // réel) : seule l'ancienneté (le JOIN MediaAssetUsage) doit basculer sur
+    // la sentinelle.
+    expect(params).toContain(SHARED_USAGE_ACCOUNT_ID);
+    expect(sqlTextOfCall(0)).toContain('MediaAssetUsage" mau ON');
+  });
+
+  it("P8 fix #2 — scope per_account SANS usageAccountId explicite : ancienneté sous le compte réel (comportement inchangé)", async () => {
+    mockMediaLibraryFindUnique.mockResolvedValue({
+      maxUsageCount: null,
+      rotationScope: "per_account",
+      rotationMode: "auto",
+    });
+    mockQueryRaw.mockResolvedValueOnce([]);
+    await selectMediaAssetFromFolder("lib-1", "acc-1");
+    const params = (mockQueryRaw.mock.calls[0]?.[0] as { values?: unknown[] })?.values ?? [];
+    expect(params).toContain("acc-1");
+    expect(params).not.toContain(SHARED_USAGE_ACCOUNT_ID);
   });
 });
 
@@ -209,6 +262,51 @@ describe("advanceMediaUsageOnSubmit — claim au submit", () => {
     const r = await advanceMediaUsageOnSubmit([], "acc-1");
     expect(r.prevMediaUsageStates).toEqual([]);
     expect(mockMediaAssetFindMany).not.toHaveBeenCalled();
+  });
+
+  // Fix #4 (P8 rotation) : accountId devient optionnel côté route (une
+  // génération shared sans compte doit quand même claimer). route.ts:493
+  // retire désormais `validatedAccountId` de la garde d'appel.
+  it("P8 fix #4 — shared SANS accountId : claim quand même sous la sentinelle __shared__", async () => {
+    mockMediaAssetFindMany.mockResolvedValue([
+      { id: "a1", library: { rotationScope: "shared" } },
+    ]);
+    mockUsageFindUnique.mockResolvedValue(null);
+    const r = await advanceMediaUsageOnSubmit(["a1"], undefined);
+    expect(r.prevMediaUsageStates).toHaveLength(1);
+    expect(r.prevMediaUsageStates[0]!.accountId).toBe(SHARED_USAGE_ACCOUNT_ID);
+    expect(mockUsageUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { assetId_accountId: { assetId: "a1", accountId: SHARED_USAGE_ACCOUNT_ID } },
+      }),
+    );
+  });
+
+  it("P8 fix #4 — per_account SANS accountId : claim sauté (warn), aucune écriture pour cet asset", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockMediaAssetFindMany.mockResolvedValue([
+      { id: "a1", library: { rotationScope: "per_account" } },
+    ]);
+    const r = await advanceMediaUsageOnSubmit(["a1"], undefined);
+    expect(r.prevMediaUsageStates).toEqual([]);
+    expect(mockUsageUpsert).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("a1"));
+    warn.mockRestore();
+  });
+
+  it("P8 fix #4 — mix shared + per_account SANS accountId : la lib shared claim, la lib per_account est sautée", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockMediaAssetFindMany.mockResolvedValue([
+      { id: "a-shared", library: { rotationScope: "shared" } },
+      { id: "a-per-account", library: { rotationScope: "per_account" } },
+    ]);
+    mockUsageFindUnique.mockResolvedValue(null);
+    const r = await advanceMediaUsageOnSubmit(["a-shared", "a-per-account"], undefined);
+    expect(r.prevMediaUsageStates).toHaveLength(1);
+    expect(r.prevMediaUsageStates[0]!.assetId).toBe("a-shared");
+    expect(r.prevMediaUsageStates[0]!.accountId).toBe(SHARED_USAGE_ACCOUNT_ID);
+    expect(mockUsageUpsert).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });
 
