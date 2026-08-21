@@ -3,6 +3,7 @@ import {
   normalizeCustomFields,
   customFieldToSchemaField,
   validateCustomFields,
+  validateFieldValues,
   inferDefaultFieldType,
   type CustomField,
 } from "@/lib/customFields";
@@ -44,6 +45,28 @@ describe("normalizeCustomFields", () => {
     ).toEqual([{ key: "a", label: "a", type: "text" }]);
   });
 
+  it("select : options coercées (trim, dédup, non-string ignorés)", () => {
+    expect(
+      normalizeCustomFields([
+        { key: "type_bien", label: "Type", type: "select", options: [" Maison ", "Maison", "", 3, "Appartement"] },
+      ]),
+    ).toEqual([
+      { key: "type_bien", label: "Type", type: "select", options: ["Maison", "Appartement"] },
+    ]);
+  });
+
+  it("select sans options → options: [] (l'erreur est portée par validateCustomFields)", () => {
+    expect(normalizeCustomFields([{ key: "t", label: "T", type: "select" }])).toEqual([
+      { key: "t", label: "T", type: "select", options: [] },
+    ]);
+  });
+
+  it("options ignorées pour un type non-select", () => {
+    expect(normalizeCustomFields([{ key: "t", label: "T", type: "text", options: ["a"] }])).toEqual([
+      { key: "t", label: "T", type: "text" },
+    ]);
+  });
+
   it("JSON malformé / non-array → []", () => {
     expect(normalizeCustomFields("{bad")).toEqual([]);
     expect(normalizeCustomFields(null)).toEqual([]);
@@ -69,6 +92,14 @@ describe("customFieldToSchemaField", () => {
       type: "text",
       required: false,
     });
+  });
+});
+
+describe("customFieldToSchemaField (select)", () => {
+  it("propage les options d'un select", () => {
+    expect(
+      customFieldToSchemaField({ key: "t", label: "T", type: "select", options: ["A", "B"] }),
+    ).toEqual({ key: "t", label: "T", type: "select", required: false, options: ["A", "B"] });
   });
 });
 
@@ -120,5 +151,52 @@ describe("validateCustomFields", () => {
     expect(
       validateCustomFields([{ key: "a", label: "  ", type: "text" }]),
     ).toMatch(/libellé/);
+  });
+
+  it("rejette un select sans option", () => {
+    expect(
+      validateCustomFields([{ key: "t", label: "Type", type: "select", options: [] }]),
+    ).toMatch(/option/);
+    expect(
+      validateCustomFields([{ key: "t", label: "Type", type: "select", options: ["Maison"] }]),
+    ).toBeNull();
+  });
+});
+
+describe("validateFieldValues", () => {
+  const schema: CustomField[] = [
+    { key: "titre", label: "Titre", type: "text", required: true },
+    { key: "type_bien", label: "Type de bien", type: "select", required: false, options: ["Maison", "Appartement"] },
+  ];
+
+  it("valide des valeurs conformes", () => {
+    expect(
+      validateFieldValues(schema, { titre: "Villa", type_bien: "Maison" }, { requireRequired: true }),
+    ).toBeNull();
+  });
+
+  it("requireRequired : rejette un requis vide/absent", () => {
+    expect(validateFieldValues(schema, {}, { requireRequired: true })).toMatch(/Titre/);
+    expect(validateFieldValues(schema, { titre: "  " }, { requireRequired: true })).toMatch(/Titre/);
+  });
+
+  it("sans requireRequired : requis absent toléré (édition)", () => {
+    expect(validateFieldValues(schema, {})).toBeNull();
+  });
+
+  it("select : valeur hors options rejetée, vide toléré si non requis", () => {
+    expect(validateFieldValues(schema, { titre: "V", type_bien: "Chalet" })).toMatch(/Chalet/);
+    expect(validateFieldValues(schema, { titre: "V", type_bien: "" })).toBeNull();
+  });
+
+  it("clés inconnues : rejetées par défaut, tolérées avec allowUnknownKeys", () => {
+    expect(validateFieldValues(schema, { titre: "V", legacy: "x" })).toMatch(/legacy/);
+    expect(
+      validateFieldValues(schema, { titre: "V", legacy: "x" }, { allowUnknownKeys: true }),
+    ).toBeNull();
+  });
+
+  it("schéma vide : tout est accepté (type sans schéma configuré)", () => {
+    expect(validateFieldValues([], { libre: "x" })).toBeNull();
   });
 });

@@ -41,6 +41,19 @@ function slugifyKey(label: string): string {
  * recette, MediaLibrary et DataLibrary. Définit les champs (libellé + clé + type
  * + requis optionnel). Ne saisit PAS les valeurs (voir CustomFieldValueInput).
  */
+/** Parse une saisie d'options « a, b, c » → string[] trimmed dédupliquées. */
+function parseOptionsText(text: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of text.split(",")) {
+    const v = part.trim();
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
 export function CustomFieldsSchemaEditor({
   fields,
   onChange,
@@ -50,6 +63,9 @@ export function CustomFieldsSchemaEditor({
   readOnly = false,
 }: CustomFieldsSchemaEditorProps) {
   const [newLabel, setNewLabel] = useState("");
+  // Texte brut des options par clé de champ — évite que le parse/join normalise
+  // la saisie sous le curseur (virgule qui disparaît en tapant).
+  const [optionsDrafts, setOptionsDrafts] = useState<Record<string, string>>({});
   const typeOptions = CUSTOM_FIELD_TYPES.map((t) => ({ value: t.value, label: t.label }));
 
   function patchField(index: number, patch: Partial<CustomField>) {
@@ -85,7 +101,8 @@ export function CustomFieldsSchemaEditor({
       )}
 
       {fields.map((field, i) => (
-        <div key={field.key} className="flex items-center gap-2">
+        <div key={field.key} className="space-y-1.5">
+        <div className="flex items-center gap-2">
           {/* Largeur portée par le <div> conteneur, pas via className sur <Input> :
               Input force w-full en dur (non écrasable sans tailwind-merge), donc
               une className de largeur passée directement est ignorée. */}
@@ -100,7 +117,17 @@ export function CustomFieldsSchemaEditor({
           <div className="w-32 shrink-0">
             <Input
               value={field.key}
-              onChange={(v) => patchField(i, { key: v.trim() })}
+              onChange={(v) => {
+                const nextKey = v.trim();
+                // Migrer le brouillon d'options du select vers la nouvelle clé
+                // (sinon texte périmé si la clé est renommée puis réutilisée).
+                setOptionsDrafts((prev) => {
+                  if (!(field.key in prev)) return prev;
+                  const { [field.key]: draft, ...rest } = prev;
+                  return { ...rest, [nextKey]: draft };
+                });
+                patchField(i, { key: nextKey });
+              }}
               placeholder="clé"
               disabled={readOnly}
               className="font-mono text-xs"
@@ -140,6 +167,21 @@ export function CustomFieldsSchemaEditor({
               <Trash2 size={14} />
             </button>
           )}
+        </div>
+        {field.type === "select" && (
+          <div className="pl-1">
+            <Input
+              value={optionsDrafts[field.key] ?? (field.options ?? []).join(", ")}
+              onChange={(v) => {
+                setOptionsDrafts((prev) => ({ ...prev, [field.key]: v }));
+                patchField(i, { options: parseOptionsText(v) });
+              }}
+              placeholder="Options séparées par des virgules (ex : Appartement, Maison, Terrain)"
+              disabled={readOnly}
+              className="text-xs"
+            />
+          </div>
+        )}
         </div>
       ))}
 

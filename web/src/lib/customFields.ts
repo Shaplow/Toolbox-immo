@@ -4,16 +4,16 @@
  *   - MediaLibrary.metadataSchema, DataLibrary.fieldsSchema
  *
  * Remplace les 6 déclarations concurrentes (FieldDef / MetadataField / string[]).
- * 4 types alignés sur la médiathèque. Les valeurs restent stockées en string
- * (le type pilote le rendu/l'édition, pas de coercition serveur — cohérent
- * avec tout le repo). `CustomFieldType` est un sous-ensemble strict de
- * `SchemaFieldType` (cf. customFieldToSchemaField).
+ * 5 types : text / textarea / number / url / select (choix fermé via `options`).
+ * Les valeurs restent stockées en string (le type pilote le rendu/l'édition,
+ * pas de coercition serveur — cohérent avec tout le repo). `CustomFieldType`
+ * est un sous-ensemble strict de `SchemaFieldType` (cf. customFieldToSchemaField).
  */
 
 import type { SchemaField } from "@/types/template";
 import { validateSchemaFieldKey } from "@/lib/schemaFields";
 
-export type CustomFieldType = "text" | "textarea" | "number" | "url";
+export type CustomFieldType = "text" | "textarea" | "number" | "url" | "select";
 
 export interface CustomField {
   key: string;
@@ -23,6 +23,8 @@ export interface CustomField {
   required?: boolean;
   /** Data spreadsheet : visible dans la vue table compacte. Extension optionnelle. */
   primary?: boolean;
+  /** Choix fermé (`type === "select"` uniquement) : valeurs autorisées. */
+  options?: string[];
 }
 
 export const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
@@ -30,9 +32,10 @@ export const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
   { value: "textarea", label: "Texte long" },
   { value: "number", label: "Nombre" },
   { value: "url", label: "Lien URL" },
+  { value: "select", label: "Choix fermé" },
 ];
 
-const VALID_TYPES = new Set<CustomFieldType>(["text", "textarea", "number", "url"]);
+const VALID_TYPES = new Set<CustomFieldType>(["text", "textarea", "number", "url", "select"]);
 
 /** Libellés qui suggèrent du texte multi-ligne (accent-insensible). */
 const LONG_TEXT_LABEL = /desc|note|adresse|comment|resum|\bbio\b/i;
@@ -52,6 +55,21 @@ function coerceType(raw: unknown): CustomFieldType {
   return typeof raw === "string" && VALID_TYPES.has(raw as CustomFieldType)
     ? (raw as CustomFieldType)
     : "text";
+}
+
+/** Coerce une liste d'options de select : strings trimmed, non vides, dédupliquées. */
+function coerceOptions(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const v = item.trim();
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
 }
 
 /**
@@ -93,6 +111,9 @@ export function normalizeCustomFields(raw: unknown): CustomField[] {
       const field: CustomField = { key, label, type: coerceType(o.type) };
       if (o.required === true) field.required = true;
       if (o.primary === true) field.primary = true;
+      if (field.type === "select") {
+        field.options = coerceOptions(o.options);
+      }
       out.push(field);
     }
   }
@@ -100,14 +121,16 @@ export function normalizeCustomFields(raw: unknown): CustomField[] {
 }
 
 /** Convertit un champ perso en `SchemaField` pour la fusion dans le formulaire
- *  de génération. Les 4 CustomFieldType sont tous des `SchemaFieldType` valides. */
+ *  de génération. Les CustomFieldType sont tous des `SchemaFieldType` valides. */
 export function customFieldToSchemaField(f: CustomField): SchemaField {
-  return {
+  const field: SchemaField = {
     key: f.key,
     label: f.label || f.key,
     type: f.type,
     required: Boolean(f.required),
   };
+  if (f.type === "select") field.options = f.options ?? [];
+  return field;
 }
 
 /** Valide une liste de champs perso (clés valides + uniques). Retourne un message
@@ -119,6 +142,55 @@ export function validateCustomFields(fields: CustomField[]): string | null {
     if (err) return `Champ « ${f.key || "?"} » : ${err}`;
     keys.push(f.key.trim());
     if (!f.label || !f.label.trim()) return `Champ « ${f.key} » : libellé requis`;
+    if (f.type === "select" && (!f.options || f.options.length === 0)) {
+      return `Champ « ${f.label} » : au moins une option est requise pour un choix fermé`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Valide des VALEURS contre un schéma de champs perso. Retourne un message
+ * d'erreur ou null. Validation au write uniquement (les valeurs historiques
+ * non conformes restent lisibles).
+ *
+ * - `requireRequired` : exige les champs `required` non vides (création /
+ *   soumission de formulaire). En édition partielle, laisser à false — un
+ *   schéma modifié après coup ne doit pas bloquer la sauvegarde d'une fiche
+ *   existante.
+ * - `allowUnknownKeys` : tolère les clés hors schéma (édition d'une fiche
+ *   dont le schéma a changé — clés orphelines affichées ailleurs). À false
+ *   pour les créations et les écritures externes (whitelist stricte).
+ * - Un select non vide doit appartenir aux options ; `""` est toléré quand le
+ *   champ n'est pas requis (ou que `requireRequired` est false).
+ * - Pas de coercition/validation numérique : les valeurs restent des strings
+ *   libres (cohérent avec tout le repo, le type pilote le rendu).
+ */
+export function validateFieldValues(
+  schema: CustomField[],
+  values: Record<string, string>,
+  opts: { requireRequired?: boolean; allowUnknownKeys?: boolean } = {}
+): string | null {
+  const byKey = new Map(schema.map((f) => [f.key, f]));
+
+  if (!opts.allowUnknownKeys && schema.length > 0) {
+    for (const key of Object.keys(values)) {
+      if (!byKey.has(key)) return `Champ inconnu : « ${key} »`;
+    }
+  }
+
+  for (const field of schema) {
+    const raw = values[field.key];
+    const value = typeof raw === "string" ? raw.trim() : "";
+    if (opts.requireRequired && field.required && !value) {
+      return `Le champ « ${field.label || field.key} » est requis`;
+    }
+    if (field.type === "select" && value) {
+      const options = field.options ?? [];
+      if (!options.includes(value)) {
+        return `Valeur « ${value} » invalide pour « ${field.label || field.key} » (choix fermé)`;
+      }
+    }
   }
   return null;
 }

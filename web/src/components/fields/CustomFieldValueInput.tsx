@@ -2,6 +2,7 @@
 
 import type { KeyboardEvent } from "react";
 import type { CustomField } from "@/lib/customFields";
+import { Select } from "@/components/ui/Select";
 
 interface CustomFieldValueInputProps {
   field: CustomField;
@@ -20,10 +21,10 @@ const CONTROL =
   "w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40";
 
 /**
- * Saisie d'une VALEUR de champ personnalisé, rendue selon son type (les 4 types
- * canoniques : text / textarea / number / url). Composant partagé unique —
- * remplace les ~6 mappings type→input dupliqués (Bien, mission, médiathèque,
- * data). Valeur toujours string (cohérent avec le stockage).
+ * Saisie d'une VALEUR de champ personnalisé, rendue selon son type (les 5 types
+ * canoniques : text / textarea / number / url / select). Composant partagé
+ * unique — remplace les ~6 mappings type→input dupliqués (Bien, mission,
+ * médiathèque, data). Valeur toujours string (cohérent avec le stockage).
  */
 export function CustomFieldValueInput({
   field,
@@ -41,7 +42,20 @@ export function CustomFieldValueInput({
     field.type === "url" ? "https://…" : `Valeur pour « ${field.label || field.key} »`;
 
   const input =
-    field.type === "textarea" ? (
+    field.type === "select" ? (
+      <Select
+        value={value}
+        onChange={onChange}
+        // Option vide en tête pour pouvoir effacer un choix non requis.
+        options={[
+          ...(field.required ? [] : [{ value: "", label: "—" }]),
+          ...(field.options ?? []).map((o) => ({ value: o, label: o })),
+        ]}
+        placeholder="Choisir…"
+        disabled={disabled}
+        className={className}
+      />
+    ) : field.type === "textarea" ? (
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
