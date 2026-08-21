@@ -9,7 +9,7 @@
  * save passe par POST/PATCH atomique /recipes.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -28,6 +28,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Switch } from "@/components/ui/Switch";
 import { toast } from "@/components/ui/Toast";
 import { RecipeForm, type RecipeFormInitial, type RecipeFormValues } from "./RecipeForm";
+import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { BulkReplaceAssigneeModal } from "./BulkReplaceAssigneeModal";
 import { PatternPeekDrawer } from "./PatternPeekDrawer";
 import { SOURCE_LABELS_FR, SOURCE_VARIANT } from "@/lib/i18n/glossary";
@@ -190,6 +191,128 @@ function recipeItemToFormInitial(r: RecipeItem): RecipeFormInitial {
   };
 }
 
+/**
+ * Forme brute renvoyée par POST/PATCH /api/admin/accounts/[id]/recipes[/[bindingId]]
+ * — le PatternBinding Prisma tel quel, avec `patternTemplate` imbriqué
+ * (`include: { patternTemplate: true }`). PAS le `RecipeItem` flatten que
+ * consomme cette liste (celui-ci est construit côté SSR dans page.tsx, avec
+ * en plus les noms d'assignés joints et `sharedWithCount` = `_count.bindings`
+ * — absents de la réponse API). `bindingResponseToRecipeItem` referme cet
+ * écart pour permettre une mise à jour optimiste sans réclamer un
+ * `router.refresh()` complet.
+ */
+interface RecipeBindingApiResponse {
+  id: string;
+  patternTemplateId: string;
+  customLabel: string | null;
+  dayOfWeek: number[];
+  publishTime: string;
+  isActive: boolean;
+  defaultAssigneeMonteurId: string | null;
+  defaultAssigneeCmId: string | null;
+  defaultAssigneeVideasteId: string | null;
+  captionPresetIdOverride: string | null;
+  descriptionPromptIdOverride: string | null;
+  coverModeOverride: string | null;
+  notes: string | null;
+  patternTemplate: {
+    label: string;
+    source: string;
+    templateId: string | null;
+    coverMode: string;
+    needsCaptionsMode: string;
+    needsDescription: string;
+    needsAdminValidation: boolean;
+    needsClientValidation: boolean;
+    allowsClientRevision: boolean;
+    needsBrief: boolean;
+    requiresProperty: boolean;
+    requiresEntityTypeId: string | null;
+    captionPresetId: string | null;
+    descriptionPromptId: string | null;
+    descriptionSourceFieldKey: string | null;
+    descriptionFixedText: string | null;
+    descriptionDataLibraryId: string | null;
+    descriptionDataSetTag: string | null;
+    autoSaveToLibraryId: string | null;
+    notes: string | null;
+  };
+}
+
+function findAssigneeName(options: AssigneeOption[], id: string | null): string | null {
+  if (!id) return null;
+  return options.find((o) => o.id === id)?.name ?? null;
+}
+
+/**
+ * Reconstruit un `RecipeItem` à partir de la réponse API POST/PATCH
+ * /recipes. `sharedWithCount` n'est pas renvoyé par l'API (pas de `_count`
+ * dans le include) — fourni par l'appelant à partir de l'état connu, une
+ * imprécision ponctuelle sans conséquence : le prochain `router.refresh()`
+ * (resync via useEffect ci-dessous) corrige la valeur exacte.
+ */
+function bindingResponseToRecipeItem(
+  b: RecipeBindingApiResponse,
+  opts: {
+    monteurs: AssigneeOption[];
+    cms: AssigneeOption[];
+    videastes: AssigneeOption[];
+    sharedWithCount: number;
+  },
+): RecipeItem {
+  const tpl = b.patternTemplate;
+  const overrideCount = [
+    b.captionPresetIdOverride,
+    b.descriptionPromptIdOverride,
+    b.coverModeOverride,
+  ].filter((v) => v != null && v !== "").length;
+  return {
+    id: b.id,
+    bindingId: b.id,
+    patternTemplateId: b.patternTemplateId,
+    label: patternLabel({ customLabel: b.customLabel, patternTemplate: { label: tpl.label } }),
+    templateLabel: tpl.label,
+    source: tpl.source,
+    templateId: tpl.templateId,
+    coverMode: tpl.coverMode,
+    needsCaptionsMode: tpl.needsCaptionsMode,
+    needsDescription: tpl.needsDescription,
+    needsAdminValidation: tpl.needsAdminValidation,
+    needsClientValidation: tpl.needsClientValidation,
+    allowsClientRevision: tpl.allowsClientRevision,
+    needsBrief: tpl.needsBrief,
+    requiresProperty: tpl.requiresProperty,
+    requiresEntityTypeId: tpl.requiresEntityTypeId,
+    captionPresetId: tpl.captionPresetId,
+    descriptionPromptId: tpl.descriptionPromptId,
+    descriptionSourceFieldKey: tpl.descriptionSourceFieldKey,
+    descriptionFixedText: tpl.descriptionFixedText,
+    descriptionDataLibraryId: tpl.descriptionDataLibraryId,
+    descriptionDataSetTag: tpl.descriptionDataSetTag,
+    autoSaveToLibraryId: tpl.autoSaveToLibraryId,
+    templateNotes: tpl.notes,
+    customLabel: b.customLabel,
+    dayOfWeek: b.dayOfWeek,
+    publishTime: b.publishTime,
+    isActive: b.isActive,
+    defaultAssigneeMonteurId: b.defaultAssigneeMonteurId,
+    defaultAssigneeCmId: b.defaultAssigneeCmId,
+    defaultAssigneeVideasteId: b.defaultAssigneeVideasteId,
+    defaultAssigneeMonteurName: findAssigneeName(opts.monteurs, b.defaultAssigneeMonteurId),
+    defaultAssigneeCmName: findAssigneeName(opts.cms, b.defaultAssigneeCmId),
+    defaultAssigneeVideasteName: findAssigneeName(opts.videastes, b.defaultAssigneeVideasteId),
+    captionPresetIdOverride: b.captionPresetIdOverride,
+    descriptionPromptIdOverride: b.descriptionPromptIdOverride,
+    coverModeOverride: b.coverModeOverride,
+    bindingNotes: b.notes,
+    hasCaptionPresetOverride: !!b.captionPresetIdOverride,
+    hasDescriptionPromptOverride: !!b.descriptionPromptIdOverride,
+    hasCoverModeOverride: !!b.coverModeOverride,
+    overrideCount,
+    sharedWithCount: opts.sharedWithCount,
+  };
+}
+
 export function AccountRecipesList({
   accountId,
   accountHandle,
@@ -205,6 +328,19 @@ export function AccountRecipesList({
 }: Props) {
   const router = useRouter();
   const [recipes, setRecipes] = useState<RecipeItem[]>(initialRecipes);
+  // P7 fix — `useState(initialRecipes)` ne capture QUE le tout premier
+  // rendu : App Router préserve le state d'un Client Component à travers un
+  // `router.refresh()` (le Server Component repasse des props fraîches, mais
+  // ce state local n'est jamais réinitialisé). Sans ce resync, `recipes`
+  // restait figé sur l'état d'avant tout save — rouvrir le drawer d'une
+  // recette réaffichait alors ses valeurs périmées (ex. bibliothèque de
+  // légendes tournantes montrée « Aucune » juste après l'avoir configurée),
+  // et un ré-enregistrement depuis ce drawer périmé écrivait ces valeurs
+  // périmées en base (effet destructif — cf. handleSave ci-dessous pour le
+  // fix complémentaire côté écriture optimiste).
+  useEffect(() => {
+    setRecipes(initialRecipes);
+  }, [initialRecipes]);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [bulkReplaceOpen, setBulkReplaceOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -279,6 +415,38 @@ export function AccountRecipesList({
           const j = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(j.error ?? `Erreur ${res.status}`);
         }
+        let created: RecipeBindingApiResponse;
+        try {
+          created = (await res.json()) as RecipeBindingApiResponse;
+        } catch {
+          // res.ok mais corps illisible (proxy coupé après les headers,
+          // timeout) — l'écriture a bien eu lieu côté serveur : ne PAS le
+          // traiter comme un échec (le catch englobant afficherait "Erreur"
+          // alors que la recette existe déjà, et retenter créerait un
+          // doublon). Fallback : resync complet plutôt que l'update optimiste.
+          toast.success("Recette créée — actualisation de la liste…");
+          closeDrawer();
+          router.refresh();
+          return;
+        }
+        // Réutilisation d'un template catalogue : l'affiche déjà en carte
+        // « disponible » (id = `tpl-<templateId>`) devient la recette liée.
+        setRecipes((prev) => {
+          const reusedFrom = prev.find((x) => x.patternTemplateId === created.patternTemplateId);
+          const sharedWithCount = editing.reusedTemplateId
+            ? (reusedFrom?.sharedWithCount ?? 0) + 1
+            : 1;
+          const item = bindingResponseToRecipeItem(created, {
+            monteurs,
+            cms,
+            videastes,
+            sharedWithCount,
+          });
+          return [
+            ...prev.filter((x) => x.id !== `tpl-${created.patternTemplateId}`),
+            item,
+          ];
+        });
         toast.success("Recette créée");
       } else {
         if (!editing.bindingId) throw new Error("ID binding manquant");
@@ -294,6 +462,32 @@ export function AccountRecipesList({
           const j = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(j.error ?? `Erreur ${res.status}`);
         }
+        let updated: RecipeBindingApiResponse;
+        try {
+          updated = (await res.json()) as RecipeBindingApiResponse;
+        } catch {
+          // Même garde que la branche création ci-dessus — res.ok mais corps
+          // illisible : l'écriture a réussi, ne pas le traiter comme un échec.
+          toast.success("Recette mise à jour — actualisation de la liste…");
+          closeDrawer();
+          router.refresh();
+          return;
+        }
+        // Mise à jour optimiste depuis la réponse (qui renvoie le template
+        // complet) plutôt que d'attendre le round-trip router.refresh() —
+        // P7 : sans ça, rouvrir ce même drawer avant la fin du refresh (ou
+        // si le useEffect de resync n'avait pas encore tourné) réaffichait
+        // l'état d'avant ce save.
+        setRecipes((prev) => {
+          const prevItem = prev.find((x) => x.id === updated.id);
+          const item = bindingResponseToRecipeItem(updated, {
+            monteurs,
+            cms,
+            videastes,
+            sharedWithCount: prevItem?.sharedWithCount ?? 1,
+          });
+          return prev.map((x) => (x.id === updated.id ? item : x));
+        });
         toast.success("Recette mise à jour");
       }
       closeDrawer();
@@ -332,6 +526,14 @@ export function AccountRecipesList({
         throw new Error(j.error ?? `Erreur ${res.status}`);
       }
       toast.success(next ? "Recette activée" : "Recette désactivée");
+      // Fix mineur (post P7) : resynchronise recipes sur la DB après un
+      // toggle réussi, comme handleSave. Sans ça, un router.refresh() déclenché
+      // ailleurs (ex. handleSave d'une AUTRE recette) pendant que ce PATCH est
+      // encore en vol peut écraser l'update optimiste avec des données DB pas
+      // encore commitées (le useEffect de resync sur initialValues rejoue
+      // alors l'ancien isActive) — ce refresh referme la fenêtre dès que ce
+      // PATCH est effectivement résolu.
+      router.refresh();
     } catch (err) {
       setRecipes((prev) =>
         prev.map((x) => (x.id === r.id ? { ...x, isActive: previous.isActive } : x)),

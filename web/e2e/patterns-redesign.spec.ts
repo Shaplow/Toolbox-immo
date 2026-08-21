@@ -509,3 +509,145 @@ test.describe("ADMIN — vue plate /admin/accounts", () => {
     await expect(page).not.toHaveURL("/admin/accounts", { timeout: 5_000 });
   });
 });
+
+// ── 9. Régression P7 — drawer recette périmé après save ──────────────────────
+//
+// Bug diagnostiqué : `AccountRecipesList` initialise son state `recipes` une
+// seule fois depuis `initialRecipes` (useState) et ne le resynchronise
+// jamais — ni via `router.refresh()` (le contrat App Router préserve le
+// state client d'un Client Component à travers un refresh), ni via un
+// `useEffect` dédié. Rouvrir le drawer d'une recette juste éditée réaffiche
+// donc l'état d'AVANT le save, et un ré-enregistrement depuis ce drawer
+// périmé renvoie `descriptionDataLibraryId: null` (clé présente ⇒ écrite) —
+// effaçant réellement la bibliothèque de légendes tournantes en base.
+//
+// Le scénario ci-dessous reproduit exactement le chemin destructif : dans la
+// MÊME session (sans reload complet de page), configurer la bibliothèque
+// dans le drawer, sauvegarder, rouvrir → la valeur doit être affichée (pas
+// « Aucune »), puis ré-enregistrer sans y toucher → la valeur doit rester
+// intacte en base (vérifié via GET /api/admin/patterns, pas seulement dans
+// l'UI).
+
+async function selectComboboxOption(
+  dialog: import("@playwright/test").Locator,
+  fieldLabel: string,
+  optionName: string,
+) {
+  await dialog.locator("label").filter({ hasText: fieldLabel }).locator("button").click();
+  await dialog.page().getByRole("option", { name: optionName }).first().click();
+}
+
+test.describe("ADMIN — recette : bibliothèque de données (légendes tournantes) — régression P7", () => {
+  test("configurer une bibliothèque dans le drawer, sauvegarder, rouvrir : la valeur est affichée ; ré-enregistrer sans y toucher ne l'efface pas en base", async ({ page }) => {
+    await loginAs(page, "admin");
+
+    const accountId = await getTestAccountId(page);
+    if (!accountId) {
+      test.skip();
+      return;
+    }
+
+    const stamp = Date.now();
+    const libName = `E2E Légendes P7 ${stamp}`;
+
+    // Bibliothèque de données de test (le picker liste toutes les
+    // DataLibrary via /api/admin/libraries/data, pas besoin de fiches).
+    const libResp = await page.request.post("/api/admin/libraries/data", {
+      data: { name: libName, templateType: "RTEXT" },
+    });
+    expect(libResp.status()).toBe(201);
+    const dataLibrary = (await libResp.json()) as { id: string };
+
+    // Recette créée directement via API, SANS bibliothèque au départ — le
+    // test se concentre sur le cycle configurer/save/reopen du drawer, pas
+    // sur la création elle-même (déjà couverte plus haut dans ce fichier).
+    const recipeLabel = `E2E P7 recette ${stamp}`;
+    const createResp = await page.request.post(`/api/admin/accounts/${accountId}/recipes`, {
+      data: {
+        template: {
+          label: recipeLabel,
+          source: "manual_rushes",
+          coverMode: "none",
+          needsCaptionsMode: "none",
+          needsDescription: "none",
+        },
+        binding: {
+          publishTime: "09:00",
+          dayOfWeek: [1],
+          isActive: true,
+        },
+      },
+    });
+    expect(createResp.status()).toBe(201);
+    const created = (await createResp.json()) as { id: string; patternTemplateId: string };
+
+    try {
+      await page.goto(`/admin/accounts/${accountId}`);
+
+      // 1. Ouvre le drawer de la recette et configure la bibliothèque.
+      await page.locator("h3").filter({ hasText: recipeLabel }).first().click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+
+      // Mode "Pré-remplie (modèle)" révèle le champ bibliothèque.
+      await selectComboboxOption(dialog, "Description Instagram", "Pré-remplie (modèle)");
+      await selectComboboxOption(
+        dialog,
+        "Bibliothèque de données (légendes tournantes)",
+        libName,
+      );
+
+      await dialog.getByRole("button", { name: "Enregistrer" }).click();
+      await expect(dialog).toBeHidden();
+
+      // 2. Rouvre le MÊME drawer dans la même session (sans reload complet)
+      //    — c'est exactement le chemin qui réaffichait « Aucune » avant le
+      //    fix (state client `recipes` non resynchronisé après le save).
+      await page.locator("h3").filter({ hasText: recipeLabel }).first().click();
+      const dialog2 = page.getByRole("dialog");
+      await expect(dialog2).toBeVisible();
+      await expect(
+        dialog2
+          .locator("label")
+          .filter({ hasText: "Bibliothèque de données (légendes tournantes)" })
+          .locator("button"),
+      ).toContainText(libName);
+
+      // 3. Ré-enregistre SANS rien modifier : avant le fix, ce save partait
+      //    d'un state périmé et renvoyait descriptionDataLibraryId: null,
+      //    effaçant réellement la valeur en base.
+      await dialog2.getByRole("button", { name: "Enregistrer" }).click();
+      await expect(dialog2).toBeHidden();
+
+      // 4. Vérification en base (pas seulement dans l'UI) : la colonne doit
+      //    être intacte après le ré-save à blanc.
+      const catalogResp = await page.request.get("/api/admin/patterns");
+      expect(catalogResp.status()).toBe(200);
+      const catalog = (await catalogResp.json()) as Array<{
+        id: string;
+        label: string;
+        descriptionDataLibraryId: string | null;
+      }>;
+      const persisted = catalog.find((t) => t.label === recipeLabel);
+      expect(persisted?.descriptionDataLibraryId).toBe(dataLibrary.id);
+
+      // 5. Un 3e reopen confirme aussi côté UI (pas de régression visuelle).
+      await page.locator("h3").filter({ hasText: recipeLabel }).first().click();
+      const dialog3 = page.getByRole("dialog");
+      await expect(dialog3).toBeVisible();
+      await expect(
+        dialog3
+          .locator("label")
+          .filter({ hasText: "Bibliothèque de données (légendes tournantes)" })
+          .locator("button"),
+      ).toContainText(libName);
+      await dialog3.getByRole("button", { name: "Annuler" }).click();
+    } finally {
+      // Nettoyage best-effort : binding, puis template (archivage, possible
+      // seulement une fois le binding retiré), puis la bibliothèque de test.
+      await page.request.delete(`/api/admin/accounts/${accountId}/recipes/${created.id}`).catch(() => {});
+      await page.request.delete(`/api/admin/patterns/${created.patternTemplateId}`).catch(() => {});
+      await page.request.delete(`/api/admin/libraries/data/${dataLibrary.id}`).catch(() => {});
+    }
+  });
+});

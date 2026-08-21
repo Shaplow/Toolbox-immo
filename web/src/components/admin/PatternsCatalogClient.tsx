@@ -9,7 +9,7 @@
  * l'action "Appliquer à des comptes" (DeployTemplateModal).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BookMarked,
@@ -67,6 +67,60 @@ interface PatternsCatalogClientProps {
   videoLibraries: { id: string; name: string }[];
 }
 
+/** Forme brute renvoyée par POST /api/admin/patterns — PatternTemplate Prisma tel quel (pas le CatalogItem flatten que consomme cette liste : pas de noms joints, pas de _count). */
+interface PatternTemplateApiResponse {
+  id: string;
+  label: string;
+  source: string;
+  templateId: string | null;
+  captionPresetId: string | null;
+  descriptionPromptId: string | null;
+  needsCaptionsMode: string;
+  needsDescription: string;
+  coverMode: string;
+  needsAdminValidation: boolean;
+  needsClientValidation: boolean;
+  allowsClientRevision: boolean;
+  needsBrief: boolean;
+  notes: string | null;
+  updatedAt: string;
+}
+
+function findOptionName(options: { id: string; name: string }[], id: string | null): string | null {
+  if (!id) return null;
+  return options.find((o) => o.id === id)?.name ?? null;
+}
+
+/** Reconstruit un `CatalogItem` à partir de la réponse POST /patterns pour une mise à jour optimiste (cf. handleCreate). */
+function templateResponseToCatalogItem(
+  t: PatternTemplateApiResponse,
+  opts: {
+    builderTemplates: { id: string; name: string }[];
+    captionPresets: { id: string; name: string }[];
+    descriptionPrompts: { id: string; name: string }[];
+    bindingCount: number;
+  },
+): CatalogItem {
+  return {
+    id: t.id,
+    label: t.label,
+    source: t.source,
+    templateName: findOptionName(opts.builderTemplates, t.templateId),
+    captionPresetName: findOptionName(opts.captionPresets, t.captionPresetId),
+    descriptionPromptName: findOptionName(opts.descriptionPrompts, t.descriptionPromptId),
+    needsCaptionsMode: t.needsCaptionsMode,
+    needsDescription: t.needsDescription,
+    coverMode: t.coverMode,
+    needsAdminValidation: t.needsAdminValidation,
+    needsClientValidation: t.needsClientValidation,
+    allowsClientRevision: t.allowsClientRevision,
+    needsBrief: t.needsBrief,
+    bindingCount: opts.bindingCount,
+    notes: t.notes,
+    updatedAt: t.updatedAt,
+  };
+}
+
 export function PatternsCatalogClient({
   initialTemplates,
   builderTemplates,
@@ -76,6 +130,13 @@ export function PatternsCatalogClient({
 }: PatternsCatalogClientProps) {
   const router = useRouter();
   const [items, setItems] = useState<CatalogItem[]>(initialTemplates);
+  // Même classe de fix que AccountRecipesList (P7) — `useState(initialTemplates)`
+  // ne capture que le tout premier rendu ; App Router préserve ce state à
+  // travers un `router.refresh()` (handleCreate, DeployTemplateModal.onDeployed).
+  // Sans ce resync, la liste restait figée sur l'état du montage initial.
+  useEffect(() => {
+    setItems(initialTemplates);
+  }, [initialTemplates]);
   const [query, setQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -118,6 +179,31 @@ export function PatternsCatalogClient({
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `Erreur ${res.status}`);
       }
+      let created: PatternTemplateApiResponse;
+      try {
+        created = (await res.json()) as PatternTemplateApiResponse;
+      } catch {
+        // res.ok mais corps illisible (proxy coupé, timeout) — l'écriture a
+        // bien eu lieu côté serveur : ne pas le traiter comme un échec
+        // (mirror du même fix dans AccountRecipesList.tsx).
+        toast.success("Recette créée — actualisation de la liste…");
+        closeDrawer();
+        router.refresh();
+        return;
+      }
+      // Mise à jour optimiste depuis la réponse — sans ça la nouvelle
+      // recette n'apparaissait qu'après un reload complet de la page (le
+      // router.refresh() seul ne resynchronise pas ce state, cf. useEffect
+      // ci-dessus, ajouté pour le cas général).
+      setItems((prev) => [
+        templateResponseToCatalogItem(created, {
+          builderTemplates,
+          captionPresets,
+          descriptionPrompts,
+          bindingCount: 0,
+        }),
+        ...prev,
+      ]);
       toast.success("Recette créée");
       closeDrawer();
       router.refresh();

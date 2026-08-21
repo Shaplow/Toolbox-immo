@@ -117,8 +117,15 @@ export interface PatternTemplateFieldsPayload {
   descriptionPromptId: string | null;
   descriptionSourceFieldKey: string | null;
   descriptionFixedText: string | null;
-  descriptionDataLibraryId: string | null;
-  descriptionDataSetTag: string | null;
+  /**
+   * Optionnels : OMIS du payload (clé absente, pas `null`) quand
+   * `needsDescription !== "preFilled"` — cf. `encodePatternTemplateFieldsPayload`.
+   * `toPatternTemplateUpdateData` ne touche la colonne QUE si la clé est
+   * présente (`!== undefined`), donc omettre = ne jamais réécrire une
+   * bibliothèque déjà configurée en base pour ce template.
+   */
+  descriptionDataLibraryId?: string | null;
+  descriptionDataSetTag?: string | null;
   autoSaveToLibraryId: string | null;
   notes: string | null;
 }
@@ -200,12 +207,21 @@ export function encodePatternTemplateFieldsPayload(
     descriptionSourceFieldKey: null,
     descriptionFixedText:
       values.needsDescription === "preFilled" ? values.descriptionFixedText.trim() || null : null,
-    descriptionDataLibraryId:
-      values.needsDescription === "preFilled" ? values.descriptionDataLibraryId || null : null,
-    descriptionDataSetTag:
-      values.needsDescription === "preFilled" && values.descriptionDataLibraryId
-        ? values.descriptionDataSetTag || null
-        : null,
+    // La bibliothèque de données (légendes tournantes) n'a de sens qu'en
+    // mode preFilled. Hors de ce mode, on OMET les 2 clés (au lieu d'envoyer
+    // `null`) pour que `toPatternTemplateUpdateData` ne touche jamais la
+    // colonne — un save qui ne concerne pas ce mode ne doit jamais nuller
+    // silencieusement une bibliothèque déjà épinglée en base. Dans le mode
+    // preFilled, le comportement est inchangé : choisir explicitement
+    // « Aucune » (descriptionDataLibraryId vide) envoie bien `null`.
+    ...(values.needsDescription === "preFilled"
+      ? {
+          descriptionDataLibraryId: values.descriptionDataLibraryId || null,
+          descriptionDataSetTag: values.descriptionDataLibraryId
+            ? values.descriptionDataSetTag || null
+            : null,
+        }
+      : {}),
     autoSaveToLibraryId: values.autoSaveToLibraryId || null,
     notes: values.notes.trim() || null,
   };
