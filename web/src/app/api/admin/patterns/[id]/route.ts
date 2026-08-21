@@ -85,6 +85,20 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     );
   }
 
+  // Même garde pour les modèles de commande actifs : une recette archivée
+  // ferait échouer l'instanciation des prochaines commandes du modèle.
+  const orderTemplateCount = await prisma.orderTemplateRecipe.count({
+    where: { patternTemplateId: id, orderTemplate: { isArchived: false } },
+  });
+  if (orderTemplateCount > 0) {
+    return NextResponse.json(
+      {
+        error: `Cette recette est utilisée par ${orderTemplateCount} modèle${orderTemplateCount > 1 ? "s" : ""} de commande. Retire-la des modèles avant d'archiver.`,
+      },
+      { status: 400 },
+    );
+  }
+
   // Soft-delete via isArchived. Les bindings + slots historiques restent
   // fonctionnels mais le template disparaît du catalogue.
   const archived = await prisma.patternTemplate.update({

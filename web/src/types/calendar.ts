@@ -58,6 +58,8 @@ export interface PublicationSlot {
   assigneeCmId?: string | null;
   patternBindingId?: string | null;
   patternTemplateId?: string | null;
+  /** Bon de commande d'origine (badge « Commande » en banque). */
+  orderId?: string | null;
   currentVersionId?: string | null;
   pattern?: {
     label: string;

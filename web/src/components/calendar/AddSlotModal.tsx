@@ -139,6 +139,7 @@ export function AddSlotModal({
   const [coverPresets, setCoverPresets] = useState<Array<{ id: string; name: string }>>([]);
 
   const [propertyId, setPropertyId] = useState<string>("");
+  const [eventId, setEventId] = useState<string>("");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -358,6 +359,17 @@ export function AddSlotModal({
         scheduledAt,
         title: title || null,
         propertyId: propertyId || null,
+        // Fiche tournage : le reel puise dans son lot de rushs partagé
+        // (compte forcé, assignés hérités, needsRushes coupé côté serveur).
+        // Envoyé uniquement pour une recette reel-compatible — un eventId
+        // resté d'une sélection précédente ne fuit pas sur une autre recette.
+        eventId:
+          isPatternMode &&
+          (selectedPattern?.source === "manual_rushes" ||
+            selectedPattern?.source === "external_upload") &&
+          eventId
+            ? eventId
+            : null,
         assigneeMonteurId: assigneeMonteurId || null,
         assigneeCmId: assigneeCmId || null,
         assigneeVideasteId: assigneeVideasteId || null,
@@ -580,6 +592,26 @@ export function AddSlotModal({
               />
             </FormField>
           )}
+
+          {/* Fiche tournage — recettes reel (manual_rushes / external_upload).
+              Le reel créé puise dans le lot de rushs du tournage. */}
+          {isPatternMode &&
+            selectedPattern &&
+            (selectedPattern.source === "manual_rushes" ||
+              selectedPattern.source === "external_upload") && (
+              <FormField
+                label="Fiche tournage"
+                help="Optionnel — le reel est rattaché au tournage : rushs partagés, compte et assignés hérités."
+              >
+                <EntityPicker
+                  typeId={SYSTEM_ENTITY_TYPE_IDS.tournage}
+                  value={eventId}
+                  onChange={setEventId}
+                  placeholder="Aucun tournage"
+                  emptyLabel="Aucun tournage"
+                />
+              </FormField>
+            )}
 
           {/* requiresEntityTypeId/requiresProperty sans fiche → avertissement */}
           {isPatternMode && requiresEntity(selectedPattern) && !propertyId && (

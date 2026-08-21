@@ -363,6 +363,11 @@ function BankCard({
             </p>
             <p className="mt-0.5 text-[11.5px] text-muted-foreground truncate">
               {slot.account ? `@${slot.account.handle}` : "Sans compte"}
+              {slot.orderId && (
+                <span className="ml-1.5 text-[10px] rounded px-1 py-0.5 border border-border bg-muted text-muted-foreground">
+                  Commande
+                </span>
+              )}
             </p>
           </div>
           <Chip className={`${phaseClasses} text-[10px] shrink-0`}>
