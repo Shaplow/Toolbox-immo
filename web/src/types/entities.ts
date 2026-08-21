@@ -9,6 +9,13 @@ import type { CustomField } from "@/lib/customFields";
 
 export type EntityStatus = "PLANNED" | "SHOT" | "DONE" | "CANCELLED";
 
+export type EntityValidationStatus =
+  | "PENDING_ADMIN"
+  | "PENDING_CLIENT"
+  | "APPROVED"
+  | "REJECTED"
+  | "REJECTED_CLIENT";
+
 export interface EntityTypeSummary {
   id: string;
   name: string;
@@ -42,6 +49,7 @@ export interface EntitySummary {
   label: string;
   fields: Record<string, string>;
   isArchived: boolean;
+  validationStatus: EntityValidationStatus | null;
   accountId: string | null;
   account: { id: string; name: string; handle: string } | null;
   scheduledAt: string | null;
@@ -83,4 +91,23 @@ export const ENTITY_STATUS_BADGE: Record<EntityStatus, string> = {
   SHOT: "bg-info-50 text-info-700 border-info-200",
   DONE: "bg-success-50 text-success-700 border-success-200",
   CANCELLED: "bg-muted text-muted-foreground border-border",
+};
+
+// ─── Validation bidirectionnelle ────────────────────────────────────────────
+
+export const ENTITY_VALIDATION_LABELS: Record<EntityValidationStatus, string> = {
+  PENDING_ADMIN: "À valider (admin)",
+  PENDING_CLIENT: "À valider (client)",
+  APPROVED: "Validée",
+  REJECTED: "Refusée",
+  REJECTED_CLIENT: "Refusée (client)",
+};
+
+/** Variante de badge (classe complète) par statut de validation. */
+export const ENTITY_VALIDATION_BADGE: Record<EntityValidationStatus, string> = {
+  PENDING_ADMIN: "bg-warning-50 text-warning-700 border-warning-200",
+  PENDING_CLIENT: "bg-info-50 text-info-700 border-info-200",
+  APPROVED: "bg-success-50 text-success-700 border-success-200",
+  REJECTED: "bg-danger-50 text-danger-700 border-danger-200",
+  REJECTED_CLIENT: "bg-warning-50 text-warning-700 border-warning-200",
 };

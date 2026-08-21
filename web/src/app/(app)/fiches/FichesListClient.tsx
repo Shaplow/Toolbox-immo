@@ -6,6 +6,7 @@ import Link from "next/link";
 import { FileStack, Plus, Search, Settings2, List, CalendarClock } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Switch } from "@/components/ui/Switch";
 import { entityTypeIcon } from "@/components/entities/entityTypeIcons";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -18,6 +19,8 @@ import { EntityCalendar } from "@/components/entities/EntityCalendar";
 import {
   ENTITY_STATUS_BADGE,
   ENTITY_STATUS_LABELS,
+  ENTITY_VALIDATION_BADGE,
+  ENTITY_VALIDATION_LABELS,
   type EntitySummary,
   type EntityTypeSummary,
 } from "@/types/entities";
@@ -57,12 +60,16 @@ export function FichesListClient({
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
 
-  const load = useCallback(async (typeId: string) => {
+  const load = useCallback(
+    async (typeId: string, includeArchived: boolean) => {
     if (!typeId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/entities?typeId=${typeId}`);
+      const res = await fetch(
+        `/api/entities?typeId=${typeId}${includeArchived ? "&includeArchived=true" : ""}`,
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { entities: EntitySummary[] };
       setEntities(data.entities);
@@ -71,11 +78,13 @@ export function FichesListClient({
     } finally {
       setLoading(false);
     }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
-    if (view === "list" && activeType) void load(activeType.id);
-  }, [activeType, view, load]);
+    if (view === "list" && activeType) void load(activeType.id, showArchived);
+  }, [activeType, view, load, showArchived]);
 
   function selectType(typeId: string) {
     setActiveTypeId(typeId);
@@ -90,7 +99,26 @@ export function FichesListClient({
         id: "label",
         label: "Libellé",
         sortable: true,
-        cell: (row) => <span className="font-medium text-foreground">{row.label}</span>,
+        cell: (row) => (
+          <span className="font-medium text-foreground inline-flex items-center gap-2">
+            {row.label}
+            {row.validationStatus && row.validationStatus !== "APPROVED" && (
+              <span
+                className={[
+                  "text-[10px] rounded px-1.5 py-0.5 border",
+                  ENTITY_VALIDATION_BADGE[row.validationStatus],
+                ].join(" ")}
+              >
+                {ENTITY_VALIDATION_LABELS[row.validationStatus]}
+              </span>
+            )}
+            {row.isArchived && (
+              <span className="text-[10px] rounded px-1.5 py-0.5 border border-border bg-muted text-muted-foreground">
+                Archivée
+              </span>
+            )}
+          </span>
+        ),
       },
     ];
     if (activeType?.hasAccount) {
@@ -216,13 +244,21 @@ export function FichesListClient({
               </div>
 
               {view === "list" && (
-                <div className="mb-3 max-w-xs">
-                  <Input
-                    value={search}
-                    onChange={setSearch}
-                    placeholder={`Rechercher dans ${typeNamePlural.toLowerCase()}…`}
-                    icon={Search}
-                    aria-label="Rechercher une fiche"
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="max-w-xs flex-1">
+                    <Input
+                      value={search}
+                      onChange={setSearch}
+                      placeholder={`Rechercher dans ${typeNamePlural.toLowerCase()}…`}
+                      icon={Search}
+                      aria-label="Rechercher une fiche"
+                    />
+                  </div>
+                  <Switch
+                    checked={showArchived}
+                    onChange={setShowArchived}
+                    label="Voir les archivées"
+                    size="sm"
                   />
                 </div>
               )}
@@ -275,7 +311,7 @@ export function FichesListClient({
           open={createOpen}
           onClose={() => {
             setCreateOpen(false);
-            if (view === "list") void load(activeType.id);
+            if (view === "list") void load(activeType.id, showArchived);
           }}
           type={activeType}
           accounts={accounts}

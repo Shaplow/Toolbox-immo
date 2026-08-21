@@ -18,7 +18,10 @@ export type EntityActivityType =
   | "SHOT"
   | "SLOT_ATTACHED"
   | "CANCELLED"
-  | "DONE";
+  | "DONE"
+  | "VALIDATION_APPROVED"
+  | "VALIDATION_REJECTED"
+  | "VALIDATION_REQUESTED";
 
 export interface LogEntityActivityInput {
   entityId: string;

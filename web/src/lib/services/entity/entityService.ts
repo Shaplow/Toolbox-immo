@@ -26,12 +26,12 @@ import {
   canUserAccessEntity,
   whereClauseForUserEntity,
 } from "@/lib/permissions/entityScope";
-import { logEntityActivity } from "@/lib/services/entity/entityActivity";
+import { logEntityActivity, type EntityActivityType } from "@/lib/services/entity/entityActivity";
 import { assertAssigneeRole, createSlot, type CreateSlotInput } from "@/lib/services/slot/slotService";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { deleteR2Prefix } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
-import { normalizeCustomFields } from "@/lib/customFields";
+import { normalizeCustomFields, validateFieldValues } from "@/lib/customFields";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
 
@@ -83,6 +83,8 @@ export interface AttachSlotToEntityInput {
   assigneeMonteurId?: string | null;
   assigneeCmId?: string | null;
   assigneeVideasteId?: string | null;
+  /** Bon de commande d'origine — propagé à la colonne PublicationSlot.orderId. */
+  orderId?: string | null;
 }
 
 export type AttachSlotToEntityResult =
@@ -96,6 +98,36 @@ export type AttachSlotToEntityResult =
   | { mode: "reel"; slot: Awaited<ReturnType<typeof createSlot>> };
 
 const ENTITY_STATUSES = ["PLANNED", "SHOT", "DONE", "CANCELLED"] as const;
+
+// ─── Validation bidirectionnelle (Entity.validationStatus) ──────────────────
+//
+// Direction encodée dans la valeur : PENDING_ADMIN (fiche créée par un client,
+// l'admin doit approuver — BLOQUANT pour la création de slots, cf.
+// assertEntityValidated dans slotService) / PENDING_CLIENT (fiche créée par
+// l'équipe, soumise au client — informatif, non bloquant).
+
+export type EntityValidationStatus =
+  | "PENDING_ADMIN"
+  | "PENDING_CLIENT"
+  | "APPROVED"
+  | "REJECTED"
+  // Refus CLIENT — informatif comme PENDING_CLIENT : ne bloque PAS la création
+  // de slots (assertEntityValidated), l'admin le voit et le solde (approve).
+  | "REJECTED_CLIENT";
+
+/**
+ * Statut de validation initial d'une fiche selon la config du type et le
+ * créateur. Pure — testée unitairement.
+ */
+export function initialValidationStatus(
+  type: { needsAdminValidation: boolean; needsClientValidation: boolean },
+  opts: { isExternalCreator: boolean },
+): EntityValidationStatus | null {
+  if (opts.isExternalCreator) {
+    return type.needsAdminValidation ? "PENDING_ADMIN" : null;
+  }
+  return type.needsClientValidation ? "PENDING_CLIENT" : null;
+}
 
 /**
  * Sources de recette compatibles avec un reel de fiche : montage manuel des
@@ -196,6 +228,7 @@ const entityListSelect = {
   label: true,
   fields: true,
   isArchived: true,
+  validationStatus: true,
   accountId: true,
   account: { select: { id: true, name: true, handle: true } },
   scheduledAt: true,
@@ -221,6 +254,7 @@ const entityDetailSelect = {
   label: true,
   fields: true,
   isArchived: true,
+  validationStatus: true,
   accountId: true,
   account: { select: { id: true, name: true, handle: true } },
   scheduledAt: true,
@@ -300,16 +334,19 @@ const entityDetailSelect = {
 // ─── createEntity ─────────────────────────────────────────────────────────────
 
 /**
- * Crée une fiche (Entity). Réservé aux ADMIN réels (canAdminBypass).
- * Seed optionnel des défauts monteur/CM depuis le binding actif du compte
- * (uniquement si un compte est fourni).
+ * Valide un input de création de fiche et prépare les données Prisma —
+ * SANS le garde admin ni la transaction. Extraction réutilisée par :
+ *  - `createEntity` (chemin admin classique) ;
+ *  - `orderService.createOrder` (fiches d'un bon de commande, créées dans SA
+ *    transaction, avec `isExternalCreator: true` → validationStatus
+ *    PENDING_ADMIN si le type l'exige).
+ * Toutes les lectures de validation (type, compte, fiche liée, rôles des
+ * assignés, seed binding) se font hors transaction.
  */
-export async function createEntity(input: CreateEntityInput, ctx: UserContext) {
-  const role = toUserRole(ctx.effectiveUser.role);
-  if (!ctx.canAdminBypass || !canCreateEntity(role)) {
-    throw new ForbiddenError("Réservé aux administrateurs");
-  }
-
+export async function prepareEntityCreate(
+  input: CreateEntityInput,
+  opts: { actorId: string; isExternalCreator: boolean; orderId?: string | null },
+): Promise<Prisma.EntityUncheckedCreateInput> {
   if (!input.typeId) throw new ValidationError("Un type de fiche est requis");
   const type = await prisma.entityType.findUnique({ where: { id: input.typeId } });
   if (!type) throw new NotFoundError("Type de fiche");
@@ -320,6 +357,15 @@ export async function createEntity(input: CreateEntityInput, ctx: UserContext) {
 
   const fieldsErr = validateFields(input.fields);
   if (fieldsErr) throw new ValidationError(fieldsErr);
+
+  // Validation contre le schéma du type : required + choix fermés + clés
+  // inconnues (création = données neuves, on est strict).
+  const schemaValuesErr = validateFieldValues(
+    normalizeCustomFields(type.fieldSchema),
+    (input.fields as Record<string, string> | undefined) ?? {},
+    { requireRequired: true, allowUnknownKeys: false }
+  );
+  if (schemaValuesErr) throw new ValidationError(schemaValuesErr);
 
   let scheduledAt: Date | null = null;
   let endAt: Date | null = null;
@@ -366,26 +412,44 @@ export async function createEntity(input: CreateEntityInput, ctx: UserContext) {
     }
   }
 
+  return {
+    typeId: input.typeId,
+    label,
+    fields: input.fields !== undefined ? JSON.stringify(input.fields) : "{}",
+    validationStatus: initialValidationStatus(type, { isExternalCreator: opts.isExternalCreator }),
+    orderId: opts.orderId ?? null,
+    accountId: input.accountId ?? null,
+    scheduledAt,
+    endAt,
+    status,
+    assigneeVideasteId: input.assigneeVideasteId ?? null,
+    defaultAssigneeMonteurId: seededMonteurId,
+    defaultAssigneeCmId: seededCmId,
+    notes: input.notes ?? null,
+    brief: input.brief ?? null,
+    relatedEntityId: input.relatedEntityId ?? null,
+    createdByUserId: opts.actorId,
+  };
+}
+
+/**
+ * Crée une fiche (Entity). Réservé aux ADMIN réels (canAdminBypass).
+ * Seed optionnel des défauts monteur/CM depuis le binding actif du compte
+ * (uniquement si un compte est fourni).
+ */
+export async function createEntity(input: CreateEntityInput, ctx: UserContext) {
+  const role = toUserRole(ctx.effectiveUser.role);
+  if (!ctx.canAdminBypass || !canCreateEntity(role)) {
+    throw new ForbiddenError("Réservé aux administrateurs");
+  }
+
+  const data = await prepareEntityCreate(input, {
+    actorId: ctx.actualUser.id,
+    isExternalCreator: false,
+  });
+
   const entity = await prisma.$transaction(async (tx) => {
-    const created = await tx.entity.create({
-      data: {
-        typeId: input.typeId,
-        label,
-        fields: input.fields !== undefined ? JSON.stringify(input.fields) : "{}",
-        accountId: input.accountId ?? null,
-        scheduledAt,
-        endAt,
-        status,
-        assigneeVideasteId: input.assigneeVideasteId ?? null,
-        defaultAssigneeMonteurId: seededMonteurId,
-        defaultAssigneeCmId: seededCmId,
-        notes: input.notes ?? null,
-        brief: input.brief ?? null,
-        relatedEntityId: input.relatedEntityId ?? null,
-        createdByUserId: ctx.actualUser.id,
-      },
-      select: entityListSelect,
-    });
+    const created = await tx.entity.create({ data, select: entityListSelect });
     await logEntityActivity(tx, {
       entityId: created.id,
       actorId: ctx.actualUser.id,
@@ -458,7 +522,9 @@ export async function getEntity(id: string, ctx: UserContext) {
 const entityPatchAccessSelect = {
   id: true,
   typeId: true,
-  type: { select: { visibility: true, hasPlanning: true } },
+  type: { select: { visibility: true, hasPlanning: true, fieldSchema: true } },
+  orderId: true,
+  order: { select: { status: true } },
   status: true,
   scheduledAt: true,
   endAt: true,
@@ -497,6 +563,21 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
     throw new ValidationError("Aucun champ modifiable pour votre rôle");
   }
 
+  // Archiver une fiche d'une commande non terminale casserait sa validation /
+  // instanciation (createSlot refuse une fiche archivée) — même garde que
+  // deleteEntity.
+  if (
+    data.isArchived === true &&
+    existing.orderId &&
+    existing.order &&
+    existing.order.status !== "CANCELLED" &&
+    existing.order.status !== "DONE"
+  ) {
+    throw new ConflictError(
+      "Cette fiche appartient à une commande en cours : annulez ou clôturez la commande avant de l'archiver.",
+    );
+  }
+
   // Validations ciblées.
   if (typeof data.label === "string") {
     const trimmed = data.label.trim();
@@ -507,6 +588,14 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
   if (data.fields !== undefined) {
     const err = validateFields(data.fields);
     if (err) throw new ValidationError(err);
+    // Contre le schéma du type : choix fermés validés ; clés orphelines
+    // tolérées (schéma modifié après coup) et required non exigé en édition.
+    const schemaErr = validateFieldValues(
+      normalizeCustomFields(existing.type.fieldSchema),
+      data.fields as Record<string, string>,
+      { requireRequired: false, allowUnknownKeys: true }
+    );
+    if (schemaErr) throw new ValidationError(schemaErr);
     data.fields = JSON.stringify(data.fields);
   }
   if (typeof data.status === "string" && !ENTITY_STATUSES.includes(data.status as never)) {
@@ -564,21 +653,148 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
   return withParsedFields(updated);
 }
 
+// ─── setEntityValidation ─────────────────────────────────────────────────────
+
+export interface SetEntityValidationInput {
+  action: "approve" | "reject" | "request";
+  comment?: string | null;
+}
+
+/**
+ * Applique une action de validation sur une fiche. Mécanisme UNIQUE de la
+ * validation bidirectionnelle — la validation d'un bon de commande passe par
+ * ici aussi (action de masse côté orderService).
+ *
+ *  - ADMIN réel : approve/reject sur toute fiche en attente ; approve possible
+ *    sur une fiche REJECTED (après correction) ; `request` re-soumet la fiche
+ *    au client (PENDING_CLIENT) si le type a la validation client.
+ *  - EXTERNAL : approve/reject uniquement sur une fiche PENDING_CLIENT de son
+ *    périmètre client (commande du client OU compte du client). 404
+ *    anti-énumération hors périmètre.
+ *  - Autres rôles : 404 (la validation admin est réservée aux admins réels).
+ */
+export async function setEntityValidation(
+  id: string,
+  input: SetEntityValidationInput,
+  ctx: UserContext,
+) {
+  const role = toUserRole(ctx.effectiveUser.role);
+  const entity = await prisma.entity.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      validationStatus: true,
+      type: { select: { needsAdminValidation: true, needsClientValidation: true } },
+      order: { select: { clientId: true } },
+      account: { select: { clientId: true } },
+    },
+  });
+  if (!entity) throw new NotFoundError("Fiche");
+
+  const current = entity.validationStatus;
+
+  if (!ctx.canAdminBypass) {
+    // Seul chemin non-admin : un compte externe qui répond à une demande de
+    // validation client sur une fiche de son périmètre.
+    if (role !== "EXTERNAL_GENERATOR") throw new NotFoundError("Fiche");
+    if (input.action === "request") {
+      throw new ForbiddenError("Réservé aux administrateurs");
+    }
+    // clientId lu en DB (pas depuis la session : pas de dépendance au refresh JWT).
+    const user = await prisma.user.findUnique({
+      where: { id: ctx.effectiveUser.id },
+      select: { clientId: true },
+    });
+    const clientId = user?.clientId ?? null;
+    const inScope =
+      !!clientId &&
+      (entity.order?.clientId === clientId || entity.account?.clientId === clientId);
+    if (!inScope) throw new NotFoundError("Fiche");
+    if (current !== "PENDING_CLIENT") {
+      throw new ValidationError("Cette fiche n'attend pas de validation client");
+    }
+  }
+
+  let next: EntityValidationStatus;
+  let activityType: EntityActivityType;
+  if (input.action === "approve") {
+    if (!current) throw new ValidationError("Cette fiche n'attend aucune validation");
+    next = "APPROVED";
+    activityType = "VALIDATION_APPROVED";
+  } else if (input.action === "reject") {
+    if (current !== "PENDING_ADMIN" && current !== "PENDING_CLIENT") {
+      throw new ValidationError("Cette fiche n'attend aucune validation");
+    }
+    // Direction encodée dans l'issue : un refus CLIENT reste informatif
+    // (REJECTED_CLIENT, non bloquant) ; un refus ADMIN bloque (REJECTED).
+    next = current === "PENDING_CLIENT" ? "REJECTED_CLIENT" : "REJECTED";
+    activityType = "VALIDATION_REJECTED";
+  } else if (input.action === "request") {
+    if (!entity.type.needsClientValidation) {
+      throw new ValidationError("Ce type de fiche n'a pas de validation client");
+    }
+    next = "PENDING_CLIENT";
+    activityType = "VALIDATION_REQUESTED";
+  } else {
+    throw new ValidationError("Action de validation inconnue");
+  }
+
+  const comment =
+    typeof input.comment === "string" && input.comment.trim()
+      ? input.comment.trim().slice(0, 1000)
+      : null;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.entity.update({
+      where: { id },
+      data: { validationStatus: next },
+      select: entityListSelect,
+    });
+    await logEntityActivity(tx, {
+      entityId: id,
+      actorId: ctx.actualUser.id,
+      type: activityType,
+      payload: { from: current, to: next, ...(comment ? { comment } : {}) },
+    });
+    return result;
+  });
+
+  return withParsedFields(updated);
+}
+
 // ─── deleteEntity ────────────────────────────────────────────────────────────
 
 /**
  * Supprime une fiche. Admin only. Refuse (409) si des slots y sont rattachés
- * (source de données OU tournage) — l'admin doit d'abord les détacher. Sinon
- * hard-delete (cascade activités/rushes) + nettoyage best-effort du préfixe R2.
+ * (source de données OU tournage) — l'admin doit d'abord les détacher — ou si
+ * la fiche appartient à une commande non terminale (la validation/instanciation
+ * s'appuie sur elle). Sinon hard-delete (cascade activités/rushes) + nettoyage
+ * best-effort du préfixe R2.
  */
 export async function deleteEntity(id: string, ctx: UserContext) {
   if (!ctx.canAdminBypass) throw new ForbiddenError("Réservé aux administrateurs");
 
   const existing = await prisma.entity.findUnique({
     where: { id },
-    select: { id: true, _count: { select: { slots: true, shootSlots: true } } },
+    select: {
+      id: true,
+      orderId: true,
+      order: { select: { status: true } },
+      _count: { select: { slots: true, shootSlots: true } },
+    },
   });
   if (!existing) throw new NotFoundError("Fiche");
+
+  if (
+    existing.orderId &&
+    existing.order &&
+    existing.order.status !== "CANCELLED" &&
+    existing.order.status !== "DONE"
+  ) {
+    throw new ConflictError(
+      "Cette fiche appartient à une commande en cours : annulez ou clôturez la commande avant de la supprimer.",
+    );
+  }
 
   const attachedCount = existing._count.slots + existing._count.shootSlots;
   if (attachedCount > 0) {
@@ -685,6 +901,7 @@ async function attachMissionsToEntity(
           accountId,
           propertyId: entityId,
           templateId: template.templateId,
+          orderId: input.orderId ?? null,
         },
         ctx,
         { requireAdmin: false },
@@ -768,6 +985,11 @@ async function attachReelToEntity(
     eventId: entityId,
     patternBindingId,
     patternTemplateId: input.patternTemplateId ?? null,
+    orderId: input.orderId ?? null,
+    // Fallback admin quand la fiche tournage n'a pas de compte (type sans
+    // hasAccount) — createSlot force de toute façon le compte du tournage
+    // quand il en a un.
+    accountId: isAdmin ? input.accountId ?? null : null,
     title: input.title ?? null,
     description: input.description ?? null,
     scheduledAt: isAdmin ? input.scheduledAt ?? null : null,

@@ -103,6 +103,8 @@ export interface CreateSlotInput {
    * PLANNED bumpé plus tard).
    */
   eventId?: string | null;
+  /** Bon de commande d'origine — posé par orderService à l'instanciation. */
+  orderId?: string | null;
 }
 
 // ─── Helpers privés ───────────────────────────────────────────────────────────
@@ -129,6 +131,25 @@ export async function assertAssigneeRole(
   });
   if (!user || !expectedRoles.includes(user.role ?? "")) {
     throw new ValidationError(`${fieldLabel} : utilisateur invalide ou rôle incorrect`);
+  }
+}
+
+/**
+ * Une fiche en attente de validation admin (ou refusée par un admin) ne peut
+ * pas produire de publications — c'est la porte du workflow bon de commande
+ * (une fiche client non validée reste inerte). PENDING_CLIENT et
+ * REJECTED_CLIENT ne bloquent PAS : la validation client est informative
+ * (dans les deux issues), le pipeline interne continue.
+ */
+export function assertEntityValidated(
+  validationStatus: string | null,
+  subjectLabel: string,
+): void {
+  if (validationStatus === "PENDING_ADMIN") {
+    throw new ValidationError(`${subjectLabel} est en attente de validation admin`);
+  }
+  if (validationStatus === "REJECTED") {
+    throw new ValidationError(`${subjectLabel} a été refusée — corrigez-la puis validez-la`);
   }
 }
 
@@ -176,6 +197,7 @@ export async function createSlot(
     accountId: string | null;
     relatedEntityId: string | null;
     status: string | null;
+    validationStatus: string | null;
     assigneeVideasteId: string | null;
     defaultAssigneeMonteurId: string | null;
     defaultAssigneeCmId: string | null;
@@ -189,6 +211,7 @@ export async function createSlot(
         accountId: true,
         relatedEntityId: true,
         status: true,
+        validationStatus: true,
         assigneeVideasteId: true,
         defaultAssigneeMonteurId: true,
         defaultAssigneeCmId: true,
@@ -198,6 +221,7 @@ export async function createSlot(
       },
     });
     if (!shootEvent) throw new NotFoundError("Tournage");
+    assertEntityValidated(shootEvent.validationStatus, "Cette fiche tournage");
     // Le compte du reel est TOUJOURS celui du tournage (quand il en a un).
     if (shootEvent.accountId) input.accountId = shootEvent.accountId;
     // Fiche liée : défaut = celle du tournage (un input explicite prime).
@@ -225,10 +249,11 @@ export async function createSlot(
   if (input.propertyId) {
     const entity = await prisma.entity.findUnique({
       where: { id: input.propertyId },
-      select: { id: true, typeId: true, isArchived: true, fields: true },
+      select: { id: true, typeId: true, isArchived: true, fields: true, validationStatus: true },
     });
     if (!entity) throw new NotFoundError("Fiche");
     if (entity.isArchived) throw new ValidationError("Cette fiche est archivée");
+    assertEntityValidated(entity.validationStatus, "Cette fiche");
     propertyFields = entity.fields;
     resolvedEntityTypeId = entity.typeId;
   }
@@ -475,6 +500,7 @@ export async function createSlot(
       accountId: input.accountId ?? null,
       // Phase 5 — fiche tournage (clé API `eventId`, colonne `shootEntityId`).
       shootEntityId: input.eventId ?? null,
+      orderId: input.orderId ?? null,
       scheduledAt: parsedScheduledAt,
       // Fallback titre = nom de la recette si l'admin ne saisit rien.
       title: (input.title?.trim() || patternLabel) ?? null,

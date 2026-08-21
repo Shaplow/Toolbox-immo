@@ -29,6 +29,8 @@ export interface EntityTypeRow {
   hasRushes: boolean;
   hasAssignees: boolean;
   visibility: "admin" | "team";
+  needsAdminValidation: boolean;
+  needsClientValidation: boolean;
   position: number;
   isSystem: boolean;
   entityCount: number;
@@ -44,6 +46,8 @@ interface Draft {
   hasRushes: boolean;
   hasAssignees: boolean;
   visibility: "admin" | "team";
+  needsAdminValidation: boolean;
+  needsClientValidation: boolean;
   position: number;
 }
 
@@ -58,6 +62,8 @@ function toDraft(t: EntityTypeRow | null): Draft {
     hasRushes: t?.hasRushes ?? false,
     hasAssignees: t?.hasAssignees ?? false,
     visibility: t?.visibility ?? "admin",
+    needsAdminValidation: t?.needsAdminValidation ?? false,
+    needsClientValidation: t?.needsClientValidation ?? false,
     position: t?.position ?? 0,
   };
 }
@@ -107,6 +113,9 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
         namePlural: draft.namePlural.trim() || null,
         icon: draft.icon.trim() || null,
         fieldSchema: draft.fieldSchema,
+        // Éditables aussi sur les types système : pur workflow, aucun scoping.
+        needsAdminValidation: draft.needsAdminValidation,
+        needsClientValidation: draft.needsClientValidation,
       };
       if (!isSystem) {
         body.hasPlanning = draft.hasPlanning;
@@ -326,10 +335,47 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
             </div>
           </FormField>
 
+          <FormField
+            label="Validation"
+            help="Workflow d'approbation des fiches de ce type, selon qui les crée."
+          >
+            <div className="space-y-1.5">
+              <div className="flex items-start gap-2.5 py-1">
+                <Checkbox
+                  checked={draft.needsAdminValidation}
+                  onChange={(checked) => setDraft((d) => ({ ...d, needsAdminValidation: checked }))}
+                  label="Validation admin"
+                />
+                <div className="min-w-0">
+                  <span className="block text-[13px] text-foreground">Validation admin</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Une fiche créée par un client (bon de commande) doit être validée par un admin
+                    avant de produire des publications.
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 py-1">
+                <Checkbox
+                  checked={draft.needsClientValidation}
+                  onChange={(checked) => setDraft((d) => ({ ...d, needsClientValidation: checked }))}
+                  label="Validation client"
+                />
+                <div className="min-w-0">
+                  <span className="block text-[13px] text-foreground">Validation client</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Une fiche créée par l&apos;équipe est soumise au client pour accord (informatif,
+                    ne bloque pas la production).
+                  </span>
+                </div>
+              </div>
+            </div>
+          </FormField>
+
           <FormField label="Champs custom">
             <CustomFieldsSchemaEditor
               fields={draft.fieldSchema}
               onChange={(fields) => setDraft((d) => ({ ...d, fieldSchema: fields }))}
+              allowRequired
             />
           </FormField>
         </Drawer.Body>

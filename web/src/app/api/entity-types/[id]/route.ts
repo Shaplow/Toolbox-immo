@@ -32,6 +32,8 @@ const entityTypeSelect = {
   hasRushes: true,
   hasAssignees: true,
   visibility: true,
+  needsAdminValidation: true,
+  needsClientValidation: true,
   position: true,
   isSystem: true,
   createdAt: true,
@@ -99,6 +101,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (schemaErr) return NextResponse.json({ error: schemaErr }, { status: 400 });
     data.fieldSchema = serializeCustomFields(fieldSchema);
   }
+  if (body.needsAdminValidation !== undefined) {
+    data.needsAdminValidation = body.needsAdminValidation === true;
+  }
+  if (body.needsClientValidation !== undefined) {
+    data.needsClientValidation = body.needsClientValidation === true;
+  }
   if (!existing.isSystem) {
     if (body.position !== undefined) {
       data.position = typeof body.position === "number" ? body.position : 0;
@@ -141,7 +149,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   const existing = await prisma.entityType.findUnique({
     where: { id },
-    select: { id: true, isSystem: true, _count: { select: { entities: true } } },
+    select: {
+      id: true,
+      isSystem: true,
+      _count: { select: { entities: true, orderTemplateItems: true } },
+    },
   });
   if (!existing) return NextResponse.json({ error: "Type de fiche introuvable" }, { status: 404 });
 
@@ -151,6 +163,12 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (existing._count.entities > 0) {
     return NextResponse.json(
       { error: "Ce type a des fiches existantes : supprimez-les (ou changez leur type) avant" },
+      { status: 409 },
+    );
+  }
+  if (existing._count.orderTemplateItems > 0) {
+    return NextResponse.json(
+      { error: "Ce type est utilisé par un modèle de commande — retirez-le du modèle avant" },
       { status: 409 },
     );
   }

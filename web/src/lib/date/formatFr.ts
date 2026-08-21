@@ -26,6 +26,18 @@ function toValidDate(v: Date | string | null | undefined): Date | null {
 }
 
 /** « 14:00 » */
+/**
+ * ISO (UTC) → valeur locale "YYYY-MM-DDTHH:MM" pour un DateTimeField.
+ * Remplace le pattern bugué `iso.slice(0, 16)` qui affichait l'heure murale
+ * UTC comme locale (décalage du fuseau à chaque save).
+ */
+export function isoToLocalInput(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function timeFr(v: Date | string): string {
   return toDate(v).toLocaleTimeString("fr-FR", {
     hour: "2-digit",
