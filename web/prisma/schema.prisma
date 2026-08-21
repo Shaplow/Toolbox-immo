@@ -57,6 +57,13 @@ model User {
   defaultCmForEntities          Entity[]                @relation("EntityDefaultCm")
   entitiesCreated               Entity[]                @relation("EntityCreatedBy")
   entityActivities              EntityActivity[]        @relation("EntityActivityActor")
+  /// Bons de commande — un compte externe appartient à au plus une agence (Client).
+  clientId                      String?
+  client                        Client?                 @relation("ClientUsers", fields: [clientId], references: [id], onDelete: SetNull)
+  ordersCreated                 Order[]                 @relation("OrderCreatedBy")
+  ordersValidated               Order[]                 @relation("OrderValidatedBy")
+
+  @@index([clientId])
 }
 
 // (Les inverses de PatternBinding pour User sont déclarées plus haut dans
@@ -642,42 +649,42 @@ model MediaAutocutJob {
 
 /// Bibliothèque de données texte, rattachée à un type de template (RPI, RTIPS…).
 model DataLibrary {
-  id              String                     @id @default(cuid())
-  name            String
+  id                      String                     @id @default(cuid())
+  name                    String
   /// Identifiant métier du type : "RPI" | "RTIPS" | "RPOD" | etc.
-  templateType    String
-  description     String?
+  templateType            String
+  description             String?
   /// Mode de tirage (mirror MediaLibrary, plan simplification Phase 4) :
   /// - "auto" : tirage par dossier (least-recently-used, défaut).
   /// - "none" : pas de tirage auto, sélection manuelle uniquement.
-  rotationMode    String                     @default("auto")
+  rotationMode            String                     @default("auto")
   /// Portée de la rotation (mirror MediaLibrary) :
   /// - "shared" (défaut)  : pool partagé entre tous les comptes (compteur global DataEntry.usageCount).
   /// - "per_account"      : chaque compte tourne indépendamment (DataEntryUsage par compte).
-  rotationScope   String                     @default("shared")
+  rotationScope           String                     @default("shared")
   /// Burn-once / consommation max par fiche.
   /// - `null` (défaut) : rotation infinie, fiches recyclées (least-used).
   /// - `N > 0` : chaque fiche peut être utilisée max N fois (filtrée au-delà).
   /// Sémantique dépend de rotationScope (shared → global / per_account → per-account).
-  maxUsageCount   Int?
+  maxUsageCount           Int?
   /// JSON `{ key, label, type, required? }[]` — schéma des champs d'une fiche.
   /// Sert à : générer le modèle CSV (même lib vide), construire le form de
   /// création/édition d'une fiche, valider l'import.
   /// types supportés : "text" | "number" | "url" | "textarea".
   /// Si vide → fallback rétrocompatible (déduction depuis la première entry).
-  fieldsSchema    String                     @default("[]")
+  fieldsSchema            String                     @default("[]")
   /// Token de remplissage public (Phase 1.x Vague 3). Si non-null, la lib
   /// expose une page sans auth à `/data-fill/<token>` où un externe peut
   /// soumettre des fiches. Le token est révocable / régénérable depuis l'admin.
-  publicFillToken String?                    @unique
-  createdAt       DateTime                   @default(now())
-  updatedAt       DateTime                   @updatedAt
+  publicFillToken         String?                    @unique
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
   /// @deprecated Phase 4 — wrapper décommissionné. Drop N+1.
-  campaigns       DataCampaign[]
-  entries         DataEntry[]                @relation("DataLibraryEntries")
-  cursors         AccountDataLibraryCursor[]
+  campaigns               DataCampaign[]
+  entries                 DataEntry[]                @relation("DataLibraryEntries")
+  cursors                 AccountDataLibraryCursor[]
   /// Recettes qui tirent une fiche de cette bibliothèque pour leur légende.
-  captionPatternTemplates PatternTemplate[]  @relation("PatternTemplateDescriptionDataLibrary")
+  captionPatternTemplates PatternTemplate[]          @relation("PatternTemplateDescriptionDataLibrary")
 }
 
 /// Cycle de données (ex: "RPI Q1 2026"). Une fiche active à la fois par library.
@@ -707,30 +714,30 @@ model DataCampaign {
 
 /// Une fiche de données texte (une ligne de l'Excel d'origine).
 model DataEntry {
-  id          String            @id @default(cuid())
+  id           String            @id @default(cuid())
   /// Lien direct vers la bibliothèque (plan simplification Phase 4 — le
   /// wrapper DataCampaign est décommissionné).
-  libraryId   String
-  library     DataLibrary       @relation("DataLibraryEntries", fields: [libraryId], references: [id], onDelete: Cascade)
+  libraryId    String
+  library      DataLibrary       @relation("DataLibraryEntries", fields: [libraryId], references: [id], onDelete: Cascade)
   /// @deprecated Phase 4 — wrapper DataCampaign décommissionné, plus écrit. Drop N+1.
-  campaignId  String?
-  campaign    DataCampaign?     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId   String?
+  campaign     DataCampaign?     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   /// JSON — champs libres selon le templateType (ex: {quartier, prix_m2, evo_5ans_pct})
-  fields      String            @default("{}")
+  fields       String            @default("{}")
   /// Dossier (regroupe les fiches d'un même thème/lot). UI : « Dossier ».
-  setTag      String?
+  setTag       String?
   /// @deprecated Phase 4 — exclusion famille décommissionnée, plus lue. Drop N+1.
-  category    String?
-  usageCount  Int               @default(0)
-  lastUsedAt  DateTime?
+  category     String?
+  usageCount   Int               @default(0)
+  lastUsedAt   DateTime?
   /// @deprecated Phase 4 — cycles décommissionnés, plus lu. Drop N+1.
-  usedInCycle Boolean           @default(false)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  accesses    DataEntryAccess[]
-  usages      DataEntryUsage[]
+  usedInCycle  Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  accesses     DataEntryAccess[]
+  usages       DataEntryUsage[]
   /// Publications dont la légende a été tirée de cette fiche.
-  captionSlots PublicationSlot[]            @relation("SlotCaptionDataEntry")
+  captionSlots PublicationSlot[] @relation("SlotCaptionDataEntry")
 
   @@index([libraryId])
 }
@@ -757,6 +764,7 @@ model InstagramAccount {
   patternBindings  PatternBinding[]
   shootEvents      ShootEvent[]
   entities         Entity[]                   @relation("EntityAccount")
+  orders           Order[]                    @relation("OrderAccount")
 
   @@index([clientId])
 }
@@ -942,6 +950,10 @@ model PublicationSlot {
   /// SetNull si l'entrée est supprimée — le prochain recalcul re-tire alors.
   captionDataEntryId String?
   captionDataEntry   DataEntry?        @relation("SlotCaptionDataEntry", fields: [captionDataEntryId], references: [id], onDelete: SetNull)
+  /// Bon de commande dont ce slot est issu (FK directe : page détail commande
+  /// = 1 requête, et le lien survit à un détachement de fiche).
+  orderId            String?
+  order              Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   /// Override per-slot de needsAdminValidation du pattern. null = hérite.
   /// Phase 2.3 : permet d'activer la validation admin du montage (status
@@ -1034,6 +1046,7 @@ model PublicationSlot {
   @@index([entityId])
   @@index([shootEntityId])
   @@index([captionDataEntryId])
+  @@index([orderId])
 }
 
 /// Bien immobilier (UI = « Bien ») — fiche de données PARTAGÉE, référencée par
@@ -1093,8 +1106,15 @@ model EntityType {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  /// Validation bidirectionnelle (cf. Entity.validationStatus) :
+  /// fiche créée par un client → validation admin requise.
+  needsAdminValidation  Boolean @default(false)
+  /// fiche créée par l'équipe → validation client requise (non bloquante).
+  needsClientValidation Boolean @default(false)
+
   entities           Entity[]
-  requiredByPatterns PatternTemplate[] @relation("PatternRequiredEntityType")
+  requiredByPatterns PatternTemplate[]   @relation("PatternRequiredEntityType")
+  orderTemplateItems OrderTemplateItem[]
 }
 
 /// Fiche (métaobjet) — fusion de Property (« Bien ») et ShootEvent
@@ -1131,6 +1151,15 @@ model Entity {
   notes String?
   brief String?
 
+  /// null | "PENDING_ADMIN" | "PENDING_CLIENT" | "APPROVED" | "REJECTED".
+  /// Direction encodée dans la valeur (cf. EntityType.needs*Validation).
+  /// PENDING_ADMIN / REJECTED bloquent la création de slots sur la fiche.
+  validationStatus String?
+
+  /// Bon de commande d'origine (les fiches restent si la commande disparaît).
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
   /// Fiche liée (ex ShootEvent.propertyId : le tournage pointe le bien).
   relatedEntityId String?
   related         Entity?  @relation("EntityRelated", fields: [relatedEntityId], references: [id], onDelete: SetNull)
@@ -1153,6 +1182,7 @@ model Entity {
   @@index([status, scheduledAt])
   @@index([assigneeVideasteId])
   @@index([relatedEntityId])
+  @@index([orderId])
 }
 
 /// Journal d'activité d'une fiche (remplace ShootEventActivity —
@@ -1271,14 +1301,110 @@ model ShootEventActivity {
 
 /// Client final (agence ou agent immobilier) regroupant un ou plusieurs comptes Instagram.
 model Client {
-  id          String             @id @default(cuid())
+  id                    String                @id @default(cuid())
+  name                  String
+  contactName           String?
+  email                 String?
+  phone                 String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  accounts              InstagramAccount[]
+  /// Comptes externes (User rôle EXTERNAL_GENERATOR) rattachés à cette agence.
+  users                 User[]                @relation("ClientUsers")
+  orders                Order[]
+  orderTemplateAccesses OrderTemplateAccess[]
+}
+
+// ─── Bons de commande (Order) ────────────────────────────────────────────────
+//
+// OrderTemplate = composition pré-configurée par l'admin : quels types de
+// fiches l'agence remplit (items) + quelles recettes/vidéos sont déclenchées
+// à la validation (recipes), exposée aux clients par allowlist (accesses).
+// Order = une commande soumise par une agence (ou créée par l'admin) : les
+// fiches créées portent les données, les slots instanciés à la validation
+// portent la production. Cycle : SUBMITTED → VALIDATED → DONE, sorties
+// REJECTED (réversible via resubmit) et CANCELLED.
+
+model OrderTemplate {
+  id          String   @id @default(cuid())
   name        String
-  contactName String?
-  email       String?
-  phone       String?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  accounts    InstagramAccount[]
+  /// Texte d'aide affiché côté client au moment de commander.
+  description String?
+  isArchived  Boolean  @default(false)
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items    OrderTemplateItem[]
+  recipes  OrderTemplateRecipe[]
+  accesses OrderTemplateAccess[]
+  orders   Order[]
+}
+
+/// « Quelles fiches à remplir » — une par type de fiche, dans l'ordre.
+model OrderTemplateItem {
+  id              String        @id @default(cuid())
+  orderTemplateId String
+  orderTemplate   OrderTemplate @relation(fields: [orderTemplateId], references: [id], onDelete: Cascade)
+  entityTypeId    String
+  entityType      EntityType    @relation(fields: [entityTypeId], references: [id], onDelete: Restrict)
+  position        Int           @default(0)
+
+  @@index([orderTemplateId])
+}
+
+/// « Quelles vidéos déclenchées » — N reels de cette recette à la validation.
+model OrderTemplateRecipe {
+  id                String          @id @default(cuid())
+  orderTemplateId   String
+  orderTemplate     OrderTemplate   @relation(fields: [orderTemplateId], references: [id], onDelete: Cascade)
+  patternTemplateId String
+  patternTemplate   PatternTemplate @relation("OrderTemplateRecipePattern", fields: [patternTemplateId], references: [id], onDelete: Restrict)
+  count             Int             @default(1)
+
+  @@index([orderTemplateId])
+}
+
+/// Allowlist client — même philosophie que TemplateAccess : un modèle de
+/// commande n'est visible que des clients explicitement autorisés.
+model OrderTemplateAccess {
+  id              String        @id @default(cuid())
+  orderTemplateId String
+  orderTemplate   OrderTemplate @relation(fields: [orderTemplateId], references: [id], onDelete: Cascade)
+  clientId        String
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([orderTemplateId, clientId])
+  @@index([clientId])
+}
+
+model Order {
+  id              String            @id @default(cuid())
+  orderTemplateId String
+  orderTemplate   OrderTemplate     @relation(fields: [orderTemplateId], references: [id], onDelete: Restrict)
+  clientId        String
+  client          Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  /// Compte IG cible (∈ comptes du client), vérifié côté service.
+  accountId       String?
+  account         InstagramAccount? @relation("OrderAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  /// "SUBMITTED" | "VALIDATED" | "REJECTED" | "DONE" | "CANCELLED"
+  status          String            @default("SUBMITTED")
+  rejectedReason  String?
+  notes           String?
+
+  createdByUserId   String?
+  createdBy         User?     @relation("OrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  validatedAt       DateTime?
+  validatedByUserId String?
+  validatedBy       User?     @relation("OrderValidatedBy", fields: [validatedByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  entities Entity[]
+  slots    PublicationSlot[]
+
+  @@index([clientId, status])
+  @@index([orderTemplateId])
 }
 
 // ─── Pattern Templates (P2 — recettes globales réutilisables) ─────────────
@@ -1308,7 +1434,7 @@ model PatternTemplate {
   coverMode   String @default("none")
   coverConfig Json?
 
-  needsDescription          String      @default("none")
+  needsDescription          String       @default("none")
   /// Mode "preFilled" uniquement : clé du champ personnalisé du Bien (Property.fields[key])
   /// dont la valeur pré-remplit la légende Instagram (slot.description) au rattachement
   /// d'un bien. null = feature inactive (fallback textarea vide, aucune régression).
@@ -1335,24 +1461,24 @@ model PatternTemplate {
   descriptionDataSetTag     String?
   /// @deprecated V8 — utiliser needsCaptionsMode.
   /// MORT — drop préparé dans pending-drops/vague6-drops.sql.
-  needsCaptions             Boolean     @default(false)
+  needsCaptions             Boolean      @default(false)
   /// "none" | "auto" | "manual"
-  needsCaptionsMode         String      @default("none")
-  needsAdminValidation      Boolean     @default(false)
-  needsClientValidation     Boolean     @default(false)
-  allowsClientRevision      Boolean     @default(false)
-  needsBrief                Boolean     @default(false)
+  needsCaptionsMode         String       @default("none")
+  needsAdminValidation      Boolean      @default(false)
+  needsClientValidation     Boolean      @default(false)
+  allowsClientRevision      Boolean      @default(false)
+  needsBrief                Boolean      @default(false)
   /// Biens — la création d'un slot/mission depuis cette recette EXIGE un bien
   /// (propertyId). Validé dans createSlot ; bloque le submit côté UI.
   /// MORT après backfill — drop préparé dans pending-drops/vague6-drops.sql
   /// (backfill requiresEntityTypeId requis AVANT + retrait de l'écriture
   /// miroir dans lib/services/pattern/patternTemplateInput.ts, aujourd'hui
   /// volontairement conservée tant que le backfill n'a pas tourné en prod).
-  requiresProperty          Boolean     @default(false)
+  requiresProperty          Boolean      @default(false)
   /// Phase 5 (métaobjet) — « cette recette exige une fiche de type X ».
   /// Remplace requiresProperty (migré : true → type « Bien »).
   requiresEntityTypeId      String?
-  requiredEntityType        EntityType? @relation("PatternRequiredEntityType", fields: [requiresEntityTypeId], references: [id], onDelete: SetNull)
+  requiredEntityType        EntityType?  @relation("PatternRequiredEntityType", fields: [requiresEntityTypeId], references: [id], onDelete: SetNull)
 
   captionPresetId     String?
   captionPreset       CaptionPreset?     @relation("PatternTemplateCaptionPreset", fields: [captionPresetId], references: [id], onDelete: SetNull)
@@ -1385,9 +1511,10 @@ model PatternTemplate {
   updatedByUserId String?
   updatedBy       User?   @relation("PatternTemplateUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
-  bindings PatternBinding[]
+  bindings             PatternBinding[]
   /// Missions rattachées directement à cette recette globale (sans binding).
-  slots    PublicationSlot[] @relation("SlotPatternTemplate")
+  slots                PublicationSlot[]     @relation("SlotPatternTemplate")
+  orderTemplateRecipes OrderTemplateRecipe[] @relation("OrderTemplateRecipePattern")
 }
 
 /// PatternBinding = application d'une recette globale à un compte IG.
