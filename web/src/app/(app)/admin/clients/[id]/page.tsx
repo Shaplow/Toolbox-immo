@@ -38,6 +38,10 @@ export default async function AdminClientDetailPage({ params }: PageProps) {
           select: { id: true, name: true, handle: true },
           orderBy: { name: "asc" },
         },
+        users: {
+          select: { id: true, name: true, email: true, username: true },
+          orderBy: { name: "asc" },
+        },
       },
     }),
     prisma.instagramAccount.findMany({
@@ -65,6 +69,7 @@ export default async function AdminClientDetailPage({ params }: PageProps) {
     email: client.email,
     phone: client.phone,
     accounts: client.accounts,
+    users: client.users,
   };
 
   const initialAccounts: ClientDetailAccountStub[] = allAccounts.map((a) => ({

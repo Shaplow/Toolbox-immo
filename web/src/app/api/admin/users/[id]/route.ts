@@ -14,7 +14,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id } = await params;
   const body = await req.json();
-  const { name, username, email, password, role, permissions } = body;
+  const { name, username, email, password, role, permissions, clientId } = body;
 
   const VALID_ROLES = ["EXTERNAL_GENERATOR", "ADMIN", "VIDEASTE", "MONTEUR", "CM"];
 
@@ -29,6 +29,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data.role = role;
   }
   if (password) data.passwordHash = await bcrypt.hash(password, 12);
+  // Rattachement agence (bons de commande) — client existant ou null (détacher).
+  if (clientId !== undefined) {
+    if (clientId === null || clientId === "") {
+      data.clientId = null;
+    } else if (typeof clientId === "string") {
+      const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } });
+      if (!client) return NextResponse.json({ error: "Client introuvable" }, { status: 400 });
+      data.clientId = clientId;
+    }
+  }
   // permissions est un tableau JSON sérialisé en string ou directement un array
   if (permissions !== undefined) {
     const nextPerms: Tool[] = Array.isArray(permissions)
@@ -71,7 +81,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const user = await prisma.user.update({
     where: { id },
     data,
-    select: { id: true, name: true, email: true, role: true, permissions: true },
+    select: { id: true, name: true, email: true, role: true, permissions: true, clientId: true },
   });
 
   return NextResponse.json(user);

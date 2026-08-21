@@ -26,6 +26,7 @@ import {
   History,
   MoreHorizontal,
   FileStack,
+  ClipboardList,
 } from "lucide-react";
 import { KbdChord } from "@/components/ui/Kbd";
 import type { AppUserIdentity } from "@/lib/userContext";
@@ -126,6 +127,7 @@ export function AppNav({
         items: [
           { href: "/calendar", label: "Calendrier", icon: <CalendarDays size={14} /> },
           { href: "/fiches", label: "Fiches", icon: <FileStack size={14} /> },
+          { href: "/commandes", label: "Commandes", icon: <ClipboardList size={14} /> },
           { href: "/admin/accounts", label: "Comptes Instagram", icon: <Instagram size={14} /> },
           { href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> },
         ],
@@ -144,6 +146,7 @@ export function AppNav({
         items: [
           { href: "/admin/patterns", label: "Recettes", icon: <Sparkles size={14} /> },
           { href: "/admin/entity-types", label: "Types de fiches", icon: <FileStack size={14} /> },
+          { href: "/admin/order-templates", label: "Modèles de commande", icon: <ClipboardList size={14} /> },
           { href: "/admin/clients", label: "Clients", icon: <Building2 size={14} /> },
           { href: "/admin/users", label: "Utilisateurs", icon: <Users size={14} /> },
           { href: "/admin/jobs", label: "Jobs actifs", icon: <RotateCw size={14} /> },
@@ -155,6 +158,10 @@ export function AppNav({
       {
         items: [
           { href: "/home", label: "Accueil", icon: <Home size={14} /> },
+          // Bons de commande : uniquement pour les externes rattachés à une agence.
+          ...(navUser.clientId
+            ? [{ href: "/commandes", label: "Mes commandes", icon: <ClipboardList size={14} /> }]
+            : []),
           { href: "/listings", label: "Mes générations", icon: <History size={14} /> },
         ],
       },

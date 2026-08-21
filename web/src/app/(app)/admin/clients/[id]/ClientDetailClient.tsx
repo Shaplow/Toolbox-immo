@@ -26,6 +26,8 @@ export type ClientDetailData = {
   email: string | null;
   phone: string | null;
   accounts: { id: string; name: string; handle: string }[];
+  /** Comptes externes (bons de commande) rattachés à cette agence. */
+  users: { id: string; name: string; email: string | null; username: string | null }[];
 };
 
 type Tab = "info" | "accounts";
@@ -312,6 +314,30 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                 </Button>
               </div>
             </form>
+          </div>
+
+          {/* Comptes externes rattachés (bons de commande) — gestion via /admin/users */}
+          <div className="bg-white border border-border rounded-xl p-5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">
+              Comptes externes (bons de commande)
+            </p>
+            {client.users.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aucun compte externe rattaché — rattachez un utilisateur « Client externe » à
+                cette agence depuis Configuration → Utilisateurs.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {client.users.map((u) => (
+                  <li key={u.id} className="text-[13px] text-foreground flex items-center gap-2">
+                    <span className="font-medium">{u.name}</span>
+                    <span className="text-muted-foreground text-xs">
+                      {u.email ?? u.username ?? ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* Comptes Instagram rattachés (picker) */}

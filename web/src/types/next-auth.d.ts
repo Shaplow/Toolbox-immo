@@ -7,11 +7,14 @@ declare module "next-auth" {
       role: string;
       /** JSON string — ex: '["captions","templates:generate"]' */
       permissions: string;
+      /** Agence (Client) rattachée — comptes externes bons de commande. */
+      clientId: string | null;
     } & DefaultSession["user"];
   }
   interface User {
     role?: string;
     permissions?: string;
+    clientId?: string | null;
   }
 }
 
@@ -20,5 +23,6 @@ declare module "next-auth/jwt" {
     id?: string;
     role?: string;
     permissions?: string;
+    clientId?: string | null;
   }
 }

@@ -20,6 +20,8 @@ export type AppUserIdentity = {
   email?: string | null;
   role: string;
   permissions: string;
+  /** Agence (Client) rattachée — comptes externes bons de commande. */
+  clientId?: string | null;
 };
 
 export type UserContext = {
@@ -44,6 +46,7 @@ function getSessionUserIdentity(session: Session): AppUserIdentity {
     email: session.user.email,
     role: session.user.role,
     permissions: session.user.permissions ?? "[]",
+    clientId: session.user.clientId ?? null,
   };
 }
 
@@ -65,6 +68,7 @@ export async function resolveUserContext(
         email: true,
         role: true,
         permissions: true,
+        clientId: true,
       },
     });
     if (impersonatedUser && impersonatedUser.role !== "ADMIN") {
@@ -77,6 +81,7 @@ export async function resolveUserContext(
           email: impersonatedUser.email,
           role: impersonatedUser.role,
           permissions: impersonatedUser.permissions,
+          clientId: impersonatedUser.clientId,
         },
         isAdmin,
         isImpersonating: true,

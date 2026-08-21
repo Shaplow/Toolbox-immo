@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
       name: true,
       role: true,
       permissions: true,
+      clientId: true,
       createdAt: true,
       accesses: {
         select: {

@@ -14,6 +14,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const client = await prisma.client.findUnique({
     where: { id },
     include: {
+      users: {
+        select: { id: true, name: true, email: true, username: true },
+        orderBy: { name: "asc" },
+      },
       accounts: {
         select: { id: true, name: true, handle: true },
         orderBy: { name: "asc" },
@@ -55,6 +59,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       where: { id },
       data,
       include: {
+        users: {
+          select: { id: true, name: true, email: true, username: true },
+          orderBy: { name: "asc" },
+        },
         accounts: {
           select: { id: true, name: true, handle: true },
           orderBy: { name: "asc" },
@@ -77,6 +85,15 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (auth.response) return auth.response;
 
   const { id } = await params;
+  // Order.clientId est en Restrict : supprimer un client avec commandes
+  // finirait en P2003/500 — 409 explicite en amont.
+  const orderCount = await prisma.order.count({ where: { clientId: id } });
+  if (orderCount > 0) {
+    return NextResponse.json(
+      { error: `${orderCount} commande(s) référencent ce client — impossible de le supprimer` },
+      { status: 409 },
+    );
+  }
   try {
     await prisma.client.delete({ where: { id } });
     return new NextResponse(null, { status: 204 });

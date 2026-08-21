@@ -40,6 +40,7 @@ type User = {
   email: string | null;
   role: string;
   permissions: string;
+  clientId: string | null;
   createdAt: string;
   accesses: { templateId: string; template: TemplateStub }[];
   captionPresetAccesses: string[];
@@ -106,6 +107,36 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
   );
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    // Liste des agences pour le rattachement des comptes externes (bons de commande).
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/clients");
+        if (!res.ok) return;
+        const data = (await res.json()) as { id: string; name: string }[] | { clients?: { id: string; name: string }[] };
+        setClients(Array.isArray(data) ? data : (data.clients ?? []));
+      } catch {
+        // silencieux — le picker affichera « aucun client »
+      }
+    })();
+  }, []);
+
+  async function handleClientChange(user: User, newClientId: string) {
+    const res = await fetch(`/api/admin/users/${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: newClientId || null }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      toast.error(data.error ?? "Échec du rattachement client.");
+      return;
+    }
+    toast.success(newClientId ? "Client rattaché." : "Client détaché.");
+    await fetchUsers();
+  }
 
   const fetchUsers = useCallback(async () => {
     const res = await fetch("/api/admin/users");
@@ -557,6 +588,24 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                 disabled={user.id === currentUserId}
                               />
                             </div>
+                            {user.role === "EXTERNAL_GENERATOR" && (
+                              <>
+                                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
+                                  Agence
+                                </p>
+                                <div className="w-[200px]">
+                                  <Combobox
+                                    value={user.clientId ?? ""}
+                                    onChange={(v) => void handleClientChange(user, v)}
+                                    options={[
+                                      { value: "", label: "— Aucune" },
+                                      ...clients.map((c) => ({ value: c.id, label: c.name })),
+                                    ]}
+                                    placeholder="Rattacher à un client…"
+                                  />
+                                </div>
+                              </>
+                            )}
                           </div>
                           <Button variant="ghost" size="sm" icon={Edit} onClick={() => startEdit(user)}>
                             Modifier

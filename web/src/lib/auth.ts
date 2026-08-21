@@ -37,6 +37,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           role: user.role,
           permissions: user.permissions, // JSON string "[\"captions\",\"templates:generate\"]"
+          clientId: user.clientId,
         };
       },
     }),
@@ -50,6 +51,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role ?? "EXTERNAL_GENERATOR";
+        token.clientId = (user as { clientId?: string | null }).clientId ?? null;
         // Parse, validate and re-serialize permissions so the JWT always
         // carries a well-formed JSON array string, never a corrupt value.
         const rawPermissions = (user as { permissions?: string }).permissions ?? "[]";
@@ -81,7 +83,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         try {
           const fresh = await prisma.user.findUnique({
             where: { id: token.id as string },
-            select: { role: true, permissions: true },
+            select: { role: true, permissions: true, clientId: true },
           });
           if (!fresh) {
             // Compte supprimé — invalider le token pour forcer un re-login.
@@ -90,8 +92,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             token.id = undefined;
             token.role = undefined;
             token.permissions = undefined;
+            token.clientId = undefined;
           } else {
             token.role = fresh.role;
+            token.clientId = fresh.clientId;
             try {
               const parsed = JSON.parse(fresh.permissions);
               if (Array.isArray(parsed) && parsed.every((p) => typeof p === "string")) {
@@ -113,6 +117,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (token?.id) session.user.id = token.id as string;
       if (token?.role) session.user.role = token.role as string;
+      session.user.clientId = (token?.clientId as string | null | undefined) ?? null;
       if (token?.permissions) session.user.permissions = token.permissions as string;
       return session;
     },
