@@ -1,12 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
+import {
+  buildAssetsAccessWhere,
+  buildAssetsBurnWhere,
+  buildTagRulesWhere,
+  parseTagRuleParams,
+  resolveBurnAccountId,
+  resolveUsageKey,
+} from "@/lib/generate/libraryAssetsQuery";
 
 type Params = { params: Promise<{ libraryId: string }> };
 
 // GET /api/libraries/[libraryId]/assets
 // Auth-gated (no admin required) — returns public asset list for a library.
 // Used by the generation form library picker for all authenticated users.
+//
+// P5 hardening (21/08) — cette route reste volontairement en Prisma ORM
+// (`findMany`), PAS en SQL brut : les helpers importés ci-dessus (mirror de
+// `buildAccessFilter`/`buildBurnFilter`/`buildTagFragment`,
+// contentLibraryResolver.ts) rejouent la même sémantique en `WhereInput`.
+// Voir le commentaire croisé sur `buildAccessFilter` dans ce fichier.
 export async function GET(req: NextRequest, { params }: Params) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
@@ -15,39 +29,46 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const library = await prisma.mediaLibrary.findUnique({
     where: { id: libraryId },
-    select: { id: true },
+    select: { id: true, maxUsageCount: true, rotationScope: true },
   });
   if (!library) {
     return NextResponse.json({ error: "Bibliothèque introuvable" }, { status: 404 });
   }
 
-  // Optional tag filter — case-insensitive
+  // Optional tag filter — case-insensitive (legacy: résolu côté client depuis
+  // tagFilterParam). A.4 : `tagRules` (règles avancées — tagConditions +
+  // operator, ou tagFilter littéral) prime dessus quand transmis, voir
+  // `buildTagRulesWhere`.
   const tag = req.nextUrl.searchParams.get("tag")?.trim().toLowerCase() ?? "";
+  const tagRules = parseTagRuleParams(req.nextUrl.searchParams.get("tagRules"));
   // Optional accountId — when present, filters to accessible assets and returns per-account stats
   const accountId = req.nextUrl.searchParams.get("accountId")?.trim() || null;
-  // Optional minDuration — when present, excludes assets shorter than this value (seconds).
-  // NULL duration is tolerated (asset not probed yet) to avoid hiding valid assets.
-  const minDurationParam = req.nextUrl.searchParams.get("minDuration");
-  const minDuration = minDurationParam ? parseFloat(minDurationParam) : null;
+  // A.6 : minDuration n'exclut plus rien côté serveur — les assets trop courts
+  // sont renvoyés et grisés côté client (LibraryPicker.tsx), qui reçoit déjà
+  // `minDuration` depuis `fieldLibraryMap`. Avant ce fix, un asset sous le
+  // seuil disparaissait silencieusement de la liste — le bandeau
+  // « vidéos en gris » du picker n'avait donc jamais rien à afficher.
 
-  const tagWhere = tag ? { tags: { contains: `"${tag}"`, mode: "insensitive" as const } } : {};
-  // Duration filter: accept assets with no duration (unprobed) OR duration >= minDuration.
-  const durationWhere =
-    minDuration != null && !isNaN(minDuration) && minDuration > 0
-      ? { OR: [{ duration: null }, { duration: { gte: minDuration } }] }
-      : {};
+  const tagWhere = buildTagRulesWhere(tag, tagRules);
+  // A.2 : sans accountId, reste strict (accesses: none) — voir le commentaire
+  // de `buildAssetsAccessWhere` (fail-closed, revert post revue de sécurité).
+  const accessWhere = buildAssetsAccessWhere(accountId);
+  // A.3 : disabled=false toujours exclu (avant ce fix, un asset désactivé
+  // pouvait apparaître dans le picker) + burn-once (maxUsageCount atteint).
+  const burnAccountId = resolveBurnAccountId(library.rotationScope, accountId);
+  const burnWhere = buildAssetsBurnWhere(library.maxUsageCount, burnAccountId);
+  const disabledWhere = { disabled: false };
 
-  // Access filter: mirrors the resolver logic in contentLibraryResolver.ts
-  //   with accountId    → global (no restrictions) OR restricted-to-me
-  //   without accountId → global only (no MediaAssetAccess rows)
-  const accessWhere = accountId
-    ? { OR: [{ accesses: { none: {} } }, { accesses: { some: { accountId } } }] }
-    : { accesses: { none: {} } };
+  // A.7 : clé de jointure des compteurs d'usage — sentinelle __shared__ pour
+  // les libs en scope shared (avant ce fix, toujours le compte réel : les
+  // compteurs affichés pour une lib shared étaient systématiquement à 0).
+  const usageKey = resolveUsageKey(library.rotationScope, accountId);
 
-  if (accountId) {
-    // Per-account path: fetch with per-account usage stats, sort in JS (can't orderBy relation)
+  if (usageKey) {
+    // Per-account (ou shared, via la sentinelle) path : fetch avec stats
+    // d'usage scopées, tri en JS (impossible d'orderBy sur une relation).
     const rawAssets = await prisma.mediaAsset.findMany({
-      where: { libraryId, ...tagWhere, ...accessWhere, ...durationWhere },
+      where: { libraryId, ...tagWhere, ...accessWhere, ...burnWhere, ...disabledWhere },
       select: {
         id: true,
         filename: true,
@@ -57,7 +78,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         usageCount: true,
         lastUsedAt: true,
         usages: {
-          where: { accountId },
+          where: { accountId: usageKey },
           select: { usageCount: true, lastUsedAt: true },
           take: 1,
         },
@@ -71,7 +92,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         url: a.url,
         mimeType: a.mimeType,
         duration: a.duration,
-        // Prefer per-account stats; fall back to global when no usage row exists yet
+        // Prefer per-account (or shared) stats; fall back to global when no usage row exists yet
         usageCount: a.usages[0]?.usageCount ?? 0,
         lastUsedAt: a.usages[0]?.lastUsedAt ?? null,
       }))
@@ -87,7 +108,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   // Global path: no accountId — use global counters, sort by usageCount ASC (matches least_used resolver)
   const assets = await prisma.mediaAsset.findMany({
-    where: { libraryId, ...tagWhere, ...accessWhere, ...durationWhere },
+    where: { libraryId, ...tagWhere, ...accessWhere, ...burnWhere, ...disabledWhere },
     orderBy: [{ usageCount: "asc" }, { lastUsedAt: "asc" }, { createdAt: "asc" }],
     select: {
       id: true,

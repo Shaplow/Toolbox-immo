@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Music2, Check, X } from "lucide-react";
 import type { LibraryAssetOption } from "@/types/libraryPrefill";
+import type { TagCondition } from "@/types/template";
+import { serializeTagRuleParams } from "@/lib/generate/libraryAssetsQuery";
 
 interface Asset {
   id: string;
@@ -32,12 +34,22 @@ interface PickerModalProps {
   onSelect: (asset: LibraryAssetOption) => void;
   /** Tag de filtre dynamique (ex: valeur du champ "agent" dans le formulaire). */
   tagFilter?: string;
+  /**
+   * A.4 (P5 hardening) — règles de tags avancées de la règle de sélection du
+   * bloc/slot, déjà résolues (les conditions `fromParam` ont été substituées
+   * contre les valeurs courantes du formulaire par `ListingForm`, voir
+   * `resolveTagConditionsForForm`).
+   */
+  tagConditions?: TagCondition[];
+  tagConditionsOperator?: "AND" | "OR";
+  /** Tag littéral de la règle (`MediaSelectionRuleConfig.tagFilter`) — distinct de `tagFilter` ci-dessus. */
+  tagFilterLiteral?: string;
   /** Instagram account ID — when set, filters to accessible assets and shows per-account usage counts. */
   accountId?: string;
   /**
    * Durée minimale requise pour l'asset (secondes).
-   * Les assets plus courts sont grisés et désactivés dans le picker.
-   * L'endpoint API est interrogé avec ce filtre pour pré-exclure les assets inéligibles.
+   * Les assets plus courts sont grisés et désactivés dans le picker (A.6 —
+   * l'API renvoie désormais tous les assets, y compris ceux sous ce seuil).
    */
   minDuration?: number;
 }
@@ -50,6 +62,9 @@ export function LibraryPickerModal({
   onClose,
   onSelect,
   tagFilter,
+  tagConditions,
+  tagConditionsOperator,
+  tagFilterLiteral,
   accountId,
   minDuration,
 }: PickerModalProps) {
@@ -59,13 +74,21 @@ export function LibraryPickerModal({
 
   const loading = isOpen && assets === null;
 
+  const tagRulesParam = serializeTagRuleParams({
+    tagConditions,
+    tagConditionsOperator,
+    tagFilter: tagFilterLiteral,
+  });
+
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     const params = new URLSearchParams();
     if (tagFilter?.trim()) params.set("tag", tagFilter.trim());
+    if (tagRulesParam) params.set("tagRules", tagRulesParam);
     if (accountId?.trim()) params.set("accountId", accountId.trim());
-    if (minDuration != null && minDuration > 0) params.set("minDuration", String(minDuration));
+    // A.6 : minDuration n'est plus envoyé au serveur (plus de filtrage
+    // serveur) — le grisage se fait entièrement côté client ci-dessous.
     const url = `/api/libraries/${libraryId}/assets${params.size > 0 ? `?${params.toString()}` : ""}`;
     fetch(url)
       .then((r) => (r.ok ? (r.json() as Promise<Asset[]>) : Promise.resolve([])))
@@ -80,7 +103,7 @@ export function LibraryPickerModal({
       cancelled = true;
       setAssets(null);
     };
-  }, [isOpen, libraryId, tagFilter, accountId, minDuration]);
+  }, [isOpen, libraryId, tagFilter, tagRulesParam, accountId]);
 
   if (!isOpen) return null;
 
@@ -271,6 +294,11 @@ interface LibraryFieldInputProps {
   error?: string;
   /** Tag dynamique à passer au picker (valeur courante du champ tagFilterParam). */
   tagFilter?: string;
+  /** A.4 — règles de tags avancées déjà résolues (voir `resolveTagConditionsForForm`). */
+  tagConditions?: TagCondition[];
+  tagConditionsOperator?: "AND" | "OR";
+  /** Tag littéral de la règle. */
+  tagFilterLiteral?: string;
   /** Instagram account ID — filters to accessible assets and shows per-account usage counts. */
   accountId?: string;
   /**
@@ -278,6 +306,13 @@ interface LibraryFieldInputProps {
    * Transmise au picker pour griser les assets trop courts.
    */
   minDuration?: number;
+  /**
+   * A.1 (P5 hardening) — désactive le bouton « Changer » pendant que le
+   * prefill recharge (changement de compte en cours) : ouvrir le picker à ce
+   * moment-là filtrerait sur un `accountId` qui va être remplacé d'une
+   * seconde à l'autre.
+   */
+  disabled?: boolean;
 }
 
 export function LibraryFieldInput({
@@ -287,8 +322,12 @@ export function LibraryFieldInput({
   onSelect,
   error,
   tagFilter,
+  tagConditions,
+  tagConditionsOperator,
+  tagFilterLiteral,
   accountId,
   minDuration,
+  disabled,
 }: LibraryFieldInputProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -326,7 +365,8 @@ export function LibraryFieldInput({
               <button
                 type="button"
                 onClick={() => setPickerOpen(true)}
-                className="mt-2 text-xs font-medium text-info-700 hover:text-info-700 hover:underline"
+                disabled={disabled}
+                className="mt-2 text-xs font-medium text-info-700 hover:text-info-700 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
               >
                 Changer →
               </button>
@@ -343,7 +383,8 @@ export function LibraryFieldInput({
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
-              className="text-xs font-medium text-info-700 hover:text-info-700 hover:underline shrink-0"
+              disabled={disabled}
+              className="text-xs font-medium text-info-700 hover:text-info-700 hover:underline shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
             >
               Changer
             </button>
@@ -353,7 +394,8 @@ export function LibraryFieldInput({
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          className="w-full flex flex-col items-center justify-center h-28 border-2 border-dashed border-border rounded-xl hover:border-info-200 hover:bg-info-50 transition-colors group focus:outline-none focus:ring-2 focus:ring-info-200"
+          disabled={disabled}
+          className="w-full flex flex-col items-center justify-center h-28 border-2 border-dashed border-border rounded-xl hover:border-info-200 hover:bg-info-50 transition-colors group focus:outline-none focus:ring-2 focus:ring-info-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:bg-transparent"
         >
           <span className="text-2xl text-muted-foreground/60 group-hover:text-info-600 transition-colors">
             {libraryMeta.type === "video" ? "🎬" : "♪"}
@@ -374,6 +416,9 @@ export function LibraryFieldInput({
         onClose={() => setPickerOpen(false)}
         onSelect={onSelect}
         tagFilter={tagFilter}
+        tagConditions={tagConditions}
+        tagConditionsOperator={tagConditionsOperator}
+        tagFilterLiteral={tagFilterLiteral}
         accountId={accountId}
         minDuration={minDuration}
       />

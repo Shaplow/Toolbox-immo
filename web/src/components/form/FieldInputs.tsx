@@ -53,34 +53,66 @@ export function SelectFieldInput({
   controlClassName: string;
 }) {
   const [dynamicOptions, setDynamicOptions] = useState<{ value: string; label: string }[] | null>(null);
+  // B.2 (P6 hardening) — état d'erreur distinct de "en cours de chargement" :
+  // avant ce fix, un échec réseau/HTTP était avalé silencieusement
+  // (`.catch(() => setDynamicOptions([]))`) et une `metadataKey` absente ne
+  // posait JAMAIS `dynamicOptions` (`if (!metadataKey) return;`) — dans les
+  // deux cas le select restait désactivé sur "Chargement…" indéfiniment,
+  // sans aucun moyen pour l'user de comprendre ce qui bloque.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!field.optionsSource) return;
     const { type, libraryId } = field.optionsSource;
 
-    if (type === "ig-accounts-from-library") {
-      fetch(`/api/admin/libraries/media/${libraryId}/ig-accounts`)
-        .then((r) => r.ok ? r.json() : { accounts: [] })
-        .then((data: { accounts: { handle: string; name: string }[] }) => {
-          setDynamicOptions(data.accounts.map((a) => ({ value: a.handle, label: `${a.name} (@${a.handle})` })));
-        })
-        .catch(() => setDynamicOptions([]));
-    } else if (type === "metadata-values-from-library") {
-      const metadataKey = field.optionsSource.metadataKey;
-      if (!metadataKey) return;
-      fetch(`/api/admin/libraries/media/${libraryId}/metadata-values?key=${encodeURIComponent(metadataKey)}`)
-        .then((r) => r.ok ? r.json() : { values: [] })
-        .then((data: { values: string[] }) => {
-          setDynamicOptions(data.values.map((v) => ({ value: v, label: v })));
-        })
-        .catch(() => setDynamicOptions([]));
-    }
+    // Toutes les mises à jour d'état se font depuis les callbacks de la
+    // promesse (jamais synchrone dans le corps de l'effet, cf.
+    // react-hooks/set-state-in-effect) — un "config error" (metadataKey
+    // manquante) est donc modélisé comme une promesse déjà rejetée plutôt
+    // qu'un early-return avec setState direct.
+    const request: Promise<{ value: string; label: string }[]> =
+      type === "ig-accounts-from-library"
+        ? // B.2 — route non-admin (auth-only, mirror de la route admin) : la
+          // route `/api/admin/...` renvoyait un 401/403 silencieux pour tout
+          // user non-admin utilisant le formulaire de génération.
+          fetch(`/api/libraries/${libraryId}/ig-accounts`)
+            .then((r) => {
+              if (!r.ok) throw new Error(`HTTP ${r.status}`);
+              return r.json() as Promise<{ accounts: { handle: string; name: string }[] }>;
+            })
+            .then((data) => data.accounts.map((a) => ({ value: a.handle, label: `${a.name} (@${a.handle})` })))
+        : type === "metadata-values-from-library"
+          ? field.optionsSource.metadataKey
+            ? fetch(`/api/libraries/${libraryId}/metadata-values?key=${encodeURIComponent(field.optionsSource.metadataKey)}`)
+                .then((r) => {
+                  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                  return r.json() as Promise<{ values: string[] }>;
+                })
+                .then((data) => data.values.map((v) => ({ value: v, label: v })))
+            : Promise.reject(new Error("missing-metadata-key"))
+          : Promise.reject(new Error("unknown-options-source"));
+
+    request
+      .then((opts) => {
+        setDynamicOptions(opts);
+        setLoadError(null);
+      })
+      .catch((err: unknown) => {
+        setDynamicOptions([]);
+        setLoadError(
+          err instanceof Error && err.message === "missing-metadata-key"
+            ? "Champ mal configuré (clé de métadonnée manquante) — préviens un administrateur."
+            : type === "ig-accounts-from-library"
+              ? "Impossible de charger les comptes Instagram — réessaie ou préviens un administrateur."
+              : "Impossible de charger les valeurs disponibles — réessaie ou préviens un administrateur.",
+        );
+      });
   }, [field.optionsSource?.type, field.optionsSource?.libraryId, field.optionsSource?.metadataKey]);
 
   const options: { value: string; label: string }[] = dynamicOptions
     ?? (field.options ?? []).map((o) => ({ value: o, label: o }));
 
-  const isLoading = field.optionsSource && dynamicOptions === null;
+  const isLoading = Boolean(field.optionsSource) && dynamicOptions === null && !loadError;
   const isMetaValues = field.optionsSource?.type === "metadata-values-from-library";
 
   return (
@@ -96,7 +128,10 @@ export function SelectFieldInput({
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
-      {isMetaValues && !value && (
+      {loadError && (
+        <span className="text-[10px] text-danger-600">{loadError}</span>
+      )}
+      {isMetaValues && !value && !loadError && (
         <span className="text-[10px] text-info-700">
           Valeur sélectionnée automatiquement depuis l&apos;asset si laissé vide.
         </span>
@@ -459,7 +494,7 @@ export function FieldInput({
       <div className="min-h-[28px] mb-1.5 flex items-center gap-2 flex-wrap">
         <label className="block text-sm font-medium text-foreground">
           {field.label || field.key}
-          {field.required && <span className="text-red-500 ml-1">*</span>}
+          {field.required && <span className="text-danger-600 ml-1">*</span>}
         </label>
         {!field.required && !isConditional && (
           <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -556,7 +591,7 @@ export function FieldInput({
         ) : null}
       </div>
 
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+      {error && <p className="text-xs text-danger-600 mt-1">{error}</p>}
     </div>
   );
 }

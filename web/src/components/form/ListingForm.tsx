@@ -7,13 +7,23 @@ import type { SchemaField, TemplateFormSection } from "@/types/template";
 import type { LibraryPrefillContext, LibraryAssetOption, MetadataDrivenLink } from "@/types/libraryPrefill";
 import { buildRenderRequestBody } from "@/lib/generate/buildRenderRequestBody";
 import { canOverride, PROVENANCE_KEY, type ProvenanceMap, type ValueProvenance } from "@/lib/generate/provenance";
+import { buildTrackedInitialValues } from "@/lib/generate/buildPrefillRequestPayload";
+import { valuesEqualIgnoringEmpty } from "@/lib/generate/formValuesEqual";
+import { resolveTagConditionsForForm } from "@/lib/generate/libraryAssetsQuery";
 import { LibraryFieldInput } from "@/components/form/LibraryPicker";
 import { FieldInput } from "@/components/form/FieldInputs";
 import { ListingFormVariantCard } from "@/components/form/ListingFormVariantCard";
 import { toast } from "@/components/ui/Toast";
 import { Alert } from "@/components/ui/Alert";
 import { Select } from "@/components/ui/Select";
-import type { JobEventPayload } from "@/lib/sseStore";
+import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
+
+/** B.5 (P6 hardening) — abort le fetch prefill s'il n'a pas répondu sous ce
+ *  délai : sans ce garde-fou, une requête qui pend indéfiniment (backend
+ *  hors service, proxy qui coupe silencieusement…) laissait `prefillLoading`
+ *  bloqué à `true` pour toujours — Select ET bouton Générer désactivés sur
+ *  « Chargement… » sans aucun moyen de s'en sortir hors rechargement de page. */
+const PREFILL_FETCH_TIMEOUT_MS = 20_000;
 
 interface Props {
   templateId: string;
@@ -120,8 +130,6 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   // Reuse the same listingId for all generates in this session (variants on the same listing)
   const listingIdRef = useRef<string | null>(null);
-  // SSE source — shared across all variants
-  const sseSourceRef = useRef<EventSource | null>(null);
 
   // Phase 2.3 — charge le prefill depuis l'API après sélection d'un compte IG.
   // Phase 8.M2 : AbortController pour annuler le fetch en cours quand l'user
@@ -135,6 +143,8 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
     prefillAbortRef.current?.abort();
     const controller = new AbortController();
     prefillAbortRef.current = controller;
+    // B.5 — voir le commentaire de PREFILL_FETCH_TIMEOUT_MS.
+    const timeoutId = setTimeout(() => controller.abort(), PREFILL_FETCH_TIMEOUT_MS);
     setPrefillLoading(true);
     try {
       const res = await fetch(`/api/templates/${templateId}/prefill`, {
@@ -146,7 +156,14 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           // perdre le rattachement du rendu à sa publication.
           slotId: slotIdProp ?? null,
           listingId: null,
-          initialValues: values,
+          // B.1 (P6 fix) — ne transmettre que les clés déjà tracées en
+          // provenance. Avant ce fix, `values` partait en entier (y compris
+          // les `field.default` jamais édités) : côté serveur,
+          // `buildSlotPrefill` traite toute clé non vide SANS provenance
+          // connue comme "manual" — dès le 1er changement de compte, tout se
+          // gelait "manual" et le 2e changement ne re-seedait plus rien
+          // depuis la fiche. Voir `buildPrefillRequestPayload.ts`.
+          initialValues: buildTrackedInitialValues(values, provenance),
           // La route rejoue buildSlotPrefill sur le même slot — lui transmettre
           // la provenance suivie évite qu'une édition manuelle (ou une valeur de
           // fiche déjà posée) soit écrasée par le recalcul.
@@ -179,10 +196,22 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         toast.error("Impossible de charger les suggestions pour ce compte.");
       }
     } catch (err) {
-      // AbortError = on a sciemment annulé pour un changement plus récent, no-op.
-      if (err instanceof Error && err.name === "AbortError") return;
+      if (err instanceof Error && err.name === "AbortError") {
+        // Deux causes possibles pour un AbortError : (a) un changement de
+        // compte plus récent a annulé cette requête — silencieux, le nouveau
+        // fetch gère son propre résultat/toast ; (b) le timeout B.5 a
+        // déclenché l'abort lui-même — dans ce cas `prefillAbortRef.current`
+        // pointe TOUJOURS sur `controller` (personne d'autre ne l'a
+        // réassigné), on avertit l'user au lieu de le laisser bloqué en
+        // silence sur « Chargement… ».
+        if (prefillAbortRef.current === controller) {
+          toast.error("Le chargement des suggestions a expiré — réessaie.");
+        }
+        return;
+      }
       toast.error("Erreur réseau lors du chargement des suggestions.");
     } finally {
+      clearTimeout(timeoutId);
       // Ne reset loading que si l'aborter actif est encore le nôtre (pas écrasé)
       if (prefillAbortRef.current === controller) setPrefillLoading(false);
     }
@@ -214,31 +243,28 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           }
         : v
     ));
-    // Close SSE when all active polls are done
-    if (pollTimers.current.size === 0) {
-      sseSourceRef.current?.close();
-      sseSourceRef.current = null;
-    }
   }, []);
 
-  const startPolling = useCallback((renderId: string) => {
-    // Open SSE once for the whole session
-    if (!sseSourceRef.current) {
-      const source = new EventSource("/api/sse/jobs");
-      sseSourceRef.current = source;
-      source.addEventListener("job", (e) => {
-        try {
-          const event = JSON.parse(e.data) as JobEventPayload;
-          if (event.jobType !== "render") return;
-          if (event.status === "DONE" || event.status === "ERROR") {
-            const videoUrl = "videoUrl" in event ? (event.videoUrl as string | undefined) ?? undefined : undefined;
-            const errorMsg = "errorMsg" in event ? (event.errorMsg as string | undefined) ?? undefined : undefined;
-            resolveVariant(event.jobId, { status: event.status, videoUrl, errorMsg });
-          }
-        } catch { /* ignore parse errors */ }
-      });
+  // B.4 (P6, dédoublonnage SSE) — ListingForm ouvrait sa propre
+  // `new EventSource("/api/sse/jobs")` en plus de celle déjà maintenue par
+  // `JobEventsProvider` pour toute page sous /generate (2 connexions
+  // simultanées par onglet). Pire : elle écoutait un event NOMMÉ "job" que le
+  // serveur n'émet jamais — `sseStore.notifyUser` envoie des frames `data:
+  // …` sans champ `event:` (seul le handler `onmessage` générique, utilisé
+  // par JobEventsProvider, les reçoit) — ce flux dédié ne recevait donc
+  // jamais rien, masqué par le polling 2s ci-dessous. Fix chirurgical : on
+  // réutilise le bus partagé du provider (`jobEventBus`) au lieu d'ouvrir un
+  // flux, sans toucher au polling (fallback fiable inchangé).
+  useAllJobEvents((event) => {
+    if (event.jobType !== "render") return;
+    if (event.status === "DONE" || event.status === "ERROR") {
+      const videoUrl = "videoUrl" in event ? (event.videoUrl as string | undefined) ?? undefined : undefined;
+      const errorMsg = "errorMsg" in event ? (event.errorMsg as string | undefined) ?? undefined : undefined;
+      resolveVariant(event.jobId, { status: event.status, videoUrl, errorMsg });
     }
+  });
 
+  const startPolling = useCallback((renderId: string) => {
     const timer = setInterval(async () => {
       try {
         const res = await fetch(`/api/renders/${renderId}`);
@@ -429,11 +455,11 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
     }
   }, [autoSubmit, autoSubmitBlocked]);
 
-  // Cleanup all intervals and SSE on unmount
+  // Cleanup all polling intervals on unmount (SSE lifecycle owned by
+  // JobEventsProvider — B.4, plus de connexion dédiée ici).
   useEffect(() => {
     return () => {
       pollTimers.current.forEach((t) => clearInterval(t));
-      sseSourceRef.current?.close();
     };
   }, []);
 
@@ -607,8 +633,29 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   // des changements non sauvegardés sont en cours. On compare values vs
   // initialValues + on ignore quand generating (le polling continue ok)
   // ou quand variants existent déjà (succès → l'user peut quitter).
+  //
+  // B.3 (P6 fix) — `JSON.stringify(values) !== JSON.stringify(initialValues)`
+  // comparait deux objets qui n'ont quasiment jamais le même jeu de clés :
+  // `values` porte TOUJOURS une entrée par champ du schéma (vide ou non, voir
+  // `resolveInitialFieldValue`), `initialValues` seulement les clés
+  // pré-remplies côté serveur. La garde restait donc armée en permanence,
+  // même sur un formulaire fraîchement chargé sans aucune édition —
+  // impossible de quitter la page alors que les champs étaient encore
+  // éditables. Fix : comparaison normalisée qui ignore les clés absentes
+  // d'un des deux côtés et traite ""/null/undefined comme équivalents (voir
+  // `formValuesEqual.ts`).
+  //
+  // Fix bug-hunter (post-B.3) : la baseline comparée doit subir la MÊME
+  // résolution que `values` (`resolveInitialFieldValue`, qui retombe sur
+  // `field.default`). Comparer `values` au `initialValues` brut faisait que
+  // tout champ avec un `field.default` non vide et absent d'`initialValues`
+  // (configuré dans le builder via `DefaultValueInput`) restait détecté comme
+  // "changé" dès le montage, sans aucune édition utilisateur.
   useEffect(() => {
-    const hasUserChanges = JSON.stringify(values) !== JSON.stringify(initialValues ?? {});
+    const resolvedInitialValues = Object.fromEntries(
+      schema.map((field) => [field.key, resolveInitialFieldValue(field, initialValues?.[field.key])]),
+    );
+    const hasUserChanges = !valuesEqualIgnoringEmpty(values, resolvedInitialValues);
     if (!hasUserChanges || generating || variants.length > 0) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
@@ -616,7 +663,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [values, initialValues, generating, variants.length]);
+  }, [values, initialValues, schema, generating, variants.length]);
 
   const doneVariants = variants.filter((v) => v.status === "done");
 
@@ -760,10 +807,12 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                   className={`${getFieldSpanClass(field, section.fieldColumns)} ${getFieldPlacementClass(field, section.fieldColumns)}`.trim()}
                   style={fieldStyles.get(field.key)}
                 >
-                  {libraryPrefillContext?.fieldLibraryMap[field.key] ? (
+                  {libraryPrefillContext?.fieldLibraryMap[field.key] ? (() => {
+                    const fieldLibMeta = libraryPrefillContext.fieldLibraryMap[field.key];
+                    return (
                     <LibraryFieldInput
                       field={field}
-                      libraryMeta={libraryPrefillContext.fieldLibraryMap[field.key]}
+                      libraryMeta={fieldLibMeta}
                       currentSelection={librarySelections[field.key] ?? null}
                       onSelect={(asset) => {
                         setLibrarySelections((prev) => ({ ...prev, [field.key]: asset }));
@@ -772,14 +821,28 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                       }}
                       error={errors[field.key]}
                       tagFilter={
-                        libraryPrefillContext.fieldLibraryMap[field.key].tagFilterParam
-                          ? String(values[libraryPrefillContext.fieldLibraryMap[field.key].tagFilterParam!] ?? "")
+                        fieldLibMeta.tagFilterParam
+                          ? String(values[fieldLibMeta.tagFilterParam] ?? "")
                           : undefined
                       }
-                      accountId={libraryPrefillContext.selectedAccountId ?? undefined}
-                      minDuration={libraryPrefillContext.fieldLibraryMap[field.key].minDuration}
+                      tagConditions={resolveTagConditionsForForm(fieldLibMeta.tagConditions, values)}
+                      tagConditionsOperator={fieldLibMeta.tagConditionsOperator}
+                      tagFilterLiteral={fieldLibMeta.tagFilter}
+                      /* A.1 (P5 fix) — priorité au state immédiat `selectedAccountId`
+                         (mis à jour au onChange du Select) plutôt qu'au contexte
+                         de prefill (mis à jour seulement au RETOUR du POST) :
+                         pendant `prefillLoading`, le contexte pointe encore sur
+                         l'ANCIEN compte — le picker filtrait alors sur le mauvais
+                         compte pendant toute cette fenêtre. */
+                      accountId={selectedAccountId || libraryPrefillContext.selectedAccountId || undefined}
+                      minDuration={fieldLibMeta.minDuration}
+                      /* A.1 — désactive "Changer" pendant le rechargement du
+                         prefill : ouvrir le picker à ce moment filtrerait sur un
+                         accountId qui va être remplacé d'une seconde à l'autre. */
+                      disabled={prefillLoading}
                     />
-                  ) : (
+                    );
+                  })() : (
                     <FieldInput
                       field={field}
                       value={values[field.key]}

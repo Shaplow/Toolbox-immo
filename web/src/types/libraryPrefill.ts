@@ -4,6 +4,7 @@
  */
 
 import type { ProvenanceMap } from "@/lib/generate/provenance";
+import type { TagCondition } from "@/types/template";
 
 export interface LibraryAssetOption {
   id: string;
@@ -24,9 +25,27 @@ export interface LibraryFieldMeta {
   tagFilterParam?: string;
   /**
    * Durée minimale requise pour l'asset (secondes), héritée de VideoBlock.minDuration ou MusicBlock.minDuration.
-   * Passée au picker pour griser les assets trop courts.
+   * Passée au picker pour griser les assets trop courts (A.6 — plus d'exclusion serveur).
    */
   minDuration?: number;
+  /**
+   * A.4 (P5 hardening, 21/08) — règles de tags avancées de la règle de
+   * sélection du bloc/slot, transmises TELLES QUELLES (peuvent contenir des
+   * conditions `fromParam` non résolues, cf. `TagCondition.fromParam`) : c'est
+   * `ListingForm` qui les résout contre les valeurs courantes du formulaire
+   * avant de les passer au picker (`resolveTagConditionsForForm`,
+   * `lib/generate/libraryAssetsQuery.ts`). Mirror de
+   * `MediaSelectionRuleConfig.tagConditions`.
+   */
+  tagConditions?: TagCondition[];
+  /** Mirror de `MediaSelectionRuleConfig.tagConditionsOperator`. */
+  tagConditionsOperator?: "AND" | "OR";
+  /**
+   * Tag littéral de la règle (`MediaSelectionRuleConfig.tagFilter`) — distinct
+   * du tag DYNAMIQUE déjà résolu depuis `tagFilterParam` (voir `tagFilterParam`
+   * ci-dessus, transmis séparément à la génération du picker).
+   */
+  tagFilter?: string;
 }
 
 export interface LibraryPrefillContext {

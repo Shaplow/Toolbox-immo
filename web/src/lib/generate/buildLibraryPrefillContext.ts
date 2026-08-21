@@ -30,6 +30,9 @@ import type {
   MusicBlock,
   VideoBlock,
   SchemaField,
+  MediaSelectionRule,
+  MediaSelectionRuleConfig,
+  TagCondition,
 } from "@/types/template";
 import type {
   LibraryPrefillContext,
@@ -53,6 +56,69 @@ interface BuildArgs {
 interface BuildResult {
   context: LibraryPrefillContext | undefined;
   updatedInitialValues: Record<string, unknown> | undefined;
+}
+
+/**
+ * Fix #3 (P8 rotation) : deux blocks/slots partageant le même field key
+ * s'écrasent silencieusement dans `fieldLibraryMap` (ex. deux slots
+ * videoSequence avec le même `binding`/`label`) — un des deux blockId perd
+ * son entrée, un seul des deux assets est donc claimé au submit et l'autre
+ * repart en redécouverte à la prochaine génération (cf. skill
+ * asset-rotation, fix #2). Chirurgie du modèle de form hors périmètre ici :
+ * on se contente de signaler la collision pour permettre le diagnostic.
+ */
+type FieldLibraryMapEntry = {
+  libraryId: string;
+  blockId: string;
+  type: "video" | "audio";
+  tagFilterParam?: string;
+  minDuration?: number;
+  /** A.4 (P5 hardening) — voir `extractTagRuleMeta`. */
+  tagConditions?: TagCondition[];
+  tagConditionsOperator?: "AND" | "OR";
+  tagFilter?: string;
+};
+
+function setFieldLibraryMapEntry(
+  map: Record<string, FieldLibraryMapEntry>,
+  key: string,
+  meta: FieldLibraryMapEntry,
+): void {
+  const existing = map[key];
+  if (existing && existing.blockId !== meta.blockId) {
+    console.warn(
+      `[buildLibraryPrefillContext] collision fieldLibraryMap sur la clé "${key}" : le block/slot "${meta.blockId}" écrase le mapping déjà posé par "${existing.blockId}" — un seul des deux assets sera claimé au submit.`,
+    );
+  }
+  map[key] = meta;
+}
+
+/**
+ * Extrait les métadonnées de filtre tag d'une règle de sélection — legacy
+ * `tagFilterParam` (déjà transmis) + `tagFilter` littéral + `tagConditions`/
+ * `tagConditionsOperator` (A.4, P5 hardening 21/08) : avant ce fix, seul
+ * `tagFilterParam` atteignait `fieldLibraryMap`, si bien que le picker
+ * « Changer » ne reflétait jamais un filtre par tag littéral ni les règles
+ * avancées `tagConditions` — la liste montrée à l'user pouvait contenir des
+ * assets que le tirage automatique n'aurait jamais servis (mauvais tag).
+ * `tagConditions` est transmis TEL QUEL (peut contenir des conditions
+ * `fromParam` non résolues) — la résolution contre les valeurs du formulaire
+ * se fait côté client (`resolveTagConditionsForForm`, `ListingForm`).
+ */
+function extractTagRuleMeta(rule: MediaSelectionRule | undefined): {
+  tagFilterParam?: string;
+  tagFilter?: string;
+  tagConditions?: TagCondition[];
+  tagConditionsOperator?: "AND" | "OR";
+} {
+  if (typeof rule !== "object" || rule === null) return {};
+  const cfg = rule as MediaSelectionRuleConfig;
+  return {
+    tagFilterParam: cfg.tagFilterParam,
+    tagFilter: cfg.tagFilter,
+    tagConditions: cfg.tagConditions,
+    tagConditionsOperator: cfg.tagConditionsOperator,
+  };
 }
 
 function buildMetadataDrivenLinks(json: TemplateJSON): MetadataDrivenLink[] {
@@ -122,10 +188,7 @@ export async function buildLibraryPrefillContext({
       return (s.selectionRule as { strategy?: string }).strategy === "theme_sequence";
     });
 
-  const fieldLibraryMap: Record<
-    string,
-    { libraryId: string; blockId: string; type: "video" | "audio"; tagFilterParam?: string; minDuration?: number }
-  > = {};
+  const fieldLibraryMap: Record<string, FieldLibraryMapEntry> = {};
   const initialSuggestions: Record<
     string,
     { id: string; url: string; filename: string } | null
@@ -134,18 +197,13 @@ export async function buildLibraryPrefillContext({
   // Build fieldLibraryMap — always, even when regenerating
   for (const block of json.blocks) {
     if (block.type === "video" && block.binding && block.libraryId) {
-      const rule = block.selectionRule;
-      const tagFilterParam =
-        typeof rule === "object" && rule !== null && "tagFilterParam" in rule
-          ? (rule as { tagFilterParam?: string }).tagFilterParam
-          : undefined;
-      fieldLibraryMap[block.binding] = {
+      setFieldLibraryMapEntry(fieldLibraryMap, block.binding, {
         libraryId: block.libraryId,
         blockId: block.id,
         type: "video" as const,
-        tagFilterParam,
+        ...extractTagRuleMeta(block.selectionRule),
         minDuration: (block as VideoBlock).minDuration,
-      };
+      });
     }
   }
 
@@ -156,11 +214,6 @@ export async function buildLibraryPrefillContext({
   // `binding` as the form field key.
   for (const slot of json.videoSequence ?? []) {
     if (!slot.libraryId) continue;
-    const rule = slot.selectionRule;
-    const tagFilterParam =
-      typeof rule === "object" && rule !== null && "tagFilterParam" in rule
-        ? (rule as { tagFilterParam?: string }).tagFilterParam
-        : undefined;
     // Resolve minDuration from the linked VideoBlock if available
     const linkedVideoBlock = slot.videoBlockId
       ? (json.blocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined)
@@ -168,18 +221,18 @@ export async function buildLibraryPrefillContext({
         ? (json.blocks.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined)
         : undefined;
     const slotMinDuration: number | undefined = linkedVideoBlock?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
-    const slotLibMeta = {
+    const slotLibMeta: FieldLibraryMapEntry = {
       libraryId: slot.libraryId,
       blockId: slot.id,
       type: "video" as const,
-      tagFilterParam,
+      ...extractTagRuleMeta(slot.selectionRule),
       minDuration: slotMinDuration,
     };
 
     // Priority 1: explicit binding (exact match)
     // Priority 2: label lowercased (handles labels like "OUTRO" when field key is "outro")
     const primaryKey = slot.binding ?? slot.label?.toLowerCase();
-    if (primaryKey) fieldLibraryMap[primaryKey] = slotLibMeta;
+    if (primaryKey) setFieldLibraryMapEntry(fieldLibraryMap, primaryKey, slotLibMeta);
 
     // Priority 3: videoBlockId → VideoBlock.binding
     // Handles cases where the slot label doesn't match the schema field key at
@@ -199,18 +252,17 @@ export async function buildLibraryPrefillContext({
     (b): b is MusicBlock => b.type === "music" && !!b.libraryId,
   );
   if (musicBlock?.binding && musicBlock.libraryId) {
-    const rule = musicBlock.audioSelectionRule;
-    const tagFilterParam =
-      typeof rule === "object" && rule !== null && "tagFilterParam" in rule
-        ? (rule as { tagFilterParam?: string }).tagFilterParam
-        : undefined;
-    fieldLibraryMap[musicBlock.binding] = {
+    // Fix mineur (post #3) : route via setFieldLibraryMapEntry comme les
+    // blocks vidéo / slots videoSequence, pour une couverture homogène du
+    // warn de collision de clé (avant ce fix, une collision sur la clé du
+    // champ musique n'était jamais loguée).
+    setFieldLibraryMapEntry(fieldLibraryMap, musicBlock.binding, {
       libraryId: musicBlock.libraryId,
       blockId: musicBlock.id,
       type: "audio" as const,
-      tagFilterParam,
+      ...extractTagRuleMeta(musicBlock.audioSelectionRule),
       minDuration: musicBlock.minDuration,
-    };
+    });
   }
 
   // Fetch Instagram accounts if needed (for theme_sequence blocks).

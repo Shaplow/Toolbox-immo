@@ -6,6 +6,7 @@ import { hasTool, TOOLS } from "@/lib/permissions";
 import { startRenderGeneration } from "@/lib/renderer/generateRender";
 import { advanceMediaUsageOnSubmit, advanceAudioUsageOnSubmit, advanceDataUsageOnSubmit, type MediaUsageClaimState, type DataUsageClaimState } from "@/lib/contentLibraryResolver";
 import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
+import { validateManualAssetSelection } from "@/lib/generate/validateManualAssetSelection";
 
 /**
  * Fix bug audit 2026-05-30 (C3) — Revert manuel des advances de cursors / audio
@@ -316,12 +317,35 @@ export async function POST(req: NextRequest) {
       // M1 (claim au prefill qui ne se libère jamais si l'user abandonne).
     }
 
-    // ── Phase 4: minDuration validation ─────────────────────────────────────────
-    // For each VideoBlock (or MusicBlock) with a minDuration defined in the template,
-    // verify that the manually chosen asset (from sanitizedUsedAssets.videoAssets or audioAssetId)
-    // meets the duration requirement. AUTO-selected assets are already filtered upstream
-    // by selectAndClaimMediaAsset's minDuration param; this check guards against
-    // a tampered client payload bypassing the picker's disabled state.
+    // Validate accountId if provided — calculé AVANT la validation des assets
+    // choisis manuellement (A.9 ci-dessous) : elle en a besoin pour vérifier
+    // l'accès (MediaAssetAccess) de chaque asset pour ce compte.
+    let validatedAccountId: string | undefined;
+    if (typeof accountId === "string" && accountId) {
+      const account = await prisma.instagramAccount.findUnique({
+        where: { id: accountId },
+        select: { id: true },
+      });
+      if (account) validatedAccountId = account.id;
+    }
+
+    // ── A.9 (P5 hardening) + Phase 4 minDuration validation ─────────────────
+    // Pour chaque asset choisi MANUELLEMENT (sanitizedUsedAssets.videoAssets /
+    // audioAssetId), re-valide côté serveur : appartenance à la bibliothèque
+    // du bloc/slot, `disabled === false`, accès autorisé pour le compte
+    // (mirror de `buildAccessFilter`, voir `validateManualAssetSelection.ts`)
+    // — avant ce fix, seule l'EXISTENCE de l'ID en base était vérifiée
+    // (`prisma.mediaAsset.findMany({ id: { in: ids } })` plus haut) : un
+    // payload trafiqué (ou un picker resté ouvert sur un contexte obsolète)
+    // pouvait faire passer un asset désactivé, d'une autre bibliothèque, ou
+    // restreint à un autre compte. Les assets AUTO-sélectionnés sont déjà
+    // filtrés en amont par `selectAndClaimMediaAsset` — ce garde ne protège
+    // que le chemin manuel (picker "Changer").
+    //
+    // Réutilise le même fetch groupé d'assets pour la validation de durée
+    // minimale déjà en place (Phase 4) : AUTO-sélectionnés déjà filtrés par
+    // `selectAndClaimMediaAsset`'s minDuration, ce check garde contre un
+    // payload trafiqué qui contournerait l'état désactivé du picker.
     if (sanitizedUsedAssets.videoAssets || sanitizedUsedAssets.audioAssetId) {
       const templateRow = await prisma.template.findUnique({
         where: { id: templateId },
@@ -331,10 +355,88 @@ export async function POST(req: NextRequest) {
         try {
           const tplJson = JSON.parse(templateRow.jsonData) as {
             blocks?: Array<{ id: string; type: string; minDuration?: number; name?: string; libraryId?: string }>;
+            videoSequence?: Array<{ id: string; libraryId?: string; label?: string; binding?: string }>;
           };
           const blocks = tplJson.blocks ?? [];
+          const videoSequenceSlots = tplJson.videoSequence ?? [];
 
-          // Video blocks
+          // Bibliothèque attendue par clé de bloc/slot — mirror serveur de
+          // `fieldLibraryMap` (buildLibraryPrefillContext.ts), reconstruit ici
+          // pour ne pas faire confiance au payload client. Une clé de
+          // `videoAssets` sans entrée ici (bloc/slot introuvable dans le
+          // template actuel) n'est PAS bloquée sur l'appartenance — seuls
+          // disabled/accès restent vérifiés (permissif : pas de faux-positif
+          // sur un mapping qu'on ne sait plus reconstruire côté serveur).
+          const expectedLibraryIdByBlockKey: Record<string, string> = {};
+          const blockNameByKey: Record<string, string> = {};
+          for (const block of blocks) {
+            if (block.type === "video" && block.libraryId) {
+              expectedLibraryIdByBlockKey[block.id] = block.libraryId;
+              blockNameByKey[block.id] = block.name ?? block.id;
+            }
+          }
+          for (const slot of videoSequenceSlots) {
+            if (slot.libraryId) {
+              expectedLibraryIdByBlockKey[slot.id] = slot.libraryId;
+              blockNameByKey[slot.id] = slot.label ?? slot.binding ?? slot.id;
+            }
+          }
+          const musicBlock = blocks.find((b) => b.type === "music");
+
+          const chosenAssetIds = Array.from(new Set([
+            ...(sanitizedUsedAssets.videoAssets ? Object.values(sanitizedUsedAssets.videoAssets) : []),
+            ...(sanitizedUsedAssets.audioAssetId ? [sanitizedUsedAssets.audioAssetId] : []),
+          ]));
+          const chosenAssetRows = chosenAssetIds.length > 0
+            ? await prisma.mediaAsset.findMany({
+                where: { id: { in: chosenAssetIds } },
+                select: {
+                  id: true,
+                  libraryId: true,
+                  disabled: true,
+                  duration: true,
+                  filename: true,
+                  accesses: { select: { accountId: true } },
+                },
+              })
+            : [];
+          const chosenAssetRowById = new Map(chosenAssetRows.map((a) => [a.id, a]));
+
+          // ── A.9 : appartenance lib / disabled / accès ─────────────────────
+          for (const [blockKey, chosenAssetId] of Object.entries(sanitizedUsedAssets.videoAssets ?? {})) {
+            const row = chosenAssetRowById.get(chosenAssetId);
+            const validationError = validateManualAssetSelection(
+              row
+                ? { id: row.id, libraryId: row.libraryId, disabled: row.disabled, accessAccountIds: row.accesses.map((a) => a.accountId) }
+                : undefined,
+              expectedLibraryIdByBlockKey[blockKey],
+              validatedAccountId,
+            );
+            if (validationError) {
+              return NextResponse.json(
+                { error: `Vidéo "${blockNameByKey[blockKey] ?? blockKey}" : ${validationError}` },
+                { status: 400 },
+              );
+            }
+          }
+          if (sanitizedUsedAssets.audioAssetId) {
+            const row = chosenAssetRowById.get(sanitizedUsedAssets.audioAssetId);
+            const validationError = validateManualAssetSelection(
+              row
+                ? { id: row.id, libraryId: row.libraryId, disabled: row.disabled, accessAccountIds: row.accesses.map((a) => a.accountId) }
+                : undefined,
+              musicBlock?.libraryId,
+              validatedAccountId,
+            );
+            if (validationError) {
+              return NextResponse.json(
+                { error: `Musique "${musicBlock?.name ?? "piste audio"}" : ${validationError}` },
+                { status: 400 },
+              );
+            }
+          }
+
+          // ── Phase 4 : minDuration (durée minimale requise par le bloc) ───
           for (const block of blocks) {
             if (
               block.type === "video" &&
@@ -344,10 +446,7 @@ export async function POST(req: NextRequest) {
             ) {
               const chosenAssetId = sanitizedUsedAssets.videoAssets?.[block.id];
               if (chosenAssetId) {
-                const assetRow = await prisma.mediaAsset.findUnique({
-                  where: { id: chosenAssetId },
-                  select: { duration: true, filename: true },
-                });
+                const assetRow = chosenAssetRowById.get(chosenAssetId);
                 if (assetRow?.duration == null) {
                   // Bug-hunter B10 : un asset sans duration probée bypasse le check
                   // silencieusement. Si le template impose une minDuration explicite,
@@ -373,24 +472,21 @@ export async function POST(req: NextRequest) {
           }
 
           // Music block
-          const musicBlock = blocks.find((b) => b.type === "music" && b.minDuration != null && b.minDuration > 0);
-          if (musicBlock && sanitizedUsedAssets.audioAssetId) {
-            const assetRow = await prisma.mediaAsset.findUnique({
-              where: { id: sanitizedUsedAssets.audioAssetId },
-              select: { duration: true, filename: true },
-            });
+          const musicBlockWithMinDuration = blocks.find((b) => b.type === "music" && b.minDuration != null && b.minDuration > 0);
+          if (musicBlockWithMinDuration && sanitizedUsedAssets.audioAssetId) {
+            const assetRow = chosenAssetRowById.get(sanitizedUsedAssets.audioAssetId);
             if (assetRow?.duration == null) {
               return NextResponse.json(
                 {
-                  error: `Musique "${musicBlock.name ?? "piste audio"}" : durée de "${assetRow?.filename ?? sanitizedUsedAssets.audioAssetId}" inconnue — re-uploadez le fichier ou lancez un backfill duration (admin).`,
+                  error: `Musique "${musicBlockWithMinDuration.name ?? "piste audio"}" : durée de "${assetRow?.filename ?? sanitizedUsedAssets.audioAssetId}" inconnue — re-uploadez le fichier ou lancez un backfill duration (admin).`,
                 },
                 { status: 400 },
               );
             }
-            if (assetRow.duration < musicBlock.minDuration!) {
+            if (assetRow.duration < musicBlockWithMinDuration.minDuration!) {
               return NextResponse.json(
                 {
-                  error: `Musique "${musicBlock.name ?? "piste audio"}" : durée insuffisante (${assetRow.duration}s disponibles, ${musicBlock.minDuration}s requis)`,
+                  error: `Musique "${musicBlockWithMinDuration.name ?? "piste audio"}" : durée insuffisante (${assetRow.duration}s disponibles, ${musicBlockWithMinDuration.minDuration}s requis)`,
                 },
                 { status: 400 },
               );
@@ -403,14 +499,51 @@ export async function POST(req: NextRequest) {
     }
     // ────────────────────────────────────────────────────────────────────────────
 
-    // Validate accountId if provided
-    let validatedAccountId: string | undefined;
-    if (typeof accountId === "string" && accountId) {
-      const account = await prisma.instagramAccount.findUnique({
-        where: { id: accountId },
-        select: { id: true },
+    // Fix #6 (P8 rotation) : dérivation serveur de setSequencedLibraryIds /
+    // usedSetTagByLibrary, calculée ICI — AVANT la garde rotation juste en
+    // dessous — pour qu'elle s'appuie sur les bibliothèques réellement
+    // consommées par les assets choisis plutôt que sur le seul payload
+    // client (vide en régénération : buildLibraryPrefillContext saute
+    // resolveLibraryPrefill quand listingId est présent, cf. skill
+    // asset-rotation). Sans ce réordonnancement, une régénération sans
+    // accountId sur une lib per_account passait la garde rotation
+    // silencieusement (setSequencedLibraryIds encore vide côté client à ce
+    // stade). `chosenAssetIdsForClaim` est réutilisé plus bas par
+    // advanceMediaUsageOnSubmit pour éviter une seconde requête.
+    let chosenAssetIdsForClaim: string[] = [];
+    if (sanitizedUsedAssets.videoAssets && Object.keys(sanitizedUsedAssets.videoAssets).length > 0) {
+      chosenAssetIdsForClaim = Array.from(new Set(Object.values(sanitizedUsedAssets.videoAssets)));
+
+      // Superset volontairement large de la sémantique stricte "a utilisé
+      // theme_sequence" (inclut aussi les libs en stratégie régulière) — sans
+      // effet néfaste : recordLibraryUsage n'écrit alors qu'une ligne
+      // MediaAssetUsage supplémentaire sous la sentinelle shared, jamais lue
+      // par les stratégies régulières (elles trient sur MediaAsset directement).
+      const chosenAssetLibs = await prisma.mediaAsset.findMany({
+        where: { id: { in: chosenAssetIdsForClaim } },
+        select: { id: true, libraryId: true, setTag: true, library: { select: { rotationMode: true } } },
       });
-      if (account) validatedAccountId = account.id;
+      const derivedSequencedLibraryIds = Array.from(
+        new Set(
+          chosenAssetLibs
+            .filter((a) => a.library.rotationMode !== "none")
+            .map((a) => a.libraryId),
+        ),
+      );
+      if (derivedSequencedLibraryIds.length > 0) {
+        sanitizedUsedAssets.setSequencedLibraryIds = Array.from(
+          new Set([...(sanitizedUsedAssets.setSequencedLibraryIds ?? []), ...derivedSequencedLibraryIds]),
+        );
+        const derivedSetTag: Record<string, string> = { ...(sanitizedUsedAssets.usedSetTagByLibrary ?? {}) };
+        const sequencedSet = new Set(derivedSequencedLibraryIds);
+        for (const asset of chosenAssetLibs) {
+          if (!sequencedSet.has(asset.libraryId)) continue;
+          if (asset.setTag) derivedSetTag[asset.libraryId] = asset.setTag;
+        }
+        if (Object.keys(derivedSetTag).length > 0) {
+          sanitizedUsedAssets.usedSetTagByLibrary = derivedSetTag;
+        }
+      }
     }
 
     // Garde rotation : une génération qui consomme une bibliothèque en rotation
@@ -422,6 +555,10 @@ export async function POST(req: NextRequest) {
     // Volontairement chirurgical : `PublicationSlot.accountId` est légitimement
     // nullable (missions sans compte) et les bibliothèques `shared` tournent
     // très bien sans compte, via les sentinelles de curseur.
+    //
+    // La garde s'appuie désormais sur setSequencedLibraryIds déjà re-dérivé
+    // ci-dessus (fix #6) : elle voit donc aussi les libs per_account détectées
+    // par re-dérivation serveur, pas seulement celles envoyées par le client.
     if (!validatedAccountId && sanitizedUsedAssets?.setSequencedLibraryIds?.length) {
       const perAccountLibs = await prisma.mediaLibrary.count({
         where: {
@@ -489,23 +626,16 @@ export async function POST(req: NextRequest) {
     // dossier servi dans la pile du tirage ; abandonner la page generate ne
     // consomme donc toujours rien.
     // Bug-hunter B3 : on ne trust jamais les hints client — le setTag de trace
-    // est re-dérivé depuis les assets effectivement choisis (DB).
-    if (sanitizedUsedAssets.videoAssets && Object.keys(sanitizedUsedAssets.videoAssets).length > 0 && validatedAccountId) {
-      const chosenAssetIds = Array.from(new Set(Object.values(sanitizedUsedAssets.videoAssets)));
-      if (sanitizedUsedAssets.setSequencedLibraryIds?.length) {
-        const derivedSetTag: Record<string, string> = {};
-        const sequencedSet = new Set(sanitizedUsedAssets.setSequencedLibraryIds);
-        const assets = await prisma.mediaAsset.findMany({
-          where: { id: { in: chosenAssetIds }, libraryId: { in: sanitizedUsedAssets.setSequencedLibraryIds } },
-          select: { libraryId: true, setTag: true },
-        });
-        for (const asset of assets) {
-          if (!sequencedSet.has(asset.libraryId)) continue;
-          if (asset.setTag) derivedSetTag[asset.libraryId] = asset.setTag;
-        }
-        sanitizedUsedAssets.usedSetTagByLibrary = derivedSetTag;
-      }
-      const claim = await advanceMediaUsageOnSubmit(chosenAssetIds, validatedAccountId);
+    // est re-dérivé depuis les assets effectivement choisis (DB, cf. bloc de
+    // dérivation plus haut, avant la garde rotation).
+    //
+    // Fix #4 (P8 rotation) : `validatedAccountId` retiré de la garde — une
+    // génération sans compte sur une lib `shared` doit quand même claimer
+    // (sous la sentinelle __shared__, géré par advanceMediaUsageOnSubmit) ;
+    // seule une lib `per_account` sans compte est réellement sautée (warn côté
+    // advanceMediaUsageOnSubmit, best-effort par asset).
+    if (chosenAssetIdsForClaim.length > 0) {
+      const claim = await advanceMediaUsageOnSubmit(chosenAssetIdsForClaim, validatedAccountId);
       if (claim.prevMediaUsageStates.length > 0) {
         sanitizedUsedAssets.prevMediaUsageStates = claim.prevMediaUsageStates;
       }
