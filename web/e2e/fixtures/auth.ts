@@ -38,6 +38,20 @@ export const TEST_USERS = {
     password: "testpass",
     role: "EXTERNAL_GENERATOR" as const,
   },
+  /** Externe rattaché au client test-client-1 (bons de commande). */
+  agence: {
+    email: "agence@test.local",
+    username: "test_agence",
+    password: "testpass",
+    role: "EXTERNAL_GENERATOR" as const,
+  },
+  /** Externe rattaché à un AUTRE client (test-client-2) — tests d'isolation. */
+  agence2: {
+    email: "agence2@test.local",
+    username: "test_agence2",
+    password: "testpass",
+    role: "EXTERNAL_GENERATOR" as const,
+  },
 } as const;
 
 export type TestUserKey = keyof typeof TEST_USERS;

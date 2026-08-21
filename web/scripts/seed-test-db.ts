@@ -143,9 +143,10 @@ async function main() {
   // passe par `db push` (sans migrations) → on les seed ici.
   await prisma.entityType.upsert({
     where: { id: "etype_bien" },
-    update: {},
+    update: { needsAdminValidation: true },
     create: {
       id: "etype_bien",
+      needsAdminValidation: true,
       name: "Bien",
       namePlural: "Biens",
       icon: "home",
@@ -156,9 +157,10 @@ async function main() {
   });
   await prisma.entityType.upsert({
     where: { id: "etype_tournage" },
-    update: {},
+    update: { needsAdminValidation: true },
     create: {
       id: "etype_tournage",
+      needsAdminValidation: true,
       name: "Tournage",
       namePlural: "Tournages",
       icon: "clapperboard",
@@ -430,6 +432,63 @@ async function main() {
 
   console.log(`  ✓ CaptionPreset : test-caption-preset-1`);
 
+  // ── Bons de commande : agences externes + modèle ─────────────────────────
+  const agence = await prisma.user.upsert({
+    where: { email: "agence@test.local" },
+    update: { role: "EXTERNAL_GENERATOR", clientId: client.id },
+    create: {
+      email: "agence@test.local",
+      username: "test_agence",
+      name: "Agence Test",
+      passwordHash: TEST_PASSWORD_HASH,
+      role: "EXTERNAL_GENERATOR",
+      permissions: "[]",
+      clientId: client.id,
+    },
+  });
+
+  const client2 = await prisma.client.upsert({
+    where: { id: "test-client-2" },
+    update: {},
+    create: { id: "test-client-2", name: "Autre Agence" },
+  });
+  const agence2 = await prisma.user.upsert({
+    where: { email: "agence2@test.local" },
+    update: { role: "EXTERNAL_GENERATOR", clientId: client2.id },
+    create: {
+      email: "agence2@test.local",
+      username: "test_agence2",
+      name: "Autre Agence User",
+      passwordHash: TEST_PASSWORD_HASH,
+      role: "EXTERNAL_GENERATOR",
+      permissions: "[]",
+      clientId: client2.id,
+    },
+  });
+
+  await prisma.orderTemplate.upsert({
+    where: { id: "test-order-template-1" },
+    update: {},
+    create: {
+      id: "test-order-template-1",
+      name: "Bien + tournage (2 reels)",
+      description: "Modèle e2e — un bien, un tournage, 2 reels manual_rushes.",
+      items: {
+        create: [
+          { entityTypeId: "etype_bien", position: 0 },
+          { entityTypeId: "etype_tournage", position: 1 },
+        ],
+      },
+      recipes: {
+        create: [{ patternTemplateId: patternManualTemplate.id, count: 2 }],
+      },
+      accesses: { create: [{ clientId: client.id }] },
+    },
+  });
+  console.log(
+    `  ✓ Bons de commande : agence=${agence.id}, agence2=${agence2.id}, template=test-order-template-1`,
+  );
+
   console.log("\n✅ Seed test DB terminé.");
   console.log("\n   Credentials (tous : password=testpass) :");
   console.log("   - admin@test.local      (ADMIN)");
@@ -437,6 +496,8 @@ async function main() {
   console.log("   - cm@test.local         (CM, assigné slot test-slot-1)");
   console.log("   - videaste@test.local   (VIDEASTE, assigné slot test-slot-1)");
   console.log("   - user@test.local       (EXTERNAL_GENERATOR, permission captions)");
+  console.log("   - agence@test.local     (EXTERNAL_GENERATOR, client test-client-1 — bons de commande)");
+  console.log("   - agence2@test.local    (EXTERNAL_GENERATOR, client test-client-2)");
 }
 
 main()
