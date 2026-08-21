@@ -28,6 +28,7 @@ from engine.template_composite import (
     build_template_ffmpeg_cmd_video_only,
     normalize_video_block,
 )
+from engine.color import bt709_output_flags, hdr_to_sdr_prefilter, is_hdr
 from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp, default_premium_config
 from engine.probe import probe_duration, probe_video
@@ -291,13 +292,27 @@ async def api_generate_poster(request: Request):
     out_dir.mkdir(parents=True, exist_ok=True)
     frame_path = out_dir / f"poster_{int(time.time() * 1000)}.jpg"
 
+    # Garde-fou HDR : un poster JPEG extrait d'un rush HLG/PQ sans tonemap
+    # ressort délavé (conversion 10→8 bit naïve). Probe best-effort — un échec
+    # (URL non-ffprobable, timeout) ne doit jamais bloquer l'extraction.
+    _hdr_prefilter: str | None = None
+    try:
+        source_info = probe_video(source)
+        if is_hdr(source_info):
+            _hdr_prefilter = hdr_to_sdr_prefilter()
+            logger.info("[poster] HDR source detected — tonemapping to SDR/BT.709: %s", url)
+    except Exception as exc:
+        logger.warning("[poster] HDR probe failed (continuing as SDR) for %s: %s", url, exc)
+
+    _vf = f"{_hdr_prefilter},scale={width}:-2" if _hdr_prefilter else f"scale={width}:-2"
+
     async def _extract(ss: float) -> bool:
         cmd = [
             "ffmpeg", "-y",
             "-ss", str(max(0.0, ss)),
             "-i", source,
             "-frames:v", "1",
-            "-vf", f"scale={width}:-2",
+            "-vf", _vf,
             "-q:v", "6", "-an",
             str(frame_path),
         ]
@@ -497,6 +512,9 @@ async def render_template_local(
         preview=False,
         for_composite=True,
     )
+    _hdr_prefilter = hdr_to_sdr_prefilter() if is_hdr(video_info) else None
+    if _hdr_prefilter:
+        logger.info("[render_template] HDR source detected stamp=%s — tonemapping to SDR/BT.709", stamp)
 
     # ── Music audio overlay (optional) ────────────────────────────────────────
     music_path: Path | None = None
@@ -544,6 +562,7 @@ async def render_template_local(
             audio_codec_args=_audio_args,
             max_duration=max_duration,
             clip_duration=float(video_info.duration or 0.0) or None,
+            hdr_prefilter=_hdr_prefilter,
             **music_opts,
         )
     else:
@@ -557,6 +576,7 @@ async def render_template_local(
             audio_codec=_audio_codec,
             audio_codec_args=_audio_args,
             max_duration=max_duration,
+            hdr_prefilter=_hdr_prefilter,
             **music_opts,
         )
     try:
@@ -692,6 +712,9 @@ async def render_sequence_local(request: Request):
             video_info = probe_video(video_path)
             if video_info.has_audio:
                 any_audio = True
+            _slot_hdr_prefilter = hdr_to_sdr_prefilter() if is_hdr(video_info) else None
+            if _slot_hdr_prefilter:
+                logger.info("[render_sequence] slot=%s HDR source detected — tonemapping to SDR/BT.709", slot_id)
 
             # Collect per-slot music track params for time-varying volume.
             _clip_effective_dur = float(video_info.duration or 0.0)
@@ -741,6 +764,7 @@ async def render_sequence_local(request: Request):
                     clip_duration=float(video_info.duration or 0.0) or None,
                     source_has_audio=video_info.has_audio,
                     mute_source=slot_mute_source, source_volume=slot_source_volume,
+                    hdr_prefilter=_slot_hdr_prefilter,
                 )
                 proc = await asyncio.to_thread(_sp.run, seg_cmd, capture_output=True, text=True, timeout=10 * 60)
                 if proc.returncode != 0:
@@ -755,6 +779,7 @@ async def render_sequence_local(request: Request):
                         audio_codec=_audio_codec, audio_codec_args=_audio_args,
                         max_duration=max_dur, source_has_audio=video_info.has_audio,
                         mute_source=slot_mute_source, source_volume=slot_source_volume,
+                        hdr_prefilter=_slot_hdr_prefilter,
                     )
                 else:
                     cmd = build_template_ffmpeg_cmd_video_only(
@@ -763,6 +788,7 @@ async def render_sequence_local(request: Request):
                         audio_codec=_audio_codec, audio_codec_args=_audio_args,
                         max_duration=max_dur, source_has_audio=video_info.has_audio,
                         mute_source=slot_mute_source, source_volume=slot_source_volume,
+                        hdr_prefilter=_slot_hdr_prefilter,
                     )
 
                 logger.info("[render_sequence] slot=%s FFmpeg start", slot_id)
@@ -809,9 +835,17 @@ async def render_sequence_local(request: Request):
             ]
             # Cap final si canvas.maxDuration défini — re-encode requis
             # (le `-c copy` ne respecte pas `-t` strictement avec concat demuxer).
+            # Re-encode branch only: each clip going in is already SDR/BT.709-tagged
+            # (per-slot encode above), so this is a pure re-tag, no tonemap needed.
             if _global_max_duration is not None and _global_max_duration > 0:
-                concat_cmd += ["-t", str(_global_max_duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac"]
+                concat_cmd += [
+                    "-t", str(_global_max_duration),
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                    *bt709_output_flags(), "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                ]
             else:
+                # -c copy — never tag: pixels are untouched passthrough.
                 concat_cmd += ["-c", "copy"]
             concat_cmd.append(str(combined_path))
             try:
@@ -1173,6 +1207,17 @@ async def extract_covers(
             else:
                 logger.info("[covers] Using cached video %s", video_path.name)
 
+    # ── Garde-fou HDR : un probe par vidéo source, réutilisé pour tous les
+    # timestamps extraits ci-dessous (même clip, mêmes tags de couleur). ────
+    _hdr_prefilter: str | None = None
+    try:
+        source_info = probe_video(video_path)
+        if is_hdr(source_info):
+            _hdr_prefilter = hdr_to_sdr_prefilter()
+            logger.info("[covers] HDR source detected — tonemapping to SDR/BT.709: %s", video_path.name)
+    except Exception as exc:
+        logger.warning("[covers] HDR probe failed (continuing as SDR) for %s: %s", video_path.name, exc)
+
     # ── Extract frames with FFmpeg ─────────────────────────────────────────
     covers_dir = OUTPUTS_DIR / "covers"
     covers_dir.mkdir(parents=True, exist_ok=True)
@@ -1194,8 +1239,10 @@ async def extract_covers(
                 "-i", str(video_path),
                 "-vframes", "1",
                 "-q:v", "2",
-                str(frame_path),
             ]
+            if _hdr_prefilter:
+                cmd += ["-vf", _hdr_prefilter]
+            cmd.append(str(frame_path))
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -1338,6 +1385,18 @@ async def preview(
     subs_text = (await subtitles.read()).decode("utf-8", errors="ignore")
     subs_path.write_text(subs_text, encoding="utf-8")
 
+    # Garde-fou HDR (parité api.py ↔ runpod_worker.py::_handle_captions) :
+    # probe + tonemap conditionnel, forwardé à _render_captions_preview ci-
+    # dessous. Probe best-effort — un échec (fichier corrompu, ffprobe absent)
+    # ne doit jamais bloquer le rendu du preview, il retombe juste en SDR.
+    _hdr_prefilter: str | None = None
+    try:
+        if is_hdr(probe_video(video_path)):
+            _hdr_prefilter = hdr_to_sdr_prefilter()
+            logger.info("[api/preview] HDR source detected (%s) — tonemapping to SDR/BT.709", video.filename)
+    except Exception as exc:
+        logger.warning("[api/preview] HDR probe failed (continuing as SDR) for %s: %s", video.filename, exc)
+
     words = _parse_subtitles(subtitles, subs_text)
     if not words:
         raise HTTPException(status_code=400, detail="No subtitle words parsed")
@@ -1368,6 +1427,7 @@ async def preview(
             at_seconds=preview_time,
             auto_safe_area=auto_safe,
             fonts_dir=runtime_fonts_dir,
+            hdr_prefilter=_hdr_prefilter,
         )
     except CairoRendererNotReadyError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
@@ -1401,6 +1461,21 @@ async def render(
     video_path.write_bytes(await video.read())
     subs_text = (await subtitles.read()).decode("utf-8", errors="ignore")
     subs_path.write_text(subs_text, encoding="utf-8")
+
+    # Garde-fou HDR (parité api.py ↔ runpod_worker.py::_handle_captions) :
+    # probe + tonemap conditionnel, forwardé à _render_captions_video ci-
+    # dessous. Probe best-effort — un échec (fichier corrompu, ffprobe absent)
+    # ne doit jamais bloquer le rendu, il retombe juste en SDR.
+    _hdr_prefilter: str | None = None
+    try:
+        if is_hdr(probe_video(video_path)):
+            _hdr_prefilter = hdr_to_sdr_prefilter()
+            logger.info(
+                "[api/render] HDR source detected (job=%s) — tonemapping to SDR/BT.709",
+                job_id or video.filename,
+            )
+    except Exception as exc:
+        logger.warning("[api/render] HDR probe failed (continuing as SDR) for %s: %s", video.filename, exc)
 
     words = _parse_subtitles(subtitles, subs_text)
     if not words:
@@ -1448,6 +1523,7 @@ async def render(
             6,
             export_profile,
             progress_path,
+            hdr_prefilter=_hdr_prefilter,
         )
     except CairoRendererNotReadyError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc

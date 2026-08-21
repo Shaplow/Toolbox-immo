@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from engine.color import bt709_output_flags
 from engine.probe import VideoInfo
 
 
@@ -57,6 +58,8 @@ def build_derush_encoding_settings(
             "-vf", f"scale={source_width}:{source_height}",
             "-r", str(source_fps),
             "-movflags", "+faststart",
+            *bt709_output_flags(),
+            "-pix_fmt", "yuv420p",
         ]
     else:
         video_codec = "libx265"
@@ -68,6 +71,8 @@ def build_derush_encoding_settings(
             "-vf", f"scale={source_width}:{source_height}",
             "-r", str(source_fps),
             "-movflags", "+faststart",
+            *bt709_output_flags(),
+            "-pix_fmt", "yuv420p",
         ]
 
     audio_codec = "aac"
@@ -173,6 +178,8 @@ def build_caption_encoding_settings(
             "-b:v", str(effective_bitrate),
             "-maxrate", str(maxrate),
             "-bufsize", str(bufsize),
+            *bt709_output_flags(),
+            "-pix_fmt", "yuv420p",
         ]
         if for_composite:
             # Disable B-frames and lookahead to eliminate NVENC encoder delay.
@@ -189,6 +196,8 @@ def build_caption_encoding_settings(
             "-b:v", str(effective_bitrate),
             "-maxrate", str(maxrate),
             "-bufsize", str(bufsize),
+            *bt709_output_flags(),
+            "-pix_fmt", "yuv420p",
         ]
 
     audio_codec = "aac"

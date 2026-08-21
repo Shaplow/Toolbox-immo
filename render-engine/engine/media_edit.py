@@ -34,6 +34,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from engine.color import bt709_output_flags, hdr_to_sdr_prefilter, is_hdr
 from engine.probe import probe_video
 
 
@@ -66,6 +67,7 @@ def build_media_edit_cmd(
     input_path: Path,
     output_path: Path,
     params: MediaEditParams,
+    hdr_prefilter: str | None = None,
 ) -> list[str]:
     """
     Build the FFmpeg command list for the requested edits.
@@ -75,6 +77,13 @@ def build_media_edit_cmd(
       stream-copy (-c copy) for maximum speed and quality preservation.
     - Otherwise, re-encode video with libx264 (CRF 18, fast preset) and
       audio with AAC 48 kHz.
+
+    ``hdr_prefilter`` (from ``engine.color.hdr_to_sdr_prefilter()``, only when
+    the caller has confirmed ``is_hdr(probe_video(input_path))``) is only
+    ever applied on the re-encode branch — the ``-c copy`` trim-only path
+    never gets a ``-vf`` (that would defeat stream copy) and never gets
+    bt709 output tags (the pixels are never touched, so an HDR source that
+    is only trimmed stays truthfully tagged as HDR).
     """
     cmd: list[str] = ["ffmpeg", "-y"]
 
@@ -119,10 +128,14 @@ def build_media_edit_cmd(
             "-c:v", "libx264",
             "-crf", "18",
             "-preset", "fast",
+            *bt709_output_flags(),
+            "-pix_fmt", "yuv420p",
             "-c:a", "aac",
             "-ar", "48000",
             "-b:a", "192k",
         ]
+        if hdr_prefilter:
+            cmd += ["-vf", hdr_prefilter]
         if audio_filters:
             cmd += ["-af", ",".join(audio_filters)]
 
@@ -148,7 +161,17 @@ def process_media_edit(
     else:
         p = params
 
-    cmd = build_media_edit_cmd(input_path, output_path, p)
+    hdr_prefilter: str | None = None
+    try:
+        source_info = probe_video(input_path)
+        if is_hdr(source_info):
+            hdr_prefilter = hdr_to_sdr_prefilter()
+            print(f"[media_edit] HDR source detected ({input_path.name}) — tonemapping to SDR/BT.709", flush=True)
+    except Exception as exc:
+        # Never let a colorimetry probe failure block the edit — treat as SDR.
+        print(f"[media_edit] HDR probe failed (continuing as SDR): {exc}", flush=True)
+
+    cmd = build_media_edit_cmd(input_path, output_path, p, hdr_prefilter=hdr_prefilter)
     print(f"[media_edit] FFmpeg cmd: {' '.join(cmd)}", flush=True)
 
     result = subprocess.run(

@@ -205,8 +205,18 @@ def normalize_video_block(block: dict, canvas_w: int, canvas_h: int) -> dict[str
     }
 
 
-def _build_video_scale_filter(block: dict[str, float | int | str]) -> str:
-    """Returns the FFmpeg filter chain that scales/crops the video to the block."""
+def _build_video_scale_filter(
+    block: dict[str, float | int | str],
+    hdr_prefilter: str | None = None,
+) -> str:
+    """Returns the FFmpeg filter chain that scales/crops the video to the block.
+
+    ``hdr_prefilter`` (from ``engine.color.hdr_to_sdr_prefilter()``, only when
+    the caller has confirmed ``is_hdr(probe_video(...))`` on the source) is
+    applied after scale/crop and before ``pad`` — its trailing ``format=yuv420p``
+    replaces the plain ``format=yuv420p`` used for SDR sources, so pixels are
+    tonemapped to BT.709 before the PNG overlay (always sRGB) or padding.
+    """
     w = int(block["w"])
     h = int(block["h"])
     canvas_w = int(block["canvas_w"])
@@ -228,15 +238,20 @@ def _build_video_scale_filter(block: dict[str, float | int | str]) -> str:
             f"crop={w}:{h}:(iw-{w})*{crop_x}:(ih-{h})*{crop_y}"
         )
 
+    color_stage = hdr_prefilter if hdr_prefilter else "format=yuv420p"
+
     return (
-        f"[0:v]{scale_filter},format=yuv420p,"
+        f"[0:v]{scale_filter},{color_stage},"
         f"pad={canvas_w}:{canvas_h}:{x}:{y}:black[base]"
     )
 
 
-def build_template_filter_complex(block: dict[str, float | int | str]) -> str:
+def build_template_filter_complex(
+    block: dict[str, float | int | str],
+    hdr_prefilter: str | None = None,
+) -> str:
     """Single-overlay (legacy) filter graph — unchanged behaviour."""
-    video_part = _build_video_scale_filter(block)
+    video_part = _build_video_scale_filter(block, hdr_prefilter)
     return (
         f"{video_part};"
         f"[base][1:v]overlay=0:0:format=auto,"
@@ -247,6 +262,7 @@ def build_template_filter_complex(block: dict[str, float | int | str]) -> str:
 def build_template_filter_complex_timed(
     block: dict[str, float | int | str],
     segments: list[OverlaySegment],
+    hdr_prefilter: str | None = None,
 ) -> str:
     """
     Multi-overlay filter graph.  Each overlay input is enabled only for its time
@@ -255,7 +271,7 @@ def build_template_filter_complex_timed(
     Overlay inputs are numbered from 1 (video = input 0).
     ``segments[i].index`` is i+1 in the FFmpeg input list.
     """
-    video_part = _build_video_scale_filter(block)
+    video_part = _build_video_scale_filter(block, hdr_prefilter)
     parts: list[str] = [video_part]
 
     n = len(segments)
@@ -406,10 +422,16 @@ def build_template_ffmpeg_cmd(
     music_fade_in: float = 0.0,
     music_fade_out: float = 0.0,
     source_has_audio: bool = True,
+    hdr_prefilter: str | None = None,
 ) -> list[str]:
-    """Single-overlay command (legacy fast path)."""
+    """Single-overlay command (legacy fast path).
+
+    ``hdr_prefilter`` — see ``_build_video_scale_filter``. Pass
+    ``engine.color.hdr_to_sdr_prefilter()`` when the caller has probed the
+    source and confirmed ``is_hdr(...)``; leave ``None`` for SDR sources.
+    """
     audio_codec_args = audio_codec_args or ["-b:a", "192k"]
-    filter_complex = build_template_filter_complex(block)
+    filter_complex = build_template_filter_complex(block, hdr_prefilter)
 
     duration_args = ["-t", str(max_duration)] if max_duration is not None else []
 
@@ -485,11 +507,15 @@ def build_template_ffmpeg_cmd_timed(
     music_fade_in: float = 0.0,
     music_fade_out: float = 0.0,
     source_has_audio: bool = True,
+    hdr_prefilter: str | None = None,
 ) -> list[str]:
-    """Multi-overlay command with per-segment time windows."""
+    """Multi-overlay command with per-segment time windows.
+
+    ``hdr_prefilter`` — see ``build_template_ffmpeg_cmd``.
+    """
     audio_codec_args = audio_codec_args or ["-b:a", "192k"]
     segments = resolve_overlay_segments(segments, clip_duration, max_duration)
-    filter_complex = build_template_filter_complex_timed(block, segments)
+    filter_complex = build_template_filter_complex_timed(block, segments, hdr_prefilter)
 
     duration_args = ["-t", str(max_duration)] if max_duration is not None else []
 
@@ -555,15 +581,18 @@ def build_template_ffmpeg_cmd_video_only(
     source_has_audio: bool = True,
     mute_source: bool = False,
     source_volume: float = 1.0,
+    hdr_prefilter: str | None = None,
 ) -> list[str]:
     """
     Scale/crop the source video to the canvas without any overlay PNG.
 
     Used for sequence slots where overlay_url is null (raw clip, no graphic).
     Audio is kept from the source (passthrough) unless mute_source is True.
+
+    ``hdr_prefilter`` — see ``build_template_ffmpeg_cmd``.
     """
     audio_codec_args = audio_codec_args or ["-b:a", "192k"]
-    video_filter = _build_video_scale_filter(block)
+    video_filter = _build_video_scale_filter(block, hdr_prefilter)
     # Reuse the [base] label output by _build_video_scale_filter and add a final even-dimension scale
     filter_complex = f"{video_filter};[base]scale=trunc(iw/2)*2:trunc(ih/2)*2[out]"
 

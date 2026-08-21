@@ -15,6 +15,13 @@ class VideoInfo:
     container_bitrate: int | None = None
     fps: float | None = None
     has_audio: bool = False
+    # ── Colorimetry (garde-fou HDR — voir engine.color) ────────────────────────
+    # None = untagged source (ffprobe omits the key when the container carries
+    # no explicit colorimetry metadata) — never treated as HDR by is_hdr().
+    pix_fmt: str | None = None
+    color_transfer: str | None = None
+    color_primaries: str | None = None
+    color_space: str | None = None
 
 
 def _probe_has_audio(video_path: str) -> bool:
@@ -48,7 +55,8 @@ def probe_video(video_path: str | Path) -> VideoInfo:
         "-select_streams",
         "v:0",
         "-show_entries",
-        "stream=width,height,bit_rate,avg_frame_rate,r_frame_rate",
+        "stream=width,height,bit_rate,avg_frame_rate,r_frame_rate,"
+        "pix_fmt,color_transfer,color_primaries,color_space",
         "-show_entries",
         "format=duration,bit_rate",
         "-of",
@@ -73,6 +81,15 @@ def probe_video(video_path: str | Path) -> VideoInfo:
         except ValueError:
             fps = None
 
+    def _color_field(key: str) -> str | None:
+        # ffprobe omits unset colorimetry keys entirely; some builds emit the
+        # literal string "unknown" instead. Both mean "untagged source".
+        value = stream.get(key)
+        if not isinstance(value, str):
+            return None
+        value = value.strip().lower()
+        return value if value and value != "unknown" else None
+
     return VideoInfo(
         width=int(stream["width"]),
         height=int(stream["height"]),
@@ -81,6 +98,10 @@ def probe_video(video_path: str | Path) -> VideoInfo:
         container_bitrate=int(container_bitrate) if container_bitrate else None,
         fps=fps,
         has_audio=_probe_has_audio(video_path),
+        pix_fmt=_color_field("pix_fmt"),
+        color_transfer=_color_field("color_transfer"),
+        color_primaries=_color_field("color_primaries"),
+        color_space=_color_field("color_space"),
     )
 
 

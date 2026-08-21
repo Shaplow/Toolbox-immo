@@ -354,7 +354,14 @@ def _render_captions_preview(
     at_seconds: float,
     auto_safe_area: bool,
     fonts_dir: str | Path | None = None,
+    hdr_prefilter: str | None = None,
 ) -> Path | None:
+    """
+    ``hdr_prefilter`` (from ``engine.color.hdr_to_sdr_prefilter()``, only when
+    the caller has already confirmed ``is_hdr(probe_video(video_path))``) is
+    forwarded to ``render_preview_frame`` so the preview frame reflects the
+    same tonemapped SDR pixels as the final captions burn.
+    """
     video_info, effective_cfg, effective_fonts_dir = _prepare_captions_context(
         video_path,
         cfg,
@@ -368,6 +375,7 @@ def _render_captions_preview(
         output_image=output_image,
         fonts_dir=effective_fonts_dir,
         at_seconds=at_seconds,
+        hdr_prefilter=hdr_prefilter,
     )
     return ass_path
 
@@ -387,7 +395,15 @@ def _render_captions_video(
     video_codec_args: list[str] | None = None,
     audio_codec: str | None = None,
     audio_codec_args: list[str] | None = None,
+    hdr_prefilter: str | None = None,
 ) -> Path | None:
+    """
+    ``hdr_prefilter`` (from ``engine.color.hdr_to_sdr_prefilter()``, only when
+    the caller has already confirmed ``is_hdr(probe_video(video_path))``) is
+    forwarded to ``burn_subtitles`` so captions are burned onto already-
+    tonemapped SDR pixels. Defaults to ``None`` (no-op) for callers that have
+    not probed colorimetry (e.g. the local Gradio dev UI actions).
+    """
     video_info, effective_cfg, effective_fonts_dir = _prepare_captions_context(
         video_path,
         cfg,
@@ -408,6 +424,7 @@ def _render_captions_video(
         video_codec_args=video_codec_args,
         audio_codec=audio_codec,
         audio_codec_args=audio_codec_args,
+        hdr_prefilter=hdr_prefilter,
     )
     return ass_path
 

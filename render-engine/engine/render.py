@@ -4,6 +4,8 @@ import subprocess
 from pathlib import Path
 from typing import Sequence
 
+from engine.color import bt709_output_flags
+
 
 def _run_ffmpeg(command: list[str]) -> None:
     subprocess.run(
@@ -35,6 +37,10 @@ def _video_codec_flags(
     video_codec_args: list[str] | None,
 ) -> list[str]:
     if video_codec and video_codec_args is not None:
+        # video_codec_args is expected to already carry bt709 output tags +
+        # -pix_fmt (built via engine.encoding_profiles) — the early return
+        # used to skip even -pix_fmt here, letting 10-bit HDR sources reach
+        # Instagram as High10 (rejected). Nothing to add on this path.
         return ["-c:v", video_codec, *video_codec_args]
 
     quality = (quality_profile or "balanced").strip().lower()
@@ -49,6 +55,7 @@ def _video_codec_flags(
         "-c:v", "libx264",
         "-preset", "veryfast" if preview else preset,
         "-crf", "23" if preview else crf,
+        *bt709_output_flags(),
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
     ]
@@ -60,9 +67,18 @@ def _audio_codec_flags(audio_codec: str | None, audio_codec_args: list[str] | No
     return ["-c:a", "copy"]
 
 
-def _overlay_filter_chain(overlays: Sequence[tuple[str | Path, float, float, float]]) -> tuple[str, str]:
+def _overlay_filter_chain(
+    overlays: Sequence[tuple[str | Path, float, float, float]],
+    hdr_prefilter: str | None = None,
+) -> tuple[str, str]:
     filter_parts: list[str] = []
-    current = "[0:v]"
+    if hdr_prefilter:
+        # Tonemap the base video to SDR BEFORE any PNG overlay (always sRGB)
+        # is composited on top — overlay must never blend against HDR pixels.
+        filter_parts.append(f"[0:v]{hdr_prefilter}[hdr_base]")
+        current = "[hdr_base]"
+    else:
+        current = "[0:v]"
     for input_index, (_, start, end, fade_in) in enumerate(overlays, start=1):
         overlay_input = f"[{input_index}:v]"
         if fade_in > 0.0:
@@ -94,7 +110,14 @@ def burn_subtitles(
     video_codec_args: list[str] | None = None,
     audio_codec: str | None = None,
     audio_codec_args: list[str] | None = None,
+    hdr_prefilter: str | None = None,
 ) -> Path:
+    """
+    ``hdr_prefilter`` (from ``engine.color.hdr_to_sdr_prefilter()``, only when
+    the caller has confirmed ``is_hdr(probe_video(input_video))``) is
+    prefixed onto the ``-vf`` chain, ahead of the ``subtitles`` filter, so
+    captions are burned onto already-tonemapped SDR pixels.
+    """
     input_video = Path(input_video)
     ass_file = Path(ass_file)
     output_video = Path(output_video)
@@ -104,6 +127,8 @@ def burn_subtitles(
     ass_path = _escape_filter_path(ass_file)
     fonts_path = _escape_filter_path(fonts_dir)
     subtitles_filter = f"subtitles='{ass_path}':fontsdir='{fonts_path}'"
+    if hdr_prefilter:
+        subtitles_filter = f"{hdr_prefilter},{subtitles_filter}"
 
     command = [
         "ffmpeg",
@@ -148,7 +173,12 @@ def burn_png_overlays(
     video_codec_args: list[str] | None = None,
     audio_codec: str | None = None,
     audio_codec_args: list[str] | None = None,
+    hdr_prefilter: str | None = None,
 ) -> Path:
+    """
+    ``hdr_prefilter`` (see ``burn_subtitles``) is applied to the base video
+    before any PNG overlay (always sRGB) is composited on top.
+    """
     input_video = Path(input_video)
     output_video = Path(output_video)
     output_video.parent.mkdir(parents=True, exist_ok=True)
@@ -164,7 +194,7 @@ def burn_png_overlays(
     audio_flags = _audio_codec_flags(audio_codec, audio_codec_args)
 
     if overlays:
-        filter_complex, output_label = _overlay_filter_chain(overlays)
+        filter_complex, output_label = _overlay_filter_chain(overlays, hdr_prefilter)
         command.extend([
             "-filter_complex", filter_complex,
             "-map", output_label,
@@ -172,6 +202,17 @@ def burn_png_overlays(
             *codec_flags,
             *audio_flags,
             "-shortest",
+        ])
+    elif hdr_prefilter:
+        # No overlays but still HDR — route through filter_complex (rather
+        # than -vf, which cannot cleanly coexist with an explicit -map list)
+        # so the tonemap still applies.
+        command.extend([
+            "-filter_complex", f"[0:v]{hdr_prefilter}[vout]",
+            "-map", "[vout]",
+            "-map", "0:a?",
+            *codec_flags,
+            *audio_flags,
         ])
     else:
         command.extend([
@@ -223,6 +264,10 @@ def encode_concat_overlay_video(
         "-an",
         "-c:v",
         "qtrle",
+        # Colorimetry tags only — qtrle carries alpha (ARGB), so -pix_fmt stays
+        # argb (never yuv420p, that would strip the alpha channel this
+        # intermediate overlay exists for).
+        *bt709_output_flags(),
         "-pix_fmt",
         "argb",
         str(output_video),
@@ -286,7 +331,9 @@ def render_preview_frame(
     output_image: str | Path,
     fonts_dir: str | Path,
     at_seconds: float = 1.0,
+    hdr_prefilter: str | None = None,
 ) -> Path:
+    """``hdr_prefilter`` — see ``burn_subtitles``."""
     input_video = Path(input_video)
     ass_file = Path(ass_file)
     output_image = Path(output_image)
@@ -296,6 +343,8 @@ def render_preview_frame(
     ass_path = _escape_filter_path(ass_file)
     fonts_path = _escape_filter_path(fonts_dir)
     subtitles_filter = f"subtitles='{ass_path}':fontsdir='{fonts_path}'"
+    if hdr_prefilter:
+        subtitles_filter = f"{hdr_prefilter},{subtitles_filter}"
 
     command = [
         "ffmpeg",
@@ -321,7 +370,10 @@ def render_overlay_preview_frame(
     output_image: str | Path,
     at_seconds: float = 1.0,
     overlay_image: str | Path | None = None,
+    hdr_prefilter: str | None = None,
 ) -> Path:
+    """``hdr_prefilter`` — see ``burn_subtitles``. Applied to the base video
+    before ``overlay_image`` (always sRGB) is composited on top, when present."""
     input_video = Path(input_video)
     output_image = Path(output_image)
     output_image.parent.mkdir(parents=True, exist_ok=True)
@@ -336,13 +388,23 @@ def render_overlay_preview_frame(
     ]
 
     if overlay_image is not None:
+        base = f"[0:v]{hdr_prefilter}[hdr_base]" if hdr_prefilter else None
+        overlay_input = "[hdr_base]" if base else "[0:v]"
+        filter_complex = f"{overlay_input}[1:v]overlay=0:0:format=auto[out]"
+        if base:
+            filter_complex = f"{base};{filter_complex}"
         command.extend([
             "-i",
             str(Path(overlay_image)),
             "-filter_complex",
-            "[0:v][1:v]overlay=0:0:format=auto[out]",
+            filter_complex,
             "-map",
             "[out]",
+        ])
+    elif hdr_prefilter:
+        command.extend([
+            "-filter_complex", f"[0:v]{hdr_prefilter}[out]",
+            "-map", "[out]",
         ])
     else:
         command.extend(["-map", "0:v:0"])

@@ -37,6 +37,7 @@ import httpx
 import runpod
 
 from app import _parse_srt_content, _parse_text_auto, _render_captions_video
+from engine.color import bt709_output_flags, has_zscale, hdr_to_sdr_prefilter, is_hdr
 from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp
 from engine.probe import probe_video
@@ -662,6 +663,13 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
         print(f"[worker] Download video: {video_url}")
         _download_file(video_url, video_path)
         video_info = probe_video(video_path)
+        _hdr_prefilter = hdr_to_sdr_prefilter() if is_hdr(video_info) else None
+        if _hdr_prefilter:
+            print(
+                f"[worker/captions] HDR source detected (job={caption_job_id}) — "
+                "tonemapping to SDR/BT.709",
+                flush=True,
+            )
 
         # 2. Parser les sous-titres (SRT ou JSON avec vrais timestamps mot par mot)
         words: list[WordTimestamp] = _parse_text_auto(srt_content)
@@ -711,6 +719,7 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
                 codec_args,
                 audio_codec,
                 audio_args,
+                hdr_prefilter=_hdr_prefilter,
             )
         except subprocess.CalledProcessError as exc:
             _log_command_failure(
@@ -764,6 +773,7 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
                     fallback_args,
                     fallback_audio_codec,
                     fallback_audio_args,
+                    hdr_prefilter=_hdr_prefilter,
                 )
             except subprocess.CalledProcessError as fallback_exc:
                 _log_command_failure(
@@ -851,6 +861,9 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
         print(f"[worker/render_template] Download video: {video_url}")
         _download_file(video_url, video_path)
         video_info = probe_video(video_path)
+        _hdr_prefilter = hdr_to_sdr_prefilter() if is_hdr(video_info) else None
+        if _hdr_prefilter:
+            print("[worker/render_template] HDR source detected — tonemapping to SDR/BT.709", flush=True)
 
         # 2. Télécharger le(s) PNG overlay(s)
         if timed_mode:
@@ -914,6 +927,7 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
                     audio_codec_args=a_args,
                     max_duration=max_duration,
                     clip_duration=float(video_info.duration or 0.0) or None,
+                    hdr_prefilter=_hdr_prefilter,
                     **music_opts,
                 )
             else:
@@ -927,6 +941,7 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
                     audio_codec=a_codec,
                     audio_codec_args=a_args,
                     max_duration=max_duration,
+                    hdr_prefilter=_hdr_prefilter,
                     **music_opts,
                 )
             print(
@@ -1121,6 +1136,9 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                 any_audio = True
                 if not slot_mute_source:
                     has_effective_audio = True
+            _slot_hdr_prefilter = hdr_to_sdr_prefilter() if is_hdr(video_info) else None
+            if _slot_hdr_prefilter:
+                print(f"[worker/render_sequence] slot={slot_id} HDR source detected — tonemapping to SDR/BT.709", flush=True)
 
             # Collect per-slot music track params for time-varying volume.
             _clip_effective_dur = float(video_info.duration or 0.0)
@@ -1159,6 +1177,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                 _i: int = i,
                 _s_mute: bool = slot_mute_source,
                 _s_vol: float = slot_source_volume,
+                _hdr: str | None = _slot_hdr_prefilter,
             ) -> subprocess.CompletedProcess:
                 if resolved_overlay_url:
                     overlay_path = tmp_path / f"slot_{_i}_overlay_{stamp}.png"
@@ -1177,6 +1196,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                         source_has_audio=v_info.has_audio,
                         mute_source=_s_mute,
                         source_volume=_s_vol,
+                        hdr_prefilter=_hdr,
                     )
                 else:
                     cmd = build_template_ffmpeg_cmd_video_only(
@@ -1191,6 +1211,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                         source_has_audio=v_info.has_audio,
                         mute_source=_s_mute,
                         source_volume=_s_vol,
+                        hdr_prefilter=_hdr,
                     )
                 print(f"[worker/render_sequence] slot={slot_id} FFmpeg cmd: {_format_command(cmd)}", flush=True)
                 return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10 * 60)
@@ -1231,6 +1252,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                     source_has_audio=video_info.has_audio,
                     mute_source=slot_mute_source,
                     source_volume=slot_source_volume,
+                    hdr_prefilter=_slot_hdr_prefilter,
                 )
                 subprocess.run(seg_cmd, capture_output=True, check=True, timeout=10 * 60)
             else:
@@ -1400,6 +1422,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                 "-i", str(final_path),
                 "-t", str(_global_max_duration),
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                *bt709_output_flags(), "-pix_fmt", "yuv420p",
                 "-c:a", "copy",
                 str(capped_path),
             ]
@@ -1766,6 +1789,18 @@ if __name__ == "__main__":
         print(f"[worker] NVENC: {'disponible ✓' if _nvenc_ok else 'indisponible → fallback libx264'}", flush=True)
     except Exception as _e:
         print(f"[worker] NVENC check: ignoré ({_e})", flush=True)
+
+    # 2b. Check zscale/libzimg — requis pour le tonemap HDR→SDR (garde-fou P4).
+    #     BtbN (RunPod) et l'apt Debian (local) l'incluent normalement ; on vérifie
+    #     quand même au boot pour ne jamais découvrir l'absence en plein rendu.
+    try:
+        _zscale_ok = has_zscale()
+        print(
+            f"[worker] zscale (HDR tonemap): {'disponible ✓' if _zscale_ok else 'indisponible → fallback sans tonemap (colors délavées sur rush HDR)'}",
+            flush=True,
+        )
+    except Exception as _e:
+        print(f"[worker] zscale check: ignoré ({_e})", flush=True)
 
     # 3. Warmup transcription supprimé : Whisper/alignement restent lazy-load.
     print(
