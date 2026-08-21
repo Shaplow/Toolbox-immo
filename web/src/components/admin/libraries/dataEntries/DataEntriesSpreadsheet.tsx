@@ -261,7 +261,10 @@ export function DataEntriesSpreadsheet({
     <>
       <div
         ref={scrollRef}
-        className="w-full rounded-2xl bg-card border border-border  overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)]"
+        // P3 — offset +24px (304 au lieu de 280) : le body scrollable de
+        // /admin/libraries/data/[id] a gagné un padding py-3 (12px haut +
+        // 12px bas) qui décale d'autant le bas de la table vs le viewport.
+        className="w-full rounded-2xl bg-card border border-border  overflow-x-auto overflow-y-auto max-h-[calc(100vh-304px)]"
       >
         <table
           ref={tableRef}

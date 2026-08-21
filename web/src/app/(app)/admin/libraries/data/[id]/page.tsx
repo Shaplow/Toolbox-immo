@@ -65,7 +65,7 @@ export default async function DataLibraryDetailPage({ params }: Props) {
         )}
       </header>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3">
         <DataEntriesPanel
           libraryId={library.id}
           libraryName={library.name}

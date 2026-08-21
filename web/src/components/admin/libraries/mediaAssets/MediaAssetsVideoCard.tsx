@@ -43,7 +43,7 @@ import {
   Video,
   X,
 } from "lucide-react";
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import type { InstagramAccount, MediaAsset, MetadataField } from "./types";
 import { formatDate, formatDuration } from "./helpers";
 import { LazyVideoThumb } from "./LazyVideoThumb";
@@ -90,6 +90,11 @@ export function MediaAssetsVideoCard({
   onOpenDetail,
 }: Props) {
   const { canManageAssets } = useMediaLibraryPermissions();
+  // P1 — hover remonté sur le conteneur aspect-[9/16] (voir plus bas) pour
+  // que l'aperçu vidéo fonctionne identiquement avec et sans selectMode :
+  // l'overlay Play (absolute inset-0, rendu après LazyVideoThumb) interceptait
+  // sinon les events souris hors selectMode.
+  const [thumbHovered, setThumbHovered] = useState(false);
 
   const {
     editingSetTagId, setEditingSetTagId: rawSetEditingSetTagId, setTagValue, setSetTagValue, setTagError, setSetTagError,
@@ -158,12 +163,21 @@ export function MediaAssetsVideoCard({
         </button>
       )}
       {/* Thumbnail / preview */}
-      <div className="relative aspect-[9/16] bg-gray-200">
+      <div
+        className="relative aspect-[9/16] bg-gray-200"
+        onMouseEnter={() => setThumbHovered(true)}
+        onMouseLeave={() => setThumbHovered(false)}
+      >
         {previewId === asset.id ? (
           <video src={asset.url} controls autoPlay className="absolute inset-0 w-full h-full object-cover" />
         ) : (
           <>
-            <LazyVideoThumb url={asset.url} posterUrl={asset.posterUrl} className="w-full h-full object-cover" />
+            <LazyVideoThumb
+              url={asset.url}
+              posterUrl={asset.posterUrl}
+              className="w-full h-full object-cover"
+              hovered={thumbHovered}
+            />
             {!selectMode && (
               <button
                 onClick={() => setPreviewId(asset.id)}
@@ -178,7 +192,7 @@ export function MediaAssetsVideoCard({
         )}
         {previewId === asset.id && (
           <button
-            onClick={() => setPreviewId(null)}
+            onClick={(e) => { e.stopPropagation(); setPreviewId(null); }}
             className="absolute top-1 right-1 w-6 h-6 bg-black/60 text-white text-xs rounded-full flex items-center justify-center z-10"
           >✕</button>
         )}
@@ -205,9 +219,15 @@ export function MediaAssetsVideoCard({
           );
         })()}
         {/* Chip Dossier en overlay top-right (mode noob).
-            En mode manuel (rotation "none") : pas de chip, on affiche metadata dans le footer à la place. */}
+            En mode manuel (rotation "none") : pas de chip, on affiche metadata dans le footer à la place.
+            `group-hover:opacity-0` : la colonne d'actions admin (Delete/Edit/
+            ToggleDisabled/Reset/Download, plus bas) occupe le MÊME coin
+            top-right au hover — sans ce fondu, chip et icônes se superposent
+            visuellement dès le survol de la card (P2, résidu post-déplacement
+            de la colonne d'actions). Le chip reste pleinement visible hors
+            hover, quand la colonne d'actions est elle-même invisible. */}
         {!isAdvanced && !isManualMode && asset.setTag && !isReservedSetTag(asset.setTag) && (
-          <div className="absolute top-2 right-2 flex flex-col items-end gap-1 max-w-[70%] z-10">
+          <div className="absolute top-2 right-2 flex flex-col items-end gap-1 max-w-[70%] z-10 pointer-events-none opacity-100 group-hover:opacity-0 transition-opacity">
             <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-primary inline-flex items-center gap-0.5 truncate max-w-full">
               <Layers size={8} className="shrink-0" />
               <span className="truncate">{asset.setTag}</span>
@@ -226,8 +246,11 @@ export function MediaAssetsVideoCard({
             <span className="text-[10px] text-warning-100 font-medium">Désactivé</span>
           </div>
         )}
+        {/* P2 — sélection en top-left seule (même coin que la mini-checkbox
+            hover ci-dessus, mutuellement exclusives) : plus de collision avec
+            le chip Dossier / le ✕ preview qui occupent le coin top-right. */}
         {selectMode && (
-          <div className="absolute top-1 right-1 z-10" onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}>
+          <div className="absolute top-2 left-2 z-30" onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}>
             {isSelected
               ? <CheckSquare size={16} className="text-info-700 drop-shadow" />
               : <Square size={16} className="text-white/80 drop-shadow" />}
@@ -515,26 +538,37 @@ export function MediaAssetsVideoCard({
       </div>
       )}
 
-      {/* Action buttons */}
+      {/* Action buttons — colonne top-right (P2) : le top-left ne porte plus
+          que la sélection (mini-checkbox / overlay selectMode ci-dessus), les
+          actions admin s'empilent ici avec un pas de 26px.
+          Seuls les boutons positionnés en top-1.5 (Supprimer, et Télécharger
+          quand lecture seule) entrent réellement en collision avec le ✕ de
+          fermeture preview (top-1 right-1, même coin) — Éditer/Désactiver/
+          Reset (top-8 et plus bas) restent affichés et cliquables pendant la
+          lecture inline, comme avant le lot P2 (fix bug-hunter : masquer TOUTE
+          la colonne pendant la preview retirait une capacité existante sans
+          rapport avec la collision réelle). */}
       {!selectMode && canManageAssets && (
         <>
-          <button
-            onClick={(e) => { e.stopPropagation(); void handleDelete(asset); }}
-            className="absolute top-1.5 left-1.5 w-6 h-6 bg-card hover:bg-red-50 text-muted-foreground hover:text-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
-            title="Supprimer"
-          >
-            <Trash2 size={11} />
-          </button>
+          {previewId !== asset.id && (
+            <button
+              onClick={(e) => { e.stopPropagation(); void handleDelete(asset); }}
+              className="absolute top-1.5 right-1.5 w-6 h-6 bg-card hover:bg-red-50 text-muted-foreground hover:text-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+              title="Supprimer"
+            >
+              <Trash2 size={11} />
+            </button>
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); onEditAsset(asset); }}
-            className="absolute top-8 left-1.5 w-6 h-6 bg-card hover:bg-danger-50 text-muted-foreground hover:text-danger-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-8 right-1.5 w-6 h-6 bg-card hover:bg-danger-50 text-muted-foreground hover:text-danger-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title="Éditer (trim, audio)"
           >
             <Scissors size={11} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); void handleToggleDisabled(asset); }}
-            className={`absolute top-14.5 left-1.5 w-6 h-6 bg-card rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow ${
+            className={`absolute top-14.5 right-1.5 w-6 h-6 bg-card rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow ${
               asset.disabled
                 ? "text-warning-700 hover:text-warning-700 hover:bg-warning-50"
                 : "text-muted-foreground hover:text-warning-700 hover:bg-warning-50"
@@ -545,7 +579,7 @@ export function MediaAssetsVideoCard({
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); void handleResetAssetUsage(asset); }}
-            className="absolute top-1.5 right-1.5 w-6 h-6 bg-card hover:bg-warning-50 text-muted-foreground hover:text-warning-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-21 right-1.5 w-6 h-6 bg-card hover:bg-warning-50 text-muted-foreground hover:text-warning-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
           >
             <RotateCcw size={11} />
@@ -554,15 +588,19 @@ export function MediaAssetsVideoCard({
       )}
 
       {/* Télécharger — hors du bloc de gestion : c'est la seule action offerte
-          à un rôle en lecture seule. Sans les boutons de gestion, la pile de
-          droite est libre, d'où la remontée en haut. */}
-      {!selectMode && (
+          à un rôle en lecture seule. Empilée sous les actions admin (même
+          colonne top-right) quand elles sont présentes.
+          Sans droits de gestion, ce bouton vit en top-1.5 right-1.5 — le
+          coin du ✕ de fermeture preview — donc masqué pendant la lecture
+          inline ; avec droits de gestion il est plus bas (top-27.5, sous la
+          colonne d'actions), donc sans collision, affiché même en preview. */}
+      {!selectMode && (canManageAssets || previewId !== asset.id) && (
         <button
           onClick={(e) => {
             e.stopPropagation();
             void downloadAsset({ id: asset.id, filename: asset.filename });
           }}
-          className={`absolute ${canManageAssets ? "top-8" : "top-1.5"} right-1.5 w-6 h-6 bg-card hover:bg-info-50 text-muted-foreground hover:text-info-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow`}
+          className={`absolute ${canManageAssets ? "top-27.5" : "top-1.5"} right-1.5 w-6 h-6 bg-card hover:bg-info-50 text-muted-foreground hover:text-info-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow`}
           title="Télécharger"
         >
           <Download size={11} />
