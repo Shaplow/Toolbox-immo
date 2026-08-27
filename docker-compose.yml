@@ -64,6 +64,13 @@ services:
       - "8000:8000"
     env_file:
       - .env                          # .env racine — même fichier
+    environment:
+      # Hot-reload : local uniquement (cf. render-engine/Dockerfile).
+      UVICORN_RELOAD: "1"
+      # Extraction des frames cover — bornée pour ne pas affamer le CPU partagé
+      # avec le process Node. Poser les mêmes valeurs en prod.
+      COVER_EXTRACT_CONCURRENCY: "2"
+      COVER_EXTRACT_FRAME_TIMEOUT: "120"
     volumes:
       - ./render-engine:/app
       - render-outputs:/app/outputs

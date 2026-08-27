@@ -63,7 +63,9 @@ def probe_video(video_path: str | Path) -> VideoInfo:
         "json",
         video_path,
     ]
-    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    # timeout obligatoire : sans lui, un ffprobe sur une URL distante injoignable
+    # bloque indéfiniment (les deux autres probes du module en ont déjà un).
+    result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=30)
     data = json.loads(result.stdout)
 
     stream = data["streams"][0]

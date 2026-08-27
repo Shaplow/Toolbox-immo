@@ -262,7 +262,12 @@ async def api_probe_duration(request: Request):
     if not url:
         raise HTTPException(status_code=400, detail="url required")
     local_path = _local_outputs_path_from_url(url)
-    duration = probe_duration(str(local_path)) if local_path and local_path.exists() else probe_duration(url)
+    # ffprobe est bloquant (subprocess, jusqu'à 30 s sur une URL distante qui doit
+    # aller chercher le moov atom). Dans un `async def`, ça gèle l'event loop du
+    # worker uvicorn unique et fait expirer à vide les timeouts des autres requêtes
+    # (typiquement les extractions de frames cover). Toujours passer par un thread.
+    target = str(local_path) if local_path and local_path.exists() else url
+    duration = await asyncio.to_thread(probe_duration, target)
     return {"duration": duration}
 
 
@@ -297,7 +302,7 @@ async def api_generate_poster(request: Request):
     # (URL non-ffprobable, timeout) ne doit jamais bloquer l'extraction.
     _hdr_prefilter: str | None = None
     try:
-        source_info = probe_video(source)
+        source_info = await asyncio.to_thread(probe_video, source)
         if is_hdr(source_info):
             _hdr_prefilter = hdr_to_sdr_prefilter()
             logger.info("[poster] HDR source detected — tonemapping to SDR/BT.709: %s", url)
@@ -504,7 +509,7 @@ async def render_template_local(
         normalized_block["fit"],
     )
 
-    video_info = probe_video(video_path)
+    video_info = await asyncio.to_thread(probe_video, video_path)
     _codec, _codec_args, _audio_codec, _audio_args, _ = build_caption_encoding_settings(
         "template",
         video_info,
@@ -709,7 +714,7 @@ async def render_sequence_local(request: Request):
             except Exception as exc:
                 raise HTTPException(status_code=400, detail=f"Impossible de télécharger la vidéo du slot={slot_id}: {exc}")
 
-            video_info = probe_video(video_path)
+            video_info = await asyncio.to_thread(probe_video, video_path)
             if video_info.has_audio:
                 any_audio = True
             _slot_hdr_prefilter = hdr_to_sdr_prefilter() if is_hdr(video_info) else None
@@ -869,7 +874,7 @@ async def render_sequence_local(request: Request):
                 music_path = None  # type: ignore[assignment]
 
             if music_path and music_path.exists():
-                combined_info = probe_video(combined_path)
+                combined_info = await asyncio.to_thread(probe_video, combined_path)
                 total_dur = combined_info.duration if combined_info.duration else None
                 # Use effective output duration for fade-out (accounts for global cap)
                 effective_dur = (
@@ -1137,7 +1142,28 @@ def health():
 # ─── Cover frame extraction ───────────────────────────────────────────────────
 
 # Simple disk cache: video_url hash → local path
-_cover_video_cache: dict[str, Path] = {}
+# Un verrou par source : sans lui, deux requêtes concurrentes sur la même URL
+# (COVER_PREP_CONCURRENCY=2, ou deux slots alimentés par le même rush) écrivent
+# simultanément le même fichier de cache et ffmpeg lit un MP4 tronqué — toutes
+# les frames échouent alors d'un coup, et un simple retry « répare » le pack.
+_cover_cache_locks: dict[str, asyncio.Lock] = {}
+
+
+def _cover_cache_lock(key: str) -> asyncio.Lock:
+    lock = _cover_cache_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _cover_cache_locks[key] = lock
+    return lock
+
+
+def _cached_video_is_usable(path: Path) -> bool:
+    """Le cache fait autorité sur le disque, pas en mémoire : un fichier présent et
+    non vide est réutilisable, y compris après un redémarrage du worker."""
+    try:
+        return path.exists() and path.stat().st_size > 0
+    except OSError:
+        return False
 
 
 @app.post("/api/extract-covers")
@@ -1179,12 +1205,14 @@ async def extract_covers(
             raise HTTPException(status_code=400, detail="Fichier vidéo reçu vide (0 octets)")
         url_hash = hashlib.sha256(video_bytes[:4096]).hexdigest()[:16]
         video_path = cache_dir / f"video_{url_hash}.mp4"
-        if url_hash not in _cover_video_cache or not video_path.exists():
-            video_path.write_bytes(video_bytes)
-            _cover_video_cache[url_hash] = video_path
-            logger.info("[covers] Received uploaded video → %s", video_path.name)
-        else:
-            logger.info("[covers] Using cached uploaded video %s", video_path.name)
+        async with _cover_cache_lock(url_hash):
+            if _cached_video_is_usable(video_path):
+                logger.info("[covers] Using cached uploaded video %s", video_path.name)
+            else:
+                tmp_path = video_path.with_name(video_path.name + ".part")
+                await asyncio.to_thread(tmp_path.write_bytes, video_bytes)
+                os.replace(tmp_path, video_path)
+                logger.info("[covers] Received uploaded video → %s", video_path.name)
     else:
         local_path = _local_outputs_path_from_url(video_url)
         if local_path and local_path.exists():
@@ -1194,24 +1222,38 @@ async def extract_covers(
             # URL distante — mise en cache par hash de l'URL
             url_hash = hashlib.sha256(video_url.encode()).hexdigest()[:16]
             video_path = cache_dir / f"video_{url_hash}.mp4"
-            if url_hash not in _cover_video_cache or not video_path.exists():
-                logger.info("[covers] Downloading video %s → %s", video_url, video_path.name)
-                try:
-                    async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
-                        resp = await client.get(video_url)
-                        resp.raise_for_status()
-                        video_path.write_bytes(resp.content)
-                except Exception as exc:
-                    raise HTTPException(status_code=400, detail=f"Impossible de télécharger la vidéo : {exc}") from exc
-                _cover_video_cache[url_hash] = video_path
-            else:
-                logger.info("[covers] Using cached video %s", video_path.name)
+            # Le verrou fait attendre la 2e requête plutôt que de la laisser réécrire
+            # le fichier pendant que la 1re le lit.
+            async with _cover_cache_lock(url_hash):
+                if _cached_video_is_usable(video_path):
+                    logger.info("[covers] Using cached video %s", video_path.name)
+                else:
+                    logger.info("[covers] Downloading video %s → %s", video_url, video_path.name)
+                    tmp_path = video_path.with_name(video_path.name + ".part")
+                    try:
+                        # Streaming plutôt que resp.content : un rush 4K de plusieurs
+                        # centaines de Mo ne doit pas être chargé entier en RAM sur un
+                        # VPS partagé avec le process Node.
+                        async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
+                            async with client.stream("GET", video_url) as resp:
+                                resp.raise_for_status()
+                                with tmp_path.open("wb") as handle:
+                                    async for chunk in resp.aiter_bytes(1024 * 1024):
+                                        handle.write(chunk)
+                        if tmp_path.stat().st_size == 0:
+                            raise ValueError("réponse vide (0 octet)")
+                        # Publication atomique : un lecteur concurrent ne voit jamais
+                        # un MP4 partiel.
+                        os.replace(tmp_path, video_path)
+                    except Exception as exc:
+                        tmp_path.unlink(missing_ok=True)
+                        raise HTTPException(status_code=400, detail=f"Impossible de télécharger la vidéo : {exc}") from exc
 
     # ── Garde-fou HDR : un probe par vidéo source, réutilisé pour tous les
     # timestamps extraits ci-dessous (même clip, mêmes tags de couleur). ────
     _hdr_prefilter: str | None = None
     try:
-        source_info = probe_video(video_path)
+        source_info = await asyncio.to_thread(probe_video, video_path)
         if is_hdr(source_info):
             _hdr_prefilter = hdr_to_sdr_prefilter()
             logger.info("[covers] HDR source detected — tonemapping to SDR/BT.709: %s", video_path.name)
@@ -1227,49 +1269,98 @@ async def extract_covers(
     per_frame_timeout = max(10, int(os.environ.get("COVER_EXTRACT_FRAME_TIMEOUT", "90")))
     semaphore = asyncio.Semaphore(concurrency)
 
-    async def extract_one(ts: float) -> dict | None:
+    async def run_ffmpeg(source_ts: float, frame_path: Path) -> tuple[bool, str]:
+        """Extrait une frame. Retourne (succès, raison de l'échec)."""
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(source_ts),
+            "-i", str(video_path),
+            "-vframes", "1",
+            "-q:v", "2",
+        ]
+        if _hdr_prefilter:
+            cmd += ["-vf", _hdr_prefilter]
+        cmd.append(str(frame_path))
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=per_frame_timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return False, f"timeout ffmpeg ({per_frame_timeout}s)"
+
+        if proc.returncode != 0 or not frame_path.exists() or frame_path.stat().st_size == 0:
+            lines = [line for line in stderr.decode(errors="replace").strip().splitlines() if line.strip()]
+            if not lines:
+                return False, f"ffmpeg rc={proc.returncode}, aucune image produite"
+            # Le message remonte jusqu'à l'UI : on masque les chemins locaux du
+            # conteneur (le cache vidéo et le dossier de sortie) avant de l'exposer.
+            reason = lines[-1].replace(str(video_path), "<source>").replace(str(frame_path), "<frame>")
+            return False, reason[:200]
+        return True, ""
+
+    async def extract_one(ts: float) -> dict:
         async with semaphore:
             safe_ts = max(0.0, ts)
             frame_name = f"cover_{stamp}_{safe_ts:.3f}.jpg"
             frame_path = covers_dir / frame_name
 
-            cmd = [
-                "ffmpeg", "-y",
-                "-ss", str(safe_ts),
-                "-i", str(video_path),
-                "-vframes", "1",
-                "-q:v", "2",
-            ]
-            if _hdr_prefilter:
-                cmd += ["-vf", _hdr_prefilter]
-            cmd.append(str(frame_path))
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=per_frame_timeout)
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.communicate()
-                logger.warning("[covers] FFmpeg timeout at ts=%.3f after %ss", safe_ts, per_frame_timeout)
-                return None
+            ok, reason = await run_ffmpeg(safe_ts, frame_path)
+            if not ok and safe_ts > 0.5:
+                # Même repli que /api/generate-poster : un timestamp qui tombe après la
+                # dernière frame décodable (durée surestimée en base, clip re-tronqué)
+                # ne produit rien en seek rapide. On retente 0,5 s plus tôt, dans le
+                # MÊME fichier — donc aucune collision de nom possible, et aucune
+                # dépendance à une durée probée qui peut elle-même être fausse.
+                retry_ts = max(0.0, safe_ts - 0.5)
+                ok, retry_reason = await run_ffmpeg(retry_ts, frame_path)
+                if ok:
+                    logger.info("[covers] ts=%.3f récupéré au repli %.3f", safe_ts, retry_ts)
+                    return {
+                        "timestamp": retry_ts,
+                        "requestedTimestamp": safe_ts,
+                        "url": f"/outputs/covers/{frame_name}",
+                    }
+                reason = f"{reason} | repli {retry_ts:.3f}s : {retry_reason}"
 
-            if proc.returncode != 0 or not frame_path.exists():
-                logger.warning(
-                    "[covers] FFmpeg failed at ts=%.3f — %s",
-                    safe_ts,
-                    stderr.decode(errors="replace")[-300:],
-                )
-                return None
+            if not ok:
+                logger.warning("[covers] FFmpeg failed at ts=%.3f — %s", safe_ts, reason)
+                return {"timestamp": safe_ts, "error": reason}
 
             return {"timestamp": safe_ts, "url": f"/outputs/covers/{frame_name}"}
 
     extracted = await asyncio.gather(*(extract_one(ts) for ts in timestamps))
-    results = [frame for frame in extracted if frame is not None]
+    results = [frame for frame in extracted if "url" in frame]
+    failures = [frame for frame in extracted if "url" not in frame]
 
-    return results
+    if not results:
+        # Avant : 200 + [] — côté web ça devenait « Le render-engine n'a extrait aucune
+        # frame », un message qui masquait totalement la cause réelle et laissait
+        # l'utilisateur relancer à l'aveugle. On remonte désormais la vraie raison
+        # (stderr ffmpeg, timeout) pour qu'elle atterrisse dans CoverFramePack.errorMsg.
+        detail = " ; ".join(f"{item['timestamp']:.3f}s : {item['error']}" for item in failures[:3])
+        if len(failures) > 3:
+            detail += f" ; (+{len(failures) - 3} autres)"
+        raise HTTPException(
+            status_code=422,
+            detail=f"Aucune frame extraite sur {len(timestamps)} demandée(s) — {detail}",
+        )
+
+    if failures:
+        # Extraction partielle : on répond quand même 200 avec les frames obtenues
+        # (dégradation gracieuse), mais on trace ce qui manque.
+        logger.warning(
+            "[covers] %d/%d frames extracted — %d en échec : %s",
+            len(results), len(timestamps), len(failures),
+            " ; ".join(f"{item['timestamp']:.3f}s : {item['error']}" for item in failures[:5]),
+        )
+
+    # Payload de succès : toujours un tableau nu (contrat inchangé pour les appelants).
+    return JSONResponse(content=results, headers={"X-Cover-Extract-Failures": str(len(failures))})
 
 
 @app.get("/api/fonts")
@@ -1391,7 +1482,7 @@ async def preview(
     # ne doit jamais bloquer le rendu du preview, il retombe juste en SDR.
     _hdr_prefilter: str | None = None
     try:
-        if is_hdr(probe_video(video_path)):
+        if is_hdr(await asyncio.to_thread(probe_video, video_path)):
             _hdr_prefilter = hdr_to_sdr_prefilter()
             logger.info("[api/preview] HDR source detected (%s) — tonemapping to SDR/BT.709", video.filename)
     except Exception as exc:
@@ -1468,7 +1559,7 @@ async def render(
     # ne doit jamais bloquer le rendu, il retombe juste en SDR.
     _hdr_prefilter: str | None = None
     try:
-        if is_hdr(probe_video(video_path)):
+        if is_hdr(await asyncio.to_thread(probe_video, video_path)):
             _hdr_prefilter = hdr_to_sdr_prefilter()
             logger.info(
                 "[api/render] HDR source detected (job=%s) — tonemapping to SDR/BT.709",
@@ -1503,7 +1594,7 @@ async def render(
     progress_path = None
     if job_id:
         try:
-            info = probe_video(video_path)
+            info = await asyncio.to_thread(probe_video, video_path)
             duration_s = min(info.duration, 6.0) if is_preview else info.duration
             _job_durations[job_id] = duration_s * 1000.0  # store as ms
         except Exception:

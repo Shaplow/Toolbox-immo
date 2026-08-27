@@ -47,5 +47,8 @@ ENV CAPTIONS_ENGINE=ass
 # Expose port FastAPI
 EXPOSE 8000
 
-# Dev : --reload pour hot-reload sur changements de code
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# --reload (hot-reload dev) est opt-in via UVICORN_RELOAD=1, activé par
+# docker-compose en local. Jamais en prod : le reloader surveille le disque et
+# peut redémarrer le worker en plein rendu, ce qui tue les jobs en vol.
+ENV UVICORN_RELOAD=0
+CMD ["sh", "-c", "exec uvicorn api:app --host 0.0.0.0 --port 8000 $([ \"$UVICORN_RELOAD\" = \"1\" ] && echo --reload)"]
