@@ -38,6 +38,7 @@ import runpod
 
 from app import _parse_srt_content, _parse_text_auto, _render_captions_video
 from engine.color import bt709_output_flags, has_zscale, hdr_to_sdr_prefilter, is_hdr
+from engine.cover_frames import ExtractSettings, extract_cover_frames
 from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp
 from engine.probe import probe_video
@@ -525,6 +526,9 @@ def handler(job: dict) -> dict[str, Any]:
     job_type "captions" (défaut) :
       - video_url, srt_content, config, preview_mode, output_key, caption_job_id
 
+    job_type "cover_frames" :
+      - pack_id, attempt, key_prefix, sources[{source_url, frames[{id, timestamp}]}]
+
     job_type "render_template" :
       - overlay_url  : PNG transparent (template sans le bloc vidéo)
       - video_url    : URL de la vidéo source
@@ -534,7 +538,7 @@ def handler(job: dict) -> dict[str, Any]:
       - render_id    : (optionnel) ID du Render en DB pour logs
     """
     inp = job.get("input", {})
-    job_type = inp.get("job_type", "captions")
+    job_type = inp.get("job_type") or "captions"
 
     if job_type == "render_template":
         return _handle_render_template(inp)
@@ -548,6 +552,16 @@ def handler(job: dict) -> dict[str, Any]:
         return _handle_media_edit(inp)
     if job_type == "media_autocut_batch":
         return _handle_media_autocut_batch(inp)
+    if job_type == "cover_frames":
+        return _handle_cover_frames(inp)
+    if job_type != "captions":
+        # `captions` reste le défaut historique quand AUCUN job_type n'est fourni,
+        # mais un job_type explicite et inconnu doit échouer clairement : sinon un
+        # web déployé avant l'image worker voit ses jobs traités comme des captions
+        # et échouer sur un « champs requis manquants » incompréhensible.
+        raise ValueError(
+            f"job_type inconnu : '{job_type}'. Image worker probablement plus ancienne que l'app."
+        )
     return _handle_captions(inp)
 
 
@@ -1750,6 +1764,119 @@ def _handle_media_edit(inp: dict) -> dict:
         "r2_key": r2_key,
         "video_url": public_url,
         "job_id": job_id,
+    }
+
+
+def _handle_cover_frames(inp: dict) -> dict:
+    """
+    Extrait les frames candidates d'un pack cover et les pousse sur R2.
+
+    Input:
+      pack_id    : CoverFramePack.id (echo obligatoire — voir plus bas)
+      attempt    : CoverFramePack.extractAttempt au moment de la soumission
+      key_prefix : préfixe R2 des candidats, ex. "covers/{userId}/{packId}/a3/"
+      sources    : [{ source_url, frames: [{ id, timestamp }] }]
+
+    Output:
+      { pack_id, attempt, frames: [{id, timestamp, requested_timestamp, key, url}],
+        failures: [{id, timestamp, error}] }
+
+    Le webhook retrouve le pack par `runpodJobId`, mais RunPod peut rappeler avant
+    que le web ait fini d'écrire cette colonne : `pack_id` est donc echoé pour
+    permettre la résolution de secours, comme tous les autres handlers.
+
+    Chaque source est téléchargée puis SUPPRIMÉE avant de passer à la suivante —
+    le disque du worker ne fait que quelques Go utiles (cf. _download_file).
+
+    Ne lève que si AUCUNE frame n'a pu être extraite, nulle part : un rush illisible
+    parmi d'autres coûte ses frames, pas le pack.
+    """
+    _require_fields(inp, ("pack_id", "key_prefix", "sources"), "cover_frames")
+    pack_id: str = inp["pack_id"]
+    attempt: int = int(inp.get("attempt", 0))
+    key_prefix: str = inp["key_prefix"].rstrip("/") + "/"
+    sources: list[dict] = inp["sources"]
+
+    settings = ExtractSettings.from_env()
+    frames_out: list[dict] = []
+    failures_out: list[dict] = []
+    total_requested = sum(len(s.get("frames") or []) for s in sources)
+
+    print(
+        f"[worker/cover_frames] pack={pack_id} attempt={attempt} "
+        f"sources={len(sources)} frames={total_requested}",
+        flush=True,
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+
+        for src_index, source in enumerate(sources):
+            source_url = source.get("source_url")
+            picks = source.get("frames") or []
+            if not source_url or not picks:
+                continue
+
+            src_ext = Path(str(source_url).split("?")[0]).suffix or ".mp4"
+            src_path = tmp_path / f"source_{src_index}{src_ext}"
+            try:
+                _download_file(source_url, src_path)
+            except Exception as exc:
+                print(f"[worker/cover_frames] download failed src={src_index}: {exc}", flush=True)
+                failures_out.extend(
+                    {"id": p["id"], "timestamp": p["timestamp"], "error": f"téléchargement impossible : {exc}"}
+                    for p in picks
+                )
+                continue
+
+            try:
+                out_dir = tmp_path / f"frames_{src_index}"
+                results = extract_cover_frames(
+                    src_path,
+                    [float(p["timestamp"]) for p in picks],
+                    out_dir,
+                    settings=settings,
+                )
+                # L'ordre d'entrée est préservé par extract_cover_frames : on peut
+                # apparier par index, sans dépendre d'un rapprochement par timestamp
+                # (deux slots alimentés par le même rush produisent des timestamps
+                # identiques au millième).
+                for pick, result in zip(picks, results):
+                    if not result.ok or result.path is None:
+                        failures_out.append(
+                            {"id": pick["id"], "timestamp": pick["timestamp"], "error": result.error or "échec inconnu"}
+                        )
+                        continue
+                    key = f"{key_prefix}{pick['id']}.jpg"
+                    url = _upload_to_r2(key, result.path, "image/jpeg")
+                    frames_out.append(
+                        {
+                            "id": pick["id"],
+                            "timestamp": result.timestamp,
+                            "requested_timestamp": result.requested_timestamp,
+                            "key": key,
+                            "url": url,
+                        }
+                    )
+            finally:
+                # Libère le disque avant la source suivante.
+                src_path.unlink(missing_ok=True)
+                shutil.rmtree(tmp_path / f"frames_{src_index}", ignore_errors=True)
+
+    if not frames_out:
+        reason = failures_out[0]["error"] if failures_out else "aucune source exploitable"
+        raise RuntimeError(f"cover_frames: aucune frame extraite sur {total_requested} demandée(s) — {reason}")
+
+    print(
+        f"[worker/cover_frames] pack={pack_id} done — {len(frames_out)}/{total_requested} frames, "
+        f"{len(failures_out)} en échec",
+        flush=True,
+    )
+    return {
+        "pack_id": pack_id,
+        "attempt": attempt,
+        "frames": frames_out,
+        "failures": failures_out,
     }
 
 

@@ -61,8 +61,13 @@ Sur Mac Apple Silicon, il faut builder l'image RunPod en `linux/amd64` via la co
 3. GPU : **RTX 4000 Ada** ou **RTX 3090** (~$0.22-0.24/h)
 4. Scaling :
    - Min workers : **0** (pas de coût à l'idle)
-   - Max workers : **2**
-   - Execution timeout : **300s**
+   - Max workers : **4** — l'endpoint est partagé entre renders, captions,
+     transcriptions et extraction de covers. À 2, une rafale de covers retarde les
+     générations vidéo. Min workers restant à 0 et la facturation étant à la seconde
+     d'exécution, relever ce plafond ne coûte rien à l'idle : ça n'augmente que le débit.
+   - Execution timeout : **900s** — un job `cover_frames` télécharge un rush 4K puis
+     en extrait jusqu'à 72 frames. À 300 s, RunPod tue le job et le pack part en échec
+     sans aucune frame.
 5. **FlashBoot** : activé (cold start ~40s → ~5s)
 6. Variables d'environnement à renseigner dans l'onglet dédié :
    ```
@@ -71,6 +76,14 @@ Sur Mac Apple Silicon, il faut builder l'image RunPod en `linux/amd64` via la co
    R2_SECRET_ACCESS_KEY=...
    R2_BUCKET=toolbox-immo
    R2_PUBLIC_URL=https://pub-xxx.r2.dev
+   ```
+
+   Optionnel, extraction des frames de cover (mêmes valeurs qu'en local, cf.
+   `docker-compose.yml`) :
+   ```
+   COVER_FRAME_MAX_EDGE=1920        # les covers sont composées en 1080×1920
+   COVER_EXTRACT_CONCURRENCY=4      # ffmpeg simultanés par job
+   COVER_EXTRACT_FRAME_TIMEOUT=120  # secondes par frame
    ```
 
 ### 3. Configurer l'app

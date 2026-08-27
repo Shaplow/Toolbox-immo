@@ -31,6 +31,12 @@ from engine.template_composite import (
 from engine.color import bt709_output_flags, hdr_to_sdr_prefilter, is_hdr
 from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp, default_premium_config
+from engine.cover_frames import (
+    CoverSourceError,
+    cache_source_bytes,
+    ensure_local_source,
+    extract_cover_frames,
+)
 from engine.probe import probe_duration, probe_video
 from engine.runtime_fonts import prepare_runtime_fonts
 
@@ -1140,30 +1146,9 @@ def health():
 
 
 # ─── Cover frame extraction ───────────────────────────────────────────────────
-
-# Simple disk cache: video_url hash → local path
-# Un verrou par source : sans lui, deux requêtes concurrentes sur la même URL
-# (COVER_PREP_CONCURRENCY=2, ou deux slots alimentés par le même rush) écrivent
-# simultanément le même fichier de cache et ffmpeg lit un MP4 tronqué — toutes
-# les frames échouent alors d'un coup, et un simple retry « répare » le pack.
-_cover_cache_locks: dict[str, asyncio.Lock] = {}
-
-
-def _cover_cache_lock(key: str) -> asyncio.Lock:
-    lock = _cover_cache_locks.get(key)
-    if lock is None:
-        lock = asyncio.Lock()
-        _cover_cache_locks[key] = lock
-    return lock
-
-
-def _cached_video_is_usable(path: Path) -> bool:
-    """Le cache fait autorité sur le disque, pas en mémoire : un fichier présent et
-    non vide est réutilisable, y compris après un redémarrage du worker."""
-    try:
-        return path.exists() and path.stat().st_size > 0
-    except OSError:
-        return False
+# Le cœur (téléchargement, cache, probe HDR, ffmpeg) vit dans engine/cover_frames.py,
+# partagé avec le worker RunPod : la logique ne doit exister qu'à un seul endroit.
+# Il est SYNCHRONE (cf. son docstring) — d'où les asyncio.to_thread ci-dessous.
 
 
 @app.post("/api/extract-covers")
@@ -1178,8 +1163,6 @@ async def extract_covers(
     Les vidéos distantes sont mises en cache localement par hash de l'URL.
     Retourne : [{timestamp: float, url: str}, ...]
     """
-    import httpx
-
     if not video_url and not video:
         raise HTTPException(status_code=400, detail="Fournir 'video_url' ou 'video' (fichier)")
 
@@ -1194,168 +1177,53 @@ async def extract_covers(
     if not timestamps:
         raise HTTPException(status_code=400, detail="Au moins un timestamp est requis")
 
-    # ── Locate the source video ────────────────────────────────────────────
     cache_dir = OUTPUTS_DIR / "temp" / "cover_cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-
-    if video is not None:
-        # Fichier uploadé directement (dev local sans réseau cross-container)
-        video_bytes = await video.read()
-        if len(video_bytes) == 0:
-            raise HTTPException(status_code=400, detail="Fichier vidéo reçu vide (0 octets)")
-        url_hash = hashlib.sha256(video_bytes[:4096]).hexdigest()[:16]
-        video_path = cache_dir / f"video_{url_hash}.mp4"
-        async with _cover_cache_lock(url_hash):
-            if _cached_video_is_usable(video_path):
-                logger.info("[covers] Using cached uploaded video %s", video_path.name)
-            else:
-                tmp_path = video_path.with_name(video_path.name + ".part")
-                await asyncio.to_thread(tmp_path.write_bytes, video_bytes)
-                os.replace(tmp_path, video_path)
-                logger.info("[covers] Received uploaded video → %s", video_path.name)
-    else:
-        local_path = _local_outputs_path_from_url(video_url)
-        if local_path and local_path.exists():
-            video_path = local_path
-            logger.info("[covers] Using local output video %s", video_path.name)
-        else:
-            # URL distante — mise en cache par hash de l'URL
-            url_hash = hashlib.sha256(video_url.encode()).hexdigest()[:16]
-            video_path = cache_dir / f"video_{url_hash}.mp4"
-            # Le verrou fait attendre la 2e requête plutôt que de la laisser réécrire
-            # le fichier pendant que la 1re le lit.
-            async with _cover_cache_lock(url_hash):
-                if _cached_video_is_usable(video_path):
-                    logger.info("[covers] Using cached video %s", video_path.name)
-                else:
-                    logger.info("[covers] Downloading video %s → %s", video_url, video_path.name)
-                    tmp_path = video_path.with_name(video_path.name + ".part")
-                    try:
-                        # Streaming plutôt que resp.content : un rush 4K de plusieurs
-                        # centaines de Mo ne doit pas être chargé entier en RAM sur un
-                        # VPS partagé avec le process Node.
-                        async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
-                            async with client.stream("GET", video_url) as resp:
-                                resp.raise_for_status()
-                                with tmp_path.open("wb") as handle:
-                                    async for chunk in resp.aiter_bytes(1024 * 1024):
-                                        handle.write(chunk)
-                        if tmp_path.stat().st_size == 0:
-                            raise ValueError("réponse vide (0 octet)")
-                        # Publication atomique : un lecteur concurrent ne voit jamais
-                        # un MP4 partiel.
-                        os.replace(tmp_path, video_path)
-                    except Exception as exc:
-                        tmp_path.unlink(missing_ok=True)
-                        raise HTTPException(status_code=400, detail=f"Impossible de télécharger la vidéo : {exc}") from exc
-
-    # ── Garde-fou HDR : un probe par vidéo source, réutilisé pour tous les
-    # timestamps extraits ci-dessous (même clip, mêmes tags de couleur). ────
-    _hdr_prefilter: str | None = None
-    try:
-        source_info = await asyncio.to_thread(probe_video, video_path)
-        if is_hdr(source_info):
-            _hdr_prefilter = hdr_to_sdr_prefilter()
-            logger.info("[covers] HDR source detected — tonemapping to SDR/BT.709: %s", video_path.name)
-    except Exception as exc:
-        logger.warning("[covers] HDR probe failed (continuing as SDR) for %s: %s", video_path.name, exc)
-
-    # ── Extract frames with FFmpeg ─────────────────────────────────────────
     covers_dir = OUTPUTS_DIR / "covers"
-    covers_dir.mkdir(parents=True, exist_ok=True)
 
+    # ── Localisation de la source ──────────────────────────────────────────
+    try:
+        if video is not None:
+            video_bytes = await video.read()
+            video_path = await asyncio.to_thread(cache_source_bytes, video_bytes, cache_dir)
+        else:
+            video_path = await asyncio.to_thread(
+                ensure_local_source,
+                video_url,
+                cache_dir,
+                local_resolver=_local_outputs_path_from_url,
+            )
+    except CoverSourceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # ── Extraction ─────────────────────────────────────────────────────────
+    # Le dossier de sortie est PARTAGÉ entre toutes les requêtes : le nom doit donc
+    # rester unique par extraction, d'où le stamp (le worker, lui, écrit dans un
+    # dossier privé au job et peut se contenter d'un index).
     stamp = int(time.time() * 1000)
-    # Plus grande dimension des frames extraites. 1920 couvre le format REELS
-    # (1080×1920) et les canvas print courants sans rien perdre à la composition.
-    _frame_max_edge = max(320, int(os.environ.get("COVER_FRAME_MAX_EDGE", "1920")))
-    concurrency = max(1, min(8, int(os.environ.get("COVER_EXTRACT_CONCURRENCY", "4"))))
-    per_frame_timeout = max(10, int(os.environ.get("COVER_EXTRACT_FRAME_TIMEOUT", "90")))
-    semaphore = asyncio.Semaphore(concurrency)
+    results = await asyncio.to_thread(
+        extract_cover_frames,
+        video_path,
+        timestamps,
+        covers_dir,
+        filename_for=lambda _index, ts: f"cover_{stamp}_{ts:.3f}.jpg",
+    )
 
-    async def run_ffmpeg(source_ts: float, frame_path: Path) -> tuple[bool, str]:
-        """Extrait une frame. Retourne (succès, raison de l'échec)."""
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(source_ts),
-            "-i", str(video_path),
-            "-vframes", "1",
-            "-q:v", "2",
-        ]
-        # Réduction AVANT tout autre filtre. Les rushs sont des .MOV iPhone 4K (voire
-        # plus) alors que la cover finale est composée en 1080×1920 : tonemapper puis
-        # encoder du 4K est du travail intégralement jeté. Sur une source HLG, le
-        # tonemap zscale coûte plusieurs secondes par frame en 4K contre une fraction
-        # de seconde une fois réduit — × 36 frames, c'est la différence entre tenir
-        # dans le budget de la requête et le dépasser.
-        # `force_original_aspect_ratio=decrease` + -2 : on borne la plus grande
-        # dimension sans jamais agrandir une source déjà plus petite.
-        filters = [f"scale={_frame_max_edge}:{_frame_max_edge}:force_original_aspect_ratio=decrease"]
-        if _hdr_prefilter:
-            filters.append(_hdr_prefilter)
-        cmd += ["-vf", ",".join(filters)]
-        cmd.append(str(frame_path))
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=per_frame_timeout)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.communicate()
-            return False, f"timeout ffmpeg ({per_frame_timeout}s)"
+    frames = [
+        {
+            "timestamp": r.timestamp,
+            **({"requestedTimestamp": r.requested_timestamp} if r.timestamp != r.requested_timestamp else {}),
+            "url": f"/outputs/covers/{r.path.name}",
+        }
+        for r in results
+        if r.ok and r.path is not None
+    ]
+    failures = [r for r in results if not r.ok]
 
-        if proc.returncode != 0 or not frame_path.exists() or frame_path.stat().st_size == 0:
-            lines = [line for line in stderr.decode(errors="replace").strip().splitlines() if line.strip()]
-            if not lines:
-                return False, f"ffmpeg rc={proc.returncode}, aucune image produite"
-            # Le message remonte jusqu'à l'UI : on masque les chemins locaux du
-            # conteneur (le cache vidéo et le dossier de sortie) avant de l'exposer.
-            reason = lines[-1].replace(str(video_path), "<source>").replace(str(frame_path), "<frame>")
-            return False, reason[:200]
-        return True, ""
-
-    async def extract_one(ts: float) -> dict:
-        async with semaphore:
-            safe_ts = max(0.0, ts)
-            frame_name = f"cover_{stamp}_{safe_ts:.3f}.jpg"
-            frame_path = covers_dir / frame_name
-
-            ok, reason = await run_ffmpeg(safe_ts, frame_path)
-            if not ok and safe_ts > 0.5:
-                # Même repli que /api/generate-poster : un timestamp qui tombe après la
-                # dernière frame décodable (durée surestimée en base, clip re-tronqué)
-                # ne produit rien en seek rapide. On retente 0,5 s plus tôt, dans le
-                # MÊME fichier — donc aucune collision de nom possible, et aucune
-                # dépendance à une durée probée qui peut elle-même être fausse.
-                retry_ts = max(0.0, safe_ts - 0.5)
-                ok, retry_reason = await run_ffmpeg(retry_ts, frame_path)
-                if ok:
-                    logger.info("[covers] ts=%.3f récupéré au repli %.3f", safe_ts, retry_ts)
-                    return {
-                        "timestamp": retry_ts,
-                        "requestedTimestamp": safe_ts,
-                        "url": f"/outputs/covers/{frame_name}",
-                    }
-                reason = f"{reason} | repli {retry_ts:.3f}s : {retry_reason}"
-
-            if not ok:
-                logger.warning("[covers] FFmpeg failed at ts=%.3f — %s", safe_ts, reason)
-                return {"timestamp": safe_ts, "error": reason}
-
-            return {"timestamp": safe_ts, "url": f"/outputs/covers/{frame_name}"}
-
-    extracted = await asyncio.gather(*(extract_one(ts) for ts in timestamps))
-    results = [frame for frame in extracted if "url" in frame]
-    failures = [frame for frame in extracted if "url" not in frame]
-
-    if not results:
+    if not frames:
         # Avant : 200 + [] — côté web ça devenait « Le render-engine n'a extrait aucune
         # frame », un message qui masquait totalement la cause réelle et laissait
-        # l'utilisateur relancer à l'aveugle. On remonte désormais la vraie raison
-        # (stderr ffmpeg, timeout) pour qu'elle atterrisse dans CoverFramePack.errorMsg.
-        detail = " ; ".join(f"{item['timestamp']:.3f}s : {item['error']}" for item in failures[:3])
+        # l'utilisateur relancer à l'aveugle.
+        detail = " ; ".join(f"{r.requested_timestamp:.3f}s : {r.error}" for r in failures[:3])
         if len(failures) > 3:
             detail += f" ; (+{len(failures) - 3} autres)"
         raise HTTPException(
@@ -1364,16 +1232,16 @@ async def extract_covers(
         )
 
     if failures:
-        # Extraction partielle : on répond quand même 200 avec les frames obtenues
+        # Extraction partielle : on répond quand même 200 avec ce qu'on a obtenu
         # (dégradation gracieuse), mais on trace ce qui manque.
         logger.warning(
             "[covers] %d/%d frames extracted — %d en échec : %s",
-            len(results), len(timestamps), len(failures),
-            " ; ".join(f"{item['timestamp']:.3f}s : {item['error']}" for item in failures[:5]),
+            len(frames), len(timestamps), len(failures),
+            " ; ".join(f"{r.requested_timestamp:.3f}s : {r.error}" for r in failures[:5]),
         )
 
     # Payload de succès : toujours un tableau nu (contrat inchangé pour les appelants).
-    return JSONResponse(content=results, headers={"X-Cover-Extract-Failures": str(len(failures))})
+    return JSONResponse(content=frames, headers={"X-Cover-Extract-Failures": str(len(failures))})
 
 
 @app.get("/api/fonts")
