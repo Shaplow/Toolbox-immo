@@ -3,6 +3,8 @@ import { mkdir, writeFile } from "fs/promises";
 import { prisma } from "@/lib/prisma";
 import { createLimiter, mapWithConcurrencySettled } from "@/lib/concurrency";
 import { withRetry, withRetryIf } from "@/lib/retry";
+import { resolveRunpodJobPhase, runpodConfigured, submitRunpodJob } from "@/lib/runpod";
+import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { deleteFromR2, deleteR2Prefix, r2Configured, uploadToR2 } from "@/lib/r2";
 import { buildHTML } from "@/lib/renderer/buildHTML";
 import { renderPNG } from "@/lib/renderer/renderPNG";
@@ -21,6 +23,9 @@ import type { AnyBlock, CoverAutoConfig, ImageBlock, SchemaField, TemplateJSON, 
 const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 const WEB_MEDIA_BASE = (process.env.FONT_BASE_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const DEFAULT_FRAME_COUNT = 36;
+// Au-delà, un job RunPod cover est considéré perdu par la réconciliation. Large
+// à dessein : un job peut attendre en file derrière les renders.
+const COVER_RUNPOD_STALL_MS = 90 * 60_000;
 const MIN_FRAME_GAP_S = 1 / 30;
 
 // Concurrence bornée sur le process unique (cf. lib/concurrency.ts).
@@ -31,13 +36,18 @@ const FRAME_PERSIST_CONCURRENCY = Math.max(
   1,
   Number.parseInt(process.env.COVER_FRAME_PERSIST_CONCURRENCY ?? "", 10) || 6,
 );
-// - Préparation des packs : chaque prep déclenche une extraction (render-engine)
-//   + le fan-out de frames ci-dessus. Sans borne, M packs lancés d'un coup =
-//   M preps concurrentes qui saturent le render-engine et la RAM. On limite le
-//   nombre de packs préparés simultanément ; les autres restent QUEUED (le poll
-//   UI continue) et démarrent au fur et à mesure.
+// - Préparation des packs. Sur le chemin LOCAL, une prep déclenche une extraction
+//   sur le render-engine du VPS plus le fan-out de frames ci-dessus : sans borne,
+//   M packs lancés d'un coup saturent le CPU et la RAM. Sur le chemin RunPod, elle
+//   ne fait plus qu'un calcul DB et une soumission de quelques millisecondes — y
+//   garder une borne à 2 sérialiserait la file pour rien, ce qui est précisément ce
+//   qu'on cherche à supprimer. D'où deux défauts, la borne restant réglable.
 const coverPrepLimiter = createLimiter(
-  Math.max(1, Number.parseInt(process.env.COVER_PREP_CONCURRENCY ?? "", 10) || 2),
+  Math.max(
+    1,
+    Number.parseInt(process.env.COVER_PREP_CONCURRENCY ?? "", 10) ||
+      (runpodConfigured() && process.env.USE_RUNPOD !== "false" ? 8 : 2),
+  ),
 );
 
 type ExtractedFrame = {
@@ -48,7 +58,6 @@ type ExtractedFrame = {
   requestedTimestamp?: number;
   url: string;
 };
-type TaggedExtractedFrame = ExtractedFrame & { _pick?: CoverFramePick };
 type FrameInterval = { start: number; end: number };
 type CoverSeenFrame = number | { sourceUrl: string; timestamp: number };
 type CoverFramePick = { sourceUrl: string; timestamp: number; slotId?: string; sequenceIndex?: number };
@@ -530,7 +539,13 @@ function resolveVideoBlockNativeUrl(
   return null;
 }
 
-async function persistFrame(packId: string, userId: string, frame: ExtractedFrame, index: number): Promise<{ imageUrl: string; imageKey: string | null }> {
+/**
+ * Rapatrie une frame depuis le render-engine et la pousse sur R2 sous la clé du
+ * candidat. La clé vient de l'appelant (et non d'un index) pour rester identique
+ * à celle qu'aurait produite le worker RunPod : les deux chemins écrivent au même
+ * endroit, et `deleteCoverPackAssets` les purge de la même façon.
+ */
+async function persistFrame(frame: ExtractedFrame, key: string): Promise<{ imageUrl: string; imageKey: string | null }> {
   const sourceUrl = frame.url.startsWith("http")
     ? frame.url
     : `${CAPTIONS_API}${frame.url.startsWith("/") ? frame.url : `/${frame.url}`}`;
@@ -550,7 +565,6 @@ async function persistFrame(packId: string, userId: string, frame: ExtractedFram
     if (!res.ok) throw new Error(`Frame ${frame.timestamp}s introuvable (${res.status})`);
     return Buffer.from(await res.arrayBuffer());
   }, [500, 1500]);
-  const key = `covers/${userId}/${packId}/candidate-${index + 1}.jpg`;
   const uploaded = await uploadToR2(key, buffer, "image/jpeg", buffer.byteLength);
   return { imageUrl: uploaded.url, imageKey: uploaded.key };
 }
@@ -599,7 +613,48 @@ export async function deleteCoverCandidateAssets(packId: string): Promise<void> 
   );
 }
 
-export async function prepareCoverFramePack(packId: string): Promise<void> {
+/** Un pick dont la ligne `CoverFrameCandidate` existe déjà, encore sans image. */
+type PlannedPick = CoverFramePick & { candidateId: string };
+
+/**
+ * Tout ce qu'il faut pour extraire — calculé côté web, où vit l'accès Postgres.
+ * Le reste (télécharger, ffmpeg, uploader) est du calcul pur, déportable.
+ */
+export interface CoverExtractionPlan {
+  packId: string;
+  userId: string;
+  slotId: string | null;
+  attempt: number;
+  duration: number;
+  /** true = frames tirées des rushs natifs ; false = source unique (repli). */
+  native: boolean;
+  /** Préfixe R2 des candidats de CE tirage. */
+  keyPrefix: string;
+  picksBySource: Map<string, PlannedPick[]>;
+}
+
+/** Résultat d'extraction, quelle que soit sa provenance (worker ou local). */
+export interface CoverFrameOutcome {
+  candidateId: string;
+  timestamp: number;
+  imageUrl: string;
+  imageKey: string | null;
+}
+
+/**
+ * Calcule le plan d'extraction et matérialise les candidats en base.
+ *
+ * Les `CoverFrameCandidate` sont créés AVANT l'extraction, sans image. C'est ce
+ * qui permet au webhook RunPod — qui arrive dans un autre process, plus tard — de
+ * retrouver la provenance de chaque frame (`slotId`, `sequenceIndex`, `sourceUrl`)
+ * sans qu'on ait à sérialiser un snapshot opaque, et de donner à chaque frame une
+ * clé R2 déterministe. Deux picks au même timestamp (deux slots alimentés par le
+ * même rush) restent deux lignes distinctes, donc deux objets distincts.
+ *
+ * Retourne `null` quand le pack a déjà été mené à un état terminal (config cover
+ * désactivée, template manquant) — rien à extraire.
+ */
+async function planCoverFrameExtraction(packId: string): Promise<CoverExtractionPlan | null> {
   const pack = await prisma.coverFramePack.findUnique({
     where: { id: packId },
     include: {
@@ -624,30 +679,22 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
   // indéfiniment. Désormais on bascule en FAILED avec errorMsg explicite.
   if (!pack) {
     console.warn(`[coverAuto] Pack introuvable: ${packId}`);
-    return;
+    return null;
   }
   if (!pack.template || !pack.sourceVideoUrl) {
     const errorMsg = !pack.template
       ? "Template introuvable pour ce pack."
       : "Vidéo source manquante pour l'extraction des frames.";
-    await prisma.coverFramePack.update({
-      where: { id: packId },
-      data: { status: "FAILED", errorMsg },
-    }).catch((err) => {
-      console.error(`[coverAuto] Échec update FAILED pour pack=${packId}:`, err);
-    });
-    // Fix bug audit 2026-05-30 (M1) : SSE notify pour rafraîchir UI temps réel.
-    notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "FAILED", errorMsg });
-    return;
+    await failCoverFramePack(packId, null, errorMsg);
+    return null;
   }
+
   // slotId : priorité render → fallback publicationVersion (slot one-off)
   const slotId =
     pack.render?.publicationSlot?.id ??
     pack.publicationVersion?.slot?.id ??
     null;
 
-  // Données spécifiques au render (usedAssets, slotDurations) : null pour les
-  // packs créés sur une PublicationVersion. resolveNativeCoverSources sait gérer.
   let slotDurations: Record<string, number> | undefined;
   if (pack.render?.slotDurations) {
     try {
@@ -663,209 +710,404 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
   });
   notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "PROCESSING" });
 
-  try {
-    const templateJson = normalizeTemplateJSON(JSON.parse(pack.template.jsonData) as TemplateJSON);
-    const config = safeJson<CoverAutoConfig>(pack.config, { enabled: false, excludeZones: [] });
-    // Fix bug audit 2026-05-30 (H4 bis) : si config désactivé, on était passé en
-    // PROCESSING (l. 408 plus haut) sans revenir → pack bloqué en PROCESSING.
-    // Désormais on bascule en FAILED pour rendre l'état visible.
-    if (!config.enabled) {
-      const errorMsg = "Configuration cover désactivée sur ce template.";
-      await prisma.coverFramePack.update({
-        where: { id: packId },
-        data: { status: "FAILED", errorMsg },
+  const templateJson = normalizeTemplateJSON(JSON.parse(pack.template.jsonData) as TemplateJSON);
+  const config = safeJson<CoverAutoConfig>(pack.config, { enabled: false, excludeZones: [] });
+  // Fix bug audit 2026-05-30 (H4 bis) : si config désactivé, on était passé en
+  // PROCESSING sans revenir → pack bloqué. Désormais FAILED, état visible.
+  if (!config.enabled) {
+    await failCoverFramePack(packId, null, "Configuration cover désactivée sur ce template.", slotId);
+    return null;
+  }
+
+  const frameCount = normalizeFrameCount(config.frameCount ?? pack.frameCount);
+  const seen = normalizeSeenFrames(safeJson<CoverSeenFrame[]>(pack.usedTimestamps, []));
+  const nativeSources = await resolveNativeCoverSources(
+    templateJson,
+    config,
+    pack.render?.usedAssets ?? null,
+    pack.render?.listing?.jsonData ?? null,
+  );
+
+  let duration = pack.duration;
+  let framePicks: CoverFramePick[] = [];
+  const native = nativeSources.length > 0;
+
+  if (native) {
+    duration = nativeSources.reduce((sum, source) => sum + source.duration, 0);
+    framePicks = pickNativeFrames(nativeSources, frameCount, seen.nativeKeys);
+  } else {
+    // Fallback 1 : sommer Render.slotDurations si dispo (couvre les renders
+    // sequence pour lesquels resolveNativeCoverSources est vide pour d'autres
+    // raisons — ex. excludeZones qui masquent tout).
+    if (!duration && pack.render?.slotDurations) {
+      try {
+        const slotDurMap = JSON.parse(pack.render.slotDurations) as Record<string, number>;
+        const sumSlot = Object.values(slotDurMap).reduce(
+          (s, v) => s + (typeof v === "number" && v > 0 ? v : 0),
+          0,
+        );
+        if (sumSlot > 0) duration = sumSlot;
+      } catch { /* JSON invalide, on continue vers probe */ }
+    }
+
+    // Fallback 2 : probe la durée via le render-engine.
+    let probeReason: string | null = null;
+    if (!duration) {
+      const probe = await probeDuration(pack.sourceVideoUrl);
+      if (probe.ok) duration = probe.duration;
+      else probeReason = probe.reason;
+    }
+    if (!duration) {
+      throw new Error(`Durée vidéo introuvable pour préparer les frames cover${probeReason ? ` (${probeReason})` : ""}`);
+    }
+
+    const timestamps = resolveCoverTimestamps(templateJson, config, duration, frameCount, seen.finalTimestamps, slotDurations);
+    framePicks = timestamps.map((timestamp) => ({ sourceUrl: pack.sourceVideoUrl!, timestamp }));
+  }
+
+  if (!duration) throw new Error("Durée vidéo introuvable pour préparer les frames cover");
+  if (framePicks.length === 0) {
+    throw new Error("Aucune frame disponible après application des zones exclues");
+  }
+
+  // Matérialisation des candidats — sans image pour l'instant.
+  const created = await prisma.$transaction(
+    framePicks.map((pick) =>
+      prisma.coverFrameCandidate.create({
+        data: {
+          packId,
+          timestamp: pick.timestamp,
+          imageUrl: null,
+          // sourceUrl seulement en mode natif : en source unique, `usedTimestamps`
+          // s'écrit en nombres nus (cf. normalizeSeenFrames).
+          sourceUrl: native ? pick.sourceUrl : null,
+          slotId: pick.slotId ?? null,
+          sequenceIndex: pick.sequenceIndex ?? null,
+        },
+        select: { id: true },
+      }),
+    ),
+  );
+
+  const picksBySource = new Map<string, PlannedPick[]>();
+  framePicks.forEach((pick, index) => {
+    const planned: PlannedPick = { ...pick, candidateId: created[index].id };
+    const arr = picksBySource.get(pick.sourceUrl) ?? [];
+    arr.push(planned);
+    picksBySource.set(pick.sourceUrl, arr);
+  });
+
+  await prisma.coverFramePack.update({ where: { id: packId }, data: { duration } });
+
+  return {
+    packId,
+    userId: pack.userId,
+    slotId,
+    attempt: pack.extractAttempt,
+    duration,
+    native,
+    keyPrefix: `covers/${pack.userId}/${packId}/a${pack.extractAttempt}/`,
+    picksBySource,
+  };
+}
+
+/**
+ * Chemin de repli : extraction par le render-engine du VPS, puis upload R2 depuis
+ * Node. C'est l'ancien comportement, conservé pour le développement local et pour
+ * les packs dont les sources ne sont pas joignables depuis l'extérieur.
+ */
+async function extractCoverFramesLocally(plan: CoverExtractionPlan): Promise<CoverFrameOutcome[]> {
+  const outcomes: CoverFrameOutcome[] = [];
+  const failedSources: string[] = [];
+
+  // On itère sur picksBySource et NON sur les sources : deux slots alimentés par le
+  // même rush partagent la même URL, et boucler sur les sources extrairait deux fois
+  // le tableau fusionné de picks.
+  for (const [sourceUrl, sourcePicks] of plan.picksBySource) {
+    if (sourcePicks.length === 0) continue;
+    try {
+      const frames = await extractFrames(sourceUrl, sourcePicks.map((pick) => pick.timestamp));
+      if (frames.length === 0) {
+        failedSources.push(`${describeCoverSource(sourcePicks, sourceUrl)} : aucune frame extraite`);
+        continue;
+      }
+      // Persistance tolérante : une frame qui refuse de se télécharger ou de monter
+      // sur R2 ne doit pas annuler les autres.
+      const persisted = await mapWithConcurrencySettled(frames, FRAME_PERSIST_CONCURRENCY, async (frame) => {
+        // On matche sur la position DEMANDÉE quand le render-engine s'est replié :
+        // la tolérance (0,6 × 1/30 s) est bien plus fine que le décalage du repli.
+        const requested = frame.requestedTimestamp ?? frame.timestamp;
+        const pick =
+          sourcePicks.find((p) => Math.abs(p.timestamp - requested) < MIN_FRAME_GAP_S * 0.6) ?? sourcePicks[0];
+        const stored = await persistFrame(frame, `${plan.keyPrefix}${pick.candidateId}.jpg`);
+        return { candidateId: pick.candidateId, timestamp: frame.timestamp, ...stored };
       });
-      notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "FAILED", errorMsg });
+      outcomes.push(...persisted.flatMap((result) => (result.ok ? [result.value] : [])));
+      const errors = persisted.flatMap((result) => (result.ok ? [] : [result.error]));
+      if (errors.length > 0) {
+        console.warn(`[coverAuto] pack=${plan.packId} ${errors.length} frame(s) non persistée(s) :`, errors);
+      }
+    } catch (err) {
+      // Tolérance par source : un rush illisible, un téléchargement qui tombe ou un
+      // timeout ne doit pas faire tomber le pack entier.
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(`[coverAuto] pack=${plan.packId} source=${sourceUrl} extraction échouée : ${reason}`);
+      failedSources.push(`${describeCoverSource(sourcePicks, sourceUrl)} : ${reason}`);
+    }
+  }
+
+  if (outcomes.length === 0) {
+    throw new Error(
+      failedSources.length > 0
+        ? `Le render-engine n'a extrait aucune frame — ${failedSources.join(" ; ")}`
+        : "Le render-engine n'a extrait aucune frame",
+    );
+  }
+  if (failedSources.length > 0) {
+    console.warn(
+      `[coverAuto] pack=${plan.packId} extraction partielle : ${outcomes.length} frames, ` +
+        `${failedSources.length} source(s) en échec — ${failedSources.join(" ; ")}`,
+    );
+  }
+  return outcomes;
+}
+
+/**
+ * Finalise un pack à partir des frames obtenues — appelée par le webhook RunPod
+ * comme par le chemin local, pour qu'il n'existe qu'un seul code de finalisation.
+ *
+ * `attempt` protège des webhooks périmés : un pack remis à zéro entre-temps a vu
+ * son `extractAttempt` incrémenté, et le résultat de l'ancien job est ignoré.
+ */
+export async function applyCoverFrameResults(
+  packId: string,
+  attempt: number | null,
+  frames: CoverFrameOutcome[],
+): Promise<"applied" | "stale" | "unknown"> {
+  const pack = await prisma.coverFramePack.findUnique({
+    where: { id: packId },
+    select: {
+      id: true, userId: true, extractAttempt: true, status: true, usedTimestamps: true,
+      render: { select: { publicationSlot: { select: { id: true } } } },
+      publicationVersion: { select: { slot: { select: { id: true } } } },
+    },
+  });
+  if (!pack) return "unknown";
+  if (attempt !== null && pack.extractAttempt !== attempt) {
+    console.warn(
+      `[coverAuto] résultat périmé ignoré pour pack=${packId} (tentative ${attempt}, courante ${pack.extractAttempt})`,
+    );
+    return "stale";
+  }
+  // Un pack QUEUED attend une NOUVELLE soumission, pas le résultat d'une ancienne.
+  if (pack.status !== "PROCESSING") {
+    console.warn(`[coverAuto] résultat ignoré pour pack=${packId} en statut ${pack.status}`);
+    return "stale";
+  }
+
+  await prisma.$transaction(
+    frames.map((frame) =>
+      prisma.coverFrameCandidate.updateMany({
+        // Le packId est une garde : un id de candidat forgé ne peut pas viser un autre pack.
+        where: { id: frame.candidateId, packId },
+        data: { imageUrl: frame.imageUrl, imageKey: frame.imageKey, timestamp: frame.timestamp },
+      }),
+    ),
+  );
+  // Les picks jamais servis sont supprimés : ils ne doivent ni apparaître dans le
+  // picker, ni compter comme « déjà vus » au tirage suivant.
+  await prisma.coverFrameCandidate.deleteMany({ where: { packId, imageUrl: null } });
+
+  const served = await prisma.coverFrameCandidate.findMany({
+    where: { packId },
+    select: { timestamp: true, sourceUrl: true },
+  });
+  const seenEntries: CoverSeenFrame[] = served.map((row) =>
+    row.sourceUrl ? { sourceUrl: row.sourceUrl, timestamp: row.timestamp } : row.timestamp,
+  );
+
+  await prisma.coverFramePack.update({
+    where: { id: packId },
+    data: {
+      status: "READY",
+      usedTimestamps: JSON.stringify([
+        ...safeJson<CoverSeenFrame[]>(pack.usedTimestamps, []),
+        ...seenEntries,
+      ]),
+      errorMsg: null,
+      runpodJobId: null,
+    },
+  });
+
+  const slotId = pack.render?.publicationSlot?.id ?? pack.publicationVersion?.slot?.id ?? null;
+  notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "READY", frameCount: served.length });
+  await logCoverActivity(slotId, "COVER_READY", { coverFramePackId: packId, frameCount: served.length });
+  return "applied";
+}
+
+/** Bascule un pack en échec — chemin unique pour le local, le dispatch et le webhook. */
+export async function failCoverFramePack(
+  packId: string,
+  attempt: number | null,
+  errorMsg: string,
+  knownSlotId?: string | null,
+): Promise<void> {
+  const pack = await prisma.coverFramePack.findUnique({
+    where: { id: packId },
+    select: {
+      userId: true, extractAttempt: true,
+      render: { select: { publicationSlot: { select: { id: true } } } },
+      publicationVersion: { select: { slot: { select: { id: true } } } },
+    },
+  });
+  if (!pack) return;
+  if (attempt !== null && pack.extractAttempt !== attempt) return;
+
+  // Les candidats créés à la planification n'ont jamais reçu d'image : les laisser
+  // afficherait des vignettes vides dans le picker, et ils compteraient à tort au
+  // tirage suivant.
+  await prisma.coverFrameCandidate
+    .deleteMany({ where: { packId, imageUrl: null } })
+    .catch((err) => console.warn(`[coverAuto] purge des candidats vides échouée pack=${packId}:`, err));
+
+  await prisma.coverFramePack
+    .update({ where: { id: packId }, data: { status: "FAILED", errorMsg, runpodJobId: null } })
+    .catch((err) => console.error(`[coverAuto] Échec update FAILED pour pack=${packId}:`, err));
+  notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "FAILED", errorMsg });
+  const slotId =
+    knownSlotId ?? pack.render?.publicationSlot?.id ?? pack.publicationVersion?.slot?.id ?? null;
+  await logCoverActivity(slotId, "COVER_FAILED", { coverFramePackId: packId, errorMsg });
+}
+
+/**
+ * Le déport RunPod suppose que le worker puisse ATTEINDRE les sources. Ce n'est
+ * pas toujours vrai : sur les pipelines locaux, `Render.videoUrl` (et donc
+ * `CoverFramePack.sourceVideoUrl`) vaut `${CAPTIONS_API}/outputs/...`, une adresse
+ * qui n'existe que sur le VPS — et c'est persisté en base, donc ça rejoue à chaque
+ * « Refaire un tirage ». Dans ce cas on extrait en local plutôt que d'échouer.
+ */
+function coverSourcesArePubliclyReachable(plan: CoverExtractionPlan): boolean {
+  return [...plan.picksBySource.keys()].every((url) => /^https?:\/\//i.test(url));
+}
+
+async function dispatchCoverFramesToRunpod(plan: CoverExtractionPlan): Promise<void> {
+  const payload = {
+    input: {
+      job_type: "cover_frames",
+      pack_id: plan.packId,
+      attempt: plan.attempt,
+      key_prefix: plan.keyPrefix,
+      sources: [...plan.picksBySource.entries()].map(([sourceUrl, picks]) => ({
+        source_url: sourceUrl,
+        frames: picks.map((pick) => ({ id: pick.candidateId, timestamp: pick.timestamp })),
+      })),
+    },
+    ...(getRunpodWebhookUrl("/api/webhooks/runpod/cover-frames")
+      ? { webhook: getRunpodWebhookUrl("/api/webhooks/runpod/cover-frames") }
+      : {}),
+  };
+
+  const data = await submitRunpodJob<{ id: string }>(
+    process.env.RUNPOD_ENDPOINT_ID!,
+    process.env.RUNPOD_API_KEY!,
+    payload,
+    // Jamais le pod : il n'a qu'une GPU et un Semaphore(1). Une extraction de JPEG
+    // y bloquerait un render ou une transcription — voir SubmitRunpodJobOptions.
+    { serverlessOnly: true },
+  );
+
+  await prisma.coverFramePack.update({
+    where: { id: plan.packId },
+    data: { runpodJobId: data.id, dispatchedAt: new Date() },
+  });
+  console.info(
+    `[coverAuto] pack=${plan.packId} tentative=${plan.attempt} soumis à RunPod (job=${data.id}, ` +
+      `${plan.picksBySource.size} source(s))`,
+  );
+}
+
+export async function prepareCoverFramePack(packId: string): Promise<void> {
+  let plan: CoverExtractionPlan | null = null;
+  try {
+    plan = await planCoverFrameExtraction(packId);
+    if (!plan) return;
+
+    if (
+      process.env.USE_RUNPOD !== "false" &&
+      runpodConfigured() &&
+      coverSourcesArePubliclyReachable(plan)
+    ) {
+      // Le webhook prend le relais : la préparation s'arrête ici.
+      await dispatchCoverFramesToRunpod(plan);
       return;
     }
 
-    const frameCount = normalizeFrameCount(config.frameCount ?? pack.frameCount);
-    const seen = normalizeSeenFrames(safeJson<CoverSeenFrame[]>(pack.usedTimestamps, []));
-    const nativeSources = await resolveNativeCoverSources(
-      templateJson,
-      config,
-      pack.render?.usedAssets ?? null,
-      pack.render?.listing?.jsonData ?? null,
-    );
-    let duration = pack.duration;
-    let framePicks: CoverFramePick[] = [];
-    let extractedFrames: TaggedExtractedFrame[] = [];
-    // Picks réellement SERVIS — ce sont eux, et non `framePicks`, qui alimentent
-    // `usedTimestamps` plus bas. Une source en échec ne doit pas être marquée comme
-    // déjà vue : sinon « Refaire un tirage » la considère consommée sans l'avoir
-    // jamais servie (et, sur un pack one-off qui passe par le fallback,
-    // `usedTimestamps` resterait vide — mêmes 36 timestamps à chaque tirage).
-    let usedPicks: CoverFramePick[] = [];
-    // Sources dont l'extraction a échoué : on continue, et on ne lève qu'à la fin
-    // si RIEN n'a pu être extrait. Sert aussi à nommer la cause dans errorMsg.
-    const failedSources: string[] = [];
-
-    // picksBySource: maps sourceUrl → picks with provenance metadata (slotId, sequenceIndex)
-    const picksBySource = new Map<string, CoverFramePick[]>();
-    if (nativeSources.length > 0) {
-      duration = nativeSources.reduce((sum, source) => sum + source.duration, 0);
-      framePicks = pickNativeFrames(nativeSources, frameCount, seen.nativeKeys);
-      for (const pick of framePicks) {
-        const arr = picksBySource.get(pick.sourceUrl) ?? [];
-        arr.push(pick);
-        picksBySource.set(pick.sourceUrl, arr);
-      }
-      // On itère sur picksBySource et NON sur nativeSources : deux slots alimentés
-      // par le même rush partagent la même sourceUrl, et boucler sur les sources
-      // extrairait deux fois le tableau fusionné de picks (frames et objets R2
-      // dupliqués).
-      for (const [sourceUrl, sourcePicks] of picksBySource) {
-        if (sourcePicks.length === 0) continue;
-        try {
-          const frames = await extractFrames(sourceUrl, sourcePicks.map((pick) => pick.timestamp));
-          if (frames.length === 0) {
-            failedSources.push(`${describeCoverSource(sourcePicks, sourceUrl)} : aucune frame extraite`);
-            continue;
-          }
-          extractedFrames.push(...frames.map((frame) => ({
-            ...frame,
-            // Attach provenance: match extracted frame timestamp back to pick
-            // On matche sur la position DEMANDÉE quand le render-engine s'est replié :
-            // la tolérance (0,6 × 1/30 s) est bien plus fine que le décalage du repli.
-            _pick: sourcePicks.find((p) => Math.abs(p.timestamp - (frame.requestedTimestamp ?? frame.timestamp)) < MIN_FRAME_GAP_S * 0.6) ?? sourcePicks[0],
-          })));
-          usedPicks.push(...sourcePicks);
-        } catch (err) {
-          // Tolérance par source : un rush illisible, un téléchargement qui tombe ou
-          // un timeout ne doit pas faire tomber le pack entier. Avec 8 clips et 5 %
-          // d'échec par clip, l'ancien comportement (throw immédiat) donnait ~34 %
-          // d'échec par pack.
-          const reason = err instanceof Error ? err.message : String(err);
-          console.warn(`[coverAuto] pack=${packId} source=${sourceUrl} extraction échouée : ${reason}`);
-          failedSources.push(`${describeCoverSource(sourcePicks, sourceUrl)} : ${reason}`);
-        }
-      }
-    } else {
-      // Fallback 1 : sommer Render.slotDurations si dispo (couvre les renders
-      // sequence pour lesquels resolveNativeCoverSources est vide pour d'autres
-      // raisons — ex. excludeZones qui masquent tout).
-      if (!duration && pack.render?.slotDurations) {
-        try {
-          const slotDurMap = JSON.parse(pack.render.slotDurations) as Record<string, number>;
-          const sumSlot = Object.values(slotDurMap).reduce(
-            (s, v) => s + (typeof v === "number" && v > 0 ? v : 0),
-            0,
-          );
-          if (sumSlot > 0) duration = sumSlot;
-        } catch { /* JSON invalide, on continue vers probe */ }
-      }
-
-      // Fallback 2 : probe la durée via le render-engine.
-      let probeReason: string | null = null;
-      if (!duration) {
-        const probe = await probeDuration(pack.sourceVideoUrl);
-        if (probe.ok) duration = probe.duration;
-        else probeReason = probe.reason;
-      }
-
-      if (!duration) {
-        throw new Error(`Durée vidéo introuvable pour préparer les frames cover${probeReason ? ` (${probeReason})` : ""}`);
-      }
-      const timestamps = resolveCoverTimestamps(templateJson, config, duration, frameCount, seen.finalTimestamps, slotDurations);
-      framePicks = timestamps.map((timestamp) => ({ sourceUrl: pack.sourceVideoUrl!, timestamp }));
-      // Source unique : pas de tolérance possible, un échec ici reste fatal.
-      extractedFrames = await extractFrames(pack.sourceVideoUrl, timestamps);
-      usedPicks = framePicks;
-    }
-
-    if (!duration) throw new Error("Durée vidéo introuvable pour préparer les frames cover");
-    if (framePicks.length === 0) {
-      throw new Error("Aucune frame disponible après application des zones exclues");
-    }
-    if (extractedFrames.length === 0) {
-      throw new Error(
-        failedSources.length > 0
-          ? `Le render-engine n'a extrait aucune frame — ${failedSources.join(" ; ")}`
-          : "Le render-engine n'a extrait aucune frame",
-      );
-    }
-    if (failedSources.length > 0) {
-      console.warn(
-        `[coverAuto] pack=${packId} extraction partielle : ${extractedFrames.length}/${framePicks.length} frames, ` +
-          `${failedSources.length} source(s) en échec — ${failedSources.join(" ; ")}`,
-      );
-    }
-
-    // Persistance tolérante : une frame qui refuse de se télécharger ou de monter
-    // sur R2 ne doit pas annuler les 35 autres (mapWithConcurrency a la sémantique
-    // Promise.all et rejetait au premier échec, en laissant des objets orphelins).
-    const persistResults = await mapWithConcurrencySettled(
-      extractedFrames,
-      FRAME_PERSIST_CONCURRENCY,
-      async (frame, index) => ({
-        timestamp: frame.timestamp,
-        slotId: frame._pick?.slotId ?? null,
-        sequenceIndex: frame._pick?.sequenceIndex ?? null,
-        ...(await persistFrame(pack.id, pack.userId, frame, index)),
-      }),
-    );
-    const persisted = persistResults.flatMap((result) => (result.ok ? [result.value] : []));
-    const persistErrors = persistResults.flatMap((result) => (result.ok ? [] : [result.error]));
-    if (persistErrors.length > 0) {
-      console.warn(
-        `[coverAuto] pack=${packId} ${persistErrors.length}/${persistResults.length} frame(s) non persistée(s) :`,
-        persistErrors,
-      );
-    }
-    if (persisted.length === 0) {
-      throw new Error("Aucune frame n'a pu être enregistrée (téléchargement ou upload R2 en échec)");
-    }
-
-    await prisma.coverFrameCandidate.createMany({
-      data: persisted.map((frame) => ({
-        packId: pack.id,
-        timestamp: frame.timestamp,
-        imageUrl: frame.imageUrl,
-        imageKey: frame.imageKey,
-        slotId: frame.slotId,
-        sequenceIndex: frame.sequenceIndex,
-      })),
-    });
-
-    await prisma.coverFramePack.update({
-      where: { id: pack.id },
-      data: {
-        status: "READY",
-        duration,
-        usedTimestamps: JSON.stringify([
-          ...safeJson<CoverSeenFrame[]>(pack.usedTimestamps, []),
-          ...usedPicks.map((pick) =>
-            nativeSources.length > 0
-              ? { sourceUrl: pick.sourceUrl, timestamp: pick.timestamp }
-              : pick.timestamp,
-          ),
-        ]),
-        errorMsg: null,
-      },
-    });
-    notifyUser(pack.userId, {
-      jobType: "cover",
-      jobId: pack.id,
-      status: "READY",
-      frameCount: persisted.length,
-    });
-    await logCoverActivity(slotId, "COVER_READY", {
-      coverFramePackId: pack.id,
-      frameCount: persisted.length,
-    });
+    const frames = await extractCoverFramesLocally(plan);
+    await applyCoverFrameResults(plan.packId, plan.attempt, frames);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    await prisma.coverFramePack.update({
-      where: { id: packId },
-      data: { status: "FAILED", errorMsg },
-    });
-    notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "FAILED", errorMsg });
-    await logCoverActivity(slotId, "COVER_FAILED", {
-      coverFramePackId: packId,
-      errorMsg,
-    });
+    await failCoverFramePack(packId, plan?.attempt ?? null, errorMsg, plan?.slotId);
     throw err;
   }
+}
+
+/**
+ * Rattrape les packs dont le job RunPod est parti mais dont le webhook n'est
+ * jamais revenu (worker tué, réseau, NEXTAUTH_URL invalide).
+ *
+ * On interroge RunPod plutôt que de conclure sur un simple délai : un job peut
+ * légitimement attendre en file bien plus longtemps que nos seuils, et le déclarer
+ * mort à l'aveugle ferait perdre un travail déjà payé. Appelée par le cron, jamais
+ * par le GET que l'UI poll toutes les 3 secondes.
+ *
+ * Les jobs dispatchés sur pod (`pod-…`) ne sont pas pollables : `resolveRunpodJobPhase`
+ * les signale et on les laisse au seuil temporel. En pratique les covers ne passent
+ * jamais par le pod (voir `dispatchCoverFramesToRunpod`).
+ */
+export async function reconcileDispatchedCoverPacks(): Promise<{ checked: number; failed: number }> {
+  const endpointId = process.env.RUNPOD_ENDPOINT_ID;
+  const apiKey = process.env.RUNPOD_API_KEY;
+  if (!endpointId || !apiKey) return { checked: 0, failed: 0 };
+
+  const packs = await prisma.coverFramePack.findMany({
+    where: { status: "PROCESSING", runpodJobId: { not: null } },
+    select: { id: true, runpodJobId: true, extractAttempt: true, dispatchedAt: true, updatedAt: true },
+    take: 50,
+  });
+
+  let failed = 0;
+  for (const pack of packs) {
+    try {
+      const phase = await resolveRunpodJobPhase(
+        endpointId,
+        apiKey,
+        pack.runpodJobId!,
+        pack.dispatchedAt ?? pack.updatedAt,
+        COVER_RUNPOD_STALL_MS,
+      );
+      if (phase.phase === "in_progress") continue;
+      if (phase.phase === "completed") {
+        // Le webhook s'est perdu mais le job a bien tourné. On ne peut pas rejouer
+        // son output ici sans dupliquer la logique du webhook : on marque en échec
+        // avec un message actionnable plutôt que de laisser le pack en PROCESSING.
+        await failCoverFramePack(
+          pack.id,
+          pack.extractAttempt,
+          "Le job d'extraction s'est terminé mais sa notification s'est perdue. Relance l'extraction.",
+        );
+      } else if (phase.phase === "failed") {
+        await failCoverFramePack(pack.id, pack.extractAttempt, `Extraction échouée — ${phase.error}`);
+      } else if (phase.phase === "stalled") {
+        await failCoverFramePack(pack.id, pack.extractAttempt, "Le job d'extraction n'a plus donné signe de vie.");
+      } else {
+        continue; // unreachable : RunPod injoignable, on retentera au prochain passage
+      }
+      failed += 1;
+    } catch (err) {
+      console.warn(`[coverAuto] réconciliation impossible pour pack=${pack.id}:`, err);
+    }
+  }
+  return { checked: packs.length, failed };
 }
 
 export function queueCoverFramePackPreparation(packId: string): void {
@@ -1168,6 +1410,10 @@ export async function renderFinalCover(
   }
   const candidate = pack.candidates.find((item) => item.id === candidateId);
   if (!candidate) throw new Error("Frame candidate introuvable");
+  // Les candidats existent avant leur image (ils portent la provenance et la clé
+  // R2 dès la planification). Une ligne sans image n'a jamais été extraite : elle
+  // ne peut pas servir de fond de cover.
+  if (!candidate.imageUrl) throw new Error("Cette frame n'a pas encore été extraite");
 
   let templateJson = normalizeTemplateJSON(JSON.parse(pack.render.template.jsonData) as TemplateJSON);
   const rawListingData = safeJson<ListingData>(pack.render.listing.jsonData, {} as ListingData);

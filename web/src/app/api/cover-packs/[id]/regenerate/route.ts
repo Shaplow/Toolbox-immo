@@ -59,6 +59,12 @@ export async function POST(_req: NextRequest, { params }: Params) {
     where: { id },
     data: {
       status: "QUEUED",
+      // L'incrément vit ICI, dans la route qui remet le pack à zéro — pas dans la
+      // préparation. Un webhook RunPod en retard doit être périmé dès l'instant du
+      // clic : s'il ne l'était qu'une fois le nouveau plan calculé, il aurait le
+      // temps de créer des candidats pointant sur des objets R2 déjà purgés.
+      extractAttempt: { increment: 1 },
+      runpodJobId: null,
       selectedCandidateId: null,
       finalCoverUrl: null,
       finalCoverKey: null,

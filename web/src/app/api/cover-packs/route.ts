@@ -96,6 +96,11 @@ export async function GET(req: NextRequest) {
   await prisma.coverFramePack.updateMany({
     where: {
       ...ownerScope,
+      // Un pack dispatché sur RunPod n'est PAS jugé ici : son job peut légitimement
+      // attendre en file plus longtemps que nos seuils, et seul RunPod sait s'il vit
+      // encore. Sa réconciliation se fait dans /api/cron/pod-reconcile, qui interroge
+      // l'API RunPod — ce qu'un GET poll toutes les 3 s ne doit pas faire.
+      runpodJobId: null,
       OR: [
         { status: "PROCESSING", updatedAt: { lt: new Date(now - PROCESSING_STALL_MS) } },
         { status: "QUEUED", updatedAt: { lt: new Date(now - QUEUED_STALL_MS) } },

@@ -83,6 +83,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       where: { id: packId },
       data: {
         status: "QUEUED",
+        // Même raison que dans regenerate : un pack qu'on remet à zéro doit périmer
+        // immédiatement le webhook du job encore en vol.
+        extractAttempt: { increment: 1 },
+        runpodJobId: null,
         sourceVideoUrl,
         config: JSON.stringify(config),
         overlayGroupIds: JSON.stringify(config.overlayGroupIds ?? []),

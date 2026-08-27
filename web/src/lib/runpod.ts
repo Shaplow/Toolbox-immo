@@ -139,6 +139,18 @@ const TRANSIENT_RUNPOD_STATUS = new Set([429, 502, 503, 504]);
 type SubmitRunpodJobOptions = {
   timeoutMs?: number;
   retryDelaysMs?: number[];
+  /**
+   * Interdit le chemin Pod On-Demand : le job part en Serverless, quitte à
+   * attendre en file.
+   *
+   * Le pod n'a qu'une GPU et `pod_server.py` le protège par un `Semaphore(1)` —
+   * il ne traite qu'un job à la fois. Or le routage ci-dessous y bascule
+   * précisément quand Serverless n'a plus de worker idle, c'est-à-dire pendant
+   * une rafale. Un job purement CPU (extraction de frames) n'a donc rien à y
+   * faire : il y démarrerait une GPU pour rien, et bloquerait derrière lui un
+   * render ou une transcription qui, eux, en ont besoin.
+   */
+  serverlessOnly?: boolean;
 };
 
 function sleep(ms: number): Promise<void> {
@@ -300,7 +312,7 @@ export async function submitRunpodJob<TResponse>(
 
   // Step 1 — check Serverless availability first (only when pod mode is configured;
   // if pod mode is off, always use Serverless directly).
-  if (podModeConfigured()) {
+  if (podModeConfigured() && !options.serverlessOnly) {
     const hasIdleWorkers = await serverlessHasIdleWorkers(endpointId, apiKey);
 
     if (hasIdleWorkers) {

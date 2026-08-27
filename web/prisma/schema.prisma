@@ -372,6 +372,16 @@ model CoverFramePack {
   finalCoverUrl        String?
   finalCoverKey        String?
   errorMsg             String?
+  /// Job RunPod d'extraction en vol. Null sur le chemin de repli local.
+  runpodJobId          String?               @unique
+  /// Numéro du tirage courant. Incrémenté par les routes qui REMETTENT le pack à
+  /// zéro (regenerate, re-trigger, mark-failed) — jamais par la préparation
+  /// elle-même : un webhook en retard doit être périmé dès l'instant du clic, pas
+  /// seulement une fois le nouveau plan calculé. Sert aussi de segment de clé R2
+  /// (`.../a{extractAttempt}/`), ce qui rend les tirages successifs disjoints.
+  extractAttempt       Int                   @default(0)
+  /// Horodatage de la soumission RunPod — base du calcul de job bloqué.
+  dispatchedAt         DateTime?
   /// V6 — Pack marqué obsolète quand son input upstream change.
   staleSince           DateTime?
   staleReason          String? // "version_promoted" | "render_replaced"
@@ -390,8 +400,16 @@ model CoverFrameCandidate {
   packId        String
   pack          CoverFramePack @relation(fields: [packId], references: [id], onDelete: Cascade)
   timestamp     Float
-  imageUrl      String
+  /// Null tant que la frame n'a pas été extraite : les candidats sont créés AVANT
+  /// l'extraction, pour porter la provenance (slotId/sequenceIndex) et fixer une clé
+  /// R2 déterministe. Les lignes restées nulles sont purgées à la finalisation.
+  imageUrl      String?
   imageKey      String?
+  /// Rush d'origine de la frame. Null en mode source unique (chemin de repli).
+  /// Porte l'anti-répétition : `usedTimestamps` se dérive des candidats servis,
+  /// groupés par source — sans cette colonne le webhook ne saurait pas de quelle
+  /// source vient une frame, et « Refaire un tirage » reproposerait les mêmes.
+  sourceUrl     String?
   /// VideoSequence slotId d'origine (null pour single-sequence ou frame sans tracking)
   slotId        String?
   /// Index de la source dans videoSequence[] si applicable (0-based)

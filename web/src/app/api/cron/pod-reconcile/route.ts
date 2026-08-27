@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { maybeStopIdlePod } from "@/lib/podOrchestrator";
 import { prisma } from "@/lib/prisma";
 import { timingSafeEqualStrings } from "@/lib/utils";
+import { reconcileDispatchedCoverPacks } from "@/lib/coverAuto";
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -43,8 +44,14 @@ export async function GET(req: NextRequest) {
   // Snapshot après réconciliation
   const after = await prisma.podState.findUnique({ where: { id: "singleton" } });
 
+  // Packs cover dont le job RunPod est parti mais dont le webhook n'est jamais
+  // revenu (worker tué, réseau, NEXTAUTH_URL invalide). C'est le seul rattrapage :
+  // le GET /api/cover-packs, poll toutes les 3 s, ne doit pas interroger RunPod.
+  const covers = await reconcileDispatchedCoverPacks();
+
   return NextResponse.json({
     ok: true,
+    covers,
     before: before
       ? { status: before.status, activeJobCount: before.activeJobCount, podId: before.podId }
       : null,
