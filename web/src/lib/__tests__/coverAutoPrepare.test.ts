@@ -102,8 +102,9 @@ function framesFor(body: FormData): unknown[] {
 }
 
 /** Dernier appel à coverFramePack.update dont le status est renseigné. */
-function lastStatusUpdate() {
-  const calls = mockPackUpdate.mock.calls as Array<[{ data?: { status?: string } }]>;
+type PackUpdateArg = { data?: { status?: string; errorMsg?: string; usedTimestamps?: string } };
+function lastStatusUpdate(): PackUpdateArg | undefined {
+  const calls = mockPackUpdate.mock.calls as Array<[PackUpdateArg]>;
   return [...calls].reverse().find((call) => call[0]?.data?.status)?.[0];
 }
 
@@ -158,6 +159,34 @@ describe("prepareCoverFramePack — un rush en échec ne fait pas tomber le pack
     // qu'aucune de ses frames n'ait jamais été proposée.
     expect(seen.some((entry) => entry.sourceUrl.includes("rush-b"))).toBe(false);
     expect(seen.some((entry) => entry.sourceUrl.includes("rush-a"))).toBe(true);
+  });
+
+  it("découpe l'extraction en lots et garde les frames des lots qui passent", async () => {
+    // 36 frames en une seule requête, c'est plusieurs minutes sur un rush 4K HLG —
+    // au-delà de tout budget de fetch raisonnable. On découpe, et un lot trop lent
+    // ne coûte que ses frames.
+    const batchSizes: number[] = [];
+    let call = 0;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const body = init.body as FormData;
+      const timestamps = JSON.parse(String(body.get("timestamps_json"))) as number[];
+      batchSizes.push(timestamps.length);
+      call += 1;
+      // Le 2e lot tombe en timeout, les autres passent.
+      if (call === 2) return new Response("", { status: 504 });
+      return new Response(JSON.stringify(framesFor(body)), { status: 200 });
+    }));
+
+    await prepareCoverFramePack("pack-1");
+
+    // Aucun lot ne dépasse la taille par défaut (8).
+    expect(Math.max(...batchSizes)).toBeLessThanOrEqual(8);
+    expect(batchSizes.length).toBeGreaterThan(1);
+
+    const update = lastStatusUpdate();
+    expect(update?.data?.status).toBe("READY");
+    const created = mockCandidateCreateMany.mock.calls[0][0].data as unknown[];
+    expect(created.length).toBeGreaterThan(0);
   });
 
   it("échoue en nommant la cause quand TOUTES les sources échouent", async () => {

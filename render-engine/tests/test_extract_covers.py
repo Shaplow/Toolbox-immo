@@ -114,5 +114,23 @@ class ExtractCoversContractTest(unittest.TestCase):
         self.assertAlmostEqual(frames[0]["requestedTimestamp"], 5.0)
 
 
+    def test_frames_are_downscaled_before_any_other_filter(self) -> None:
+        # Les rushs sont des .MOV iPhone 4K alors que la cover est composée en
+        # 1080×1920 : tonemapper puis encoder du 4K est du travail jeté, et sur une
+        # source HLG c'est ce qui faisait exploser le budget de la requête.
+        seen: list[list[str]] = []
+
+        async def factory(*cmd, **kwargs):
+            seen.append(list(cmd))
+            out = _ffmpeg_output_path(cmd)
+            return _FakeProc(0, b"", on_run=lambda: out.write_bytes(b"\xff\xd8jpeg"))
+
+        res = self._post([1.0], factory)
+
+        self.assertEqual(res.status_code, 200)
+        vf = seen[0][seen[0].index("-vf") + 1]
+        self.assertTrue(vf.startswith("scale=1920:1920:force_original_aspect_ratio=decrease"), vf)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

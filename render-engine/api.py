@@ -1265,6 +1265,9 @@ async def extract_covers(
     covers_dir.mkdir(parents=True, exist_ok=True)
 
     stamp = int(time.time() * 1000)
+    # Plus grande dimension des frames extraites. 1920 couvre le format REELS
+    # (1080×1920) et les canvas print courants sans rien perdre à la composition.
+    _frame_max_edge = max(320, int(os.environ.get("COVER_FRAME_MAX_EDGE", "1920")))
     concurrency = max(1, min(8, int(os.environ.get("COVER_EXTRACT_CONCURRENCY", "4"))))
     per_frame_timeout = max(10, int(os.environ.get("COVER_EXTRACT_FRAME_TIMEOUT", "90")))
     semaphore = asyncio.Semaphore(concurrency)
@@ -1278,8 +1281,18 @@ async def extract_covers(
             "-vframes", "1",
             "-q:v", "2",
         ]
+        # Réduction AVANT tout autre filtre. Les rushs sont des .MOV iPhone 4K (voire
+        # plus) alors que la cover finale est composée en 1080×1920 : tonemapper puis
+        # encoder du 4K est du travail intégralement jeté. Sur une source HLG, le
+        # tonemap zscale coûte plusieurs secondes par frame en 4K contre une fraction
+        # de seconde une fois réduit — × 36 frames, c'est la différence entre tenir
+        # dans le budget de la requête et le dépasser.
+        # `force_original_aspect_ratio=decrease` + -2 : on borne la plus grande
+        # dimension sans jamais agrandir une source déjà plus petite.
+        filters = [f"scale={_frame_max_edge}:{_frame_max_edge}:force_original_aspect_ratio=decrease"]
         if _hdr_prefilter:
-            cmd += ["-vf", _hdr_prefilter]
+            filters.append(_hdr_prefilter)
+        cmd += ["-vf", ",".join(filters)]
         cmd.append(str(frame_path))
         proc = await asyncio.create_subprocess_exec(
             *cmd,

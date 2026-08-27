@@ -71,6 +71,9 @@ services:
       # avec le process Node. Poser les mêmes valeurs en prod.
       COVER_EXTRACT_CONCURRENCY: "2"
       COVER_EXTRACT_FRAME_TIMEOUT: "120"
+      # Plus grande dimension des frames extraites. Les covers sont composées en
+      # 1080×1920 : extraire du 4K ne sert à rien et coûte un tonemap par frame.
+      COVER_FRAME_MAX_EDGE: "1920"
     volumes:
       - ./render-engine:/app
       - render-outputs:/app/outputs

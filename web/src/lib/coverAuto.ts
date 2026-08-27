@@ -279,14 +279,30 @@ class ExtractFramesError extends Error {
   }
 }
 
-// 4 min < 5 min : le `headersTimeout` interne d'undici (Node) est câblé à 300 s et
-// coupe le fetch avec un UND_ERR_HEADERS_TIMEOUT opaque, quel que soit
-// l'AbortSignal passé (le repo documente déjà ce piège côté transcription).
-// On abort donc nous-mêmes avant, proprement, et on retente : le render-engine a
-// mis la vidéo en cache entre-temps, la 2e tentative est rapide.
-const EXTRACT_FRAMES_TIMEOUT_MS = 4 * 60_000;
+function envInt(name: string, fallback: number, min: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
+}
 
-async function extractFrames(videoUrl: string, timestamps: number[]): Promise<ExtractedFrame[]> {
+// Un pack demande typiquement 36 frames. Les envoyer en une seule requête faisait
+// dépendre TOUT le pack d'un seul appel de plusieurs minutes : sur des rushs 4K
+// HLG, le tonemap par frame suffit à dépasser n'importe quel budget raisonnable,
+// et le `headersTimeout` interne d'undici (300 s, non configurable sans passer
+// par un dispatcher) plafonne de toute façon la durée d'un fetch.
+// On découpe donc en lots courts. Chaque lot est indépendant : un lot trop lent
+// coûte ses frames, pas le pack entier.
+const EXTRACT_FRAMES_BATCH_SIZE = envInt("COVER_EXTRACT_BATCH_SIZE", 8, 1);
+// Le PREMIER lot paie le téléchargement de la source par le render-engine (un
+// rush peut peser plusieurs centaines de Mo) — il lui faut un budget nettement
+// plus large que les suivants, qui tapent dans le cache disque de l'engine.
+const EXTRACT_FRAMES_WARMUP_TIMEOUT_MS = envInt("COVER_EXTRACT_WARMUP_TIMEOUT_MS", 240_000, 10_000);
+const EXTRACT_FRAMES_BATCH_TIMEOUT_MS = envInt("COVER_EXTRACT_BATCH_TIMEOUT_MS", 90_000, 10_000);
+
+async function extractFramesBatch(
+  videoUrl: string,
+  timestamps: number[],
+  timeoutMs: number,
+): Promise<ExtractedFrame[]> {
   return withRetryIf(
     `extract-covers:${timestamps.length}ts`,
     async () => {
@@ -298,13 +314,13 @@ async function extractFrames(videoUrl: string, timestamps: number[]): Promise<Ex
         res = await fetch(`${CAPTIONS_API}/api/extract-covers`, {
           method: "POST",
           body: form,
-          signal: AbortSignal.timeout(EXTRACT_FRAMES_TIMEOUT_MS),
+          signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (err) {
         const isTimeout = err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
         throw new ExtractFramesError(
           isTimeout
-            ? `render-engine injoignable (timeout ${EXTRACT_FRAMES_TIMEOUT_MS / 1000}s)`
+            ? `pas de réponse du render-engine en ${Math.round(timeoutMs / 1000)}s`
             : `render-engine injoignable : ${err instanceof Error ? err.message : String(err)}`,
           null,
         );
@@ -317,11 +333,46 @@ async function extractFrames(videoUrl: string, timestamps: number[]): Promise<Ex
       }
       return await res.json() as ExtractedFrame[];
     },
-    // 422 = échec d'extraction déterministe (la source est illisible) : inutile de
-    // retenter. Timeout, erreur réseau et 5xx sont eux potentiellement transitoires.
+    // 422 = échec déterministe (source illisible) : inutile de retenter.
+    // Un timeout, lui, mérite UNE reprise : l'engine poursuit son travail après
+    // notre abandon, la source est donc en cache et la reprise est rapide.
     (err) => !(err instanceof ExtractFramesError) || err.status === null || err.status >= 500,
-    [1000, 3000],
+    [2000],
   );
+}
+
+async function extractFrames(videoUrl: string, timestamps: number[]): Promise<ExtractedFrame[]> {
+  const frames: ExtractedFrame[] = [];
+  const failures: string[] = [];
+
+  for (let offset = 0; offset < timestamps.length; offset += EXTRACT_FRAMES_BATCH_SIZE) {
+    const batch = timestamps.slice(offset, offset + EXTRACT_FRAMES_BATCH_SIZE);
+    const isFirst = offset === 0;
+    try {
+      frames.push(
+        ...(await extractFramesBatch(
+          videoUrl,
+          batch,
+          isFirst ? EXTRACT_FRAMES_WARMUP_TIMEOUT_MS : EXTRACT_FRAMES_BATCH_TIMEOUT_MS,
+        )),
+      );
+    } catch (err) {
+      // Un lot perdu coûte ses frames, pas le pack : mieux vaut 28 candidats que
+      // zéro. On ne remonte l'erreur que si AUCUN lot n'a rien donné.
+      failures.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (frames.length === 0 && failures.length > 0) {
+    throw new ExtractFramesError(failures[0], null);
+  }
+  if (failures.length > 0) {
+    console.warn(
+      `[coverAuto] extraction partielle : ${frames.length}/${timestamps.length} frames, ` +
+        `${failures.length} lot(s) perdu(s) — ${failures[0]}`,
+    );
+  }
+  return frames;
 }
 
 /** Lit le `detail` d'une erreur FastAPI plutôt que d'exposer le JSON brut. */
