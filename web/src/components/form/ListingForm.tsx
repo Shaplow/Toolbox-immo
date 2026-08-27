@@ -131,6 +131,65 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   // Reuse the same listingId for all generates in this session (variants on the same listing)
   const listingIdRef = useRef<string | null>(null);
 
+  /**
+   * Re-tire les suggestions de bibliothèque après une génération réussie.
+   *
+   * Sans ça, `librarySelections` et `libraryPrefillContext` restaient figés sur
+   * le snapshot calculé au chargement de la page : le bouton devient « Générer
+   * une variante », mais N clics produisaient N rendus sur EXACTEMENT les mêmes
+   * médias, la même musique et la même fiche de données.
+   *
+   * Volontairement étroit : on ne remplace que les champs pilotés par une
+   * bibliothèque, et jamais ceux que l'utilisateur a choisis lui-même via
+   * « Changer » (provenance `"manual"`). Les autres valeurs du formulaire ne
+   * bougent pas — d'une variante à l'autre, seul le tirage change.
+   */
+  async function redrawLibrarySuggestions(currentListingId: string) {
+    if (!libraryPrefillContext) return;
+    try {
+      const res = await fetch(`/api/templates/${templateId}/prefill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId:
+            selectedAccountId || accountIdProp || libraryPrefillContext.selectedAccountId || null,
+          slotId: slotIdProp ?? null,
+          listingId: currentListingId,
+          // Sans ce flag, la présence d'un listingId fait re-matcher les assets
+          // par URL — on retomberait sur exactement les mêmes.
+          forceRedraw: true,
+          initialValues: buildTrackedInitialValues(values, provenance),
+          provenance,
+          // Valeurs COMPLÈTES : les filtres de tags (tagFilterParam,
+          // tagConditions.fromParam) lisent le paramètre directement dedans, et
+          // une clé absente supprime le filtre au lieu de le laisser vide.
+          formData: values,
+        }),
+        signal: AbortSignal.timeout(PREFILL_FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { context: LibraryPrefillContext | null };
+      if (!data.context) return;
+
+      const redrawnSelections: Record<string, LibraryAssetOption | null> = {};
+      const redrawnValues: Record<string, string> = {};
+      for (const [fieldKey, asset] of Object.entries(data.context.initialSuggestions ?? {})) {
+        if (provenance[fieldKey] === "manual") continue;
+        redrawnSelections[fieldKey] = asset;
+        if (asset) redrawnValues[fieldKey] = asset.url;
+      }
+
+      setLibraryPrefillContext(data.context);
+      if (Object.keys(redrawnSelections).length > 0) {
+        setLibrarySelections((prev) => ({ ...prev, ...redrawnSelections }));
+        setValues((prev) => ({ ...prev, ...redrawnValues }));
+      }
+    } catch {
+      // Silencieux : la variante vient d'être lancée, un re-tirage raté ne doit
+      // rien casser. Au pire le clic suivant repart sur le tirage précédent.
+    }
+  }
+
   // Phase 2.3 — charge le prefill depuis l'API après sélection d'un compte IG.
   // Phase 8.M2 : AbortController pour annuler le fetch en cours quand l'user
   // change de compte rapidement → évite que le dernier-arrivé écrase un
@@ -624,6 +683,10 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           ? "Render lancé — suivi en cours"
           : `Variante n°${variantCountRef.current} lancée`,
       );
+
+      // Re-tirage AVANT de réactiver le bouton : un double-clic rapide ne doit
+      // pas relancer la même combinaison d'assets.
+      if (listingId) await redrawLibrarySuggestions(listingId);
     } finally {
       setGenerating(false);
     }

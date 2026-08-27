@@ -51,6 +51,28 @@ interface BuildArgs {
   /** Provenance déjà connue pour `initialValues` (posée par `buildSlotPrefill`
    *  en amont) — la boucle DataEntry l'étend plutôt que de la recalculer. */
   provenance?: ProvenanceMap;
+  /**
+   * Force un nouveau tirage même quand `listingId` est fourni.
+   *
+   * Sans ça, la présence d'un `listingId` fait re-matcher les assets par URL au
+   * lieu de rejouer `resolveLibraryPrefill` : c'est le bon comportement quand on
+   * ROUVRE une génération existante (le picker doit montrer l'asset réellement
+   * utilisé), mais pas quand on demande une VARIANTE — on retomberait
+   * indéfiniment sur les mêmes médias.
+   */
+  forceRedraw?: boolean;
+  /**
+   * Valeurs COMPLÈTES du formulaire, utilisées uniquement pour résoudre les
+   * filtres de tags (`tagFilterParam`, `tagConditions.fromParam`).
+   *
+   * Distinct de `initialValues`, qui ne porte que les clés tracées en provenance
+   * (cf. buildPrefillRequestPayload). `resolveTag` lit le paramètre directement
+   * dans le formData : une clé absente ne produit AUCUN filtre de tag et le
+   * tirage s'élargit silencieusement à toute la bibliothèque. Un champ pilotant
+   * un tag avec un `default` jamais édité n'a pas d'entrée de provenance — il
+   * doit malgré tout filtrer.
+   */
+  tagFormData?: Record<string, unknown>;
 }
 
 interface BuildResult {
@@ -157,6 +179,8 @@ export async function buildLibraryPrefillContext({
   slotId,
   listingId,
   provenance: provenanceIn,
+  forceRedraw = false,
+  tagFormData,
 }: BuildArgs): Promise<BuildResult> {
   let initialValues = initialValuesIn;
   const provenance: ProvenanceMap = { ...(provenanceIn ?? {}) };
@@ -284,7 +308,7 @@ export async function buildLibraryPrefillContext({
     resolvedSetTag?: string | null;
   } | null = null;
 
-  if (listingId) {
+  if (listingId && !forceRedraw) {
     // Regenerating from an existing listing: try to match stored URLs back to
     // library assets so the picker shows the previously used asset as the
     // current selection.
@@ -307,7 +331,9 @@ export async function buildLibraryPrefillContext({
     // theme_sequence block exists).
     const prefill = await resolveLibraryPrefill(
       json,
-      initialValues ?? undefined,
+      // formData de résolution des tags : les valeurs complètes quand elles sont
+      // fournies, sinon les valeurs tracées (comportement historique).
+      tagFormData ?? initialValues ?? undefined,
       accountId ?? undefined,
     );
     setSequencedLibraryIds = prefill.setSequencedLibraryIds ?? [];

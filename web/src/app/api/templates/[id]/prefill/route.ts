@@ -17,6 +17,8 @@
  *   listingId?:     string | null,
  *   initialValues?: Record<string, unknown>,
  *   provenance?:    ProvenanceMap,
+ *   forceRedraw?:   boolean,                    // re-tirer même avec un listingId
+ *   formData?:      Record<string, unknown>,    // valeurs complètes, pour les filtres de tags
  * }
  *
  * Réponse 200 : {
@@ -72,6 +74,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     listingId?: string | null;
     initialValues?: Record<string, unknown>;
     provenance?: ProvenanceMap;
+    forceRedraw?: boolean;
+    formData?: Record<string, unknown>;
   } = {};
   try {
     body = (await req.json()) as typeof body;
@@ -85,6 +89,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     listingId = null,
     initialValues = {},
     provenance: incomingProvenance = {},
+    forceRedraw = false,
+    formData,
   } = body;
 
   const json = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
@@ -115,6 +121,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     slotId,
     listingId,
     provenance: slotPrefill.provenance,
+    forceRedraw: forceRedraw === true,
+    // Les valeurs complètes du formulaire ne servent QU'aux filtres de tags —
+    // elles ne rentrent jamais dans la précédence des valeurs (cf. initialValues).
+    tagFormData: formData && typeof formData === "object" ? { ...formData, ...slotPrefill.initialValues } : undefined,
   });
 
   return NextResponse.json({
