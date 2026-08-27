@@ -115,6 +115,46 @@ async function getBrowser(): Promise<Browser> {
  * global (MAX_CONCURRENCY) : quel que soit le nombre de flux lancés, on ne
  * rastérise jamais plus de N pages en parallèle sur le process unique.
  */
+/**
+ * Erreurs qui signalent un Chromium mort ou déconnecté plutôt qu'un vrai problème
+ * de rendu. Le browser partagé peut disparaître entre le check `connected` de
+ * getBrowser() et le `newPage()` qui suit — typiquement sur un OOM-restart du VPS.
+ */
+function isBrowserGoneError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /Target closed|Session closed|Protocol error|has disconnected|Connection closed|Target crashed/i.test(message);
+}
+
+async function renderOnce(
+  html: string,
+  width: number,
+  height: number,
+  scaleFactor: number,
+  transparent: boolean,
+): Promise<Buffer> {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width, height, deviceScaleFactor: scaleFactor });
+    // domcontentloaded au lieu de networkidle0 — les fonts sont embedées en base64,
+    // networkidle0 peut boucler indéfiniment si une ressource externe ne répond pas.
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    // Wait for all fonts to be applied (ils sont en base64 donc instantané)
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForFunction(() => (window as Window & { __templateReady?: boolean }).__templateReady === true, { timeout: 5000 }).catch(() => undefined);
+
+    const buffer = await page.screenshot({
+      type: "png",
+      clip: { x: 0, y: 0, width, height },
+      omitBackground: transparent,
+    });
+
+    return Buffer.from(buffer);
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}
+
 export async function renderPNG(
   html: string,
   width: number,
@@ -124,26 +164,17 @@ export async function renderPNG(
 ): Promise<Buffer> {
   await acquire();
   try {
-    const browser = await getBrowser();
-    const page = await browser.newPage();
     try {
-      await page.setViewport({ width, height, deviceScaleFactor: scaleFactor });
-      // domcontentloaded au lieu de networkidle0 — les fonts sont embedées en base64,
-      // networkidle0 peut boucler indéfiniment si une ressource externe ne répond pas.
-      await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      // Wait for all fonts to be applied (ils sont en base64 donc instantané)
-      await page.evaluate(() => document.fonts.ready);
-      await page.waitForFunction(() => (window as Window & { __templateReady?: boolean }).__templateReady === true, { timeout: 5000 }).catch(() => undefined);
-
-      const buffer = await page.screenshot({
-        type: "png",
-        clip: { x: 0, y: 0, width, height },
-        omitBackground: transparent,
-      });
-
-      return Buffer.from(buffer);
-    } finally {
-      await page.close().catch(() => undefined);
+      return await renderOnce(html, width, height, scaleFactor, transparent);
+    } catch (err) {
+      if (!isBrowserGoneError(err)) throw err;
+      // Une seule reprise : on invalide le browser en cache et on relance sur un
+      // Chromium neuf. Sans ça, le premier appel après un crash échouait toujours
+      // et l'utilisateur devait relancer à la main (« je spamme jusqu'à ce que ça
+      // marche »).
+      console.warn("[renderPNG] Chromium partagé perdu — nouvelle tentative sur un browser neuf :", err);
+      globalForRenderer.__rendererBrowser = null;
+      return await renderOnce(html, width, height, scaleFactor, transparent);
     }
   } finally {
     release();

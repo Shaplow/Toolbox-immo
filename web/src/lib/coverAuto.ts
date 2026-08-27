@@ -1,8 +1,9 @@
 import path from "path";
 import { mkdir, writeFile } from "fs/promises";
 import { prisma } from "@/lib/prisma";
-import { createLimiter, mapWithConcurrency } from "@/lib/concurrency";
-import { deleteFromR2, r2Configured, uploadToR2 } from "@/lib/r2";
+import { createLimiter, mapWithConcurrencySettled } from "@/lib/concurrency";
+import { withRetry, withRetryIf } from "@/lib/retry";
+import { deleteFromR2, deleteR2Prefix, r2Configured, uploadToR2 } from "@/lib/r2";
 import { buildHTML } from "@/lib/renderer/buildHTML";
 import { renderPNG } from "@/lib/renderer/renderPNG";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
@@ -39,7 +40,14 @@ const coverPrepLimiter = createLimiter(
   Math.max(1, Number.parseInt(process.env.COVER_PREP_CONCURRENCY ?? "", 10) || 2),
 );
 
-type ExtractedFrame = { timestamp: number; url: string };
+type ExtractedFrame = {
+  /** Position réelle de la frame extraite (c'est elle qui est stockée et affichée). */
+  timestamp: number;
+  /** Position demandée, présente uniquement quand le render-engine a dû se replier
+   *  légèrement en arrière. Sert à retrouver le pick d'origine (provenance slot). */
+  requestedTimestamp?: number;
+  url: string;
+};
 type TaggedExtractedFrame = ExtractedFrame & { _pick?: CoverFramePick };
 type FrameInterval = { start: number; end: number };
 type CoverSeenFrame = number | { sourceUrl: string; timestamp: number };
@@ -263,19 +271,84 @@ function resolveCoverTimestamps(
   return pickTimestamps(intervals, count, seen);
 }
 
-async function extractFrames(videoUrl: string, timestamps: number[]): Promise<ExtractedFrame[]> {
-  const form = new FormData();
-  form.append("video_url", videoUrl);
-  form.append("timestamps_json", JSON.stringify(timestamps));
-  const res = await fetch(`${CAPTIONS_API}/api/extract-covers`, {
-    method: "POST",
-    body: form,
-    signal: AbortSignal.timeout(15 * 60_000),
-  });
-  if (!res.ok) {
-    throw new Error(`Extraction frames échouée (${res.status}): ${await res.text()}`);
+/** Erreur d'extraction portant le statut HTTP, pour décider de retenter ou non. */
+class ExtractFramesError extends Error {
+  constructor(message: string, readonly status: number | null) {
+    super(message);
+    this.name = "ExtractFramesError";
   }
-  return await res.json() as ExtractedFrame[];
+}
+
+// 4 min < 5 min : le `headersTimeout` interne d'undici (Node) est câblé à 300 s et
+// coupe le fetch avec un UND_ERR_HEADERS_TIMEOUT opaque, quel que soit
+// l'AbortSignal passé (le repo documente déjà ce piège côté transcription).
+// On abort donc nous-mêmes avant, proprement, et on retente : le render-engine a
+// mis la vidéo en cache entre-temps, la 2e tentative est rapide.
+const EXTRACT_FRAMES_TIMEOUT_MS = 4 * 60_000;
+
+async function extractFrames(videoUrl: string, timestamps: number[]): Promise<ExtractedFrame[]> {
+  return withRetryIf(
+    `extract-covers:${timestamps.length}ts`,
+    async () => {
+      const form = new FormData();
+      form.append("video_url", videoUrl);
+      form.append("timestamps_json", JSON.stringify(timestamps));
+      let res: Response;
+      try {
+        res = await fetch(`${CAPTIONS_API}/api/extract-covers`, {
+          method: "POST",
+          body: form,
+          signal: AbortSignal.timeout(EXTRACT_FRAMES_TIMEOUT_MS),
+        });
+      } catch (err) {
+        const isTimeout = err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
+        throw new ExtractFramesError(
+          isTimeout
+            ? `render-engine injoignable (timeout ${EXTRACT_FRAMES_TIMEOUT_MS / 1000}s)`
+            : `render-engine injoignable : ${err instanceof Error ? err.message : String(err)}`,
+          null,
+        );
+      }
+      if (!res.ok) {
+        throw new ExtractFramesError(
+          `Extraction frames échouée (${res.status}) : ${await readEngineError(res)}`,
+          res.status,
+        );
+      }
+      return await res.json() as ExtractedFrame[];
+    },
+    // 422 = échec d'extraction déterministe (la source est illisible) : inutile de
+    // retenter. Timeout, erreur réseau et 5xx sont eux potentiellement transitoires.
+    (err) => !(err instanceof ExtractFramesError) || err.status === null || err.status >= 500,
+    [1000, 3000],
+  );
+}
+
+/** Lit le `detail` d'une erreur FastAPI plutôt que d'exposer le JSON brut. */
+async function readEngineError(res: Response): Promise<string> {
+  const raw = await res.text().catch(() => "");
+  try {
+    const parsed = JSON.parse(raw) as { detail?: unknown };
+    if (typeof parsed.detail === "string") return parsed.detail;
+  } catch { /* corps non-JSON */ }
+  return raw.slice(0, 300);
+}
+
+/**
+ * Libellé court et sûr d'une source de frames, pour les messages d'erreur
+ * remontés jusqu'à l'UI : uniquement le nom de fichier (jamais l'hôte, le
+ * chemin local ni la query string d'une URL présignée).
+ */
+function describeCoverSource(picks: CoverFramePick[], sourceUrl: string): string {
+  const slotId = picks.find((pick) => pick.slotId)?.slotId;
+  let name = sourceUrl;
+  try {
+    name = decodeURIComponent(new URL(sourceUrl).pathname.split("/").pop() || sourceUrl);
+  } catch {
+    name = sourceUrl.split("?")[0]?.split("/").pop() || sourceUrl;
+  }
+  if (name.length > 60) name = `${name.slice(0, 57)}…`;
+  return slotId ? `${name} (slot ${slotId})` : name;
 }
 
 function toBrowserMediaUrl(url: string): string {
@@ -418,14 +491,46 @@ async function persistFrame(packId: string, userId: string, frame: ExtractedFram
     };
   }
 
-  const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(60_000) });
-  if (!res.ok) throw new Error(`Frame ${frame.timestamp}s introuvable (${res.status})`);
-  const buffer = Buffer.from(await res.arrayBuffer());
+  // Retry : le fetch de la frame depuis le render-engine n'en avait aucun, alors
+  // que l'upload R2 juste en dessous en a 4. Un hoquet réseau sur une seule frame
+  // faisait tomber tout le pack.
+  const buffer = await withRetry(`cover-frame:${frame.timestamp}`, async () => {
+    const res = await fetch(sourceUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) throw new Error(`Frame ${frame.timestamp}s introuvable (${res.status})`);
+    return Buffer.from(await res.arrayBuffer());
+  }, [500, 1500]);
   const key = `covers/${userId}/${packId}/candidate-${index + 1}.jpg`;
   const uploaded = await uploadToR2(key, buffer, "image/jpeg", buffer.byteLength);
   return { imageUrl: uploaded.url, imageKey: uploaded.key };
 }
 
+/**
+ * Purge TOUT le préfixe R2 d'un pack (`covers/{userId}/{packId}/`) : candidats,
+ * y compris ceux dont la ligne DB n'a jamais été créée, et `final.png`.
+ *
+ * À n'utiliser que sur les chemins qui repartent de zéro (regenerate, re-trigger
+ * depuis un render) — jamais après avoir écrit une cover finale, puisqu'elle vit
+ * sous le même préfixe. Le nettoyage ciblé des seuls candidats reste
+ * `deleteCoverCandidateAssets`.
+ */
+export async function deleteCoverPackAssets(packId: string): Promise<void> {
+  if (!r2Configured()) return;
+  const pack = await prisma.coverFramePack.findUnique({
+    where: { id: packId },
+    select: { userId: true },
+  });
+  if (!pack) return;
+  try {
+    await deleteR2Prefix(`covers/${pack.userId}/${packId}/`);
+  } catch (err) {
+    console.warn(`[coverAuto] R2 prefix cleanup failed for pack=${packId}:`, err);
+  }
+}
+
+/**
+ * Supprime les seuls objets R2 référencés par les CoverFrameCandidate en base.
+ * Sûr après l'écriture d'une cover finale (elle n'est pas référencée ici).
+ */
 export async function deleteCoverCandidateAssets(packId: string): Promise<void> {
   if (!r2Configured()) return;
   const candidates = await prisma.coverFrameCandidate.findMany({
@@ -534,6 +639,15 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     let duration = pack.duration;
     let framePicks: CoverFramePick[] = [];
     let extractedFrames: TaggedExtractedFrame[] = [];
+    // Picks réellement SERVIS — ce sont eux, et non `framePicks`, qui alimentent
+    // `usedTimestamps` plus bas. Une source en échec ne doit pas être marquée comme
+    // déjà vue : sinon « Refaire un tirage » la considère consommée sans l'avoir
+    // jamais servie (et, sur un pack one-off qui passe par le fallback,
+    // `usedTimestamps` resterait vide — mêmes 36 timestamps à chaque tirage).
+    let usedPicks: CoverFramePick[] = [];
+    // Sources dont l'extraction a échoué : on continue, et on ne lève qu'à la fin
+    // si RIEN n'a pu être extrait. Sert aussi à nommer la cause dans errorMsg.
+    const failedSources: string[] = [];
 
     // picksBySource: maps sourceUrl → picks with provenance metadata (slotId, sequenceIndex)
     const picksBySource = new Map<string, CoverFramePick[]>();
@@ -545,15 +659,35 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
         arr.push(pick);
         picksBySource.set(pick.sourceUrl, arr);
       }
-      for (const source of nativeSources) {
-        const sourcePicks = picksBySource.get(source.sourceUrl) ?? [];
+      // On itère sur picksBySource et NON sur nativeSources : deux slots alimentés
+      // par le même rush partagent la même sourceUrl, et boucler sur les sources
+      // extrairait deux fois le tableau fusionné de picks (frames et objets R2
+      // dupliqués).
+      for (const [sourceUrl, sourcePicks] of picksBySource) {
         if (sourcePicks.length === 0) continue;
-        const frames = await extractFrames(source.sourceUrl, sourcePicks.map((pick) => pick.timestamp));
-        extractedFrames.push(...frames.map((frame) => ({
-          ...frame,
-          // Attach provenance: match extracted frame timestamp back to pick
-          _pick: sourcePicks.find((p) => Math.abs(p.timestamp - frame.timestamp) < MIN_FRAME_GAP_S * 0.6) ?? sourcePicks[0],
-        })));
+        try {
+          const frames = await extractFrames(sourceUrl, sourcePicks.map((pick) => pick.timestamp));
+          if (frames.length === 0) {
+            failedSources.push(`${describeCoverSource(sourcePicks, sourceUrl)} : aucune frame extraite`);
+            continue;
+          }
+          extractedFrames.push(...frames.map((frame) => ({
+            ...frame,
+            // Attach provenance: match extracted frame timestamp back to pick
+            // On matche sur la position DEMANDÉE quand le render-engine s'est replié :
+            // la tolérance (0,6 × 1/30 s) est bien plus fine que le décalage du repli.
+            _pick: sourcePicks.find((p) => Math.abs(p.timestamp - (frame.requestedTimestamp ?? frame.timestamp)) < MIN_FRAME_GAP_S * 0.6) ?? sourcePicks[0],
+          })));
+          usedPicks.push(...sourcePicks);
+        } catch (err) {
+          // Tolérance par source : un rush illisible, un téléchargement qui tombe ou
+          // un timeout ne doit pas faire tomber le pack entier. Avec 8 clips et 5 %
+          // d'échec par clip, l'ancien comportement (throw immédiat) donnait ~34 %
+          // d'échec par pack.
+          const reason = err instanceof Error ? err.message : String(err);
+          console.warn(`[coverAuto] pack=${packId} source=${sourceUrl} extraction échouée : ${reason}`);
+          failedSources.push(`${describeCoverSource(sourcePicks, sourceUrl)} : ${reason}`);
+        }
       }
     } else {
       // Fallback 1 : sommer Render.slotDurations si dispo (couvre les renders
@@ -583,16 +717,33 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
       }
       const timestamps = resolveCoverTimestamps(templateJson, config, duration, frameCount, seen.finalTimestamps, slotDurations);
       framePicks = timestamps.map((timestamp) => ({ sourceUrl: pack.sourceVideoUrl!, timestamp }));
+      // Source unique : pas de tolérance possible, un échec ici reste fatal.
       extractedFrames = await extractFrames(pack.sourceVideoUrl, timestamps);
+      usedPicks = framePicks;
     }
 
     if (!duration) throw new Error("Durée vidéo introuvable pour préparer les frames cover");
     if (framePicks.length === 0) {
       throw new Error("Aucune frame disponible après application des zones exclues");
     }
-    if (extractedFrames.length === 0) throw new Error("Le render-engine n'a extrait aucune frame");
+    if (extractedFrames.length === 0) {
+      throw new Error(
+        failedSources.length > 0
+          ? `Le render-engine n'a extrait aucune frame — ${failedSources.join(" ; ")}`
+          : "Le render-engine n'a extrait aucune frame",
+      );
+    }
+    if (failedSources.length > 0) {
+      console.warn(
+        `[coverAuto] pack=${packId} extraction partielle : ${extractedFrames.length}/${framePicks.length} frames, ` +
+          `${failedSources.length} source(s) en échec — ${failedSources.join(" ; ")}`,
+      );
+    }
 
-    const persisted = await mapWithConcurrency(
+    // Persistance tolérante : une frame qui refuse de se télécharger ou de monter
+    // sur R2 ne doit pas annuler les 35 autres (mapWithConcurrency a la sémantique
+    // Promise.all et rejetait au premier échec, en laissant des objets orphelins).
+    const persistResults = await mapWithConcurrencySettled(
       extractedFrames,
       FRAME_PERSIST_CONCURRENCY,
       async (frame, index) => ({
@@ -602,6 +753,17 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
         ...(await persistFrame(pack.id, pack.userId, frame, index)),
       }),
     );
+    const persisted = persistResults.flatMap((result) => (result.ok ? [result.value] : []));
+    const persistErrors = persistResults.flatMap((result) => (result.ok ? [] : [result.error]));
+    if (persistErrors.length > 0) {
+      console.warn(
+        `[coverAuto] pack=${packId} ${persistErrors.length}/${persistResults.length} frame(s) non persistée(s) :`,
+        persistErrors,
+      );
+    }
+    if (persisted.length === 0) {
+      throw new Error("Aucune frame n'a pu être enregistrée (téléchargement ou upload R2 en échec)");
+    }
 
     await prisma.coverFrameCandidate.createMany({
       data: persisted.map((frame) => ({
@@ -621,7 +783,7 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
         duration,
         usedTimestamps: JSON.stringify([
           ...safeJson<CoverSeenFrame[]>(pack.usedTimestamps, []),
-          ...framePicks.map((pick) =>
+          ...usedPicks.map((pick) =>
             nativeSources.length > 0
               ? { sourceUrl: pick.sourceUrl, timestamp: pick.timestamp }
               : pick.timestamp,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/requireAuth";
-import { deleteCoverCandidateAssets, queueCoverFramePackPreparation } from "@/lib/coverAuto";
+import { deleteCoverPackAssets, queueCoverFramePackPreparation } from "@/lib/coverAuto";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
@@ -51,7 +51,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
     }
   }
 
-  await deleteCoverCandidateAssets(id);
+  // Purge le préfixe entier : les candidats, ceux dont la ligne DB manque, et le
+  // final.png que ce reset orpheline (finalCoverKey est remis à null juste après).
+  await deleteCoverPackAssets(id);
   await prisma.coverFrameCandidate.deleteMany({ where: { packId: id } });
   await prisma.coverFramePack.update({
     where: { id },

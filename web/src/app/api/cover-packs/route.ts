@@ -80,19 +80,30 @@ export async function GET(req: NextRequest) {
   const slotId = url.searchParams.get("slotId") ?? undefined;
 
   // E7 — Stall detection lazy : avant de retourner la liste, on marque FAILED
-  // les packs en QUEUED/PROCESSING depuis >30 min (preparation fire-and-forget
-  // peut crasher silencieusement et laisser un pack zombie). Aligné sur le
-  // pattern existant pour les autres jobs (cf §16.1 / audit fiabilité).
-  const STALL_THRESHOLD_MS = 30 * 60 * 1000;
-  const stallCutoff = new Date(Date.now() - STALL_THRESHOLD_MS);
+  // les packs restés en QUEUED/PROCESSING trop longtemps (la préparation est
+  // fire-and-forget et peut disparaître avec un restart PM2, laissant un pack
+  // zombie qui fait tourner le polling 3 s indéfiniment côté UI).
+  //
+  // Deux garde-fous par rapport à la version d'origine :
+  //  - le balayage est SCOPÉ à l'utilisateur (sauf admin) : un simple GET ne doit
+  //    pas toucher les packs de tout le monde ;
+  //  - QUEUED a son propre seuil, plus généreux : un pack peut légitimement
+  //    attendre longtemps derrière la file COVER_PREP_CONCURRENCY sans être mort.
+  const PROCESSING_STALL_MS = 30 * 60 * 1000;
+  const QUEUED_STALL_MS = 2 * 60 * 60 * 1000;
+  const now = Date.now();
+  const ownerScope = isAdmin ? {} : { userId: userContext.effectiveUser.id };
   await prisma.coverFramePack.updateMany({
     where: {
-      status: { in: ["QUEUED", "PROCESSING"] },
-      updatedAt: { lt: stallCutoff },
+      ...ownerScope,
+      OR: [
+        { status: "PROCESSING", updatedAt: { lt: new Date(now - PROCESSING_STALL_MS) } },
+        { status: "QUEUED", updatedAt: { lt: new Date(now - QUEUED_STALL_MS) } },
+      ],
     },
     data: {
       status: "FAILED",
-      errorMsg: "Préparation trop longue (>30 min) — pack marqué stalled automatiquement.",
+      errorMsg: "Préparation interrompue — le pack n'a plus donné signe de vie. Relance l'extraction.",
     },
   });
 

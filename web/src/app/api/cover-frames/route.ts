@@ -106,8 +106,15 @@ export async function POST(req: NextRequest) {
   }
 
   if (!res.ok) {
-    const err = await res.text();
-    return NextResponse.json({ error: err }, { status: res.status });
+    // Le render-engine renvoie { detail: "..." } (FastAPI). On extrait le message
+    // plutôt que de renvoyer le JSON brut, qui se retrouvait tel quel dans le toast.
+    const raw = await res.text();
+    let message = raw;
+    try {
+      const parsed = JSON.parse(raw) as { detail?: unknown };
+      if (typeof parsed.detail === "string") message = parsed.detail;
+    } catch { /* corps non-JSON — on garde le texte brut */ }
+    return NextResponse.json({ error: message.slice(0, 400) }, { status: res.status });
   }
 
   const data = await res.json() as Frame[];

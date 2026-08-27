@@ -8,6 +8,7 @@ import { toast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { UPLOAD_LIMITS, formatMaxSize } from "@/lib/upload/limits";
+import { readErrorMessage } from "@/lib/readErrorMessage";
 
 // Espace minimum entre deux timestamps distincts.
 // 1/30s couvre la plupart des vidéos (30fps). Si la vidéo est en 60fps
@@ -424,7 +425,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ videoUrl, timestamps }),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) throw new Error(await readErrorMessage(res));
         const data = await res.json() as Frame[];
         // Marquer les timestamps effectivement proposés comme vus
         setSeenTimestamps((prev) => [...prev, ...timestamps]);
@@ -432,7 +433,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
         setSelected(new Set());
         setHasExtracted(true);
       } catch (err) {
-        toast.error(`Erreur extraction : ${String(err)}`);
+        toast.error(`Erreur extraction : ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         setLoading(false);
       }

@@ -19,6 +19,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
+import { withRetry } from "@/lib/retry";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -50,28 +51,7 @@ export function requireR2(): void {
 }
 
 // ─── Retry helper ─────────────────────────────────────────────────────────────
-
-const RETRY_DELAYS_MS = [500, 1500, 3000];
-
-async function withRetry<T>(
-  label: string,
-  fn: () => Promise<T>,
-  retries = RETRY_DELAYS_MS
-): Promise<T> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= retries.length; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastErr = err;
-      if (attempt < retries.length) {
-        console.warn(`[r2/${label}] attempt ${attempt + 1} failed, retrying in ${retries[attempt]}ms:`, err);
-        await new Promise((res) => setTimeout(res, retries[attempt]));
-      }
-    }
-  }
-  throw lastErr;
-}
+// Déplacé dans lib/retry.ts pour être partagé avec le pipeline cover.
 
 // ─── Client singleton ─────────────────────────────────────────────────────────
 // Reuse the same S3Client instance across requests within a Node.js process.

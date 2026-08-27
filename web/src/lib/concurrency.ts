@@ -64,3 +64,42 @@ export function createLimiter(max: number): <T>(fn: () => Promise<T>) => Promise
     });
   };
 }
+
+/**
+ * Variante tolérante de `mapWithConcurrency` : n'interrompt jamais le lot.
+ * Chaque item produit soit `{ ok: true, value }`, soit `{ ok: false, error }`,
+ * et l'ordre est préservé.
+ *
+ * Utile quand un échec unitaire ne doit pas annuler le travail déjà fait —
+ * typiquement la persistance des frames d'un pack cover : avec `mapWithConcurrency`
+ * (sémantique `Promise.all`), une seule frame en 404 fait tomber les 35 autres et
+ * laisse des objets orphelins sur R2.
+ *
+ * Volontairement une fonction sœur plutôt qu'une option de `mapWithConcurrency` :
+ * les appelants existants comptent sur le fail-fast pour propager leurs erreurs.
+ */
+export async function mapWithConcurrencySettled<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<Array<{ ok: true; value: R } | { ok: false; error: unknown }>> {
+  const max = Math.max(1, Math.floor(limit));
+  const results = new Array<{ ok: true; value: R } | { ok: false; error: unknown }>(items.length);
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (cursor < items.length) {
+      const index = cursor++;
+      try {
+        results[index] = { ok: true, value: await fn(items[index], index) };
+      } catch (error) {
+        results[index] = { ok: false, error };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(max, items.length) }, () => worker()),
+  );
+  return results;
+}

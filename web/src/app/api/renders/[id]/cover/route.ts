@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteCoverCandidateAssets, queueCoverFramePackPreparation, toCoverSourceVideoUrl } from "@/lib/coverAuto";
+import { deleteCoverPackAssets, queueCoverFramePackPreparation, toCoverSourceVideoUrl } from "@/lib/coverAuto";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/api/requireAuth";
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const sourceVideoUrl = toCoverSourceVideoUrl(render.videoUrl);
   let packId = render.coverFramePack?.id;
   if (packId) {
-    await deleteCoverCandidateAssets(packId);
+    await deleteCoverPackAssets(packId);
     await prisma.coverFrameCandidate.deleteMany({ where: { packId } });
     await prisma.coverFramePack.update({
       where: { id: packId },
