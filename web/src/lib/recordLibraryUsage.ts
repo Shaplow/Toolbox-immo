@@ -125,18 +125,36 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
   const videoAssetIds = Object.values(usedAssets.videoAssets ?? {});
   if (videoAssetIds.length > 0) {
     const accountId = render.accountId;
+    // La clé d'usage suit le scope de la bibliothèque de CHAQUE asset — exactement
+    // comme la sélection et le claim au submit. Avant, elle était toujours le compte
+    // réel ici, et la sentinelle n'était écrite que dans le bloc « set sequence »
+    // plus bas, conditionné à `usedAssets.setSequencedLibraryIds` : un render qui ne
+    // passait pas par le folder-draw n'écrivait donc jamais la ligne __shared__ que
+    // la sélection relit.
+    const videoAssetLibs = await prisma.mediaAsset.findMany({
+      where: { id: { in: videoAssetIds } },
+      select: { id: true, library: { select: { rotationScope: true } } },
+    });
+    const usageKeyByAsset = new Map(
+      videoAssetLibs.map((asset) => [
+        asset.id,
+        asset.library.rotationScope === "shared" ? SHARED_USAGE_ACCOUNT_ID : accountId,
+      ]),
+    );
+
     const videoResults = await Promise.allSettled(
       videoAssetIds.map(async (assetId) => {
+        const usageAccountId = usageKeyByAsset.get(assetId) ?? accountId;
         await prisma.$transaction(async (tx) => {
           await tx.mediaAsset.update({
             where: { id: assetId },
             data: { usageCount: { increment: 1 }, lastUsedAt: now },
           });
-          if (accountId) {
+          if (usageAccountId) {
             await tx.mediaAssetUsage.upsert({
-              where: { assetId_accountId: { assetId, accountId } },
+              where: { assetId_accountId: { assetId, accountId: usageAccountId } },
               update: { usageCount: { increment: 1 }, lastUsedAt: now },
-              create: { assetId, accountId, usageCount: 1, lastUsedAt: now },
+              create: { assetId, accountId: usageAccountId, usageCount: 1, lastUsedAt: now },
             });
           }
         });
@@ -230,47 +248,13 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
     }
   }
 
-  // --- Set sequence cursors ---
-  // Cursor position and lastUsedCategory were already written at prefill time by
-  // selectMediaAssetBySetSequence (SELECT FOR UPDATE, serialized across concurrent
-  // generations). Here we only stamp lastAdvancedAt to mark render completion.
-  //
-  // For shared-scope libraries the cursor row is keyed by SHARED_USAGE_ACCOUNT_ID
-  // rather than the real accountId; we also write MediaAssetUsage rows keyed by
-  // SHARED_USAGE_ACCOUNT_ID so pickFromGroup can rotate within groups globally.
+  // --- Set sequence ---
+  // Plus rien à stamper ici : AccountLibraryCursor est décommissionné (Phase 3) et
+  // la ligne MediaAssetUsage sous la sentinelle __shared__ est désormais écrite par
+  // le bloc « Video assets » ci-dessus, pour TOUTE lib shared — plus seulement pour
+  // celles listées dans setSequencedLibraryIds. `seqLibraryIds` ne sert plus qu'au
+  // log de synthèse.
   const seqLibraryIds = usedAssets.setSequencedLibraryIds ?? [];
-  if (seqLibraryIds.length > 0) {
-    // Plan simplification Phase 3 : plus d'AccountLibraryCursor à stamper —
-    // l'ancienneté des dossiers vit entièrement dans MediaAssetUsage.
-    const libs = await prisma.mediaLibrary.findMany({
-      where: { id: { in: seqLibraryIds } },
-      select: { id: true, rotationScope: true },
-    });
-    const sharedSeqLibIds = new Set(libs.filter((l) => l.rotationScope === "shared").map((l) => l.id));
-
-    // For video assets from shared-scope folder-draw libraries, write a MediaAssetUsage row
-    // keyed by SHARED_USAGE_ACCOUNT_ID so within-folder ordering is globally shared.
-    if (sharedSeqLibIds.size > 0 && videoAssetIds.length > 0) {
-      const assetLibraries = await prisma.mediaAsset.findMany({
-        where: { id: { in: videoAssetIds } },
-        select: { id: true, libraryId: true },
-      });
-      const sharedAssetIds = assetLibraries
-        .filter((a) => sharedSeqLibIds.has(a.libraryId))
-        .map((a) => a.id);
-      for (const assetId of sharedAssetIds) {
-        await prisma.mediaAssetUsage
-          .upsert({
-            where: { assetId_accountId: { assetId, accountId: SHARED_USAGE_ACCOUNT_ID } },
-            update: { usageCount: { increment: 1 }, lastUsedAt: now },
-            create: { assetId, accountId: SHARED_USAGE_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
-          })
-          .catch((err: unknown) =>
-            console.error(`[recordLibraryUsage] shared asset usage upsert failed assetId=${assetId}:`, err),
-          );
-      }
-    }
-  }
 
   // W5.12 — log de synthèse à la fin pour observability. Avant : aucun signal
   // explicite que recordLibraryUsage a fini ; si une partie a échoué dans une
@@ -344,17 +328,24 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
 
   const accountId = render.accountId ?? null;
 
-  // Helper: decrement a MediaAsset + its per-account MediaAssetUsage row
+  // Helper: decrement a MediaAsset + the MediaAssetUsage row écrite au DONE.
+  // La clé doit être la même que celle de recordLibraryUsage : sentinelle
+  // __shared__ pour une lib vidéo en scope shared, compte réel sinon. L'audio
+  // reste sur le compte réel (scope non encore honoré pour les libs audio).
   async function revertMediaAsset(assetId: string, type: "video" | "audio"): Promise<void> {
     try {
       const asset = await prisma.mediaAsset.findUnique({
         where: { id: assetId },
-        select: { usageCount: true, lastUsedAt: true },
+        select: { usageCount: true, lastUsedAt: true, library: { select: { rotationScope: true } } },
       });
       if (!asset) {
         summary.warnings.push(`Asset ${assetId} introuvable — ignoré.`);
         return;
       }
+      const usageAccountId =
+        type === "video" && asset.library.rotationScope === "shared"
+          ? SHARED_USAGE_ACCOUNT_ID
+          : accountId;
       const newCount = Math.max(0, asset.usageCount - 1);
       const nullLastUsed = newCount === 0 && asset.lastUsedAt !== null;
       await prisma.mediaAsset.update({
@@ -371,15 +362,15 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
         usageCountAfter: newCount,
         lastUsedAtNulled: nullLastUsed,
       });
-      if (accountId) {
+      if (usageAccountId) {
         const usage = await prisma.mediaAssetUsage.findUnique({
-          where: { assetId_accountId: { assetId, accountId } },
+          where: { assetId_accountId: { assetId, accountId: usageAccountId } },
           select: { usageCount: true },
         });
         if (usage) {
           const newUsageCount = Math.max(0, usage.usageCount - 1);
           await prisma.mediaAssetUsage.update({
-            where: { assetId_accountId: { assetId, accountId } },
+            where: { assetId_accountId: { assetId, accountId: usageAccountId } },
             data: {
               usageCount: newUsageCount,
               ...(newUsageCount === 0 ? { lastUsedAt: null } : {}),

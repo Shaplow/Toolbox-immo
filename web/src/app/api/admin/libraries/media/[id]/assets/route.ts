@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/requireAuth";
 import { canViewMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
+import { resolveUsageKey } from "@/lib/generate/libraryAssetsQuery";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -26,6 +27,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   const accountId = _req.nextUrl.searchParams.get("accountId") ?? undefined;
+  const usageAccountId = resolveUsageKey(library.rotationScope, accountId ?? null);
 
   try {
     const [assets, accountUsages] = await Promise.all([
@@ -58,9 +60,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
           },
         },
       }),
-      accountId
+      // Clé d'usage scope-aware : une lib `shared` stocke son ancienneté sous la
+      // sentinelle __shared__ et non sous le compte réel — la lire par compte
+      // afficherait « jamais utilisé » sur tous ses assets.
+      usageAccountId
         ? prisma.mediaAssetUsage.findMany({
-            where: { accountId, asset: { libraryId: id } },
+            where: { accountId: usageAccountId, asset: { libraryId: id } },
             select: { assetId: true, lastUsedAt: true, usageCount: true },
           })
         : Promise.resolve([]),

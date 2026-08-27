@@ -20,6 +20,11 @@ import {
   SHARED_USAGE_ACCOUNT_ID,
   SHARED_DATA_USAGE_ACCOUNT_ID,
 } from "@/lib/rotation/sentinels";
+import {
+  estimateSequenceDuration,
+  estimateSingleVideoDuration,
+  resolveRequiredAudioDuration,
+} from "@/lib/generate/estimateOutputDuration";
 
 /** Minimal Prisma client interface accepted by selectMediaAsset — satisfied by both the
  *  module-level `prisma` instance and the `tx` callback client from $transaction. */
@@ -164,6 +169,8 @@ export async function selectAndClaimMediaAsset(
   accountId?: string,
   excludeAssetIds?: string[],
   minDuration?: number,
+  /** Voir UsageScopeMode. Défaut "library" (scope-aware) ; l'audio passe "account". */
+  usageScope: UsageScopeMode = "library",
 ): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null> } | null> {
   return prisma.$transaction(async (tx) => {
     // SELECT FOR UPDATE SKIP LOCKED via raw query — le lock est posé
@@ -177,6 +184,7 @@ export async function selectAndClaimMediaAsset(
       accountId,
       excludeAssetIds,
       minDuration,
+      usageScope,
     });
     if (!picked) return null;
 
@@ -185,25 +193,33 @@ export async function selectAndClaimMediaAsset(
     // upsert MediaAssetUsage avec lastUsedAt=now. Pour shared :
     // increment MediaAsset.usageCount.
     //
-    // Fix #7 (P8 rotation) : `picked.claimAccountId` (posé uniquement par la
-    // branche theme_sequence de selectMediaAssetWithLock) prime sur
-    // `accountId` — c'est la clé sur laquelle la découverte par dossier a
-    // trié (sentinelle __shared__ en scope shared), le claim DOIT stamper la
-    // même sous peine de désynchroniser découverte et claim. Toutes les
-    // autres stratégies laissent `claimAccountId` undefined → comportement
-    // historique inchangé (claim sous `accountId` tel quel).
+    // `picked.claimAccountId` est la clé sur laquelle la sélection vient de trier
+    // (sentinelle __shared__ en scope shared, compte réel sinon). Le claim DOIT
+    // stamper la même, sous peine de désynchroniser sélection et claim : c'est
+    // exactement le bug qui figeait la rotation des libs shared entre le submit et
+    // le DONE. Toutes les stratégies la renseignent désormais, plus seulement
+    // theme_sequence.
     const claimAccountId = picked.claimAccountId ?? accountId;
+    // Le claim ne stampe QUE `lastUsedAt` : il réserve l'asset (il redescend
+    // immédiatement dans la pile pour les générations concurrentes) sans le
+    // consommer. L'incrément de `usageCount` — celui qui pilote le burn-once —
+    // appartient à `recordLibraryUsage`, au DONE.
+    //
+    // Avant, ce claim incrémentait déjà `usageCount`, et `recordLibraryUsage`
+    // ré-incrémentait ensuite : +2 par render sur ce chemin contre +1 sur le
+    // tirage par dossier. Avec `maxUsageCount = N`, la capacité réelle des
+    // bibliothèques concernées était donc N/2, et les assets sortaient du pool
+    // deux fois trop vite.
     if (claimAccountId) {
       await tx.mediaAssetUsage.upsert({
         where: { assetId_accountId: { assetId: picked.id, accountId: claimAccountId } },
         create: {
           assetId: picked.id,
           accountId: claimAccountId,
-          usageCount: 1,
+          usageCount: 0,
           lastUsedAt: new Date(),
         },
         update: {
-          usageCount: { increment: 1 },
           lastUsedAt: new Date(),
         },
       });
@@ -211,7 +227,6 @@ export async function selectAndClaimMediaAsset(
       await tx.mediaAsset.update({
         where: { id: picked.id },
         data: {
-          usageCount: { increment: 1 },
           lastUsedAt: new Date(),
         },
       });
@@ -219,6 +234,47 @@ export async function selectAndClaimMediaAsset(
 
     return { id: picked.id, url: picked.url, filename: picked.filename, metadata: picked.metadata };
   });
+}
+
+/**
+ * Comment dériver la clé d'ancienneté (`MediaAssetUsage.accountId`) sur laquelle
+ * la sélection trie ET le claim stampe.
+ *
+ * - `"library"` (défaut) : la clé suit le `rotationScope` de la bibliothèque —
+ *   sentinelle `__shared__` en scope shared, compte réel en per_account. C'est
+ *   déjà ce que fait `selectMediaAssetFromFolder`, et c'est indispensable pour
+ *   que le claim posé au submit soit relu par la sélection suivante : sinon,
+ *   sur une lib shared, on trie sur les colonnes globales de MediaAsset (écrites
+ *   seulement au DONE) pendant que le claim écrit une ligne que personne ne lit,
+ *   et la rotation reste figée pendant toute la durée d'un render.
+ * - `"account"` : ancienne sémantique, toujours le compte réel. Conservé pour
+ *   l'audio, dont le passage en scope-aware est un changement de comportement
+ *   produit traité séparément (`rotationScope` est aujourd'hui silencieusement
+ *   ignoré pour les bibliothèques audio).
+ *
+ * La visibilité (`buildAccessFilter`) utilise TOUJOURS le compte réel, jamais la
+ * sentinelle — c'est une question de droits, pas d'ancienneté.
+ */
+export type UsageScopeMode = "library" | "account";
+
+/** Clé d'ancienneté effective pour une bibliothèque donnée. */
+function resolveUsageAccountId(
+  mode: UsageScopeMode,
+  rotationScope: string | null | undefined,
+  accountId: string | undefined,
+): string | undefined {
+  if (mode === "account") return accountId;
+  return rotationScope === "shared" ? SHARED_USAGE_ACCOUNT_ID : accountId;
+}
+
+/** Clé de burn-once : global (`ma.usageCount`) en shared, par compte sinon. */
+function resolveBurnAccountId(
+  mode: UsageScopeMode,
+  rotationScope: string | null | undefined,
+  accountId: string | undefined,
+): string | undefined {
+  if (mode === "account") return accountId;
+  return rotationScope === "shared" ? undefined : accountId;
 }
 
 /** Internal : SELECT with FOR UPDATE SKIP LOCKED, scoped to a tx. */
@@ -230,17 +286,19 @@ async function selectMediaAssetWithLock(args: {
   accountId?: string;
   excludeAssetIds?: string[];
   minDuration?: number;
+  usageScope?: UsageScopeMode;
 }): Promise<{
   id: string; url: string; filename: string; metadata: Record<string, string | number | null>;
-  /** Fix #7 (P8 rotation) : clé sous laquelle le claim (posé par le caller
-   *  `selectAndClaimMediaAsset`) doit stamper `MediaAssetUsage.lastUsedAt` —
-   *  set uniquement par la branche theme_sequence (dossier), pour rester
-   *  cohérent avec la clé sur laquelle la découverte a trié (sentinelle
-   *  __shared__ en scope shared). Absent pour toutes les autres stratégies :
-   *  le caller retombe alors sur son défaut historique (`accountId`). */
+  /** Clé sous laquelle le claim (posé par le caller `selectAndClaimMediaAsset`)
+   *  doit stamper `MediaAssetUsage.lastUsedAt`. Toujours renseignée quand une clé
+   *  existe : elle DOIT être identique à celle sur laquelle la sélection vient de
+   *  trier, sinon découverte et claim se désynchronisent et l'asset ne redescend
+   *  jamais dans la pile. Absente uniquement quand il n'y a aucune clé (pas de
+   *  compte et lib per_account) — le caller retombe alors sur le compteur global. */
   claimAccountId?: string;
 } | null> {
   const { tx, libraryId, rule, formData, accountId, excludeAssetIds, minDuration } = args;
+  const usageScope: UsageScopeMode = args.usageScope ?? "library";
   const config = normalizeRule(rule);
   const { strategy } = config;
   if (strategy === "manual") return null;
@@ -251,8 +309,14 @@ async function selectMediaAssetWithLock(args: {
   });
   if (lib?.rotationMode === "none") return null;
 
+  // Clés dérivées une seule fois, partagées par toutes les stratégies (la branche
+  // theme_sequence les recalculait déjà pour son compte ; les branches régulières,
+  // elles, prenaient le compte réel même sur une lib shared).
+  const usageAccountId = resolveUsageAccountId(usageScope, lib?.rotationScope, accountId);
+  const burnAccountId = resolveBurnAccountId(usageScope, lib?.rotationScope, accountId);
+
   const tagFrag = buildTagFragment(config, formData);
-  const burnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, accountId);
+  const burnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, burnAccountId);
   const accessFilter = buildAccessFilter(accountId);
   const excludeFrag = excludeAssetIds && excludeAssetIds.length > 0
     ? Prisma.sql`AND ma.id NOT IN (${Prisma.join(excludeAssetIds.map((id) => Prisma.sql`${id}`), ", ")})`
@@ -278,13 +342,11 @@ async function selectMediaAssetWithLock(args: {
   // __shared__ mais le claim écrirait sous le compte réel : le dossier ne
   // redescendrait jamais dans la pile (même bug que #2, au niveau du claim).
   if (strategy === "theme_sequence") {
-    const isSharedScope = lib?.rotationScope === "shared";
-    const usageAccountId = isSharedScope ? SHARED_USAGE_ACCOUNT_ID : accountId;
     // Burn-once dossier : même règle que selectMediaAssetFromFolder (compte
     // réel en per_account, global ma.usageCount en shared). minDuration est
     // baked dedans (pattern folder-draw établi) plutôt que ré-appliqué via
     // durationFrag, pour éviter une double condition redondante.
-    const folderBurnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, isSharedScope ? undefined : accountId, minDuration);
+    const folderBurnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, burnAccountId, minDuration);
 
     const folders = await tx.$queryRaw<{ setTag: string | null }[]>(
       buildFolderDiscoveryQuery({ libraryId, usageAccountId, accessFilter, burnFilter: folderBurnFilter, tagFrag }),
@@ -324,20 +386,22 @@ async function selectMediaAssetWithLock(args: {
   }
 
   // Ordering selon strategy. FOR UPDATE SKIP LOCKED appliqué à la fin.
+  // Le tri porte sur `usageAccountId` (sentinelle __shared__ en scope shared), pas
+  // sur `accountId` : c'est la clé que le claim va stamper juste après.
   let orderClause: Prisma.Sql;
   let joinClause: Prisma.Sql = Prisma.sql``;
   if (strategy === "random") {
     orderClause = Prisma.sql`ORDER BY RANDOM()`;
   } else if (strategy === "oldest_used") {
-    if (accountId) {
-      joinClause = Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}`;
+    if (usageAccountId) {
+      joinClause = Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}`;
       orderClause = Prisma.sql`ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`;
     } else {
       orderClause = Prisma.sql`ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`;
     }
   } else {
-    if (accountId) {
-      joinClause = Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}`;
+    if (usageAccountId) {
+      joinClause = Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}`;
       orderClause = Prisma.sql`ORDER BY COALESCE(mau."usageCount", 0) ASC, mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`;
     } else {
       orderClause = Prisma.sql`ORDER BY ma."usageCount" ASC, ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`;
@@ -361,7 +425,12 @@ async function selectMediaAssetWithLock(args: {
 
   let metadata: Record<string, string | number | null> = {};
   try { metadata = JSON.parse(rows[0].metadata ?? "{}") as Record<string, string | number | null>; } catch { /* keep empty */ }
-  return { id: rows[0].id, url: rows[0].url, filename: rows[0].filename, metadata };
+  return {
+    id: rows[0].id, url: rows[0].url, filename: rows[0].filename, metadata,
+    // Remontée systématique (et plus seulement pour theme_sequence) : le claim doit
+    // stamper la clé sur laquelle on vient de trier, y compris sur une lib shared.
+    ...(usageAccountId ? { claimAccountId: usageAccountId } : {}),
+  };
 }
 
 /** Normalize a MediaSelectionRule (legacy string or structured object) into a config. */
@@ -481,6 +550,8 @@ export async function selectMediaAsset(
   minDuration?: number,
   /** Optional Prisma client — pass the transaction tx to run inside an existing transaction. */
   db?: PrismaQueryClient,
+  /** Voir UsageScopeMode. Défaut "library" (scope-aware) ; l'audio passe "account". */
+  usageScope: UsageScopeMode = "library",
 ): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null> } | null> {
   const config = normalizeRule(rule);
   const { strategy } = config;
@@ -496,12 +567,20 @@ export async function selectMediaAsset(
   // Note : on utilise `prisma` direct (pas `client`) car PrismaQueryClient n'expose que `$queryRaw`.
   const lib = await prisma.mediaLibrary.findUnique({
     where: { id: libraryId },
-    select: { maxUsageCount: true, rotationMode: true },
+    select: { maxUsageCount: true, rotationMode: true, rotationScope: true },
   });
   if (lib?.rotationMode === "none") return null;
-  const burnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, accountId);
 
-  // Access filter: with accountId → global OR restricted-to-me; without → global only
+  // La clé d'ancienneté se dérive ICI du scope de la bibliothèque, comme le fait
+  // déjà selectMediaAssetFromFolder — les appelants n'ont plus à la calculer (et
+  // n'ont plus à connaître la sentinelle). Sans ça, une lib shared triait sur les
+  // colonnes globales de MediaAsset, écrites seulement au DONE, pendant que
+  // advanceMediaUsageOnSubmit claimait sous __shared__ : la pile ne bougeait pas
+  // entre le submit et la fin du render.
+  const usageAccountId = resolveUsageAccountId(usageScope, lib?.rotationScope, accountId);
+  const burnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, resolveBurnAccountId(usageScope, lib?.rotationScope, accountId));
+
+  // Access filter: toujours le compte RÉEL (droits de visibilité), jamais la sentinelle.
   const accessFilter = buildAccessFilter(accountId);
 
   // Exclusion filter: skip already-picked assets from sibling blocks in the same generation
@@ -540,10 +619,10 @@ export async function selectMediaAsset(
   }
 
   if (strategy === "oldest_used") {
-    if (accountId) {
+    if (usageAccountId) {
       const rows = await client.$queryRaw<AssetRow[]>(
         Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
-          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}
           WHERE ma."libraryId" = ${libraryId}
           ${accessFilter}
           ${burnFilter}
@@ -571,10 +650,10 @@ export async function selectMediaAsset(
   if (strategy !== "least_used" && strategy !== "not_used_in_cycle") {
     console.warn(`[selectMediaAsset] stratégie inconnue "${strategy}" — fallback sur least_used`);
   }
-  if (accountId) {
+  if (usageAccountId) {
     const rows = await client.$queryRaw<AssetRow[]>(
       Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
-        LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+        LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}
         WHERE ma."libraryId" = ${libraryId}
         ${accessFilter}
         ${burnFilter}
@@ -812,15 +891,16 @@ export async function resolveLibraryPrefill(
   }
 
   /** Returns accountId for per-account libraries, undefined for shared ones. */
-  function effectiveAccountId(libId: string): string | undefined {
-    return libScopeMap.get(libId) === "shared" ? undefined : accountId;
-  }
-
   /**
    * Returns the cursor/usage-ordering account ID:
    * - shared libraries → SHARED_USAGE_ACCOUNT_ID so all accounts advance the same cursor
    * - per-account libraries → real accountId
    * - no accountId at all → undefined (admin preview, no cursor)
+   *
+   * Note : `selectMediaAsset` et `selectMediaAssetFromFolder` savent désormais
+   * dériver cette clé eux-mêmes depuis le `rotationScope` de la bibliothèque —
+   * on leur passe le compte RÉEL. Cette fonction ne sert plus qu'aux appels
+   * folder-draw qui la fournissent explicitement.
    */
   function effectiveCursorAccountId(libId: string): string | undefined {
     return libScopeMap.get(libId) === "shared" ? SHARED_USAGE_ACCOUNT_ID : accountId;
@@ -843,7 +923,9 @@ export async function resolveLibraryPrefill(
           b.libraryId!,
           b.selectionRule,
           formData,
-          effectiveAccountId(b.libraryId!),
+          // Compte RÉEL : selectMediaAsset dérive lui-même la clé d'ancienneté du
+          // scope de la bibliothèque (sentinelle __shared__ en shared).
+          accountId,
           pickedIds.length > 0 ? pickedIds : undefined,
         );
         if (suggestion) {
@@ -875,14 +957,11 @@ export async function resolveLibraryPrefill(
         let pinnedSetTag: string | null | undefined = undefined;
         for (const b of blocks) {
           const rule = normalizeRule(b.selectionRule);
-          // Fix #5 (P8 rotation) : accès (2e arg) = TOUJOURS le compte réel,
-          // jamais effectiveAccountId(libId) — qui vaut undefined en scope
-          // shared. buildAccessFilter s'appuie sur la visibilité du compte,
-          // pas sur la clé d'ancienneté (6e arg, déjà correcte via
-          // effectiveCursorAccountId) : passer undefined ici réduisait le pool
-          // prefill shared aux seuls assets sans restriction de compte, alors
-          // que le render-time (generateRender.ts) passe lui le compte réel —
-          // pools divergents form/render.
+          // Accès (2e arg) = TOUJOURS le compte réel : buildAccessFilter porte sur
+          // la visibilité, pas sur l'ancienneté (6e arg). Passer la sentinelle ici
+          // réduirait le pool prefill shared aux seuls assets sans restriction de
+          // compte, alors que le render-time passe le compte réel — pools divergents
+          // entre le formulaire et la vidéo finale.
           const suggestion = await selectMediaAssetFromFolder(
             libId,
             accountId,
@@ -926,7 +1005,7 @@ export async function resolveLibraryPrefill(
             s.libraryId!,
             s.selectionRule,
             formData,
-            effectiveAccountId(s.libraryId!),
+            accountId,
             pickedIds.length > 0 ? pickedIds : undefined,
           );
           if (suggestion) {
@@ -991,59 +1070,53 @@ export async function resolveLibraryPrefill(
     (b): b is MusicBlock => b.type === "music" && !!b.libraryId,
   );
   if (musicBlock?.libraryId) {
-    // Estimate total video duration. The estimate is meant to UPPER-BOUND the final
-    // output length so the duration filter rejects any track that cannot cover the
-    // whole video. Two modes:
-    //  - Sequence mode (videoSequence non-empty): sum each slot's effective duration:
-    //      library-picked slot → min(asset.duration, slot.maxDuration)
-    //      binding-form slot   → slot.maxDuration (upper bound, no asset known yet)
-    //  - Single-video mode: prefer canvas.maxDuration; fall back to summed library durations.
-    let estimatedVideoDuration = 0;
+    // Estimation de la durée de sortie, via le helper partagé avec le render-time
+    // (lib/generate/estimateOutputDuration). Avant, deux estimations divergentes
+    // coexistaient et toutes deux comptaient 0 pour un slot sans plafond — donc
+    // `audioMinDuration = undefined`, donc aucun filtre de durée : c'est ainsi
+    // qu'une piste de 20 s partait sur une vidéo de 60 s.
     const seq = template.videoSequence ?? [];
-
-    if (seq.length > 0) {
-      const pickedIdBySlot = new Map<string, string>();
-      for (const slot of seq) {
-        const pickedId = result.videoSuggestions[slot.id]?.id;
-        if (pickedId) pickedIdBySlot.set(slot.id, pickedId);
-      }
-      const durationByAssetId = new Map<string, number>();
-      const pickedIds = Array.from(pickedIdBySlot.values());
-      if (pickedIds.length > 0) {
-        const rows = await prisma.mediaAsset.findMany({
-          where: { id: { in: pickedIds } },
-          select: { id: true, duration: true },
-        });
-        for (const r of rows) durationByAssetId.set(r.id, r.duration ?? 0);
-      }
-      for (const slot of seq) {
-        const cap = slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined;
-        const pickedId = pickedIdBySlot.get(slot.id);
-        const assetDur = pickedId ? durationByAssetId.get(pickedId) ?? 0 : 0;
-        let slotDur: number;
-        if (assetDur > 0) {
-          slotDur = cap !== undefined ? Math.min(assetDur, cap) : assetDur;
-        } else {
-          slotDur = cap ?? 0;
-        }
-        estimatedVideoDuration += slotDur;
-      }
-    } else if (template.canvas?.maxDuration && template.canvas.maxDuration > 0) {
-      estimatedVideoDuration = template.canvas.maxDuration;
-    } else {
-      const pickedVideoIds = Object.values(result.videoSuggestions).map((s) => s.id);
-      if (pickedVideoIds.length > 0) {
-        const durations = await prisma.mediaAsset.findMany({
-          where: { id: { in: pickedVideoIds } },
-          select: { duration: true },
-        });
-        estimatedVideoDuration = durations.reduce((sum, a) => sum + (a.duration ?? 0), 0);
-      }
+    const pickedIds = seq.length > 0
+      ? seq.map((slot) => result.videoSuggestions[slot.id]?.id).filter((id): id is string => !!id)
+      : Object.values(result.videoSuggestions).map((s) => s.id);
+    const durationByAssetId = new Map<string, number | null>();
+    if (pickedIds.length > 0) {
+      const rows = await prisma.mediaAsset.findMany({
+        where: { id: { in: [...new Set(pickedIds)] } },
+        select: { id: true, duration: true },
+      });
+      for (const row of rows) durationByAssetId.set(row.id, row.duration);
     }
 
-    // Skip the duration filter when the track loops — any length works.
-    const audioMinDuration =
-      !musicBlock.loop && estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined;
+    const estimate = seq.length > 0
+      ? estimateSequenceDuration(
+          seq.map((slot) => ({
+            id: slot.id,
+            assetDuration: durationByAssetId.get(result.videoSuggestions[slot.id]?.id ?? "") ?? null,
+            cap: slot.maxDuration,
+          })),
+          template.canvas?.maxDuration,
+        )
+      : estimateSingleVideoDuration(
+          Object.entries(result.videoSuggestions).map(([blockId, suggestion]) => ({
+            id: blockId,
+            assetDuration: durationByAssetId.get(suggestion.id) ?? null,
+          })),
+          template.canvas?.maxDuration,
+        );
+
+    // `minDuration` du bloc ET durée estimée : les deux sont des planchers, on
+    // prend le max. Le prefill ignorait purement et simplement `minDuration`,
+    // alors que le builder le documente comme excluant les assets trop courts
+    // « en AUTO et MANUEL ».
+    const audioMinDuration = resolveRequiredAudioDuration(musicBlock, estimate);
+    if (estimate.partial && audioMinDuration) {
+      console.warn(
+        `[resolveLibraryPrefill] durée estimée partielle (${estimate.seconds.toFixed(1)}s) — ` +
+          `sources sans durée ni plafond : ${estimate.unknownSourceIds.join(", ")}. ` +
+          `Filtre audio appliqué en borne inférieure.`,
+      );
+    }
 
     const audioLibraryId = musicBlock.libraryId;
 
@@ -1056,7 +1129,11 @@ export async function resolveLibraryPrefill(
       console.warn(`[resolveLibraryPrefill] audioLibraryId=${audioLibraryId} introuvable — sélection audio ignorée`);
     } else {
 
-    const audioEffectiveAccountId = effectiveAccountId(audioLibraryId);
+    // L'audio reste volontairement sur l'ancienne sémantique (clé = compte réel).
+    // `rotationScope` est aujourd'hui ignoré pour les bibliothèques audio — le
+    // corriger change le comportement produit (burn-once global au lieu de par
+    // compte), donc c'est un chantier séparé et annoncé.
+    const audioUsageScope = "account" as const;
 
     // Read-only: just pick the best audio asset without stamping lastUsedAt.
     // The actual usage claim (MediaAssetUsage.lastUsedAt) is written at submission time
@@ -1065,9 +1142,11 @@ export async function resolveLibraryPrefill(
       audioLibraryId,
       musicBlock.audioSelectionRule,
       formData,
-      audioEffectiveAccountId,
+      accountId,
       undefined,
       audioMinDuration,
+      undefined,
+      audioUsageScope,
     );
     } // end audioLibraryExists guard
   }

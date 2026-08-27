@@ -17,7 +17,13 @@ import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
 import { computeOverlayPlan, type OverlayPlan } from "./overlayPlan";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
-import { selectAndClaimMediaAsset, selectMediaAssetFromFolder, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
+import { selectAndClaimMediaAsset, selectMediaAssetFromFolder, selectMediaAssetByMetadataValue, normalizeRule, advanceMediaUsageOnSubmit, type MediaUsageClaimState } from "@/lib/contentLibraryResolver";
+import {
+  estimateSequenceDuration,
+  estimateSingleVideoDuration,
+  resolveRequiredAudioDuration,
+  type DurationEstimate,
+} from "@/lib/generate/estimateOutputDuration";
 import { triggerAutoTranscriptionLocal } from "@/lib/triggerAutoTranscriptionLocal";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 import { onRenderCompleted } from "@/lib/services/slot/pipelineHooks";
@@ -365,11 +371,88 @@ export async function generateRender(renderId: string): Promise<void> {
  * Returns null when no MusicBlock exists, no URL can be resolved, or the URL is
  * not a valid http/https URL (to prevent cryptic FFmpeg failures inside the worker).
  */
+/** Durées (s) des assets donnés, par id. Absent = durée inconnue en base. */
+async function loadAssetDurations(assetIds: readonly string[]): Promise<Map<string, number | null>> {
+  const unique = [...new Set(assetIds.filter(Boolean))];
+  const byId = new Map<string, number | null>();
+  if (unique.length === 0) return byId;
+  const rows = await prisma.mediaAsset.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, duration: true },
+  });
+  for (const row of rows) byId.set(row.id, row.duration);
+  return byId;
+}
+
+/**
+ * Estimation d'une séquence à partir des assets RÉELLEMENT résolus pour chaque
+ * slot — c'est la seule qui reflète le montage. Les plafonds seuls
+ * sous-estimaient dès qu'un slot n'en avait pas.
+ */
+async function estimateResolvedSequenceDuration(
+  slots: readonly VideoSequenceSlot[],
+  slotAssets: Record<string, string>,
+  canvasMaxDuration?: number | null,
+): Promise<DurationEstimate> {
+  const durationByAssetId = await loadAssetDurations(Object.values(slotAssets));
+  return estimateSequenceDuration(
+    slots.map((slot) => ({
+      id: slot.id,
+      assetDuration: durationByAssetId.get(slotAssets[slot.id] ?? "") ?? null,
+      cap: slot.maxDuration,
+    })),
+    canvasMaxDuration,
+  );
+}
+
+/**
+ * Estimation d'un rendu single-video : un seul bloc est rendu, donc le MAX des
+ * sources (jamais leur somme).
+ */
+async function estimateResolvedSingleVideoDuration(
+  blockId: string,
+  assetId: string | null,
+  canvasMaxDuration?: number | null,
+): Promise<DurationEstimate> {
+  const durationByAssetId = assetId ? await loadAssetDurations([assetId]) : new Map<string, number | null>();
+  return estimateSingleVideoDuration(
+    [{ id: blockId, assetDuration: assetId ? durationByAssetId.get(assetId) ?? null : null }],
+    canvasMaxDuration,
+  );
+}
+
+/**
+ * Estimation dégradée, à partir des seuls plafonds du template. Utilisée quand
+ * l'appelant ne connaît pas encore les assets résolus. Toujours marquée partielle :
+ * un slot sans plafond n'y contribue rien.
+ */
+function estimateFromTemplateCaps(templateJson: TemplateJSON): DurationEstimate {
+  const seq = templateJson.videoSequence ?? [];
+  if (seq.length > 0) {
+    return estimateSequenceDuration(
+      seq.map((slot) => ({ id: slot.id, cap: slot.maxDuration })),
+      templateJson.canvas?.maxDuration,
+    );
+  }
+  return estimateSingleVideoDuration(
+    (templateJson.blocks ?? [])
+      .filter((block): block is VideoBlock => block.type === "video")
+      .map((block) => ({ id: block.id })),
+    templateJson.canvas?.maxDuration,
+  );
+}
+
 async function resolveMusicConfig(
   templateJson: TemplateJSON,
   listingData: ListingData,
   accountId: string | null,
   prefillAudioAssetId?: string | null,
+  /**
+   * Durée estimée du rendu, calculée par l'appelant à partir des assets
+   * RÉELLEMENT résolus. Sans elle, on retombe sur les seuls plafonds du template —
+   * c'est-à-dire souvent sur 0, donc sur aucun filtre de durée.
+   */
+  durationEstimate?: DurationEstimate,
 ): Promise<{ musicUrl: string; block: MusicBlock; assetId: string | null } | null> {
   const musicBlock = templateJson.blocks.find(
     (b): b is MusicBlock => b.type === "music"
@@ -400,28 +483,17 @@ async function resolveMusicConfig(
 
   // 3. Fall back to library resolution when no URL came from the form or prefill
   if (!rawMusicUrl && musicBlock.libraryId) {
-    // Conservative upper-bound on output duration, used to reject too-short tracks.
-    // We use the template's explicit caps (slot.maxDuration / canvas.maxDuration) rather
-    // than probing assets — at render time the picked video assets are not yet known
-    // here, so caps give a safe (often slightly over-) estimate. If no caps exist,
-    // we skip the filter (degraded but matches pre-existing behaviour).
-    let estimatedVideoDuration = 0;
-    const seq = templateJson.videoSequence ?? [];
-    if (seq.length > 0) {
-      for (const slot of seq) {
-        if (slot.maxDuration && slot.maxDuration > 0) {
-          estimatedVideoDuration += slot.maxDuration;
-        }
-      }
-    } else if (templateJson.canvas?.maxDuration && templateJson.canvas.maxDuration > 0) {
-      estimatedVideoDuration = templateJson.canvas.maxDuration;
+    // L'estimation vient de l'appelant quand il connaît les assets résolus ; sinon
+    // on retombe sur les seuls plafonds du template (dégradé, et marqué partiel).
+    const estimate = durationEstimate ?? estimateFromTemplateCaps(templateJson);
+    const audioMinDuration = resolveRequiredAudioDuration(musicBlock, estimate);
+    if (estimate.partial) {
+      console.warn(
+        `[resolveMusicConfig] durée estimée partielle (${estimate.seconds.toFixed(1)}s) — ` +
+          `sources sans durée ni plafond : ${estimate.unknownSourceIds.join(", ") || "—"}. ` +
+          `Le filtre de durée s'applique quand même, en borne inférieure.`,
+      );
     }
-    // minDuration from block definition takes priority; otherwise auto-derive from video duration
-    // so a non-looping track is long enough to cover the full render.
-    const audioMinDuration: number | undefined =
-      musicBlock.minDuration != null && musicBlock.minDuration > 0
-        ? musicBlock.minDuration
-        : (!musicBlock.loop && estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined);
 
     // Bug-hunter #3 (2026-06-01) — selectAndClaimMediaAsset au lieu de
      // selectMediaAsset : pose un lock atomique + claim immédiat pour
@@ -433,14 +505,42 @@ async function resolveMusicConfig(
       accountId ?? undefined,
       undefined,
       audioMinDuration,
+      // "account" : même sémantique que le prefill audio (clé = compte réel).
+      // Le passage des bibliothèques audio en scope-aware est un chantier séparé —
+      // les deux chemins doivent basculer ensemble, sinon formulaire et render
+      // trient sur des clés différentes.
+      "account",
     );
     if (asset) {
       rawMusicUrl = asset.url;
       audioAssetId = asset.id;
+    } else if (audioMinDuration) {
+      // Filet : plutôt qu'une vidéo muette, on sert la piste la plus longue de la
+      // bibliothèque en signalant explicitement qu'elle ne couvre pas tout.
+      const longest = await prisma.mediaAsset.findFirst({
+        where: { libraryId: musicBlock.libraryId, disabled: false, duration: { not: null } },
+        orderBy: { duration: "desc" },
+        select: { id: true, url: true, duration: true },
+      });
+      if (longest) {
+        console.warn(
+          `[resolveMusicConfig] aucune piste ≥ ${audioMinDuration.toFixed(1)}s dans lib=${musicBlock.libraryId} — ` +
+            `repli sur la plus longue (${longest.duration?.toFixed(1)}s). La fin du rendu sera silencieuse.`,
+        );
+        rawMusicUrl = longest.url;
+        audioAssetId = longest.id;
+      }
     }
   }
 
-  if (!rawMusicUrl) return null;
+  if (!rawMusicUrl) {
+    if (musicBlock.libraryId) {
+      console.error(
+        `[resolveMusicConfig] le template attend une musique (lib=${musicBlock.libraryId}) mais aucune piste n'a pu être résolue — le rendu partira sans musique.`,
+      );
+    }
+    return null;
+  }
 
   // Resolve relative paths (local uploads) to absolute URL so the render-engine
   // container can reach the file — same pattern as resolveVideoUrl.
@@ -862,7 +962,17 @@ async function generateVideoRender(
     const crop_y = focalPoint?.y ?? 0.5;
 
     // Resolve optional music block
-    const music = await resolveMusicConfig(templateJson, listingData, accountId, prefillAudioAssetId);
+    const music = await resolveMusicConfig(
+      templateJson,
+      listingData,
+      accountId,
+      prefillAudioAssetId,
+      await estimateResolvedSingleVideoDuration(
+        videoBlock.id,
+        singleVideoAssetId,
+        templateJson.canvas?.maxDuration,
+      ),
+    );
     if (music?.assetId) await mergeAudioAssetId(renderId, music.assetId);
 
     // 4. Soumettre le job RunPod
@@ -1090,7 +1200,17 @@ async function generateVideoRenderLocal(
     const crop_y = focalPoint?.y ?? 0.5;
 
     // Resolve optional music block
-    const music = await resolveMusicConfig(templateJson, listingData, accountId, prefillAudioAssetId);
+    const music = await resolveMusicConfig(
+      templateJson,
+      listingData,
+      accountId,
+      prefillAudioAssetId,
+      await estimateResolvedSingleVideoDuration(
+        videoBlock.id,
+        singleVideoAssetId,
+        templateJson.canvas?.maxDuration,
+      ),
+    );
     if (music?.assetId) await mergeAudioAssetId(renderId, music.assetId);
 
     // 3. Envoyer overlay(s) + vidéo à render-engine pour composite FFmpeg
@@ -1265,12 +1385,25 @@ async function resolveSlotVideoUrl(
   prefillAssetId?: string | null,
   /** Durée minimale requise pour l'asset (s). Héritée du VideoBlock.minDuration ou slot.maxDuration. */
   minDuration?: number,
-): Promise<{ url: string; assetId: string | null; resolvedSetTag: string | null; metadata: Record<string, string | number | null> }> {
+): Promise<{
+  url: string;
+  assetId: string | null;
+  resolvedSetTag: string | null;
+  metadata: Record<string, string | number | null>;
+  /**
+   * D'où vient l'asset. Seul `"folder-draw"` correspond à une REDÉCOUVERTE
+   * render-time non claimée : c'est le seul cas où l'appelant doit poser un
+   * claim d'usage. Comparer l'id résolu à `prefillAssetId` ne suffit pas — une
+   * redécouverte peut légitimement retomber sur l'asset prefill d'un AUTRE slot,
+   * et on reclaimerait alors tous les assets à chaque render.
+   */
+  source: "binding" | "metadata" | "prefill" | "folder-draw" | "claimed";
+}> {
   // 1. Binding explicite dans les données du formulaire
   if (slot.binding) {
     const raw = (listingData as Record<string, unknown>)[slot.binding] as string | undefined;
     if (raw && (raw.startsWith("http") || raw.startsWith("/"))) {
-      return { url: raw, assetId: null, resolvedSetTag: null, metadata: {} };
+      return { url: raw, assetId: null, resolvedSetTag: null, metadata: {}, source: "binding" };
     }
   }
 
@@ -1295,6 +1428,7 @@ async function resolveSlotVideoUrl(
             assetId: asset.id,
             resolvedSetTag: asset.setTag ?? null,
             metadata: asset.metadata as Record<string, string | number | null>,
+            source: "metadata",
           };
         }
         console.warn(
@@ -1327,6 +1461,7 @@ async function resolveSlotVideoUrl(
           assetId: assetRow.id,
           resolvedSetTag: assetRow.setTag ?? null,
           metadata,
+          source: "prefill",
         };
       }
     } catch { /* DB lookup failed — fall through to library selection */ }
@@ -1370,6 +1505,8 @@ async function resolveSlotVideoUrl(
           assetId: asset.id,
           resolvedSetTag: asset.resolvedSetTag,
           metadata,
+          // Redécouverte : aucun claim n'a été posé, l'appelant doit s'en charger.
+          source: "folder-draw",
         };
       }
     } else {
@@ -1377,7 +1514,8 @@ async function resolveSlotVideoUrl(
       // Pass minDuration (from VideoBlock.minDuration or slot.maxDuration) to filter short assets.
       const asset = await selectAndClaimMediaAsset(slot.libraryId, rule, undefined, accountId ?? undefined, undefined, minDuration);
       if (asset) {
-        return { url: asset.url, assetId: asset.id, resolvedSetTag: null, metadata: asset.metadata };
+        // selectAndClaimMediaAsset a déjà posé son claim atomique.
+        return { url: asset.url, assetId: asset.id, resolvedSetTag: null, metadata: asset.metadata, source: "claimed" };
       }
     }
   }
@@ -1445,6 +1583,71 @@ function accumulateSlotTracking(
       setSequencedLibraryIds.push(slot.libraryId);
     }
     if (resolved.resolvedSetTag) usedSetTagByLibrary[slot.libraryId] = resolved.resolvedSetTag;
+  }
+}
+
+/**
+ * Pose un claim d'usage pour un asset REDÉCOUVERT au render-time.
+ *
+ * La branche folder-draw de `resolveSlotVideoUrl` retire dans la bibliothèque
+ * sans rien écrire : `lastUsedAt` ne bougeait qu'au DONE, plusieurs minutes plus
+ * tard. Toutes les générations lancées entre-temps qui repassaient par cette
+ * redécouverte ressortaient donc le même asset. Le chemin non-folder, lui, était
+ * déjà protégé (`selectAndClaimMediaAsset` claim sous verrou).
+ *
+ * Le claim est posé PAR SLOT, dans la boucle : deux slots folder-draw de la même
+ * bibliothèque sans prefill recevaient sinon le même asset (le premier découvre
+ * le dossier, le second prend la branche « pinned » et rejoue la même requête LRU
+ * sans que rien n'ait été écrit entre les deux).
+ */
+async function claimRediscoveredSlotAsset(
+  resolved: { assetId: string | null; source: string },
+  accountId: string | null,
+  claims: MediaUsageClaimState[],
+): Promise<void> {
+  if (resolved.source !== "folder-draw" || !resolved.assetId) return;
+  try {
+    const { prevMediaUsageStates } = await advanceMediaUsageOnSubmit(
+      [resolved.assetId],
+      accountId ?? undefined,
+    );
+    claims.push(...prevMediaUsageStates);
+  } catch (err) {
+    console.warn(
+      `[generateRender] claim de redécouverte échoué pour asset=${resolved.assetId}:`,
+      err,
+    );
+  }
+}
+
+/**
+ * Ajoute les claims de redécouverte à `usedAssets.prevMediaUsageStates` sans
+ * écraser ceux déjà posés au submit — le revert sur échec de render doit pouvoir
+ * annuler les deux.
+ */
+async function appendMediaUsageClaims(
+  renderId: string,
+  claims: MediaUsageClaimState[],
+): Promise<void> {
+  if (claims.length === 0) return;
+  try {
+    const render = await prisma.render.findUnique({
+      where: { id: renderId },
+      select: { usedAssets: true },
+    });
+    let stored: Record<string, unknown> = {};
+    try { stored = JSON.parse(render?.usedAssets ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
+    const existing = Array.isArray(stored.prevMediaUsageStates)
+      ? (stored.prevMediaUsageStates as MediaUsageClaimState[])
+      : [];
+    await prisma.render.update({
+      where: { id: renderId },
+      data: {
+        usedAssets: JSON.stringify({ ...stored, prevMediaUsageStates: [...existing, ...claims] }),
+      },
+    });
+  } catch (err) {
+    console.warn(`[appendMediaUsageClaims] failed for render ${renderId}:`, err);
   }
 }
 
@@ -1573,6 +1776,9 @@ async function generateSequenceRender(
     // au curseur (sinon il avancerait une seconde fois).
     const localPinnedSetTagByLibrary: Record<string, string> = { ...claimedSetTagByLibrary };
     const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
+    // Claims posés pour les slots effectivement REDÉCOUVERTS ici (aucun claim
+    // n'avait été posé au submit pour eux).
+    const rediscoveryClaims: MediaUsageClaimState[] = [];
     const allBlocks = templateJson.blocks ?? [];
     for (const slot of slots) {
       const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
@@ -1585,6 +1791,9 @@ async function generateSequenceRender(
           : undefined;
       const slotMinDuration: number | undefined = linkedVideoBlock?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
       const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDuration);
+      // Claim immédiat, dans la boucle : le slot suivant qui partage la même
+      // bibliothèque doit voir cet asset comme « déjà servi ».
+      await claimRediscoveredSlotAsset(resolved, accountId, rediscoveryClaims);
       accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, sequenceSlotAssets);
       // Track pinned set for subsequent slots sharing the same library
       if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
@@ -1649,7 +1858,13 @@ async function generateSequenceRender(
     );
 
     // 4. Résoudre la musique (MusicBlock du template)
-    const music = await resolveMusicConfig(templateJson, listingData, accountId, prefillAudioAssetId);
+    const music = await resolveMusicConfig(
+      templateJson,
+      listingData,
+      accountId,
+      prefillAudioAssetId,
+      await estimateResolvedSequenceDuration(slots, sequenceSlotAssets, templateJson.canvas?.maxDuration),
+    );
 
     // 5. Construire le payload slots pour RunPod
     const runpodSlots = resolvedSlots.map(({ slot, videoUrl }, i) => {
@@ -1724,6 +1939,8 @@ async function generateSequenceRender(
         setSequencedLibraryIds,
         usedSetTagByLibrary,
       });
+      // Après le merge : concaténation, pour ne pas écraser les claims du submit.
+      await appendMediaUsageClaims(renderId, rediscoveryClaims);
     }
 
     await updateRenderTracking(renderId, {
@@ -1792,6 +2009,9 @@ async function generateSequenceRenderLocal(
     // au curseur (sinon il avancerait une seconde fois).
     const localPinnedSetTagByLibrary: Record<string, string> = { ...claimedSetTagByLibrary };
     const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
+    // Claims posés pour les slots effectivement REDÉCOUVERTS ici (aucun claim
+    // n'avait été posé au submit pour eux).
+    const rediscoveryClaimsLocal: MediaUsageClaimState[] = [];
     const allBlocksLocal = templateJson.blocks ?? [];
     for (const slot of slots) {
       const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
@@ -1804,6 +2024,9 @@ async function generateSequenceRenderLocal(
           : undefined;
       const slotMinDurationLocal: number | undefined = linkedVideoBlockLocal?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
       const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDurationLocal);
+      // Claim immédiat, dans la boucle : le slot suivant qui partage la même
+      // bibliothèque doit voir cet asset comme « déjà servi ».
+      await claimRediscoveredSlotAsset(resolved, accountId, rediscoveryClaimsLocal);
       accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, sequenceSlotAssets);
       if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
         if (resolved.resolvedSetTag && !localPinnedSetTagByLibrary[slot.libraryId]) {
@@ -1829,7 +2052,13 @@ async function generateSequenceRenderLocal(
     );
 
     // Resolve music
-    const music = await resolveMusicConfig(templateJson, listingData, accountId, prefillAudioAssetId);
+    const music = await resolveMusicConfig(
+      templateJson,
+      listingData,
+      accountId,
+      prefillAudioAssetId,
+      await estimateResolvedSequenceDuration(slots, sequenceSlotAssets, templateJson.canvas?.maxDuration),
+    );
 
     // For local path, convert local /uploads/ paths to absolute URLs.
     // FONT_BASE_URL must be set in Docker (e.g. http://web:3000) so the render-engine
@@ -1920,6 +2149,8 @@ async function generateSequenceRenderLocal(
         setSequencedLibraryIds,
         usedSetTagByLibrary,
       });
+      // Après le merge : concaténation, pour ne pas écraser les claims du submit.
+      await appendMediaUsageClaims(renderId, rediscoveryClaimsLocal);
     }
     await updateRenderTracking(renderId, {
       status: "DONE",

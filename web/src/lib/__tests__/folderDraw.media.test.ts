@@ -38,6 +38,7 @@ vi.mock("@/lib/prisma", () => ({
 import {
   selectMediaAssetFromFolder,
   advanceMediaUsageOnSubmit,
+  selectMediaAsset,
 } from "@/lib/contentLibraryResolver";
 import { SHARED_USAGE_ACCOUNT_ID, isReservedSetTag } from "@/lib/rotation/sentinels";
 
@@ -316,5 +317,96 @@ describe("isReservedSetTag — préfixe pack_ réservé (H.2)", () => {
     expect(isReservedSetTag("tournage-03")).toBe(false);
     expect(isReservedSetTag(null)).toBe(false);
     expect(isReservedSetTag(undefined)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// selectMediaAsset (stratégies « régulières », hors tirage par dossier)
+//
+// Bug corrigé : sur une bibliothèque en rotationScope="shared", la sélection
+// triait sur les colonnes globales de MediaAsset — écrites seulement au DONE —
+// alors que advanceMediaUsageOnSubmit claimait sous la sentinelle __shared__.
+// Le claim n'était donc jamais relu : entre le submit et la fin du render
+// (plusieurs minutes sur RunPod), la pile ne bougeait pas et deux générations
+// rapprochées ressortaient le même asset.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("selectMediaAsset — clé d'ancienneté selon le scope de la bibliothèque", () => {
+  function paramsOfCall(callIndex: number): unknown[] {
+    const arg = mockQueryRaw.mock.calls[callIndex]?.[0] as { values?: unknown[] } | undefined;
+    return arg?.values ?? [];
+  }
+
+  it("scope shared : trie sous la sentinelle __shared__, pas sur ma.lastUsedAt", async () => {
+    mockMediaLibraryFindUnique.mockResolvedValue({
+      maxUsageCount: null,
+      rotationScope: "shared",
+      rotationMode: "auto",
+    });
+    mockQueryRaw.mockResolvedValueOnce([]);
+
+    await selectMediaAsset("lib-1", "least_used", undefined, "acc-1");
+
+    const sql = sqlTextOfCall(0);
+    expect(sql).toContain('LEFT JOIN "MediaAssetUsage" mau');
+    expect(sql).toContain('COALESCE(mau."usageCount", 0) ASC');
+    expect(paramsOfCall(0)).toContain(SHARED_USAGE_ACCOUNT_ID);
+  });
+
+  it("scope shared : le burn-once reste global (ma.usageCount), jamais par compte", async () => {
+    mockMediaLibraryFindUnique.mockResolvedValue({
+      maxUsageCount: 2,
+      rotationScope: "shared",
+      rotationMode: "auto",
+    });
+    mockQueryRaw.mockResolvedValueOnce([]);
+
+    await selectMediaAsset("lib-1", "least_used", undefined, "acc-1");
+
+    const sql = sqlTextOfCall(0);
+    expect(sql).toContain('ma."usageCount" <');
+    expect(sql).not.toContain('FROM "MediaAssetUsage" mau2');
+  });
+
+  it("scope per_account : comportement inchangé, clé = compte réel", async () => {
+    mockMediaLibraryFindUnique.mockResolvedValue({
+      maxUsageCount: null,
+      rotationScope: "per_account",
+      rotationMode: "auto",
+    });
+    mockQueryRaw.mockResolvedValueOnce([]);
+
+    await selectMediaAsset("lib-1", "least_used", undefined, "acc-1");
+
+    expect(paramsOfCall(0)).toContain("acc-1");
+    expect(paramsOfCall(0)).not.toContain(SHARED_USAGE_ACCOUNT_ID);
+  });
+
+  it("usageScope='account' (audio) : la sentinelle n'est jamais utilisée, même en shared", async () => {
+    mockMediaLibraryFindUnique.mockResolvedValue({
+      maxUsageCount: null,
+      rotationScope: "shared",
+      rotationMode: "auto",
+    });
+    mockQueryRaw.mockResolvedValueOnce([]);
+
+    await selectMediaAsset("lib-audio", "least_used", undefined, "acc-1", undefined, undefined, undefined, "account");
+
+    expect(paramsOfCall(0)).toContain("acc-1");
+    expect(paramsOfCall(0)).not.toContain(SHARED_USAGE_ACCOUNT_ID);
+  });
+
+  it("l'accès (MediaAssetAccess) reste filtré sur le compte RÉEL en scope shared", async () => {
+    mockMediaLibraryFindUnique.mockResolvedValue({
+      maxUsageCount: null,
+      rotationScope: "shared",
+      rotationMode: "auto",
+    });
+    mockQueryRaw.mockResolvedValueOnce([]);
+
+    await selectMediaAsset("lib-1", "least_used", undefined, "acc-1");
+
+    // La sentinelle sert à l'ancienneté ; la visibilité, elle, dépend du vrai compte.
+    expect(sqlTextOfCall(0)).toContain('"MediaAssetAccess"');
+    expect(paramsOfCall(0)).toContain("acc-1");
   });
 });

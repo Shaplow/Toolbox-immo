@@ -351,12 +351,25 @@ export async function POST(req: NextRequest) {
         where: { id: templateId },
         select: { jsonData: true },
       });
+      // Le try/catch ne couvre QUE le parse : un JSON de template illisible ne doit
+      // pas bloquer le submit, mais les gardes qui suivent, elles, doivent pouvoir
+      // renvoyer leur 400 — enfermées dans le catch, un `return` de garde était
+      // impossible à distinguer d'une erreur et toute la validation sautait en
+      // silence dès qu'une exception inattendue survenait.
+      type TemplateShape = {
+        blocks?: Array<{ id: string; type: string; minDuration?: number; name?: string; libraryId?: string }>;
+        videoSequence?: Array<{ id: string; libraryId?: string; label?: string; binding?: string }>;
+      };
+      let tplJson: TemplateShape | null = null;
       if (templateRow?.jsonData) {
         try {
-          const tplJson = JSON.parse(templateRow.jsonData) as {
-            blocks?: Array<{ id: string; type: string; minDuration?: number; name?: string; libraryId?: string }>;
-            videoSequence?: Array<{ id: string; libraryId?: string; label?: string; binding?: string }>;
-          };
+          tplJson = JSON.parse(templateRow.jsonData) as TemplateShape;
+        } catch {
+          console.warn(`[POST /api/renders] template=${templateId} jsonData illisible — validation des assets ignorée.`);
+        }
+      }
+      if (tplJson) {
+        {
           const blocks = tplJson.blocks ?? [];
           const videoSequenceSlots = tplJson.videoSequence ?? [];
 
@@ -492,8 +505,6 @@ export async function POST(req: NextRequest) {
               );
             }
           }
-        } catch {
-          // Non-critical — malformed template JSON should not block the submit
         }
       }
     }
