@@ -11,7 +11,7 @@ import { NewOrderClient, type OrderTemplateOption } from "./NewOrderClient";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Nouvelle commande | Toolbox Immo",
+  title: "Nouvelle commande",
 };
 
 /**
@@ -54,6 +54,7 @@ export default async function NewOrderPage() {
       },
       recipes: {
         select: { count: true, patternTemplate: { select: { label: true } } },
+        orderBy: { position: "asc" },
       },
     },
   });
@@ -72,6 +73,7 @@ export default async function NewOrderPage() {
     videoSummary: t.recipes
       .map((r) => (r.count > 1 ? `${r.patternTemplate.label} ×${r.count}` : r.patternTemplate.label))
       .join(", "),
+    videoCount: t.recipes.reduce((n, r) => n + r.count, 0),
   }));
 
   // Comptes : ceux de l'agence (externe) ou tous avec leur client (admin).

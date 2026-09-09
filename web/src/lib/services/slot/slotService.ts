@@ -495,6 +495,29 @@ export async function createSlot(
         ? false
         : undefined;
 
+  // Dernier niveau de la cascade : l'équipe par défaut du compte, quand ni
+  // l'appelant, ni la fiche, ni la recette n'ont renseigné un rôle. Même ordre
+  // que `resolveDefaultAssignees` côté fiches — sans lui, une fiche héritée du
+  // compte produirait des publications sans personne dessus.
+  if (
+    input.accountId &&
+    (!resolvedAssigneeMonteurId || !resolvedAssigneeCmId || !resolvedAssigneeVideasteId)
+  ) {
+    const account = await prisma.instagramAccount.findUnique({
+      where: { id: input.accountId },
+      select: {
+        defaultAssigneeVideasteId: true,
+        defaultAssigneeMonteurId: true,
+        defaultAssigneeCmId: true,
+      },
+    });
+    if (account) {
+      resolvedAssigneeMonteurId ??= account.defaultAssigneeMonteurId;
+      resolvedAssigneeCmId ??= account.defaultAssigneeCmId;
+      resolvedAssigneeVideasteId ??= account.defaultAssigneeVideasteId;
+    }
+  }
+
   const slot = await prisma.publicationSlot.create({
     data: {
       accountId: input.accountId ?? null,

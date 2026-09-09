@@ -1,6 +1,7 @@
 "use client";
 
 import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
+import { localInputToIso } from "@/lib/date/formatFr";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Clapperboard } from "lucide-react";
@@ -87,7 +88,7 @@ export function AttachSlotModal({
           : {
               patternBindingId: recipeId || null,
               title: title.trim() || null,
-              scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+              scheduledAt: scheduledAt ? localInputToIso(scheduledAt) : null,
             };
       const res = await fetch(`/api/entities/${entityId}/slots`, {
         method: "POST",

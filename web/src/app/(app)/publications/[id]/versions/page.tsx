@@ -28,8 +28,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   });
   return {
     title: slot
-      ? `Versions · ${slot.account ? `@${slot.account.handle}` : "Sans compte"} | Toolbox Immo`
-      : "Versions | Toolbox Immo",
+      ? `Versions · ${slot.account ? `@${slot.account.handle}` : "Sans compte"}`
+      : "Versions",
   };
 }
 

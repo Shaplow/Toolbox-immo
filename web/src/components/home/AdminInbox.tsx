@@ -38,7 +38,14 @@ const TABS: Tab[] = [
   {
     key: "production",
     label: "Production",
-    typologies: ["no_monteur", "no_videaste", "no_pattern", "rushes_overdue"],
+    typologies: [
+      "no_monteur",
+      "no_videaste",
+      "no_pattern",
+      "rushes_overdue",
+      "shoot_declined",
+      "shoot_unconfirmed",
+    ],
   },
   { key: "overdue", label: "Retards", typologies: ["overdue"] },
   { key: "bank", label: "Banque", typologies: ["bank_ready"] },
@@ -87,6 +94,8 @@ export function AdminInbox({ items, accountsCount, recipesCount }: Props) {
       if (
         it.typology === "no_monteur" ||
         it.typology === "no_videaste" ||
+        it.typology === "shoot_declined" ||
+        it.typology === "shoot_unconfirmed" ||
         it.typology === "no_pattern" ||
         it.typology === "rushes_overdue"
       )

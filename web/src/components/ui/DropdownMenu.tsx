@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useAnchoredPosition, POPOVER_Z_INDEX } from "@/components/ui/useAnchoredPosition";
 import type { LucideIcon } from "lucide-react";
 
 /**
@@ -31,11 +33,21 @@ interface DropdownMenuProps {
 export function DropdownMenu({ trigger, items, align = "start", side = "bottom" }: DropdownMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Menu portalé : sinon coupé par le premier ancêtre en overflow-hidden.
+  const { position, ready } = useAnchoredPosition(open, containerRef, {
+    maxHeight: 320,
+    preferTop: side === "top",
+    align,
+    popoverRef: menuRef,
+  });
 
   useEffect(() => {
     if (!open) return;
     function handleClickOutside(e: MouseEvent) {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target)) return;
+      if (!containerRef.current?.contains(target)) setOpen(false);
     }
     function handleEscape(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -51,12 +63,19 @@ export function DropdownMenu({ trigger, items, align = "start", side = "bottom" 
   return (
     <div ref={containerRef} className="relative inline-flex">
       <span onClick={() => setOpen((o) => !o)}>{trigger}</span>
-      {open && (
+      {ready && position &&
+        createPortal(
         <div
+          ref={menuRef}
           role="menu"
-          className={`absolute z-50 min-w-[180px] rounded-md bg-popover text-popover-foreground border border-border shadow-lg py-1 ${
-            side === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"
-          } ${align === "end" ? "right-0" : "left-0"}`}
+          // Le hook a déjà appliqué l'alignement et le recadrage viewport.
+          style={{
+            position: "absolute",
+            top: position.top,
+            left: position.left,
+            zIndex: POPOVER_Z_INDEX,
+          }}
+          className="min-w-[180px] rounded-md bg-popover text-popover-foreground border border-border shadow-lg py-1"
         >
           {items.map((item, idx) => {
             if (item === "separator") {
@@ -88,8 +107,9 @@ export function DropdownMenu({ trigger, items, align = "start", side = "bottom" 
               </button>
             );
           })}
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

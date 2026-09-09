@@ -100,6 +100,19 @@ export function CustomFieldsSchemaEditor({
         </p>
       )}
 
+      {/* En-têtes : les colonnes de cases à cocher n'avaient aucun libellé, on
+          ne pouvait pas deviner ce qu'elles réglaient. */}
+      {fields.length > 0 && (
+        <div className="flex items-center gap-2 px-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="flex-1 min-w-0">Libellé</span>
+          <span className="w-32 shrink-0">Clé</span>
+          <span className="w-32 shrink-0">Type</span>
+          {allowRequired && <span className="shrink-0">Requis</span>}
+          {allowPrimary && <span className="shrink-0">Table</span>}
+          {!readOnly && <span className="w-7 shrink-0" aria-hidden="true" />}
+        </div>
+      )}
+
       {fields.map((field, i) => (
         <div key={field.key} className="space-y-1.5">
         <div className="flex items-center gap-2">

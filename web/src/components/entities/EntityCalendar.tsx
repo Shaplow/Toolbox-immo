@@ -8,7 +8,7 @@ import { toast } from "@/components/ui/Toast";
 import { EntityCard } from "./EntityCard";
 import { CreateEntityModal } from "./CreateEntityModal";
 import type { EntitySummary, EntityTypeSummary } from "@/types/entities";
-import { shortDateFr, dateFr } from "@/lib/date/formatFr";
+import { shortDateFr, dateFr, parisDayKey, parisToday } from "@/lib/date/formatFr";
 
 interface Option {
   id: string;
@@ -37,6 +37,10 @@ function mondayOf(d: Date): Date {
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
+/** Clé jour d'une case de grille (Date « murale » à minuit). */
+function gridDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function addDays(d: Date, n: number): Date {
   const r = new Date(d);
   r.setDate(d.getDate() + n);
@@ -50,7 +54,7 @@ function addDays(d: Date, n: number): Date {
  * fiches filtré client-side.
  */
 export function EntityCalendar({ type, isAdmin, accounts, videastes, monteurs, cms }: EntityCalendarProps) {
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  const [weekStart, setWeekStart] = useState(() => mondayOf(parisToday()));
   const [entities, setEntities] = useState<EntitySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -86,7 +90,7 @@ export function EntityCalendar({ type, isAdmin, accounts, videastes, monteurs, c
   }, [load]);
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const now = new Date();
+  const now = parisToday();
 
   const weekLabel = `${shortDateFr(weekStart)} – ${dateFr(addDays(weekStart, 6))}`;
 
@@ -113,7 +117,7 @@ export function EntityCalendar({ type, isAdmin, accounts, videastes, monteurs, c
             </button>
             <button
               type="button"
-              onClick={() => setWeekStart(mondayOf(new Date()))}
+              onClick={() => setWeekStart(mondayOf(parisToday()))}
               className="px-2.5 py-1.5 text-[12px] hover:bg-muted border-x border-border focus-ring"
             >
               Aujourd&apos;hui
@@ -159,7 +163,7 @@ export function EntityCalendar({ type, isAdmin, accounts, videastes, monteurs, c
           {days.map((day, i) => {
             const isToday = sameDay(day, now);
             const dayEntities = entities
-              .filter((e) => e.scheduledAt && sameDay(new Date(e.scheduledAt), day))
+              .filter((e) => e.scheduledAt && parisDayKey(e.scheduledAt) === gridDayKey(day))
               .sort(
                 (a, b) =>
                   new Date(a.scheduledAt ?? 0).getTime() - new Date(b.scheduledAt ?? 0).getTime(),

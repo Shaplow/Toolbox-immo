@@ -14,7 +14,9 @@ const mockAccountFindUnique = vi.fn();
 const mockEntityFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockBindingFindFirst = vi.fn();
+const mockBindingFindMany = vi.fn(async () => []);
 const mockEntityCreate = vi.fn();
+const mockEntityUpdate = vi.fn();
 const mockEntityActivityCreate = vi.fn();
 const mockTransaction = vi.fn();
 
@@ -25,9 +27,13 @@ vi.mock("@/lib/prisma", () => ({
     entity: {
       findUnique: (...a: unknown[]) => mockEntityFindUnique(...a),
       create: (...a: unknown[]) => mockEntityCreate(...a),
+      update: (...a: unknown[]) => mockEntityUpdate(...a),
     },
     user: { findUnique: (...a: unknown[]) => mockUserFindUnique(...a) },
-    patternBinding: { findFirst: (...a: unknown[]) => mockBindingFindFirst(...a) },
+    patternBinding: {
+      findFirst: (...a: unknown[]) => mockBindingFindFirst(...a),
+      findMany: (...a: unknown[]) => mockBindingFindMany(...a),
+    },
     entityActivity: { create: (...a: unknown[]) => mockEntityActivityCreate(...a) },
     $transaction: (...a: unknown[]) => mockTransaction(...a),
   },
@@ -37,6 +43,9 @@ import {
   createEntity,
   computeShotTransition,
   markEntityShot,
+  patchEntity,
+  resolveDefaultAssignees,
+  detectRecipeAssigneeConflicts,
 } from "@/lib/services/entity/entityService";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/services/_runtime/errors";
 
@@ -196,19 +205,121 @@ describe("createEntity — guards", () => {
     expect(arg.status).toBe("PLANNED");
   });
 
-  it("seed défauts monteur/CM depuis le binding actif du compte", async () => {
+  it("seed les trois assignés (vidéaste inclus) depuis les bindings du compte", async () => {
     mockEntityTypeFindUnique.mockResolvedValue(TOURNAGE_TYPE);
-    mockBindingFindFirst.mockResolvedValue({
-      defaultAssigneeMonteurId: "mon-def",
-      defaultAssigneeCmId: "cm-def",
-    });
+    mockBindingFindMany.mockResolvedValue([
+      {
+        patternTemplateId: "pt-1",
+        defaultAssigneeVideasteId: "vid-def",
+        defaultAssigneeMonteurId: "mon-def",
+        defaultAssigneeCmId: "cm-def",
+      },
+    ]);
     await createEntity(
       { typeId: "etype_tournage", label: "T", accountId: "acc-1", scheduledAt: "2026-08-01T10:00:00Z" },
       adminCtx(),
     );
     const arg = mockEntityCreate.mock.calls[0][0].data;
+    // Le vidéaste n'était jamais seedé : la worklist vidéaste lit
+    // `Entity.assigneeVideasteId`, donc le tournage n'atteignait personne.
+    expect(arg.assigneeVideasteId).toBe("vid-def");
     expect(arg.defaultAssigneeMonteurId).toBe("mon-def");
     expect(arg.defaultAssigneeCmId).toBe("cm-def");
+  });
+
+  it("premier rôle renseigné gagne, dans l'ordre des recettes commandées", async () => {
+    mockEntityTypeFindUnique.mockResolvedValue(TOURNAGE_TYPE);
+    // findMany renvoie dans l'ordre de création ; `recipeTemplateIds` impose
+    // l'ordre du modèle de commande.
+    mockBindingFindMany.mockResolvedValue([
+      {
+        patternTemplateId: "pt-second",
+        defaultAssigneeVideasteId: "vid-second",
+        defaultAssigneeMonteurId: null,
+        defaultAssigneeCmId: "cm-second",
+      },
+      {
+        patternTemplateId: "pt-first",
+        defaultAssigneeVideasteId: "vid-first",
+        defaultAssigneeMonteurId: "mon-first",
+        defaultAssigneeCmId: null,
+      },
+    ]);
+    const resolved = await resolveDefaultAssignees(
+      "acc-1",
+      ["pt-first", "pt-second"],
+      { videasteId: null, monteurId: null, cmId: null },
+    );
+    expect(resolved).toEqual({
+      videasteId: "vid-first",
+      monteurId: "mon-first",
+      cmId: "cm-second",
+    });
+  });
+
+  it("cascade : la recette prime sur le compte", async () => {
+    mockBindingFindMany.mockResolvedValue([
+      {
+        patternTemplateId: "pt-1",
+        defaultAssigneeVideasteId: "vid-recette",
+        defaultAssigneeMonteurId: null,
+        defaultAssigneeCmId: null,
+      },
+    ]);
+    mockAccountFindUnique.mockResolvedValue({
+      defaultAssigneeVideasteId: "vid-compte",
+      defaultAssigneeMonteurId: "mon-compte",
+      defaultAssigneeCmId: "cm-compte",
+    });
+    const resolved = await resolveDefaultAssignees("acc-1", undefined, {
+      videasteId: null,
+      monteurId: null,
+      cmId: null,
+    });
+    // Vidéaste surchargé par la recette, le reste hérité du compte.
+    expect(resolved).toEqual({
+      videasteId: "vid-recette",
+      monteurId: "mon-compte",
+      cmId: "cm-compte",
+    });
+  });
+
+  it("cascade : sans aucun binding, l'équipe du compte s'applique", async () => {
+    mockBindingFindMany.mockResolvedValue([]);
+    mockAccountFindUnique.mockResolvedValue({
+      defaultAssigneeVideasteId: "vid-compte",
+      defaultAssigneeMonteurId: "mon-compte",
+      defaultAssigneeCmId: "cm-compte",
+    });
+    const resolved = await resolveDefaultAssignees("acc-1", ["pt-inconnue"], {
+      videasteId: null,
+      monteurId: null,
+      cmId: null,
+    });
+    expect(resolved).toEqual({
+      videasteId: "vid-compte",
+      monteurId: "mon-compte",
+      cmId: "cm-compte",
+    });
+  });
+
+  it("une valeur fournie explicitement n'est jamais écrasée", async () => {
+    mockAccountFindUnique.mockResolvedValue(null);
+    mockBindingFindMany.mockResolvedValue([
+      {
+        patternTemplateId: "pt-1",
+        defaultAssigneeVideasteId: "vid-def",
+        defaultAssigneeMonteurId: "mon-def",
+        defaultAssigneeCmId: "cm-def",
+      },
+    ]);
+    const resolved = await resolveDefaultAssignees("acc-1", undefined, {
+      videasteId: "vid-choisi",
+      monteurId: null,
+      cmId: null,
+    });
+    expect(resolved.videasteId).toBe("vid-choisi");
+    expect(resolved.monteurId).toBe("mon-def");
   });
 });
 
@@ -267,5 +378,136 @@ describe("markEntityShot — DB", () => {
     expect(res).toEqual({ transitioned: false, bumpedReels: 0 });
     expect(f.entityUpdate).not.toHaveBeenCalled();
     expect(f.slotUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("detectRecipeAssigneeConflicts", () => {
+  const binding = (
+    id: string,
+    label: string,
+    videasteId: string | null,
+    videasteName: string | null,
+  ) => ({
+    patternTemplateId: id,
+    customLabel: null,
+    patternTemplate: { label },
+    defaultAssigneeVideasteId: videasteId,
+    defaultAssigneeVideaste: videasteName ? { name: videasteName } : null,
+    defaultAssigneeMonteurId: null,
+    defaultAssigneeMonteur: null,
+    defaultAssigneeCmId: null,
+    defaultAssigneeCm: null,
+  });
+
+  it("deux recettes sur A, une sur B → conflit, A retenu (ordre du modèle)", async () => {
+    mockBindingFindMany.mockResolvedValue([
+      binding("pt-3", "RVA3", "vid-b", "Bob"),
+      binding("pt-1", "RVA1", "vid-a", "Alice"),
+      binding("pt-2", "RVA2", "vid-a", "Alice"),
+    ]);
+    const conflicts = await detectRecipeAssigneeConflicts("acc-1", ["pt-1", "pt-2", "pt-3"]);
+    expect(conflicts).toEqual([
+      {
+        role: "videaste",
+        keptName: "Alice",
+        keptRecipeLabel: "RVA1",
+        ignored: [{ recipeLabel: "RVA3", name: "Bob" }],
+      },
+    ]);
+  });
+
+  it("toutes les recettes d'accord → aucun conflit", async () => {
+    mockBindingFindMany.mockResolvedValue([
+      binding("pt-1", "RVA1", "vid-a", "Alice"),
+      binding("pt-2", "RVA2", "vid-a", "Alice"),
+    ]);
+    expect(await detectRecipeAssigneeConflicts("acc-1", ["pt-1", "pt-2"])).toEqual([]);
+  });
+
+  it("sans compte ou sans recette commandée → pas de requête", async () => {
+    mockBindingFindMany.mockClear();
+    expect(await detectRecipeAssigneeConflicts(null, ["pt-1"])).toEqual([]);
+    expect(await detectRecipeAssigneeConflicts("acc-1", [])).toEqual([]);
+    expect(mockBindingFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("patchEntity — confirmation de disponibilité du vidéaste", () => {
+  const TOURNAGE_ACCESS = {
+    id: "ent-1",
+    typeId: "etype_tournage",
+    type: { visibility: "team", hasPlanning: true, fieldSchema: "[]" },
+    orderId: null,
+    order: null,
+    status: "PLANNED",
+    scheduledAt: null,
+    endAt: null,
+    validationStatus: "APPROVED",
+    assigneeVideasteId: "v1",
+    videasteConfirmation: null,
+    defaultAssigneeMonteurId: null,
+    defaultAssigneeCmId: null,
+    shootSlots: [],
+  };
+
+  beforeEach(() => {
+    mockEntityUpdate.mockClear();
+    mockEntityFindUnique.mockResolvedValue(TOURNAGE_ACCESS);
+    // Le retour passe par withParsedFields → il faut un `type` sérialisable.
+    const updated = { id: "ent-1", fields: "{}", type: { fieldSchema: "[]" } };
+    mockEntityUpdate.mockResolvedValue(updated);
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        entity: {
+          update: (...a: unknown[]) => mockEntityUpdate(...a),
+          findUnique: () => updated,
+        },
+        entityActivity: { create: mockEntityActivityCreate },
+      }),
+    );
+  });
+
+  it("le vidéaste assigné confirme → horodatage posé", async () => {
+    await patchEntity("ent-1", { videasteConfirmation: "CONFIRMED" }, nonAdminCtx());
+    const data = mockEntityUpdate.mock.calls[0][0].data;
+    expect(data.videasteConfirmation).toBe("CONFIRMED");
+    expect(data.videasteConfirmationAt).toBeInstanceOf(Date);
+    // Une confirmation efface le motif d'une indisponibilité précédente.
+    expect(data.videasteDeclineReason).toBeNull();
+  });
+
+  it("un autre vidéaste (accès via un reel) ne répond pas à la place de l'assigné", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...TOURNAGE_ACCESS,
+      assigneeVideasteId: "v-autre",
+      shootSlots: [{ assigneeMonteurId: null, assigneeCmId: null, assigneeVideasteId: "v1" }],
+    });
+    await expect(
+      patchEntity("ent-1", { videasteConfirmation: "CONFIRMED" }, nonAdminCtx()),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("tournage encore en attente de validation admin → refus", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...TOURNAGE_ACCESS,
+      validationStatus: "PENDING_ADMIN",
+    });
+    await expect(
+      patchEntity("ent-1", { videasteConfirmation: "CONFIRMED" }, nonAdminCtx()),
+    ).rejects.toThrow();
+  });
+
+  it("l'admin réassigne le vidéaste → la confirmation repart de zéro", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...TOURNAGE_ACCESS,
+      videasteConfirmation: "CONFIRMED",
+    });
+    mockUserFindUnique.mockResolvedValue({ id: "v2", role: "VIDEASTE" });
+    await patchEntity("ent-1", { assigneeVideasteId: "v2" }, adminCtx());
+    const data = mockEntityUpdate.mock.calls[0][0].data;
+    expect(data.assigneeVideasteId).toBe("v2");
+    expect(data.videasteConfirmation).toBeNull();
+    expect(data.videasteConfirmationAt).toBeNull();
+    expect(data.videasteDeclineReason).toBeNull();
   });
 });

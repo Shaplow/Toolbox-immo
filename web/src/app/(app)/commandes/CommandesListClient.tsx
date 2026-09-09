@@ -71,7 +71,16 @@ export function CommandesListClient({ orders, isAdmin, pendingFiches }: Commande
     {
       id: "template",
       label: "Commande",
-      cell: (row) => <span className="font-medium text-foreground">{row.templateName}</span>,
+      cell: (row) => (
+        <div className="min-w-0">
+          <span className="font-medium text-foreground">{row.templateName}</span>
+          {row.primaryEntityLabel && (
+            <span className="block text-xs text-muted-foreground truncate">
+              {row.primaryEntityLabel}
+            </span>
+          )}
+        </div>
+      ),
     },
     ...(isAdmin
       ? [

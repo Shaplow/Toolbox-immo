@@ -61,6 +61,7 @@ import { toast } from "@/components/ui/Toast";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { resolveNextActionInfo } from "@/lib/publications/nextActionLabel";
 import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
+import { PARIS_TZ } from "@/lib/date/formatFr";
 
 export type SlotDetailPanelMode = "admin" | "monteur" | "cm";
 
@@ -536,12 +537,14 @@ export function SlotDetailPanel({
     weekday: "long",
     day: "numeric",
     month: "long",
+    timeZone: PARIS_TZ,
   });
   const dateLabel = scheduledDate ? scheduledDateLabel : "En banque · non programmé";
   const timeLabel = scheduledDate
     ? scheduledDate.toLocaleTimeString("fr-FR", {
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: PARIS_TZ,
       })
     : "";
 

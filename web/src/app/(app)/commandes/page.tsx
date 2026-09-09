@@ -11,7 +11,7 @@ import { CommandesListClient, type PendingClientFiche } from "./CommandesListCli
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Commandes | Toolbox Immo",
+  title: "Commandes",
 };
 
 /**

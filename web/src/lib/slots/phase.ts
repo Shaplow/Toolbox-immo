@@ -43,7 +43,7 @@ export function getPublicationPhase(status: SlotStatus): PublicationPhase {
 // ── Labels ────────────────────────────────────────────────────────────────────
 
 export const PHASE_LABELS: Record<PublicationPhase, string> = {
-  planned: "À planifier",
+  planned: "À lancer",
   shooting: "À shooter",
   production: "En production",
   admin_review: "À valider",
@@ -55,7 +55,7 @@ export const PHASE_LABELS: Record<PublicationPhase, string> = {
 
 /** Badge label compact (1 mot) pour la SlotCard du calendrier. */
 export const PHASE_BADGE_LABELS: Record<PublicationPhase, string> = {
-  planned: "Planifié",
+  planned: "À lancer",
   shooting: "Shoot",
   production: "Production",
   admin_review: "Validation",

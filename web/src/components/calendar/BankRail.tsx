@@ -34,14 +34,14 @@ export function BankRail({ slots, loading, onClose, onScheduleSlot }: BankRailPr
       <header className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <Inbox size={14} className="text-muted-foreground" />
         <span className="text-[12px] font-semibold text-foreground">
-          Banque · prêts
+          Prêts à programmer
         </span>
         <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
           {slots.length}
         </span>
         <ButtonIcon
           icon={X}
-          label="Fermer le rail banque"
+          label="Fermer le rail des contenus prêts"
           variant="ghost"
           size="sm"
           onClick={onClose}

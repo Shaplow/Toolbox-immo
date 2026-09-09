@@ -32,7 +32,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { toast } from "@/components/ui/Toast";
-import { dateFrLong } from "@/lib/date/formatFr";
+import { dateFrLong, PARIS_TZ } from "@/lib/date/formatFr";
 import { SlotQuickEditButton } from "@/components/publications/SlotQuickEditButton";
 import { StatusBadge } from "@/components/ui/molecules/StatusBadge";
 import { SlotStatusTimeline } from "@/components/ui/molecules/SlotStatusTimeline";
@@ -60,6 +60,7 @@ function formatTimeFR(date: Date): string {
   return date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: PARIS_TZ,
   });
 }
 

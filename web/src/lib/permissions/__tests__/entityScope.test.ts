@@ -27,16 +27,21 @@ describe("whereClauseForUserEntity", () => {
     expect(whereClauseForUserEntity("ADMIN", "u1")).toEqual({});
   });
 
-  it("VIDEASTE → team + assigneeVideasteId", () => {
+  it("VIDEASTE → team + OR vidéaste fiche | vidéaste d'un reel", () => {
     expect(whereClauseForUserEntity("VIDEASTE", "vid-1")).toEqual({
       type: { visibility: "team" },
-      assigneeVideasteId: "vid-1",
+      validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] },
+      OR: [
+        { assigneeVideasteId: "vid-1" },
+        { shootSlots: { some: { assigneeVideasteId: "vid-1" } } },
+      ],
     });
   });
 
   it("MONTEUR → team + OR défaut monteur | reel assigné", () => {
     expect(whereClauseForUserEntity("MONTEUR", "mon-1")).toEqual({
       type: { visibility: "team" },
+      validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] },
       OR: [
         { defaultAssigneeMonteurId: "mon-1" },
         { shootSlots: { some: { assigneeMonteurId: "mon-1" } } },
@@ -47,6 +52,7 @@ describe("whereClauseForUserEntity", () => {
   it("CM → team + OR défaut cm | reel assigné", () => {
     expect(whereClauseForUserEntity("CM", "cm-1")).toEqual({
       type: { visibility: "team" },
+      validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] },
       OR: [
         { defaultAssigneeCmId: "cm-1" },
         { shootSlots: { some: { assigneeCmId: "cm-1" } } },
@@ -68,11 +74,19 @@ describe("whereClauseForUserEntity", () => {
       expect(clause.type).toEqual({ visibility: "team" });
     }
   });
+
+  it("aucun rôle équipe ne voit une fiche en attente de validation admin", () => {
+    for (const role of ["VIDEASTE", "MONTEUR", "CM"] as UserRole[]) {
+      const clause = whereClauseForUserEntity(role, "u1") as Record<string, unknown>;
+      expect(clause.validationStatus).toEqual({ notIn: ["PENDING_ADMIN", "REJECTED"] });
+    }
+  });
 });
 
 describe("canUserAccessEntity", () => {
   const teamBase: AccessibleEntity = {
     type: { visibility: "team" },
+    validationStatus: "APPROVED",
     assigneeVideasteId: "vid-1",
     defaultAssigneeMonteurId: "mon-1",
     defaultAssigneeCmId: "cm-1",
@@ -81,6 +95,7 @@ describe("canUserAccessEntity", () => {
 
   const adminBase: AccessibleEntity = {
     type: { visibility: "admin" },
+    validationStatus: null,
     assigneeVideasteId: null,
     defaultAssigneeMonteurId: null,
     defaultAssigneeCmId: null,
@@ -112,7 +127,7 @@ describe("canUserAccessEntity", () => {
     const ent: AccessibleEntity = {
       ...teamBase,
       defaultAssigneeMonteurId: null,
-      shootSlots: [{ assigneeMonteurId: "mon-9", assigneeCmId: null }],
+      shootSlots: [{ assigneeMonteurId: "mon-9", assigneeCmId: null, assigneeVideasteId: null }],
     };
     expect(canUserAccessEntity(ent, "MONTEUR", "mon-9")).toBe(true);
     expect(canUserAccessEntity(ent, "MONTEUR", "mon-1")).toBe(false);
@@ -122,10 +137,40 @@ describe("canUserAccessEntity", () => {
     const ent: AccessibleEntity = {
       ...teamBase,
       defaultAssigneeCmId: null,
-      shootSlots: [{ assigneeMonteurId: null, assigneeCmId: "cm-9" }],
+      shootSlots: [{ assigneeMonteurId: null, assigneeCmId: "cm-9", assigneeVideasteId: null }],
     };
     expect(canUserAccessEntity(ent, "CM", "cm-9")).toBe(true);
     expect(canUserAccessEntity(ent, "CM", "cm-1")).toBe(false);
+  });
+
+  it("VIDEASTE (fiche team) → via reel assigné même sans être vidéaste du tournage", () => {
+    const ent: AccessibleEntity = {
+      ...teamBase,
+      assigneeVideasteId: null,
+      shootSlots: [{ assigneeMonteurId: null, assigneeCmId: null, assigneeVideasteId: "vid-9" }],
+    };
+    expect(canUserAccessEntity(ent, "VIDEASTE", "vid-9")).toBe(true);
+    expect(canUserAccessEntity(ent, "VIDEASTE", "vid-1")).toBe(false);
+  });
+
+  it("fiche en attente de validation admin → invisible pour toute l'équipe", () => {
+    const pending: AccessibleEntity = { ...teamBase, validationStatus: "PENDING_ADMIN" };
+    expect(canUserAccessEntity(pending, "VIDEASTE", "vid-1")).toBe(false);
+    expect(canUserAccessEntity(pending, "MONTEUR", "mon-1")).toBe(false);
+    expect(canUserAccessEntity(pending, "CM", "cm-1")).toBe(false);
+    // L'admin garde la main : c'est lui qui doit trancher.
+    expect(canUserAccessEntity(pending, "ADMIN", "whoever")).toBe(true);
+  });
+
+  it("validation null (créée par l'admin) ou côté client → visible", () => {
+    for (const st of [null, "APPROVED", "PENDING_CLIENT"]) {
+      expect(canUserAccessEntity({ ...teamBase, validationStatus: st }, "VIDEASTE", "vid-1")).toBe(
+        true,
+      );
+    }
+    expect(canUserAccessEntity({ ...teamBase, validationStatus: "REJECTED" }, "VIDEASTE", "vid-1")).toBe(
+      false,
+    );
   });
 
   it("EXTERNAL_GENERATOR → toujours false", () => {
@@ -163,7 +208,12 @@ describe("capacités par rôle", () => {
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("scheduledAt");
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeVideasteId");
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("fields");
-    expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.VIDEASTE).toEqual(["status", "notes"]);
+    expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.VIDEASTE).toEqual([
+      "status",
+      "notes",
+      "videasteConfirmation",
+      "videasteDeclineReason",
+    ]);
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.MONTEUR).toEqual(["notes"]);
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.CM).toEqual(["notes"]);
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.EXTERNAL_GENERATOR).toEqual([]);

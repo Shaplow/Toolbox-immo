@@ -5,6 +5,11 @@ import { toUserRole } from "@/lib/permissions/role";
 import { whereClauseForUser } from "@/lib/permissions/slotScope";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 import { CalendarView } from "@/components/calendar/CalendarView";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Calendrier",
+};
 
 // Statuts considérés comme "actifs" (non-terminaux) pour le compteur backlog.
 const BACKLOG_ACTIVE_STATUSES = [

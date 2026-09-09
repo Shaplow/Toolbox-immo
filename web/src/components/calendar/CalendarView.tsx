@@ -40,7 +40,15 @@ import { CalendarDndContext, type SlotDropPayload } from "./dnd/CalendarDndConte
 import { useSlotDrag } from "./dnd/useSlotDrag";
 import { useDayDrop } from "./dnd/useDayDrop";
 import { toast } from "@/components/ui/Toast";
-import { numericDateFr, dayMonthLongFr } from "@/lib/date/formatFr";
+import {
+  numericDateFr,
+  dayMonthLongFr,
+  PARIS_TZ,
+  parisDayKey,
+  parisToday,
+  isoToLocalInput,
+  localInputToIso,
+} from "@/lib/date/formatFr";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
@@ -95,6 +103,15 @@ function addDays(date: Date, days: number): Date {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
+}
+
+/**
+ * Clé jour d'une case de grille — celles-ci sont construites en dates
+ * « murales » (minuit local), pas en instants : leurs composantes locales
+ * sont la bonne lecture. Les instants, eux, passent par `parisDayKey`.
+ */
+function gridDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function isSameDay(a: Date, b: Date) {
@@ -412,7 +429,7 @@ export function CalendarView({
 
   function slotsForDay(day: Date) {
     return visibleSlots
-      .filter((s) => s.scheduledAt != null && isSameDay(new Date(s.scheduledAt), day))
+      .filter((s) => s.scheduledAt != null && parisDayKey(s.scheduledAt) === gridDayKey(day))
       .sort((a, b) => {
         // Tri primaire par heure, puis par compte IG (handle) à heure égale.
         const ta = new Date(a.scheduledAt as string).getTime();
@@ -500,14 +517,15 @@ export function CalendarView({
   // banque (sans date) tombe à 10:00 par défaut. Update optimiste + rollback.
   const handleSlotDropOnDay = useCallback(
     async ({ slotId, dateIso, fromBank, slot }: SlotDropPayload) => {
-      const base = slot.scheduledAt ? new Date(slot.scheduledAt) : null;
-      const [y, m, d] = dateIso.split("-").map(Number);
-      const target = base ? new Date(base) : new Date();
-      target.setFullYear(y, m - 1, d);
-      if (!base) target.setHours(10, 0, 0, 0);
+      // Jour ET heure raisonnés en heure de Paris : recomposer un instant à
+      // partir des composantes locales du navigateur décalerait la
+      // publication d'un jour pour un poste dans un autre fuseau.
+      const base = slot.scheduledAt ?? null;
+      const time = base ? isoToLocalInput(base).slice(11, 16) : "10:00";
       // No-op si on lâche sur le même jour (cas grille uniquement).
-      if (!fromBank && base && isSameDay(base, target)) return;
-      const newIso = target.toISOString();
+      if (!fromBank && base && parisDayKey(base) === dateIso) return;
+      const newIso = localInputToIso(`${dateIso}T${time || "10:00"}`);
+      if (!newIso) return;
 
       const prevSlots = slots;
       const prevRail = bankRailSlots;
@@ -552,13 +570,14 @@ export function CalendarView({
   // lib/date/formatFr.ts (dayMonthLongFr n'a pas l'année) — laissé en l'état.
   // eslint-disable-next-line no-restricted-syntax
   const weekEndLabel = addDays(weekStart, 6).toLocaleDateString("fr-FR", {
+    timeZone: PARIS_TZ,
     day: "numeric",
     month: "long",
     year: "numeric",
   });
   const weekLabel = `${dayMonthLongFr(weekStart)} – ${weekEndLabel}`;
 
-  const today = new Date();
+  const today = parisToday();
   const isCurrentWeek = isSameDay(weekStart, getMondayOf(today));
 
   // Compte de filtres actifs (hors onlyMine + accountId qui ont leur propre badge).
@@ -722,7 +741,7 @@ export function CalendarView({
                   </Button>
                 )}
 
-                {/* Phase 2 — Toggle rail banque (drag→jour, vue semaine admin). */}
+                {/* Phase 2 — Toggle rail des contenus prêts (drag→jour, vue semaine admin). */}
                 {isAdmin && view === "week" && (
                   <Chip
                     variant={showBankRail ? "sky" : "default"}
@@ -731,7 +750,7 @@ export function CalendarView({
                     icon={Inbox}
                     onClick={toggleBankRail}
                   >
-                    Banque
+                    Prêts
                     {backlogReadyCount > 0 && (
                       <span className="ml-1 tabular-nums">·{backlogReadyCount}</span>
                     )}

@@ -34,6 +34,8 @@ export interface OrderSummary {
   client: { id: string; name: string };
   account: { id: string; name: string; handle: string } | null;
   templateName: string;
+  /** Libellé de la première fiche — distingue deux commandes du même modèle. */
+  primaryEntityLabel: string | null;
   createdByName: string | null;
   entityCount: number;
   slotCount: number;

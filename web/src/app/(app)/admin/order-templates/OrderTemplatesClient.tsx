@@ -5,7 +5,7 @@
  * Mirror du pattern EntityTypesClient : refetch complet après save.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, Plus, Trash2, ArrowDown, ArrowUp } from "lucide-react";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -39,7 +39,7 @@ export interface OrderTemplateRow {
 interface OrderTemplatesClientProps {
   initialTemplates: OrderTemplateRow[];
   entityTypes: { id: string; name: string; hasPlanning: boolean; hasRushes: boolean }[];
-  patternTemplates: { id: string; label: string; source: string }[];
+  patternTemplates: { id: string; label: string; source: string; accounts: string }[];
   clients: { id: string; name: string }[];
 }
 
@@ -51,6 +51,9 @@ interface Draft {
   recipes: { patternTemplateId: string; count: number }[];
   clientIds: string[];
 }
+
+/** Au-delà de ce nombre de clients, la liste passe en mode filtrable. */
+const CLIENT_FILTER_THRESHOLD = 8;
 
 function toDraft(t: OrderTemplateRow | null): Draft {
   return {
@@ -76,16 +79,25 @@ export function OrderTemplatesClient({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<OrderTemplateRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [clientFilter, setClientFilter] = useState("");
+
+  const visibleClients = useMemo(() => {
+    const q = clientFilter.trim().toLowerCase();
+    if (!q) return clients;
+    return clients.filter((c) => c.name.toLowerCase().includes(q));
+  }, [clients, clientFilter]);
 
   const typeName = (id: string) => entityTypes.find((t) => t.id === id)?.name ?? id;
   const recipeLabel = (id: string) => patternTemplates.find((t) => t.id === id)?.label ?? id;
 
   function openCreate() {
     setDraft(toDraft(null));
+    setClientFilter("");
     setEditing(null);
   }
   function openEdit(t: OrderTemplateRow) {
     setDraft(toDraft(t));
+    setClientFilter("");
     setEditing(t);
   }
   function closeDrawer() {
@@ -275,7 +287,12 @@ export function OrderTemplatesClient({
     <>
       <div className="flex items-center justify-between gap-4 mb-6">
         <div>
-          <Breadcrumb className="mb-2" items={[{ label: "Modèles de commande" }]} />
+          {/* Deux niveaux, comme « Fiches › Types de fiches » : un fil d'Ariane
+              qui ne répète que le titre de la page n'apprend rien. */}
+          <Breadcrumb
+            className="mb-2"
+            items={[{ href: "/commandes", label: "Commandes" }, { label: "Modèles de commande" }]}
+          />
           <h1 className="text-xl font-semibold text-foreground leading-tight">
             Modèles de commande
           </h1>
@@ -440,7 +457,14 @@ export function OrderTemplatesClient({
                   }
                   options={availableRecipes.map((t) => ({
                     value: t.id,
-                    label: `${t.label} · ${SOURCE_LABELS_FR[t.source as keyof typeof SOURCE_LABELS_FR] ?? t.source}`,
+                    label: [
+                      t.label,
+                      SOURCE_LABELS_FR[t.source as keyof typeof SOURCE_LABELS_FR] ?? t.source,
+                      // Vide sauf si le libellé existe en double.
+                      t.accounts || null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
                   }))}
                   placeholder="Ajouter une recette…"
                 />
@@ -458,23 +482,49 @@ export function OrderTemplatesClient({
               </p>
             ) : (
               <div className="space-y-1.5">
-                {clients.map((c) => (
-                  <div key={c.id} className="flex items-center gap-2.5">
-                    <Checkbox
-                      checked={draft.clientIds.includes(c.id)}
-                      onChange={(checked) =>
-                        setDraft((d) => ({
-                          ...d,
-                          clientIds: checked
-                            ? [...d.clientIds, c.id]
-                            : d.clientIds.filter((id) => id !== c.id),
-                        }))
-                      }
-                      label={c.name}
+                {/* Au-delà d'une poignée de clients, une liste de cases nue
+                    n'est plus praticable : filtre + rappel des cochés. */}
+                {clients.length > CLIENT_FILTER_THRESHOLD && (
+                  <div className="flex items-center gap-2 pb-1">
+                    <Input
+                      value={clientFilter}
+                      onChange={setClientFilter}
+                      placeholder="Filtrer les clients…"
                     />
-                    <span className="text-[13px] text-foreground">{c.name}</span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                      {draft.clientIds.length} coché{draft.clientIds.length > 1 ? "s" : ""}
+                    </span>
                   </div>
-                ))}
+                )}
+                <div
+                  className={
+                    clients.length > CLIENT_FILTER_THRESHOLD
+                      ? "max-h-56 overflow-y-auto space-y-1.5 pr-1"
+                      : "space-y-1.5"
+                  }
+                >
+                  {visibleClients.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">Aucun client ne correspond.</p>
+                  ) : (
+                    visibleClients.map((c) => (
+                      <div key={c.id} className="flex items-center gap-2.5">
+                        <Checkbox
+                          checked={draft.clientIds.includes(c.id)}
+                          onChange={(checked) =>
+                            setDraft((d) => ({
+                              ...d,
+                              clientIds: checked
+                                ? [...d.clientIds, c.id]
+                                : d.clientIds.filter((id) => id !== c.id),
+                            }))
+                          }
+                          label={c.name}
+                        />
+                        <span className="text-[13px] text-foreground">{c.name}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
           </FormField>

@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     select: { label: true },
   });
   return {
-    title: tpl ? `${tpl.label} · Édition recette | Toolbox Immo Admin` : "Édition recette",
+    title: tpl ? `${tpl.label} · Édition recette` : "Édition recette",
   };
 }
 

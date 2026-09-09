@@ -14,6 +14,8 @@ import {
   shortDatePaddedFr,
   dayMonthLongFr,
   numericDateFr,
+  isoToLocalInput,
+  localInputToIso,
 } from "../formatFr";
 
 const REF = "2026-07-21T12:00:00.000Z"; // mardi 21 juillet 2026, midi UTC (14h Paris, pas de bascule de jour)
@@ -104,5 +106,52 @@ describe("numericDateFr", () => {
   it("retourne le fallback pour une entrée invalide", () => {
     expect(numericDateFr(null)).toBe("—");
     expect(numericDateFr("invalid")).toBe("—");
+  });
+});
+
+/**
+ * Aller-retour saisie ↔ affichage.
+ *
+ * Le bug corrigé : `isoToLocalInput` lisait l'heure dans le fuseau du
+ * navigateur alors que tous les formateurs d'affichage sont figés sur
+ * Europe/Paris. Sur un poste réglé sur Paris les deux coïncident et le
+ * problème est invisible — d'où ces tests, qui vérifient les valeurs
+ * absolues attendues à Paris quel que soit le fuseau de la machine.
+ */
+describe("isoToLocalInput / localInputToIso", () => {
+  it("lit un instant en heure murale de Paris (heure d'été, UTC+2)", () => {
+    expect(isoToLocalInput("2026-07-21T12:00:00.000Z")).toBe("2026-07-21T14:00");
+  });
+
+  it("lit un instant en heure murale de Paris (heure d'hiver, UTC+1)", () => {
+    expect(isoToLocalInput("2026-01-15T12:00:00.000Z")).toBe("2026-01-15T13:00");
+  });
+
+  it("interprète une saisie comme heure de Paris, pas du navigateur", () => {
+    expect(localInputToIso("2026-07-21T14:00")).toBe("2026-07-21T12:00:00.000Z");
+    expect(localInputToIso("2026-01-15T13:00")).toBe("2026-01-15T12:00:00.000Z");
+  });
+
+  it("fait un aller-retour stable", () => {
+    for (const iso of [
+      "2026-07-21T12:00:00.000Z",
+      "2026-01-15T12:00:00.000Z",
+      "2026-09-01T07:00:00.000Z",
+    ]) {
+      expect(localInputToIso(isoToLocalInput(iso))).toBe(iso);
+    }
+  });
+
+  it("tient le passage à l'heure d'été (29 mars 2026, 2h → 3h)", () => {
+    // 00:30 UTC = 01:30 Paris (encore UTC+1) ; 01:30 UTC = 03:30 (déjà UTC+2).
+    expect(isoToLocalInput("2026-03-29T00:30:00.000Z")).toBe("2026-03-29T01:30");
+    expect(isoToLocalInput("2026-03-29T01:30:00.000Z")).toBe("2026-03-29T03:30");
+    expect(localInputToIso("2026-03-29T03:30")).toBe("2026-03-29T01:30:00.000Z");
+  });
+
+  it("rejette une entrée mal formée plutôt que d'inventer une date", () => {
+    expect(localInputToIso("")).toBeNull();
+    expect(localInputToIso("21/07/2026")).toBeNull();
+    expect(isoToLocalInput("invalid")).toBe("");
   });
 });

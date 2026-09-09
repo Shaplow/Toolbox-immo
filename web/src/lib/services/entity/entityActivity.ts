@@ -21,7 +21,9 @@ export type EntityActivityType =
   | "DONE"
   | "VALIDATION_APPROVED"
   | "VALIDATION_REJECTED"
-  | "VALIDATION_REQUESTED";
+  | "VALIDATION_REQUESTED"
+  | "VIDEASTE_CONFIRMED"
+  | "VIDEASTE_DECLINED";
 
 export interface LogEntityActivityInput {
   entityId: string;

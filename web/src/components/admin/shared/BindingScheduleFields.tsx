@@ -33,6 +33,12 @@ interface BindingScheduleFieldsProps {
   cms: AssigneeOption[];
   videastes: AssigneeOption[];
   dayOfWeekHelp?: string;
+  /**
+   * Équipe par défaut du compte, affichée en repli quand un rôle n'est pas
+   * surchargé ici — sinon « — Aucun — » laisse croire que personne n'est
+   * assigné alors que le compte fournit quelqu'un.
+   */
+  accountDefaults?: { videasteName?: string | null; monteurName?: string | null; cmName?: string | null };
 }
 
 export function BindingScheduleFields({
@@ -42,7 +48,12 @@ export function BindingScheduleFields({
   cms,
   videastes,
   dayOfWeekHelp,
+  accountDefaults,
 }: BindingScheduleFieldsProps) {
+  /** « Hérité du compte : X » tant que le rôle n'est pas surchargé ici. */
+  const inherited = (current: string, name?: string | null) =>
+    !current && name ? `Hérité du compte : ${name}` : undefined;
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -58,7 +69,10 @@ export function BindingScheduleFields({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <FormField label="Vidéaste défaut">
+        <FormField
+          label="Vidéaste défaut"
+          help={inherited(v.videasteId, accountDefaults?.videasteName)}
+        >
           <Combobox
             value={v.videasteId}
             onChange={(val) => onChange({ videasteId: val })}
@@ -68,7 +82,10 @@ export function BindingScheduleFields({
             ]}
           />
         </FormField>
-        <FormField label="Monteur défaut">
+        <FormField
+          label="Monteur défaut"
+          help={inherited(v.monteurId, accountDefaults?.monteurName)}
+        >
           <Combobox
             value={v.monteurId}
             onChange={(val) => onChange({ monteurId: val })}
@@ -78,7 +95,7 @@ export function BindingScheduleFields({
             ]}
           />
         </FormField>
-        <FormField label="CM défaut">
+        <FormField label="CM défaut" help={inherited(v.cmId, accountDefaults?.cmName)}>
           <Combobox
             value={v.cmId}
             onChange={(val) => onChange({ cmId: val })}

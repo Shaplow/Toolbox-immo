@@ -2,6 +2,11 @@ import { redirect } from "next/navigation";
 import { UsersPanel } from "@/components/admin/UsersPanel";
 import { prisma } from "@/lib/prisma";
 import { getUserContext } from "@/lib/userContext";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Utilisateurs",
+};
 
 export default async function AdminUsersPage() {
   const userContext = await getUserContext();

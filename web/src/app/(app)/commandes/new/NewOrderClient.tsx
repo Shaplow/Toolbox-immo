@@ -18,6 +18,7 @@ import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { toast } from "@/components/ui/Toast";
 import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
+import { isPastLocalInput, localInputToIso } from "@/lib/date/formatFr";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
 import type { CustomField } from "@/lib/customFields";
 
@@ -33,6 +34,7 @@ export interface OrderTemplateOption {
     fieldSchema: CustomField[];
   }[];
   videoSummary: string;
+  videoCount: number;
 }
 
 interface NewOrderClientProps {
@@ -56,6 +58,9 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
   const [notes, setNotes] = useState("");
   const [fiches, setFiches] = useState<Record<string, FicheDraft>>({});
   const [submitting, setSubmitting] = useState(false);
+  // Erreurs par champ : le formulaire est long, un toast seul oblige à
+  // chercher lequel des ~12 champs est en cause.
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const template = templates.find((t) => t.id === templateId) ?? null;
 
@@ -83,38 +88,65 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
     );
   }
 
+  /**
+   * Libellé des fiches secondaires — dérivé de la première, jamais saisi.
+   * Doit rester identique au calcul de `createOrder`, qui fait foi.
+   */
+  function derivedLabel(typeName: string): string {
+    const primaryTypeId = template?.items[0]?.entityTypeId;
+    const primary = primaryTypeId ? (fiches[primaryTypeId]?.label ?? "").trim() : "";
+    return primary ? `${typeName} — ${primary}` : "";
+  }
+
   function patchFiche(entityTypeId: string, patch: Partial<FicheDraft>) {
     setFiches((prev) => ({
       ...prev,
       [entityTypeId]: { ...prev[entityTypeId], ...patch },
     }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(patch)) delete next[`${entityTypeId}:${key}`];
+      if (patch.fields) {
+        for (const k of Object.keys(next)) {
+          if (k.startsWith(`${entityTypeId}:field:`)) delete next[k];
+        }
+      }
+      return next;
+    });
   }
 
   async function handleSubmit() {
     if (!template) return;
-    if (isAdmin && !clientId) {
-      toast.error("Choisissez un client.");
-      return;
-    }
-    for (const item of template.items) {
+
+    // Une passe complète : l'utilisateur voit tout ce qui manque d'un coup,
+    // au lieu de re-soumettre autant de fois qu'il y a de champs vides.
+    const found: Record<string, string> = {};
+    if (isAdmin && !clientId) found.client = "Choisissez un client.";
+    for (const [index, item] of template.items.entries()) {
       const draft = fiches[item.entityTypeId];
-      if (!draft?.label.trim()) {
-        toast.error(`Un libellé est requis pour « ${item.typeName} ».`);
-        return;
+      // Les fiches suivantes tirent leur libellé de la première.
+      if (index === 0 && !draft?.label.trim()) {
+        found[`${item.entityTypeId}:label`] = "Libellé requis.";
       }
-      if (item.hasPlanning && !draft.scheduledAt) {
-        toast.error(`Une date est requise pour « ${item.typeName} ».`);
-        return;
+      if (item.hasPlanning && !draft?.scheduledAt) {
+        found[`${item.entityTypeId}:scheduledAt`] = "Date requise.";
       }
       for (const field of item.fieldSchema) {
-        if (field.required && !(draft.fields[field.key] ?? "").trim()) {
-          toast.error(`Le champ « ${field.label} » est requis (${item.typeName}).`);
-          return;
+        if (field.required && !(draft?.fields[field.key] ?? "").trim()) {
+          found[`${item.entityTypeId}:field:${field.key}`] = "Champ requis.";
         }
       }
     }
-    if (needsAccount && !effectiveAccountId) {
-      toast.error("Choisissez un compte Instagram.");
+    if (needsAccount && !effectiveAccountId) found.account = "Choisissez un compte Instagram.";
+
+    setErrors(found);
+    const missing = Object.keys(found).length;
+    if (missing > 0) {
+      toast.error(
+        missing === 1
+          ? "Un champ obligatoire est manquant — il est signalé en rouge."
+          : `${missing} champs obligatoires sont manquants — ils sont signalés en rouge.`,
+      );
       return;
     }
 
@@ -128,15 +160,17 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
           accountId: effectiveAccountId || null,
           notes: notes.trim() || null,
           clientId: isAdmin ? clientId : undefined,
-          fiches: template.items.map((item) => {
+          fiches: template.items.map((item, index) => {
             const draft = fiches[item.entityTypeId];
             return {
               entityTypeId: item.entityTypeId,
-              label: draft.label.trim(),
+              // Dérivé côté serveur pour les fiches suivantes ; envoyé pour que
+              // la requête reste valide si le calcul évolue.
+              label: index === 0 ? draft.label.trim() : derivedLabel(item.typeName),
               fields: draft.fields,
               scheduledAt:
                 item.hasPlanning && draft.scheduledAt
-                  ? new Date(draft.scheduledAt).toISOString()
+                  ? localInputToIso(draft.scheduledAt)
                   : null,
             };
           }),
@@ -200,7 +234,17 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                 )}
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   Fiches : {t.items.map((i) => i.typeName).join(" + ") || "—"}
-                  {t.videoSummary && <> · Vidéos : {t.videoSummary}</>}
+                  {/* Les libellés de recettes (RVA2, RPI…) sont des codes de
+                      production : parlants pour l'équipe, opaques pour l'agence
+                      qui commande. Elle n'a besoin que du volume. */}
+                  {isAdmin
+                    ? t.videoSummary && <> · Vidéos : {t.videoSummary}</>
+                    : t.videoCount > 0 && (
+                        <>
+                          {" "}
+                          · {t.videoCount} vidéo{t.videoCount > 1 ? "s" : ""}
+                        </>
+                      )}
                 </p>
               </button>
             ))}
@@ -209,12 +253,22 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
           {template && (
             <>
               {isAdmin && (
-                <FormField label="Client" help="Commande créée au nom de cette agence.">
+                <FormField
+                  label="Client"
+                  required
+                  error={clientId ? undefined : errors.client}
+                  help="Commande créée au nom de cette agence."
+                >
                   <Select
                     value={clientId}
                     onChange={(v) => {
                       setClientId(v);
                       setAccountId("");
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.client;
+                        return next;
+                      });
                     }}
                     options={clients.map((c) => ({ value: c.id, label: c.name }))}
                     placeholder="Choisir un client…"
@@ -237,22 +291,53 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                     <p className="text-[13px] font-semibold text-foreground">
                       {idx + 1}. {item.typeName}
                     </p>
-                    <FormField label="Libellé">
-                      <Input
-                        value={draft.label}
-                        onChange={(v) => patchFiche(item.entityTypeId, { label: v })}
-                        placeholder={`Ex : ${item.typeName} — 12 rue des Lilas`}
-                      />
-                    </FormField>
+                    {idx === 0 ? (
+                      <FormField
+                        label="Libellé"
+                        required
+                        error={draft.label.trim() ? undefined : errors[`${item.entityTypeId}:label`]}
+                        help="Sert de référence aux autres fiches de la commande."
+                      >
+                        <Input
+                          value={draft.label}
+                          onChange={(v) => patchFiche(item.entityTypeId, { label: v })}
+                          placeholder={`Ex : ${item.typeName} — 12 rue des Lilas`}
+                        />
+                      </FormField>
+                    ) : (
+                      /* Dérivé de la première fiche : une seule saisie, et deux
+                         fiches distinguables au lieu de deux homonymes. */
+                      <FormField label="Libellé" help="Repris de la première fiche.">
+                        <p className="text-[13px] text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
+                          {derivedLabel(item.typeName) || (
+                            <span className="italic">
+                              Renseignez le libellé de « {template.items[0].typeName} »
+                            </span>
+                          )}
+                        </p>
+                      </FormField>
+                    )}
                     {item.hasPlanning && (
                       <FormField
                         label="Date souhaitée"
+                        required
+                        error={
+                          draft.scheduledAt ? undefined : errors[`${item.entityTypeId}:scheduledAt`]
+                        }
                         help="Date du tournage / de l'intervention — l'équipe confirme à la validation."
                       >
-                        <DateTimeField
-                          value={draft.scheduledAt}
-                          onChange={(v) => patchFiche(item.entityTypeId, { scheduledAt: v })}
-                        />
+                        <>
+                          <DateTimeField
+                            value={draft.scheduledAt}
+                            onChange={(v) => patchFiche(item.entityTypeId, { scheduledAt: v })}
+                          />
+                          {draft.scheduledAt && isPastLocalInput(draft.scheduledAt) && (
+                            <p className="mt-1 text-[11px] text-warning-700">
+                              Cette date est déjà passée — la fiche n&apos;apparaîtra pas dans le
+                              planning de la semaine en cours.
+                            </p>
+                          )}
+                        </>
                       </FormField>
                     )}
                     {item.fieldSchema.map((field) => (
@@ -266,6 +351,11 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                           })
                         }
                         showLabel
+                        error={
+                          (draft.fields[field.key] ?? "").trim()
+                            ? undefined
+                            : errors[`${item.entityTypeId}:field:${field.key}`]
+                        }
                       />
                     ))}
                     {item.fieldSchema.length === 0 && (
@@ -281,11 +371,20 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
               {(needsAccount || visibleAccounts.length > 0) && (
                 <FormField
                   label="Compte Instagram"
+                  required={needsAccount}
+                  error={effectiveAccountId ? undefined : errors.account}
                   help="Compte sur lequel les vidéos seront publiées."
                 >
                   <Select
                     value={effectiveAccountId}
-                    onChange={setAccountId}
+                    onChange={(v) => {
+                      setAccountId(v);
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.account;
+                        return next;
+                      });
+                    }}
                     options={visibleAccounts.map((a) => ({
                       value: a.id,
                       label: `${a.name} (@${a.handle})`,

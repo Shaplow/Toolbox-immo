@@ -24,6 +24,7 @@ import {
   PHASE_LABELS,
 } from "@/lib/slots/phase";
 import type { UserRole } from "@/types/roles";
+import { PARIS_TZ } from "@/lib/date/formatFr";
 
 interface SlotCardProps {
   slot: PublicationSlot;
@@ -45,6 +46,7 @@ export function SlotCard({
     ? new Date(slot.scheduledAt).toLocaleTimeString("fr-FR", {
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: PARIS_TZ,
       })
     : "—";
   const phase = getPublicationPhase(slot.status);

@@ -87,7 +87,11 @@ export function ToastContainer() {
   const { toasts, remove } = useToastStore();
   if (toasts.length === 0) return null;
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2">
+    // Ancré en haut : en bas à droite, la pile recouvrait le pied des drawers
+    // et des modales — donc précisément les boutons « Annuler / Enregistrer »
+    // qu'un toast d'erreur de validation demande de re-cliquer.
+    // `top-20` laisse passer le bandeau d'impersonation.
+    <div className="fixed top-20 right-6 z-[9999] flex flex-col gap-2 items-end">
       {toasts.map((t) => (
         <ToastItem key={t.id} item={t} onRemove={() => remove(t.id)} />
       ))}

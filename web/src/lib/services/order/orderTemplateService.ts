@@ -64,6 +64,7 @@ const orderTemplateSelect = {
       count: true,
       patternTemplate: { select: { id: true, label: true, source: true, isArchived: true } },
     },
+    orderBy: { position: "asc" as const },
   },
   accesses: {
     select: { clientId: true, client: { select: { id: true, name: true } } },
@@ -207,10 +208,11 @@ export async function createOrderTemplate(input: OrderTemplateInput) {
     });
     if (clean.recipes.length > 0) {
       await tx.orderTemplateRecipe.createMany({
-        data: clean.recipes.map((r) => ({
+        data: clean.recipes.map((r, i) => ({
           orderTemplateId: created.id,
           patternTemplateId: r.patternTemplateId,
           count: r.count,
+          position: i,
         })),
       });
     }
@@ -261,10 +263,11 @@ export async function updateOrderTemplate(id: string, input: OrderTemplateInput)
     await tx.orderTemplateRecipe.deleteMany({ where: { orderTemplateId: id } });
     if (clean.recipes.length > 0) {
       await tx.orderTemplateRecipe.createMany({
-        data: clean.recipes.map((r) => ({
+        data: clean.recipes.map((r, i) => ({
           orderTemplateId: id,
           patternTemplateId: r.patternTemplateId,
           count: r.count,
+          position: i,
         })),
       });
     }

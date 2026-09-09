@@ -49,6 +49,8 @@ const TYPOLOGY_META: Record<
   rushes_overdue: { label: "Rushes en retard", icon: AlertCircle, tone: "rose" },
   no_pattern: { label: "Sans recette", icon: FileQuestion, tone: "peach" },
   bank_ready: { label: "Banque prête", icon: PackageOpen, tone: "sage" },
+  shoot_declined: { label: "Vidéaste indisponible", icon: AlertCircle, tone: "rose" },
+  shoot_unconfirmed: { label: "Dispo à confirmer", icon: Video, tone: "peach" },
 };
 
 const TONE_CHIP: Record<"rose" | "peach" | "sky" | "sage", string> = {
@@ -62,7 +64,67 @@ interface Props {
   item: InboxItemData;
 }
 
+/**
+ * Aiguillage : la plupart des items portent sur une publication, les
+ * typologies `shoot_*` sur une fiche de tournage — deux liens et deux jeux
+ * d'actions différents, donc deux lignes distinctes.
+ */
 export function InboxItem({ item }: Props) {
+  if (item.entity) return <ShootInboxRow item={item} entity={item.entity} />;
+  if (!item.slot) return null;
+  return <SlotInboxRow item={item} slot={item.slot} />;
+}
+
+/** Ligne « tournage » : lecture seule, l'action se fait sur la fiche. */
+function ShootInboxRow({
+  item,
+  entity,
+}: {
+  item: InboxItemData;
+  entity: NonNullable<InboxItemData["entity"]>;
+}) {
+  const meta = TYPOLOGY_META[item.typology];
+  const Icon = meta.icon;
+  const parts = [
+    entity.accountHandle ? `@${entity.accountHandle}` : null,
+    entity.scheduledAt ? shortDateFr(entity.scheduledAt) : null,
+    entity.videasteName,
+    item.typology === "shoot_declined" ? (entity.declineReason ?? "Sans motif") : null,
+  ].filter(Boolean);
+
+  return (
+    <div className="flex items-center gap-2 bg-card border border-border rounded-md pl-3 pr-2 py-2 hover:bg-muted transition-colors">
+      <span
+        className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium ${TONE_CHIP[meta.tone]}`}
+        title={meta.label}
+      >
+        <Icon size={10} />
+        <span className="hidden sm:inline">{meta.label}</span>
+      </span>
+      <Link href={`/fiches/${entity.id}`} className="flex-1 min-w-0 group">
+        <p className="text-[12px] font-medium text-gray-950 truncate group-hover:text-info-700 transition-colors">
+          {entity.label}
+        </p>
+        <p className="text-[11px] text-gray-500 mt-0.5 truncate">{parts.join(" · ")}</p>
+      </Link>
+      <Link
+        href={`/fiches/${entity.id}`}
+        className="shrink-0 text-info-600 hover:text-info-700 transition-colors"
+        aria-label="Ouvrir la fiche du tournage"
+      >
+        <ArrowRight size={12} />
+      </Link>
+    </div>
+  );
+}
+
+function SlotInboxRow({
+  item,
+  slot,
+}: {
+  item: InboxItemData;
+  slot: NonNullable<InboxItemData["slot"]>;
+}) {
   const router = useRouter();
   const { trigger, pending } = useInlineAction();
   const [rejecting, setRejecting] = useState(false);
@@ -76,7 +138,7 @@ export function InboxItem({ item }: Props) {
   function handleApprove() {
     if (!item.latestVersion) return;
     void trigger({
-      url: `/api/publications/${item.slot.id}/versions/${item.latestVersion.id}/promote`,
+      url: `/api/publications/${slot.id}/versions/${item.latestVersion.id}/promote`,
       successMessage: `V${item.latestVersion.versionNumber} validée`,
     });
   }
@@ -86,7 +148,7 @@ export function InboxItem({ item }: Props) {
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(10, 0, 0, 0);
     void trigger({
-      url: `/api/calendar/slots/${item.slot.id}`,
+      url: `/api/calendar/slots/${slot.id}`,
       method: "PATCH",
       body: { scheduledAt: tomorrow.toISOString() },
       successMessage: "Décalé à demain",
@@ -99,7 +161,7 @@ export function InboxItem({ item }: Props) {
       const trimmed = rejectComment.trim();
       if (trimmed) {
         const cRes = await fetch(
-          `/api/publications/${item.slot.id}/comments`,
+          `/api/publications/${slot.id}/comments`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -111,7 +173,7 @@ export function InboxItem({ item }: Props) {
           throw new Error(body.error ?? `Erreur ${cRes.status}`);
         }
       }
-      const sRes = await fetch(`/api/calendar/slots/${item.slot.id}`, {
+      const sRes = await fetch(`/api/calendar/slots/${slot.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "IN_EDIT" }),
@@ -140,9 +202,9 @@ export function InboxItem({ item }: Props) {
       return `V${item.latestVersion.versionNumber} · ${created}`;
     }
     if (item.typology === "overdue" || item.typology === "rushes_overdue") {
-      if (item.slot.scheduledAt) {
+      if (slot.scheduledAt) {
         const days = Math.floor(
-          (Date.now() - new Date(item.slot.scheduledAt).getTime()) /
+          (Date.now() - new Date(slot.scheduledAt).getTime()) /
             (1000 * 60 * 60 * 24),
         );
         return days === 0 ? "Aujourd'hui" : `Il y a ${days}j`;
@@ -168,16 +230,16 @@ export function InboxItem({ item }: Props) {
 
         {/* Body */}
         <Link
-          href={`/publications/${item.slot.id}`}
+          href={`/publications/${slot.id}`}
           className="flex-1 min-w-0 group"
         >
           <p className="text-[12px] font-medium text-gray-950 truncate group-hover:text-info-700 transition-colors">
-            {item.slot.patternLabel ?? item.slot.title ?? "Publication"}
+            {slot.patternLabel ?? slot.title ?? "Publication"}
           </p>
           <p className="text-[11px] text-gray-500 mt-0.5">
-            @{item.slot.accountHandle}
-            {item.slot.accountName !== item.slot.accountHandle && (
-              <span className="text-gray-400"> · {item.slot.accountName}</span>
+            @{slot.accountHandle}
+            {slot.accountName !== slot.accountHandle && (
+              <span className="text-gray-400"> · {slot.accountName}</span>
             )}
             {sublabel && (
               <span className="text-gray-400"> · {sublabel}</span>
@@ -221,7 +283,7 @@ export function InboxItem({ item }: Props) {
           )}
           {item.typology === "bank_ready" && (
             <Link
-              href={`/publications/${item.slot.id}`}
+              href={`/publications/${slot.id}`}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-success-700 hover:bg-success-100/70 transition-colors"
               title="Programmer"
             >
@@ -230,7 +292,7 @@ export function InboxItem({ item }: Props) {
             </Link>
           )}
           <Link
-            href={`/publications/${item.slot.id}`}
+            href={`/publications/${slot.id}`}
             className="text-info-600 hover:text-info-700 transition-colors"
             aria-label="Ouvrir la fiche complète"
           >
@@ -248,7 +310,7 @@ export function InboxItem({ item }: Props) {
             </p>
             <h3 className="mt-1 text-[18px] font-semibold text-gray-950">
               V{item.latestVersion?.versionNumber ?? "?"} · @
-              {item.slot.accountHandle}
+              {slot.accountHandle}
             </h3>
             <p className="mt-1 text-[12px] text-gray-500">
               La publication revient en « En montage » — le monteur saura

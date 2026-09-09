@@ -22,6 +22,29 @@ export const USER_ROLES = {
   EXTERNAL_GENERATOR: "EXTERNAL_GENERATOR",
 } as const satisfies Record<UserRole, UserRole>;
 
+/**
+ * Libellés FR des rôles — source unique.
+ *
+ * Deux mappings parallèles coexistaient (UsersPanel et le pied de la nav) ;
+ * celui de la nav n'avait pas de cas EXTERNAL_GENERATOR et retombait sur un
+ * `charAt(0) + toLowerCase()`, ce qui affichait « External_generator » au
+ * client là où l'admin lisait « Client externe ».
+ */
+export const ROLE_LABELS_FR: Record<UserRole | "USER", string> = {
+  ADMIN: "Admin",
+  VIDEASTE: "Vidéaste",
+  MONTEUR: "Monteur",
+  CM: "CM",
+  EXTERNAL_GENERATOR: "Client externe",
+  USER: "Utilisateur",
+};
+
+/** Libellé FR d'un rôle, tolérant aux valeurs hors enum (données legacy). */
+export function roleLabelFr(role: string | null | undefined): string {
+  if (!role) return ROLE_LABELS_FR.USER;
+  return ROLE_LABELS_FR[role.toUpperCase() as UserRole | "USER"] ?? role;
+}
+
 // ---------------------------------------------------------------------------
 // Statuts de publication
 // ---------------------------------------------------------------------------

@@ -21,7 +21,7 @@ const REEL_ATTACHABLE_SOURCES = ["manual_rushes", "external_upload"] as const;
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params;
   const entity = await prisma.entity.findUnique({ where: { id }, select: { label: true } });
-  return { title: entity ? `${entity.label} | Fiches` : "Fiche introuvable" };
+  return { title: entity?.label ?? "Fiche introuvable" };
 }
 
 /**
@@ -156,11 +156,19 @@ export default async function EntityDetailPage({ params }: Params) {
     scheduledAtLabel: entity.scheduledAt ? longDateTimeFr(entity.scheduledAt) : null,
     assigneeVideasteId: entity.assigneeVideasteId,
     assigneeVideasteName: entity.assigneeVideaste?.name ?? null,
+    videasteConfirmation:
+      (entity.videasteConfirmation as EntityFicheData["videasteConfirmation"]) ?? null,
+    videasteConfirmationAt: entity.videasteConfirmationAt
+      ? entity.videasteConfirmationAt.toISOString()
+      : null,
+    videasteDeclineReason: entity.videasteDeclineReason,
     defaultAssigneeMonteurId: entity.defaultAssigneeMonteurId,
     defaultAssigneeCmId: entity.defaultAssigneeCmId,
     notes: entity.notes,
     relatedEntityId: entity.relatedEntityId,
     relatedLabel: entity.related?.label ?? null,
+    orderId: entity.orderId,
+    orderLabel: entity.order?.orderTemplate.name ?? null,
     slots: entity.slots.map((s) => ({
       id: s.id,
       title: s.title,

@@ -42,13 +42,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       account: { select: { handle: true } },
     },
   });
-  if (!slot) return { title: "Publication | Toolbox Immo" };
+  if (!slot) return { title: "Publication" };
   const recipeLabel =
     patternLabel(slot.patternBinding) ?? null;
   const label = recipeLabel ?? slot.title ?? "Publication";
   const accountSuffix = slot.account ? ` · @${slot.account.handle}` : "";
   return {
-    title: `${label}${accountSuffix} | Toolbox Immo`,
+    title: `${label}${accountSuffix}`,
   };
 }
 

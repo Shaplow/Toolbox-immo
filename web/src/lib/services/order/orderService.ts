@@ -28,6 +28,9 @@ import { canUserAccessOrder, whereClauseForUserOrder } from "@/lib/permissions/o
 import {
   attachSlotToEntity,
   prepareEntityCreate,
+  resolveDefaultAssignees,
+  detectRecipeAssigneeConflicts,
+  type AssigneeConflict,
   type CreateEntityInput,
 } from "@/lib/services/entity/entityService";
 import { createSlot } from "@/lib/services/slot/slotService";
@@ -122,6 +125,7 @@ const orderDetailSelect = {
           count: true,
           patternTemplate: { select: { label: true, source: true } },
         },
+        orderBy: { position: "asc" },
       },
     },
   },
@@ -135,6 +139,7 @@ const orderDetailSelect = {
       scheduledAt: true,
       validationStatus: true,
       relatedEntityId: true,
+      assigneeVideasteId: true,
       type: {
         select: {
           id: true,
@@ -142,6 +147,7 @@ const orderDetailSelect = {
           icon: true,
           hasPlanning: true,
           hasRushes: true,
+          hasAssignees: true,
           fieldSchema: true,
         },
       },
@@ -156,7 +162,13 @@ const orderDetailSelect = {
       scheduledAt: true,
       patternTemplate: { select: { label: true } },
       patternBinding: {
-        select: { customLabel: true, patternTemplate: { select: { label: true } } },
+        // `publishTime` : heure de publication prévue par la recette, pour
+        // pré-remplir le placement plutôt qu'un 09:00 générique.
+        select: {
+          customLabel: true,
+          publishTime: true,
+          patternTemplate: { select: { label: true } },
+        },
       },
     },
   },
@@ -214,6 +226,11 @@ function serializeOrder(order: OrderDetailRaw, opts: { forExternal: boolean }) {
       fieldSchema: normalizeCustomFields(e.type.fieldSchema),
       scheduledAt: e.scheduledAt?.toISOString() ?? null,
       validationStatus: e.validationStatus,
+      // Un tournage sans vidéaste n'apparaît dans la worklist de personne :
+      // l'équipe doit le voir sur la commande, pas seulement dans un toast.
+      missingVideaste: opts.forExternal
+        ? false
+        : isShootType(e.type) && e.type.hasAssignees && !e.assigneeVideasteId,
     })),
     slots: order.slots.map((s) => {
       const step = getMacroStep(s.status as SlotStatus);
@@ -222,6 +239,7 @@ function serializeOrder(order: OrderDetailRaw, opts: { forExternal: boolean }) {
         step,
         stepLabel: MACRO_STEPS[step].label,
         scheduledAt: s.scheduledAt?.toISOString() ?? null,
+        defaultTime: s.patternBinding?.publishTime ?? null,
       };
       // L'id et le statut technique ne sortent que pour l'équipe (liens
       // /publications/[id], placement de date).
@@ -230,7 +248,10 @@ function serializeOrder(order: OrderDetailRaw, opts: { forExternal: boolean }) {
   };
 }
 
-export type OrderDetail = ReturnType<typeof serializeOrder>;
+export type OrderDetail = ReturnType<typeof serializeOrder> & {
+  /** Présent uniquement pour l'admin (cf. getOrder). */
+  assigneeConflicts?: AssigneeConflict[];
+};
 
 // ─── createOrder (submit) ───────────────────────────────────────────────────
 
@@ -270,6 +291,8 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
         },
       },
       accesses: { select: { clientId: true } },
+      // Recettes du modèle : source des assignés par défaut des fiches.
+      recipes: { select: { patternTemplateId: true }, orderBy: { position: "asc" } },
     },
   });
   // 404 uniforme : un modèle inexistant, archivé ou hors allowlist est
@@ -310,17 +333,31 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
       : null;
   const isExternalCreator = !ctx.canAdminBypass;
 
+  // Libellé de référence = celui de la première fiche du modèle. Les fiches
+  // suivantes en dérivent (« Tournage — 12 rue des Lilas ») au lieu d'être
+  // ressaisies : une seule saisie, et deux fiches distinguables partout au lieu
+  // de deux homonymes.
+  const primaryLabel = fichesByType.get(template.items[0]?.entityTypeId ?? "")?.label?.trim() ?? "";
+
   // Préparation (validations complètes, hors tx) — une par item, dans l'ordre.
   const prepared: { data: Awaited<ReturnType<typeof prepareEntityCreate>>; isShoot: boolean }[] =
     [];
-  for (const item of template.items) {
+  for (const [index, item] of template.items.entries()) {
     const fiche = fichesByType.get(item.entityTypeId);
     if (!fiche) {
       throw new ValidationError(`La fiche « ${item.entityType.name} » est requise`);
     }
+    // Seule la première fiche porte un libellé saisi ; les autres sont
+    // dérivées côté serveur — ce que le client envoie pour elles est ignoré.
+    const label =
+      index === 0
+        ? fiche.label
+        : primaryLabel
+          ? `${item.entityType.name} — ${primaryLabel}`
+          : fiche.label;
     const entityInput: CreateEntityInput = {
       typeId: item.entityTypeId,
-      label: fiche.label,
+      label,
       fields: fiche.fields,
       accountId: item.entityType.hasAccount ? accountId : null,
       scheduledAt: item.entityType.hasPlanning ? (fiche.scheduledAt ?? null) : null,
@@ -328,6 +365,9 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
     const data = await prepareEntityCreate(entityInput, {
       actorId: ctx.actualUser.id,
       isExternalCreator,
+      // Les assignés par défaut viennent des recettes réellement commandées,
+      // pas d'un binding arbitraire du compte.
+      recipeTemplateIds: template.recipes.map((r) => r.patternTemplateId),
     });
     prepared.push({ data, isShoot: isShootType(item.entityType) });
   }
@@ -407,6 +447,13 @@ export async function listOrders(
       account: { select: { id: true, name: true, handle: true } },
       orderTemplate: { select: { id: true, name: true } },
       createdBy: { select: { id: true, name: true } },
+      // Première fiche saisie : sans elle, deux commandes du même modèle sont
+      // strictement identiques dans la liste.
+      entities: {
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: { label: true },
+      },
       _count: { select: { entities: true, slots: true } },
     },
   });
@@ -418,6 +465,7 @@ export async function listOrders(
     client: o.client,
     account: o.account,
     templateName: o.orderTemplate.name,
+    primaryEntityLabel: o.entities[0]?.label ?? null,
     createdByName: ctx.canAdminBypass ? (o.createdBy?.name ?? null) : null,
     entityCount: o._count.entities,
     slotCount: o._count.slots,
@@ -431,7 +479,16 @@ export async function getOrder(id: string, ctx: UserContext): Promise<OrderDetai
   if (!order || !canUserAccessOrder(order, role, ctx.effectiveUser.clientId)) {
     throw new NotFoundError("Commande");
   }
-  return serializeOrder(order, { forExternal: !ctx.canAdminBypass });
+  const serialized = serializeOrder(order, { forExternal: !ctx.canAdminBypass });
+  if (!ctx.canAdminBypass) return serialized;
+
+  // Divergences d'assignation entre recettes commandées — admin seulement :
+  // c'est lui qui arbitre, et le client n'a pas à voir l'équipe interne.
+  const assigneeConflicts = await detectRecipeAssigneeConflicts(
+    order.accountId,
+    order.orderTemplate.recipes.map((r) => r.patternTemplateId),
+  );
+  return { ...serialized, assigneeConflicts };
 }
 
 // ─── updateOrderEntity ──────────────────────────────────────────────────────
@@ -534,6 +591,120 @@ async function loadOrderForTransition(id: string, ctx: UserContext) {
 }
 
 /**
+ * Refuse la validation si une recette du modèle n'est pas active sur le compte
+ * de la commande.
+ *
+ * Une commande sans compte (aucun type de fiche n'en exige) sort par le haut :
+ * ses recettes sont alors globales et n'ont pas de binding par construction.
+ */
+async function assertRecipesActiveOnAccount(orderId: string): Promise<void> {
+  const order = await prisma.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: {
+      accountId: true,
+      account: { select: { handle: true } },
+      orderTemplate: {
+        select: {
+          recipes: {
+            select: { patternTemplate: { select: { id: true, label: true } } },
+            orderBy: { position: "asc" },
+          },
+        },
+      },
+    },
+  });
+  if (!order.accountId) return;
+
+  const recipes = order.orderTemplate.recipes.map((r) => r.patternTemplate);
+  if (recipes.length === 0) return;
+
+  const active = await prisma.patternBinding.findMany({
+    where: {
+      accountId: order.accountId,
+      isActive: true,
+      patternTemplateId: { in: recipes.map((r) => r.id) },
+    },
+    select: { patternTemplateId: true },
+  });
+  const activeIds = new Set(active.map((b) => b.patternTemplateId));
+  const missing = recipes.filter((r) => !activeIds.has(r.id));
+  if (missing.length === 0) return;
+
+  const labels = [...new Set(missing.map((r) => r.label))].join(", ");
+  const handle = order.account?.handle ? `@${order.account.handle}` : "ce compte";
+  throw new ConflictError(
+    missing.length === 1
+      ? `La recette « ${labels} » n'est pas active sur ${handle} — activez-la sur le compte avant de valider.`
+      : `Les recettes « ${labels} » ne sont pas actives sur ${handle} — activez-les sur le compte avant de valider.`,
+  );
+}
+
+/**
+ * Complète les assignés manquants des fiches d'une commande, au moment de la
+ * validation : entre la soumission et maintenant, l'admin a pu activer une
+ * recette ou y renseigner une équipe.
+ *
+ * Retourne les tournages qui restent sans vidéaste — l'appelant les signale,
+ * sinon la mission de tournage n'atteint personne (la worklist vidéaste lit
+ * `Entity.assigneeVideasteId`).
+ */
+async function backfillOrderAssignees(
+  orderId: string,
+): Promise<{ id: string; label: string }[]> {
+  const order = await prisma.order.findUniqueOrThrow({
+    where: { id: orderId },
+    select: {
+      accountId: true,
+      orderTemplate: {
+        select: {
+          recipes: { select: { patternTemplateId: true }, orderBy: { position: "asc" } },
+        },
+      },
+      entities: {
+        select: {
+          id: true,
+          label: true,
+          assigneeVideasteId: true,
+          defaultAssigneeMonteurId: true,
+          defaultAssigneeCmId: true,
+          type: { select: { hasPlanning: true, hasRushes: true, hasAssignees: true } },
+        },
+      },
+    },
+  });
+
+  const recipeIds = order.orderTemplate.recipes.map((r) => r.patternTemplateId);
+  const unassignedShoots: { id: string; label: string }[] = [];
+
+  for (const e of order.entities) {
+    if (!e.type.hasAssignees) continue;
+    const resolved = await resolveDefaultAssignees(order.accountId, recipeIds, {
+      videasteId: e.assigneeVideasteId,
+      monteurId: e.defaultAssigneeMonteurId,
+      cmId: e.defaultAssigneeCmId,
+    });
+    if (
+      resolved.videasteId !== e.assigneeVideasteId ||
+      resolved.monteurId !== e.defaultAssigneeMonteurId ||
+      resolved.cmId !== e.defaultAssigneeCmId
+    ) {
+      await prisma.entity.update({
+        where: { id: e.id },
+        data: {
+          assigneeVideasteId: resolved.videasteId,
+          defaultAssigneeMonteurId: resolved.monteurId,
+          defaultAssigneeCmId: resolved.cmId,
+        },
+      });
+    }
+    if (isShootType(e.type) && !resolved.videasteId) {
+      unassignedShoots.push({ id: e.id, label: e.label });
+    }
+  }
+  return unassignedShoots;
+}
+
+/**
  * Validation admin : approuve les fiches en attente + VALIDATED (transition
  * protégée par CAS — un double-clic / deux onglets ne valident qu'une fois),
  * puis instancie les slots (hors tx, échecs isolés remontés — même contrat
@@ -553,6 +724,12 @@ export async function validateOrder(id: string, ctx: UserContext) {
   ) {
     throw new ValidationError("Seule une commande soumise (ou refusée) peut être validée");
   }
+
+  // Toutes les recettes du modèle doivent être actives sur le compte cible.
+  // Sans binding, une publication naît sans horaire de publication ni assignés
+  // et personne ne la voit : mieux vaut refuser la validation et renvoyer
+  // l'admin activer la recette que produire des publications orphelines.
+  await assertRecipesActiveOnAccount(id);
 
   // Le compte de la commande a pu être supprimé entre soumission et validation
   // (Order.accountId SetNull) — re-vérifier l'exigence réelle portée par les
@@ -607,8 +784,9 @@ export async function validateOrder(id: string, ctx: UserContext) {
     });
   }
 
+  const unassignedShoots = await backfillOrderAssignees(id);
   const { createdSlotIds, failed } = await instantiateOrderSlots(id, ctx);
-  return { order: await getOrder(id, ctx), createdSlotIds, failed };
+  return { order: await getOrder(id, ctx), createdSlotIds, failed, unassignedShoots };
 }
 
 /**
@@ -641,6 +819,7 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
                 },
               },
             },
+            orderBy: { position: "asc" },
           },
         },
       },

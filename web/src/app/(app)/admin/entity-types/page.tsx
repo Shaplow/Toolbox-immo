@@ -9,7 +9,7 @@ import { EntityTypesClient, type EntityTypeRow } from "./EntityTypesClient";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Types de fiches | Toolbox Immo Admin",
+  title: "Types de fiches",
 };
 
 /**

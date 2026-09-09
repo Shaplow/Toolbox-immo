@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
+import { parisToday } from "@/lib/date/formatFr";
 
 interface DatePickerProps {
   value: string;
@@ -198,7 +199,7 @@ function CalendarPopover({
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const days = useMemo(() => buildMonthGrid(year, month), [year, month]);
-  const today = new Date();
+  const today = parisToday();
 
   function prevMonth() {
     onViewDateChange(new Date(year, month - 1, 1));
@@ -286,7 +287,7 @@ function CalendarPopover({
       <div className="mt-3 pt-3 border-t border-border flex items-center justify-between px-1">
         <button
           type="button"
-          onClick={() => onSelect(new Date())}
+          onClick={() => onSelect(parisToday())}
           className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           Aujourd&apos;hui

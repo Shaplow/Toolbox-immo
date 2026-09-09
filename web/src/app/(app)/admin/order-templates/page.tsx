@@ -9,7 +9,7 @@ import { OrderTemplatesClient, type OrderTemplateRow } from "./OrderTemplatesCli
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Modèles de commande | Toolbox Immo Admin",
+  title: "Modèles de commande",
 };
 
 /**
@@ -32,7 +32,18 @@ export default async function OrderTemplatesPage() {
     prisma.patternTemplate.findMany({
       where: { isArchived: false },
       orderBy: { label: "asc" },
-      select: { id: true, label: true, source: true },
+      select: {
+        id: true,
+        label: true,
+        source: true,
+        // Deux recettes du catalogue peuvent porter le même libellé : les
+        // comptes sur lesquels elles sont appliquées sont ce qui permet de
+        // les distinguer au moment de composer un modèle.
+        bindings: {
+          where: { isActive: true },
+          select: { account: { select: { handle: true } } },
+        },
+      },
     }),
     prisma.client.findMany({
       orderBy: { name: "asc" },
@@ -60,12 +71,28 @@ export default async function OrderTemplatesPage() {
     orderCount: t._count.orders,
   }));
 
+  // Suffixe de désambiguïsation, calculé une fois : uniquement pour les
+  // libellés réellement en doublon, pour ne pas alourdir les autres.
+  const labelCounts = new Map<string, number>();
+  for (const t of patternTemplates) {
+    labelCounts.set(t.label, (labelCounts.get(t.label) ?? 0) + 1);
+  }
+  const recipeOptions = patternTemplates.map((t) => ({
+    id: t.id,
+    label: t.label,
+    source: t.source,
+    accounts:
+      (labelCounts.get(t.label) ?? 0) > 1
+        ? t.bindings.map((b) => `@${b.account.handle}`).join(", ")
+        : "",
+  }));
+
   return (
     <PageShell variant="wide">
       <OrderTemplatesClient
         initialTemplates={rows}
         entityTypes={entityTypes}
-        patternTemplates={patternTemplates}
+        patternTemplates={recipeOptions}
         clients={clients}
       />
     </PageShell>

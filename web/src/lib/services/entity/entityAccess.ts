@@ -10,19 +10,28 @@ import { prisma } from "@/lib/prisma";
 export const ENTITY_ACCESS_SELECT = {
   id: true,
   type: { select: { visibility: true } },
+  // Une fiche en attente de validation admin est invisible pour l'équipe.
+  validationStatus: true,
   assigneeVideasteId: true,
   defaultAssigneeMonteurId: true,
   defaultAssigneeCmId: true,
-  shootSlots: { select: { assigneeMonteurId: true, assigneeCmId: true } },
+  shootSlots: {
+    select: { assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
+  },
 } as const;
 
 export type EntityAccess = {
   id: string;
   type: { visibility: string };
+  validationStatus: string | null;
   assigneeVideasteId: string | null;
   defaultAssigneeMonteurId: string | null;
   defaultAssigneeCmId: string | null;
-  shootSlots: Array<{ assigneeMonteurId: string | null; assigneeCmId: string | null }>;
+  shootSlots: Array<{
+    assigneeMonteurId: string | null;
+    assigneeCmId: string | null;
+    assigneeVideasteId: string | null;
+  }>;
 };
 
 /** Charge la fiche pour un check d'accès, ou null si elle n'existe pas. */

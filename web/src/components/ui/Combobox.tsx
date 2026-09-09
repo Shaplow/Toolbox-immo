@@ -15,8 +15,9 @@
  * - cmdk fait le matching fuzzy automatiquement.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useAnchoredPosition, POPOVER_Z_INDEX } from "@/components/ui/useAnchoredPosition";
 import { Command } from "cmdk";
 import { Check, ChevronDown, Loader2, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -65,48 +66,11 @@ export function Combobox({
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
-  // Position du popover (portalé sur body) : recalculée from trigger rect.
-  // Position absolue dans le viewport — évite tout clipping par overflow ancestors.
-  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number; width: number } | null>(null);
-  // Mounted gate pour SSR (createPortal a besoin de document).
-  const [mounted, setMounted] = useState(false);
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setMounted(true); }, []);
-
-  // Recalcule la position du popover en fonction de la position du trigger.
-  // On utilise les coords ABSOLUES (rect + window.scrollX/Y) car le popover est
-  // portalé dans document.body avec `position: absolute`. Cette approche est
-  // robuste contre les containing blocks parents (transform, backdrop-filter)
-  // qui cassent `position: fixed` dans certains navigateurs.
-  const updatePosition = () => {
-    const trig = triggerRef.current;
-    if (!trig) return;
-    const rect = trig.getBoundingClientRect();
-    const POPOVER_MAX_HEIGHT = 280; // matches max-h-60 (240px) + header ~40px
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const flipUp = spaceBelow < POPOVER_MAX_HEIGHT && rect.top > spaceBelow;
-    const gap = 6;
-    const topInViewport = flipUp ? rect.top - gap - POPOVER_MAX_HEIGHT : rect.bottom + gap;
-    setPopoverPos({
-      top: topInViewport + window.scrollY,
-      left: rect.left + window.scrollX,
-      width: rect.width,
-    });
-  };
-
-  // Initial position + recalc sur scroll/resize tant que le popover est ouvert.
-  useLayoutEffect(() => {
-    if (!open) return;
-    updatePosition();
-    const onScroll = () => updatePosition();
-    const onResize = () => updatePosition();
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onResize);
-    };
-  }, [open]);
+  // Positionnement partagé avec Select et DropdownMenu (portail + coords
+  // absolues) — cf. useAnchoredPosition, extrait de ce composant.
+  const { position: popoverPos, ready } = useAnchoredPosition(open, triggerRef, {
+    maxHeight: 280,
+  });
 
   // Close on outside click / ESC. Le popover étant portalé, il faut aussi
   // vérifier que le click n'est pas dedans (sinon click sur option fermerait).
@@ -176,7 +140,7 @@ export function Combobox({
 
       {/* Popover portalé sur document.body : évite tout clipping par overflow ancestors
           (Modal Body, Drawer scroll, etc.) et tout conflit de stacking context. */}
-      {open && mounted && popoverPos && createPortal(
+      {ready && popoverPos && createPortal(
         <div
           ref={popoverRef}
           style={{
@@ -184,7 +148,7 @@ export function Combobox({
             top: popoverPos.top,
             left: popoverPos.left,
             width: popoverPos.width,
-            zIndex: 9999,
+            zIndex: POPOVER_Z_INDEX,
           }}
           className="rounded-md overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg"
         >

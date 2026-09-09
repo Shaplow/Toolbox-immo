@@ -11,7 +11,7 @@ import { FichesListClient } from "./FichesListClient";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Fiches | Toolbox Immo Admin",
+  title: "Fiches",
 };
 
 interface PageProps {

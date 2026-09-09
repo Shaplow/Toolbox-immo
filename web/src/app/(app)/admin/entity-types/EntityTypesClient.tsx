@@ -4,7 +4,7 @@ import { ENTITY_TYPE_ICON_KEYS } from "@/components/entities/entityTypeIcons";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileStack, Plus, Lock } from "lucide-react";
+import { FileStack, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -107,24 +107,20 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
     }
     setSaving(true);
     try {
-      const isSystem = editing?.isSystem ?? false;
       const body: Record<string, unknown> = {
         name: draft.name.trim(),
         namePlural: draft.namePlural.trim() || null,
         icon: draft.icon.trim() || null,
         fieldSchema: draft.fieldSchema,
-        // Éditables aussi sur les types système : pur workflow, aucun scoping.
         needsAdminValidation: draft.needsAdminValidation,
         needsClientValidation: draft.needsClientValidation,
+        hasPlanning: draft.hasPlanning,
+        hasAccount: draft.hasAccount,
+        hasRushes: draft.hasRushes,
+        hasAssignees: draft.hasAssignees,
+        visibility: draft.visibility,
+        position: draft.position,
       };
-      if (!isSystem) {
-        body.hasPlanning = draft.hasPlanning;
-        body.hasAccount = draft.hasAccount;
-        body.hasRushes = draft.hasRushes;
-        body.hasAssignees = draft.hasAssignees;
-        body.visibility = draft.visibility;
-        body.position = draft.position;
-      }
       const res = editing
         ? await fetch(`/api/entity-types/${editing.id}`, {
             method: "PATCH",
@@ -187,10 +183,7 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
       id: "name",
       label: "Nom",
       cell: (row) => (
-        <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-          {row.isSystem && <Lock size={11} className="text-muted-foreground shrink-0" />}
-          {row.name}
-        </span>
+        <span className="font-medium text-foreground">{row.name}</span>
       ),
     },
     {
@@ -259,12 +252,6 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
           {editing ? `Édition · ${editing.name}` : "Nouveau type de fiche"}
         </Drawer.Header>
         <Drawer.Body className="space-y-5">
-          {editing?.isSystem && (
-            <p className="text-[12px] text-muted-foreground bg-muted rounded-md px-3 py-2 inline-flex items-center gap-1.5">
-              <Lock size={12} /> Type système — visibilité et capacités figées.
-            </p>
-          )}
-
           <FormField label="Nom" required>
             <Input value={draft.name} onChange={(v) => setDraft((d) => ({ ...d, name: v }))} placeholder="Ex : Bien" />
           </FormField>
@@ -290,7 +277,6 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
                 { value: "admin", label: "Admin" },
                 { value: "team", label: "Équipe" },
               ]}
-              disabled={editing?.isSystem}
             />
           </FormField>
 
@@ -301,7 +287,6 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
                 const n = Number(v);
                 setDraft((d) => ({ ...d, position: Number.isFinite(n) ? n : d.position }));
               }}
-              disabled={editing?.isSystem}
             />
           </FormField>
 
@@ -315,17 +300,12 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
                   <Checkbox
                     checked={draft[c.key] as boolean}
                     onChange={(checked) => setDraft((d) => ({ ...d, [c.key]: checked }))}
-                    disabled={editing?.isSystem}
                     label={c.label}
                   />
                   <button
                     type="button"
-                    className="min-w-0 text-left disabled:cursor-not-allowed"
-                    disabled={editing?.isSystem}
-                    onClick={() =>
-                      !editing?.isSystem &&
-                      setDraft((d) => ({ ...d, [c.key]: !d[c.key] }))
-                    }
+                    className="min-w-0 text-left"
+                    onClick={() => setDraft((d) => ({ ...d, [c.key]: !d[c.key] }))}
                   >
                     <span className="block text-[13px] text-foreground">{c.label}</span>
                     <span className="block text-[11px] text-muted-foreground">{c.help}</span>
@@ -380,7 +360,7 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
           </FormField>
         </Drawer.Body>
         <Drawer.Footer>
-          {editing && !editing.isSystem && (
+          {editing && (
             <Button
               variant="danger"
               size="sm"

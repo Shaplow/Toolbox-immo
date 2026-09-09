@@ -10,10 +10,14 @@
  * - `visibility="team"` (ex-ShootEvent « Tournage ») : scoping par rôle,
  *   mêmes règles que l'ancien eventScope :
  *     ADMIN    → tout.
- *     VIDEASTE → les fiches dont il est le vidéaste assigné.
+ *     VIDEASTE → vidéaste de la fiche OU d'un reel rattaché.
  *     MONTEUR  → défaut monteur OU un reel rattaché qui lui est assigné.
  *     CM       → symétrique (défaut CM OU reel CM assigné).
  *     EXTERNAL → rien.
+ *
+ * Deuxième filtre pour toute l'équipe : une fiche en attente de validation
+ * admin (ou refusée) reste invisible — elle décrit une demande que l'équipe
+ * n'a pas encore acceptée, il n'y a rien à y faire.
  *
  * Garde-fou (validé à la création du type) : un type `team` DOIT avoir
  * `hasAssignees=true`, sinon son scope serait vide pour toute l'équipe.
@@ -23,6 +27,32 @@
 
 import type { Prisma } from "@prisma/client";
 import type { UserRole } from "@/types/roles";
+
+/**
+ * Statuts de validation qui rendent une fiche visible par l'équipe.
+ *
+ * `null` = aucune validation requise (fiche créée par l'équipe elle-même) ;
+ * `APPROVED` = l'admin a validé la commande. Les autres (`PENDING_ADMIN`,
+ * `REJECTED`) décrivent une demande client non tranchée : le tournage ne doit
+ * pas encore apparaître dans la liste d'un vidéaste.
+ *
+ * `PENDING_CLIENT` / `REJECTED_CLIENT` restent visibles : ils concernent
+ * l'accord du client, pas la décision de l'équipe, et ne bloquent pas la
+ * production (cf. `assertEntityValidated` dans slotService).
+ */
+export const ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES = ["PENDING_ADMIN", "REJECTED"] as const;
+
+/** WHERE partiel : exclut les fiches non tranchées par l'admin. */
+const VALIDATED_FOR_TEAM = {
+  validationStatus: { notIn: [...ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES] },
+} satisfies Prisma.EntityWhereInput;
+
+/** Pendant single-resource de `VALIDATED_FOR_TEAM`. */
+export function isValidatedForTeam(validationStatus: string | null): boolean {
+  return !(ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES as readonly string[]).includes(
+    validationStatus ?? "",
+  );
+}
 
 // ---------------------------------------------------------------------------
 // whereClauseForUserEntity
@@ -46,12 +76,24 @@ export function whereClauseForUserEntity(
     case "ADMIN":
       return {};
 
+    // Même forme que MONTEUR/CM : le vidéaste était le seul rôle sans
+    // passerelle vers la fiche depuis un reel qui lui est assigné — il ne
+    // voyait alors ni le tournage ni ses rushs partagés, dont son reel dépend
+    // pourtant (`needsRushesOverride=false` forcé côté slotService).
     case "VIDEASTE":
-      return { type: { visibility: "team" }, assigneeVideasteId: userId };
+      return {
+        type: { visibility: "team" },
+        ...VALIDATED_FOR_TEAM,
+        OR: [
+          { assigneeVideasteId: userId },
+          { shootSlots: { some: { assigneeVideasteId: userId } } },
+        ],
+      };
 
     case "MONTEUR":
       return {
         type: { visibility: "team" },
+        ...VALIDATED_FOR_TEAM,
         OR: [
           { defaultAssigneeMonteurId: userId },
           { shootSlots: { some: { assigneeMonteurId: userId } } },
@@ -61,6 +103,7 @@ export function whereClauseForUserEntity(
     case "CM":
       return {
         type: { visibility: "team" },
+        ...VALIDATED_FOR_TEAM,
         OR: [
           { defaultAssigneeCmId: userId },
           { shootSlots: { some: { assigneeCmId: userId } } },
@@ -83,12 +126,14 @@ export function whereClauseForUserEntity(
  */
 export interface AccessibleEntity {
   type: { visibility: string };
+  validationStatus: string | null;
   assigneeVideasteId: string | null;
   defaultAssigneeMonteurId: string | null;
   defaultAssigneeCmId: string | null;
   shootSlots: Array<{
     assigneeMonteurId: string | null;
     assigneeCmId: string | null;
+    assigneeVideasteId: string | null;
   }>;
 }
 
@@ -103,10 +148,14 @@ export function canUserAccessEntity(
 ): boolean {
   if (role === "ADMIN") return true;
   if (entity.type.visibility !== "team") return false;
+  if (!isValidatedForTeam(entity.validationStatus)) return false;
 
   switch (role) {
     case "VIDEASTE":
-      return entity.assigneeVideasteId === userId;
+      return (
+        entity.assigneeVideasteId === userId ||
+        entity.shootSlots.some((s) => s.assigneeVideasteId === userId)
+      );
 
     case "MONTEUR":
       return (
@@ -178,9 +227,10 @@ export const ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly stri
     "notes",
     "brief",
   ],
-  // Le vidéaste peut annuler/mettre à jour le statut (ex : shoot reporté) et
-  // écrire des notes de terrain.
-  VIDEASTE: ["status", "notes"],
+  // Le vidéaste peut annuler/mettre à jour le statut (ex : shoot reporté),
+  // écrire des notes de terrain, et répondre sur sa disponibilité — les gardes
+  // de valeur et d'état (fiche validée, vidéaste assigné) sont dans patchEntity.
+  VIDEASTE: ["status", "notes", "videasteConfirmation", "videasteDeclineReason"],
   MONTEUR: ["notes"],
   CM: ["notes"],
   EXTERNAL_GENERATOR: [],

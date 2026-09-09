@@ -29,7 +29,7 @@ export interface MacroStepInfo {
 }
 
 export const MACRO_STEPS: Record<MacroStep, MacroStepInfo> = {
-  brief: { key: "brief", label: "Brief", order: 1 },
+  brief: { key: "brief", label: "En préparation", order: 1 },
   production: { key: "production", label: "Production", order: 2 },
   validation: { key: "validation", label: "Validation", order: 3 },
   scheduled: { key: "scheduled", label: "Programmée", order: 4 },

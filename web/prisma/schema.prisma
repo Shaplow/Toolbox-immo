@@ -35,6 +35,9 @@ model User {
   defaultMonteurForBindings     PatternBinding[]        @relation("BindingDefaultMonteur")
   defaultCmForBindings          PatternBinding[]        @relation("BindingDefaultCm")
   defaultVideasteForBindings    PatternBinding[]        @relation("BindingDefaultVideaste")
+  defaultVideasteForAccounts    InstagramAccount[]      @relation("AccountDefaultVideaste")
+  defaultMonteurForAccounts     InstagramAccount[]      @relation("AccountDefaultMonteur")
+  defaultCmForAccounts          InstagramAccount[]      @relation("AccountDefaultCm")
   uploadedVersions              PublicationVersion[]    @relation("VersionUploader")
   assignedAsMonteur             PublicationSlot[]       @relation("SlotMonteur")
   assignedAsCm                  PublicationSlot[]       @relation("SlotCm")
@@ -784,6 +787,16 @@ model InstagramAccount {
   entities         Entity[]                   @relation("EntityAccount")
   orders           Order[]                    @relation("OrderAccount")
 
+  /// Équipe par défaut du compte — héritée par les recettes qui ne
+  /// surchargent pas, et par les fiches créées sur ce compte. Évite de
+  /// re-saisir la même équipe sur chaque recette (cf. resolveDefaultAssignees).
+  defaultAssigneeVideasteId String?
+  defaultAssigneeVideaste   User?   @relation("AccountDefaultVideaste", fields: [defaultAssigneeVideasteId], references: [id], onDelete: SetNull)
+  defaultAssigneeMonteurId  String?
+  defaultAssigneeMonteur    User?   @relation("AccountDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
+  defaultAssigneeCmId       String?
+  defaultAssigneeCm         User?   @relation("AccountDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
+
   @@index([clientId])
 }
 
@@ -1166,6 +1179,14 @@ model Entity {
   defaultAssigneeCmId      String?
   defaultAssigneeCm        User?   @relation("EntityDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
 
+  /// Confirmation de disponibilité du vidéaste sur un tournage validé.
+  /// null = en attente, "CONFIRMED" = dispo, "DECLINED" = indisponible.
+  /// Remise à null dès que l'admin change `assigneeVideasteId` : un nouveau
+  /// vidéaste n'a rien confirmé.
+  videasteConfirmation   String?
+  videasteConfirmationAt DateTime?
+  videasteDeclineReason  String?
+
   notes String?
   brief String?
 
@@ -1379,6 +1400,10 @@ model OrderTemplateRecipe {
   patternTemplateId String
   patternTemplate   PatternTemplate @relation("OrderTemplateRecipePattern", fields: [patternTemplateId], references: [id], onDelete: Restrict)
   count             Int             @default(1)
+  /// Ordre d'affichage ET de résolution : quand deux recettes désignent des
+  /// assignés différents, la première l'emporte (cf. resolveDefaultAssignees).
+  /// Sans ça l'arbitrage dépendrait de l'ordre d'insertion en base.
+  position          Int             @default(0)
 
   @@index([orderTemplateId])
 }

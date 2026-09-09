@@ -20,6 +20,8 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useAnchoredPosition, POPOVER_Z_INDEX } from "@/components/ui/useAnchoredPosition";
 import { ChevronDown, Check } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -59,14 +61,23 @@ export function Select({
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const { position, ready } = useAnchoredPosition(open, triggerRef, {
+    maxHeight: 288,
+    popoverRef: listRef,
+  });
 
   const selected = options.find((o) => o.value === value);
 
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      // La liste vit dans un portail : sans ce test, cliquer une option
+      // fermerait le select avant que le choix ne soit pris en compte.
+      if (listRef.current?.contains(target)) return;
+      if (!containerRef.current?.contains(target)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -141,11 +152,22 @@ export function Select({
         )}
       </button>
 
-      {open && (
+      {/* Portalé sur `body` : en `absolute`, la liste était coupée par le
+          premier ancêtre en overflow-hidden (Section, cartes, panneaux). */}
+      {ready && position &&
+        createPortal(
         <ul
+          ref={listRef}
           role="listbox"
           aria-labelledby={id}
-          className="absolute top-full left-0 right-0 mt-1.5 z-50 max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-border shadow-lg"
+          style={{
+            position: "absolute",
+            top: position.top,
+            left: position.left,
+            width: position.width,
+            zIndex: POPOVER_Z_INDEX,
+          }}
+          className="max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-border shadow-lg"
         >
           {options.map((opt) => {
             const isSelected = opt.value === value;
@@ -170,8 +192,9 @@ export function Select({
               </li>
             );
           })}
-        </ul>
-      )}
+        </ul>,
+          document.body,
+        )}
     </div>
   );
 }

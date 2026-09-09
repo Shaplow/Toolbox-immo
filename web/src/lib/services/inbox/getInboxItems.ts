@@ -16,6 +16,7 @@
 
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { prisma } from "@/lib/prisma";
+import { ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES } from "@/lib/permissions/entityScope";
 import type { SlotStatus } from "@/types/roles";
 
 export type InboxTypology =
@@ -25,13 +26,29 @@ export type InboxTypology =
   | "no_videaste" // sans vidéaste assigné
   | "no_pattern" // sans recette
   | "rushes_overdue" // RUSHES_EXPECTED & scheduledAt < now
-  | "bank_ready"; // banque prête à programmer
+  | "bank_ready" // banque prête à programmer
+  | "shoot_declined" // tournage : le vidéaste s'est déclaré indisponible
+  | "shoot_unconfirmed"; // tournage : le vidéaste n'a pas encore répondu
 
 export interface InboxItem {
   id: string;
   typology: InboxTypology;
   score: number;
-  slot: {
+  /**
+   * Fiche concernée — présent pour les typologies `shoot_*`, qui portent sur un
+   * tournage (Entity) et non sur une publication. Exclusif avec `slot`.
+   */
+  entity?: {
+    id: string;
+    label: string;
+    scheduledAt: string | null;
+    updatedAt: string;
+    accountHandle: string | null;
+    accountName: string | null;
+    videasteName: string | null;
+    declineReason: string | null;
+  };
+  slot?: {
     id: string;
     title: string | null;
     status: string;
@@ -89,6 +106,34 @@ const SLOT_SELECT = {
   account: { select: { id: true, handle: true, name: true } },
 } as const;
 
+const ENTITY_SELECT = {
+  id: true,
+  label: true,
+  scheduledAt: true,
+  updatedAt: true,
+  videasteConfirmation: true,
+  videasteDeclineReason: true,
+  assigneeVideaste: { select: { name: true } },
+  account: { select: { handle: true, name: true } },
+} as const;
+
+type EntityRaw = Awaited<
+  ReturnType<typeof prisma.entity.findMany<{ select: typeof ENTITY_SELECT }>>
+>[number];
+
+function serializeEntity(e: EntityRaw): InboxItem["entity"] {
+  return {
+    id: e.id,
+    label: e.label,
+    scheduledAt: e.scheduledAt ? e.scheduledAt.toISOString() : null,
+    updatedAt: e.updatedAt.toISOString(),
+    accountHandle: e.account?.handle ?? null,
+    accountName: e.account?.name ?? null,
+    videasteName: e.assigneeVideaste?.name ?? null,
+    declineReason: e.videasteDeclineReason,
+  };
+}
+
 type SlotRaw = Awaited<
   ReturnType<typeof prisma.publicationSlot.findMany<{ select: typeof SLOT_SELECT }>>
 >[number];
@@ -131,6 +176,7 @@ export async function getInboxItems(): Promise<InboxItem[]> {
     noPatternSlots,
     rushesOverdueSlots,
     bankReadySlots,
+    shootAvailabilityEntities,
   ] = await Promise.all([
     // Versions à valider (EDIT_REVIEW + version pending).
     prisma.publicationSlot.findMany({
@@ -213,6 +259,24 @@ export async function getInboxItems(): Promise<InboxItem[]> {
       orderBy: { updatedAt: "desc" },
       take: ITEM_LIMIT_PER_TYPE,
     }),
+    // Tournages à venir dont la disponibilité du vidéaste n'est pas acquise :
+    // pas encore répondu, ou explicitement décliné (il faut réassigner).
+    // Restreint aux fiches visibles par l'équipe : un tournage encore en
+    // attente de validation admin est déjà remonté par la commande.
+    prisma.entity.findMany({
+      where: {
+        type: { hasPlanning: true, visibility: "team" },
+        isArchived: false,
+        status: "PLANNED",
+        scheduledAt: { gte: now },
+        assigneeVideasteId: { not: null },
+        validationStatus: { notIn: [...ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES] },
+        OR: [{ videasteConfirmation: null }, { videasteConfirmation: "DECLINED" }],
+      },
+      select: ENTITY_SELECT,
+      orderBy: { scheduledAt: "asc" },
+      take: ITEM_LIMIT_PER_TYPE,
+    }),
   ]);
 
   // Dédup : un slot peut apparaître dans plusieurs typologies. On garde
@@ -257,10 +321,23 @@ export async function getInboxItems(): Promise<InboxItem[]> {
   for (const s of noPatternSlots) addItem(s, "no_pattern", 40);
   for (const s of bankReadySlots) addItem(s, "bank_ready", 20);
 
-  const all = Array.from(byId.values());
+  // Tournages : un vidéaste indisponible bloque la date (score haut, juste
+  // sous les retards) ; une absence de réponse est un rappel (score bas).
+  const entityItems: InboxItem[] = shootAvailabilityEntities.map((e) => {
+    const declined = e.videasteConfirmation === "DECLINED";
+    return {
+      id: `entity:${e.id}`,
+      typology: declined ? ("shoot_declined" as const) : ("shoot_unconfirmed" as const),
+      score: declined ? 85 : 45,
+      entity: serializeEntity(e),
+    };
+  });
+
+  const all = [...Array.from(byId.values()), ...entityItems];
+  const sortKey = (i: InboxItem) => i.slot?.updatedAt ?? i.entity?.updatedAt ?? "";
   all.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return b.slot.updatedAt.localeCompare(a.slot.updatedAt);
+    return sortKey(b).localeCompare(sortKey(a));
   });
   return all.slice(0, MAX_TOTAL_ITEMS);
 }

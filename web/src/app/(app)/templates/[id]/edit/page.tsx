@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     where: { id },
     select: { name: true },
   });
-  return { title: `Édition · ${template?.name ?? "Template"} | Toolbox Immo` };
+  return { title: `Édition · ${template?.name ?? "Template"}` };
 }
 
 /**

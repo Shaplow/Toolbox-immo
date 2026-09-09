@@ -110,6 +110,8 @@ interface Props {
   monteurs: { id: string; name: string }[];
   cms: { id: string; name: string }[];
   videastes: { id: string; name: string }[];
+  /** Équipe par défaut du compte — affichée en repli sur les rôles non surchargés. */
+  accountDefaultTeam?: { videasteName?: string | null; monteurName?: string | null; cmName?: string | null };
   builderTemplates: { id: string; name: string }[];
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
@@ -128,6 +130,7 @@ export function RecipeForm({
   monteurs,
   cms,
   videastes,
+  accountDefaultTeam,
   builderTemplates,
   captionPresets,
   descriptionPrompts,
@@ -323,6 +326,13 @@ export function RecipeForm({
               monteurs={monteurs}
               cms={cms}
               videastes={videastes}
+              accountDefaults={
+                accountDefaultTeam && {
+                  videasteName: accountDefaultTeam.videasteName,
+                  monteurName: accountDefaultTeam.monteurName,
+                  cmName: accountDefaultTeam.cmName,
+                }
+              }
               dayOfWeekHelp={
                 schedule.dayOfWeek.length === 0
                   ? "Aucun jour sélectionné : aucune génération auto, slots créés à la main."

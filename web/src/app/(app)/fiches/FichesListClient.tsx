@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Table, type TableColumn } from "@/components/ui/Table";
 import { Tabs } from "@/components/ui/Tabs";
 import { toast } from "@/components/ui/Toast";
-import { dateFr } from "@/lib/date/formatFr";
+import { dateFr, shortDateTimeFr } from "@/lib/date/formatFr";
 import { CreateEntityModal } from "@/components/entities/CreateEntityModal";
 import { EntityCalendar } from "@/components/entities/EntityCalendar";
 import {
@@ -133,6 +133,19 @@ export function FichesListClient({
       });
     }
     if (activeType?.hasPlanning) {
+      // Pour un type à planning, la date planifiée est l'information
+      // principale — et c'est elle qui explique qu'une fiche n'apparaisse pas
+      // dans la vue Planning (semaine courante).
+      cols.push({
+        id: "scheduledAt",
+        label: "Date",
+        sortable: true,
+        cell: (row) => (
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {row.scheduledAt ? shortDateTimeFr(row.scheduledAt) : "Non planifiée"}
+          </span>
+        ),
+      });
       cols.push({
         id: "status",
         label: "Statut",

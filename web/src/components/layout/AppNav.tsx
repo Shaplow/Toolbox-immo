@@ -31,6 +31,7 @@ import {
 import { KbdChord } from "@/components/ui/Kbd";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { canAccessTool } from "@/lib/permissions/tools";
+import { roleLabelFr } from "@/types/roles";
 import { canViewMediaLibrary } from "@/lib/permissions/mediaLibrary";
 import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
@@ -193,15 +194,7 @@ export function AppNav({
     ? (navUser.name?.trim() || "Mon espace")
     : "Team PDC";
 
-  const viewAsRoleLabel = isRoleOverride
-    ? effectiveUser.role === "VIDEASTE"
-      ? "Vidéaste"
-      : effectiveUser.role === "MONTEUR"
-        ? "Monteur"
-        : effectiveUser.role === "CM"
-          ? "CM"
-          : "Admin"
-    : "Admin";
+  const viewAsRoleLabel = isRoleOverride ? roleLabelFr(effectiveUser.role) : "Admin";
 
   return (
     <aside
@@ -388,12 +381,7 @@ export function AppNav({
             : isRoleOverride
               ? viewAsRoleLabel
               : (navUser.role ?? "User");
-          const roleLabel =
-            roleRaw.toLowerCase() === "admin" ? "Admin"
-            : roleRaw === "VIDEASTE" ? "Vidéaste"
-            : roleRaw === "MONTEUR"  ? "Monteur"
-            : roleRaw === "CM"       ? "CM"
-            : roleRaw.charAt(0) + roleRaw.slice(1).toLowerCase();
+          const roleLabel = roleLabelFr(roleRaw);
 
           return (
             <DropdownMenu

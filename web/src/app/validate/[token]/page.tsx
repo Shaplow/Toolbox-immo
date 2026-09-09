@@ -18,6 +18,7 @@ import { resolveClientValidationConfig } from "@/lib/services/slot/config";
 import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 import { getSlotFinalVideoUrl } from "@/lib/publications/finalVideo";
 import { ValidationActions } from "./ValidationActions";
+import { PARIS_TZ } from "@/lib/date/formatFr";
 
 type PageProps = { params: Promise<{ token: string }> };
 
@@ -132,6 +133,7 @@ export default async function ValidatePage({ params }: PageProps) {
                 <>
                   Publication prévue le{" "}
                   {new Date(slot.scheduledAt).toLocaleString("fr-FR", {
+                    timeZone: PARIS_TZ,
                     weekday: "long",
                     day: "numeric",
                     month: "long",

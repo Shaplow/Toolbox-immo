@@ -1,6 +1,7 @@
 "use client";
 
 import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
+import { localInputToIso } from "@/lib/date/formatFr";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
@@ -116,7 +117,7 @@ export function CreateEntityModal({
           fields,
           accountId: type.hasAccount ? accountId || null : null,
           relatedEntityId: relatedEntityId || null,
-          scheduledAt: type.hasPlanning ? new Date(scheduledAt).toISOString() : null,
+          scheduledAt: type.hasPlanning ? localInputToIso(scheduledAt) : null,
           assigneeVideasteId: type.hasAssignees ? videasteId || null : null,
           defaultAssigneeMonteurId: type.hasAssignees ? monteurId || null : null,
           defaultAssigneeCmId: type.hasAssignees ? cmId || null : null,

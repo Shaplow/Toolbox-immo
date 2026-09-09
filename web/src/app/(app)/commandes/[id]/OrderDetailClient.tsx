@@ -22,8 +22,9 @@ import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
 import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
-import { isoToLocalInput, shortDateTimeFr } from "@/lib/date/formatFr";
-import { STATUS_LABELS } from "@/types/calendar";
+import { isoToLocalInput, localInputToIso, shortDateTimeFr } from "@/lib/date/formatFr";
+import type { SlotStatus } from "@/types/calendar";
+import { slotBadgeLabel } from "@/lib/slots/statusLabels";
 import {
   ENTITY_VALIDATION_BADGE,
   ENTITY_VALIDATION_LABELS,
@@ -54,6 +55,12 @@ function isAdminSlot(
   return "id" in slot;
 }
 
+const ROLE_LABELS: Record<"videaste" | "monteur" | "cm", string> = {
+  videaste: "vidéaste",
+  monteur: "monteur",
+  cm: "CM",
+};
+
 export function OrderDetailClient({
   order,
   isAdmin,
@@ -69,6 +76,48 @@ export function OrderDetailClient({
   const editable = !isAdmin && (order.status === "SUBMITTED" || order.status === "REJECTED");
 
   // ─── Actions de cycle de vie ────────────────────────────────────────────
+  /**
+   * Validation : le succès seul ne suffit pas. Un tournage resté sans vidéaste
+   * n'apparaît dans la worklist de personne — l'admin doit le savoir tout de
+   * suite, et le bandeau au-dessus le lui rappellera ensuite.
+   */
+  async function runValidate() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/validate`, { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        failed?: { label: string; error: string }[];
+        unassignedShoots?: { id: string; label: string }[];
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? "Échec de la validation.");
+        return;
+      }
+      if (data.failed?.length) {
+        toast.error(
+          `Publications non créées : ${data.failed.map((f) => `${f.label} (${f.error})`).join(" · ")}`,
+        );
+      }
+      if (data.unassignedShoots?.length) {
+        toast.error(
+          `Commande validée, mais aucun vidéaste sur ${data.unassignedShoots
+            .map((e) => `« ${e.label} »`)
+            .join(", ")} — assignez-le depuis la fiche.`,
+        );
+      } else {
+        toast.success(
+          "Commande validée — publications créées, à placer depuis l'onglet Missions du calendrier.",
+        );
+      }
+      router.refresh();
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runAction(
     path: string,
     body?: Record<string, unknown>,
@@ -150,7 +199,7 @@ export function OrderDetailClient({
           label: draft.label,
           fields: draft.fields,
           ...(hasPlanning && draft.scheduledAt
-            ? { scheduledAt: new Date(draft.scheduledAt).toISOString() }
+            ? { scheduledAt: localInputToIso(draft.scheduledAt) }
             : {}),
         }),
       });
@@ -202,7 +251,7 @@ export function OrderDetailClient({
       const res = await fetch(`/api/calendar/slots/${slotId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scheduledAt: new Date(value).toISOString() }),
+        body: JSON.stringify({ scheduledAt: localInputToIso(value) }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -257,7 +306,7 @@ export function OrderDetailClient({
                 <Button
                   size="sm"
                   onClick={() =>
-                    void runAction("/validate", undefined, "Commande validée — publications créées en banque.")
+                    void runValidate()
                   }
                   disabled={busy}
                 >
@@ -318,6 +367,34 @@ export function OrderDetailClient({
             {!isAdmin && " — corrigez les fiches ci-dessous puis re-soumettez."}
           </p>
         )}
+        {/* Deux recettes de la commande désignent des personnes différentes
+            pour un même rôle : la première l'emporte, silencieusement. On le
+            dit — persistant, car le choix reste vrai après la validation. */}
+        {isAdmin &&
+          order.assigneeConflicts?.map((c) => (
+            <p
+              key={`conflict-${c.role}-${c.keptRecipeLabel}`}
+              className="mt-3 text-[13px] text-warning-700 bg-warning-50 border border-warning-200 rounded-md px-3 py-2"
+            >
+              Recettes en désaccord sur le {ROLE_LABELS[c.role]} : « {c.keptRecipeLabel} » désigne{" "}
+              {c.keptName} (appliqué),{" "}
+              {c.ignored.map((i) => `« ${i.recipeLabel} » désigne ${i.name}`).join(", ")}.
+            </p>
+          ))}
+        {/* Un tournage sans vidéaste n'apparaît dans la worklist de personne.
+            Persistant (pas un toast) et cliquable jusqu'à l'assignation. */}
+        {isAdmin &&
+          order.entities.filter((e) => e.missingVideaste).map((e) => (
+            <p
+              key={`novideaste-${e.id}`}
+              className="mt-3 text-[13px] text-warning-700 bg-warning-50 border border-warning-200 rounded-md px-3 py-2"
+            >
+              Aucun vidéaste sur « {e.label} » — personne ne verra ce tournage.{" "}
+              <Link href={`/fiches/${e.id}`} className="underline font-medium">
+                Assigner un vidéaste
+              </Link>
+            </p>
+          ))}
         {order.notes && (
           <p className="mt-3 text-[13px] text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
             {order.notes}
@@ -448,7 +525,7 @@ export function OrderDetailClient({
           <p className="text-[13px] text-muted-foreground">
             {order.status === "SUBMITTED"
               ? isAdmin
-                ? "Les publications seront créées (en banque) à la validation de la commande."
+                ? "Les publications seront créées à la validation de la commande, sans date — à placer ensuite sur le calendrier."
                 : "Les vidéos seront lancées quand l'équipe aura validé la commande."
               : "Aucune publication liée."}
           </p>
@@ -464,25 +541,34 @@ export function OrderDetailClient({
                 </span>
                 <span className="text-[10px] rounded px-1.5 py-0.5 border border-border bg-muted text-muted-foreground">
                   {isAdminSlot(slot)
-                    ? (STATUS_LABELS[slot.status as keyof typeof STATUS_LABELS] ?? slot.status)
+                    ? slotBadgeLabel(slot.status as SlotStatus, slot.scheduledAt)
                     : slot.stepLabel}
                 </span>
-                {slot.scheduledAt ? (
-                  <span className="text-[12px] text-muted-foreground">
-                    {shortDateTimeFr(slot.scheduledAt)}
-                  </span>
-                ) : isAdminSlot(slot) ? (
+                {isAdminSlot(slot) ? (
                   <div className="flex items-center gap-1.5">
                     <DateTimeField
-                      value={slotDates[slot.id] ?? ""}
+                      // Pré-rempli avec la date en place : le placement n'était
+                      // possible qu'une fois, il fallait sortir de la commande
+                      // pour corriger une date posée par erreur.
+                      value={
+                        slotDates[slot.id] ??
+                        (slot.scheduledAt ? isoToLocalInput(slot.scheduledAt) : "")
+                      }
                       onChange={(v) => setSlotDates((prev) => ({ ...prev, [slot.id]: v }))}
+                      // Heure de publication de la recette plutôt qu'un 09:00
+                      // générique qu'il fallait corriger à chaque placement.
+                      defaultTime={slot.defaultTime ?? undefined}
                     />
                     {slotDates[slot.id] && (
                       <Button size="sm" onClick={() => void saveSlotDate(slot.id)} disabled={busy}>
-                        Placer
+                        {slot.scheduledAt ? "Replacer" : "Placer"}
                       </Button>
                     )}
                   </div>
+                ) : slot.scheduledAt ? (
+                  <span className="text-[12px] text-muted-foreground">
+                    {shortDateTimeFr(slot.scheduledAt)}
+                  </span>
                 ) : (
                   <span className="text-[12px] text-muted-foreground italic">À planifier</span>
                 )}

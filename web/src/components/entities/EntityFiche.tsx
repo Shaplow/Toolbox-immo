@@ -27,6 +27,7 @@ import {
   MoreHorizontal,
   Archive,
   ArchiveRestore,
+  ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -41,8 +42,14 @@ import { AttachSlotModal, type AttachRecipeOption, type AttachAccountOption } fr
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { EntityRushesPanel, type EntityRush } from "@/components/entities/EntityRushesPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { isoToLocalInput, shortDateTimeFr } from "@/lib/date/formatFr";
-import { STATUS_LABELS } from "@/types/calendar";
+import {
+  isPastLocalInput,
+  isoToLocalInput,
+  localInputToIso,
+  shortDateTimeFr,
+} from "@/lib/date/formatFr";
+import type { SlotStatus } from "@/types/calendar";
+import { slotBadgeLabel } from "@/lib/slots/statusLabels";
 import {
   ENTITY_STATUS_BADGE,
   ENTITY_STATUS_LABELS,
@@ -93,11 +100,18 @@ export interface EntityFicheData {
   scheduledAtLabel: string | null;
   assigneeVideasteId: string | null;
   assigneeVideasteName: string | null;
+  /** null = en attente, "CONFIRMED" | "DECLINED" (réponse du vidéaste). */
+  videasteConfirmation: "CONFIRMED" | "DECLINED" | null;
+  videasteConfirmationAt: string | null;
+  videasteDeclineReason: string | null;
   defaultAssigneeMonteurId: string | null;
   defaultAssigneeCmId: string | null;
   notes: string | null;
   relatedEntityId: string | null;
   relatedLabel: string | null;
+  /** Commande d'origine, si la fiche est née d'un bon de commande. */
+  orderId: string | null;
+  orderLabel: string | null;
   slots: EntitySlotRef[];
   shootSlots: EntitySlotRef[];
   rushes: EntityRush[];
@@ -129,12 +143,16 @@ const ACTIVITY_LABELS: Record<string, string> = {
   RUSHES_UPLOADED: "Rush ajouté",
   RUSHES_DELETED: "Rush supprimé",
   SHOT: "Marquée réalisée",
-  SLOT_ATTACHED: "Reel ajouté",
+  // Le même événement couvre les deux chemins (reel sur un tournage, missions
+  // sur une fiche data) — d'où un libellé qui vaut pour les deux.
+  SLOT_ATTACHED: "Publication rattachée",
   CANCELLED: "Fiche annulée",
   DONE: "Fiche terminée",
   VALIDATION_APPROVED: "Fiche validée",
   VALIDATION_REJECTED: "Fiche refusée",
   VALIDATION_REQUESTED: "Validation client demandée",
+  VIDEASTE_CONFIRMED: "Disponibilité confirmée",
+  VIDEASTE_DECLINED: "Vidéaste indisponible",
 };
 
 export function EntityFiche({
@@ -241,7 +259,7 @@ export function EntityFiche({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+          scheduledAt: scheduledAt ? localInputToIso(scheduledAt) : null,
           assigneeVideasteId: assigneeVideasteId || null,
           defaultAssigneeMonteurId: defaultAssigneeMonteurId || null,
           defaultAssigneeCmId: defaultAssigneeCmId || null,
@@ -259,6 +277,42 @@ export function EntityFiche({
       toast.error("Erreur réseau.");
     } finally {
       setSavingPlanning(false);
+    }
+  }
+
+  // ─── Disponibilité du vidéaste ──────────────────────────────────────────
+  // Le vidéaste assigné répond sur un tournage validé : l'admin sait qui sera
+  // là avant le jour J, au lieu de le découvrir par l'absence.
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
+  const [answering, setAnswering] = useState(false);
+
+  async function answerAvailability(answer: "CONFIRMED" | "DECLINED", reason?: string) {
+    setAnswering(true);
+    try {
+      const res = await fetch(`/api/entities/${entity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videasteConfirmation: answer,
+          ...(answer === "DECLINED" ? { videasteDeclineReason: reason ?? "" } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error ?? "Échec de l'enregistrement.");
+        return;
+      }
+      toast.success(
+        answer === "CONFIRMED" ? "Disponibilité confirmée." : "Indisponibilité signalée.",
+      );
+      setDeclineOpen(false);
+      setDeclineReason("");
+      router.refresh();
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setAnswering(false);
     }
   }
 
@@ -395,6 +449,17 @@ export function EntityFiche({
   const attachButtonLabel = attachMode === "reel" ? "Ajouter un reel" : "Lancer des missions";
   const status = entity.status ?? "PLANNED";
 
+  // Le bandeau ne s'adresse qu'au vidéaste du tournage : la passerelle d'accès
+  // par reel (entityScope) amène ici d'autres vidéastes, qui ne répondent pas
+  // à sa place. L'admin voit le badge, pas les boutons.
+  const isAssignedVideaste = !isAdmin && currentUserId === entity.assigneeVideasteId;
+  const showAvailabilityPrompt =
+    isAssignedVideaste &&
+    entity.hasPlanning &&
+    status === "PLANNED" &&
+    entity.videasteConfirmation !== "CONFIRMED";
+
+
   const assigneeOptions = (opts: { id: string; name: string }[]) => [
     { value: "", label: "— Aucun —" },
     ...opts.map((o) => ({ value: o.id, label: o.name })),
@@ -487,6 +552,15 @@ export function EntityFiche({
                 <span className="inline-flex items-center gap-1">
                   <UserIcon size={13} /> {entity.assigneeVideasteName}
                 </span>
+              )}
+              {entity.orderId && (
+                <Link
+                  href={`/commandes/${entity.orderId}`}
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <ClipboardList size={13} />
+                  {entity.orderLabel ?? "Commande d'origine"}
+                </Link>
               )}
             </div>
           </div>
@@ -603,6 +677,54 @@ export function EntityFiche({
         )}
       </div>
 
+      {/* Disponibilité — vidéaste assigné */}
+      {showAvailabilityPrompt && (
+        <div
+          className={[
+            "rounded-lg border px-4 py-3 flex flex-wrap items-center gap-3",
+            entity.videasteConfirmation === "DECLINED"
+              ? "border-danger-200 bg-danger-50"
+              : "border-warning-200 bg-warning-50",
+          ].join(" ")}
+        >
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium text-foreground">
+              {entity.videasteConfirmation === "DECLINED"
+                ? "Vous avez signalé votre indisponibilité"
+                : "Êtes-vous disponible pour ce tournage ?"}
+            </p>
+            <p className="text-[12px] text-muted-foreground">
+              {entity.videasteConfirmation === "DECLINED"
+                ? "L'admin est prévenu et doit réassigner le tournage."
+                : entity.scheduledAtLabel
+                  ? `Prévu le ${entity.scheduledAtLabel}. Confirmez pour que l'admin sache que la date est tenue.`
+                  : "Confirmez pour que l'admin sache que la mission est prise en charge."}
+            </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {entity.videasteConfirmation !== "DECLINED" && (
+              <Button
+                size="sm"
+                onClick={() => void answerAvailability("CONFIRMED")}
+                disabled={answering}
+              >
+                Je suis disponible
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDeclineOpen(true)}
+              disabled={answering}
+            >
+              {entity.videasteConfirmation === "DECLINED"
+                ? "Modifier le motif"
+                : "Je ne suis pas disponible"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Champs custom */}
       <Section title="Champs" icon={FileText}>
         {entity.fieldSchema.length === 0 ? (
@@ -645,24 +767,65 @@ export function EntityFiche({
         <Section title="Planning & équipe" icon={CalendarClock}>
           <div className="space-y-3">
             <FormField label="Date et heure">
-              <DateTimeField
-                value={scheduledAt}
-                onChange={(v) => {
-                  setScheduledAt(v);
-                  setPlanningDirty(true);
-                }}
-              />
+              <>
+                <DateTimeField
+                  value={scheduledAt}
+                  onChange={(v) => {
+                    setScheduledAt(v);
+                    setPlanningDirty(true);
+                  }}
+                />
+                {scheduledAt && isPastLocalInput(scheduledAt) && (
+                  <p className="mt-1 text-[11px] text-warning-700">
+                    Date passée — la fiche sort du planning de la semaine en cours.
+                  </p>
+                )}
+              </>
             </FormField>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <FormField label="Vidéaste">
-                <Select
-                  value={assigneeVideasteId}
-                  onChange={(v) => {
-                    setAssigneeVideasteId(v);
-                    setPlanningDirty(true);
-                  }}
-                  options={assigneeOptions(videastes)}
-                />
+                <>
+                  <Select
+                    value={assigneeVideasteId}
+                    onChange={(v) => {
+                      setAssigneeVideasteId(v);
+                      setPlanningDirty(true);
+                    }}
+                    options={assigneeOptions(videastes)}
+                  />
+                  {/* La worklist du vidéaste liste les fiches qui lui sont
+                      assignées : sans vidéaste, le tournage n'est nulle part. */}
+                  {!assigneeVideasteId && entity.hasRushes && (
+                    <p className="mt-1 text-[11px] text-warning-700">
+                      Non assigné — ce tournage n&apos;apparaît dans la liste d&apos;aucun vidéaste.
+                    </p>
+                  )}
+                  {/* Réponse du vidéaste — masquée tant que la fiche attend la
+                      validation admin : elle ne lui est pas encore visible. */}
+                  {assigneeVideasteId &&
+                    !planningDirty &&
+                    entity.validationStatus !== "PENDING_ADMIN" &&
+                    entity.validationStatus !== "REJECTED" &&
+                    (entity.videasteConfirmation === "CONFIRMED" ? (
+                      <p className="mt-1 text-[11px] text-success-700">
+                        Disponibilité confirmée
+                        {entity.videasteConfirmationAt
+                          ? ` le ${shortDateTimeFr(entity.videasteConfirmationAt)}`
+                          : ""}
+                        .
+                      </p>
+                    ) : entity.videasteConfirmation === "DECLINED" ? (
+                      <p className="mt-1 text-[11px] text-danger-700">
+                        Indisponible
+                        {entity.videasteDeclineReason ? ` — ${entity.videasteDeclineReason}` : ""}.
+                        Réassignez le tournage.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        En attente de confirmation du vidéaste.
+                      </p>
+                    ))}
+                </>
               </FormField>
               <FormField label="Monteur par défaut">
                 <Select
@@ -743,12 +906,14 @@ export function EntityFiche({
                       <p className="text-[13px] font-medium text-foreground truncate">
                         {slot.title ?? "Reel"}
                       </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {slot.scheduledAt ? shortDateTimeFr(slot.scheduledAt) : "En banque"}
-                      </p>
+                      {slot.scheduledAt && (
+                        <p className="text-[11px] text-muted-foreground">
+                          {shortDateTimeFr(slot.scheduledAt)}
+                        </p>
+                      )}
                     </div>
                     <span className="shrink-0 text-[11px] text-muted-foreground rounded-md bg-muted px-1.5 py-0.5 border border-border">
-                      {STATUS_LABELS[slot.status as keyof typeof STATUS_LABELS] ?? slot.status}
+                      {slotBadgeLabel(slot.status as SlotStatus, slot.scheduledAt)}
                     </span>
                   </Link>
                 </li>
@@ -797,6 +962,28 @@ export function EntityFiche({
           onChange={(e) => setRejectComment(e.target.value)}
           rows={3}
           placeholder="Motif (optionnel, visible dans l'activité)…"
+          className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
+        />
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={declineOpen}
+        title="Signaler une indisponibilité ?"
+        description="L'admin est prévenu et devra réassigner le tournage à un autre vidéaste."
+        confirmLabel="Je ne suis pas disponible"
+        variant="danger"
+        loading={answering}
+        onConfirm={() => void answerAvailability("DECLINED", declineReason)}
+        onCancel={() => {
+          setDeclineOpen(false);
+          setDeclineReason("");
+        }}
+      >
+        <textarea
+          value={declineReason}
+          onChange={(e) => setDeclineReason(e.target.value)}
+          rows={3}
+          placeholder="Motif (optionnel, visible par l'admin)…"
           className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
         />
       </ConfirmDialog>

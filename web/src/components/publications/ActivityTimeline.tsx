@@ -36,7 +36,7 @@ import { STATUS_LABELS } from "@/lib/slots/statusLabels";
 import type { SlotStatus } from "@/types/calendar";
 import { Section } from "@/components/ui/molecules/Section";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { dateFr, dayMonthLongFr } from "@/lib/date/formatFr";
+import { dateFr, dayMonthLongFr, PARIS_TZ } from "@/lib/date/formatFr";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -204,7 +204,11 @@ function activityLabel(type: string, payload: Record<string, unknown> | null): s
       if (!iso) return "Sortie de banque · publication programmée";
       const d = new Date(iso);
       const date = dayMonthLongFr(d);
-      const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      const time = d.toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: PARIS_TZ,
+      });
       return `Sortie de banque · programmée le ${date} à ${time}`;
     }
     default:

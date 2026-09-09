@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     select: { template: { select: { name: true } } },
   });
   const name = render?.template?.name ?? "Rendu";
-  return { title: `${name} | Toolbox Immo` };
+  return { title: `${name}` };
 }
 
 export default async function RenderPage({ params }: Props) {

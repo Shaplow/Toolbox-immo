@@ -17,6 +17,7 @@ import { getPublicationPhase } from "@/lib/slots/phase";
 import type { SlotDetailPanelMode } from "@/components/calendar/SlotDetailPanel";
 import type { WorklistSlot } from "@/types/worklist";
 import { isSlotOverdue } from "@/types/worklist";
+import { PARIS_TZ } from "@/lib/date/formatFr";
 
 /**
  * Badges contextuels optionnels pour les monteurs.
@@ -65,10 +66,12 @@ function formatScheduledAt(date: Date): string {
     weekday: "short",
     day: "numeric",
     month: "long",
+    timeZone: PARIS_TZ,
   });
   const timePart = date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: PARIS_TZ,
   });
   return `${datePart} · ${timePart}`;
 }

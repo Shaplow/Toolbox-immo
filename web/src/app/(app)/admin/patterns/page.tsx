@@ -7,7 +7,7 @@ import { PatternsCatalogClient } from "@/components/admin/PatternsCatalogClient"
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Catalogue de recettes | Toolbox Immo Admin",
+  title: "Catalogue de recettes",
 };
 
 /**

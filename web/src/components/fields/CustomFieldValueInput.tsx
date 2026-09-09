@@ -10,6 +10,8 @@ interface CustomFieldValueInputProps {
   onChange: (value: string) => void;
   /** Affiche le libellé au-dessus (contexte formulaire). Sinon input « nu » (cellule tableur). */
   showLabel?: boolean;
+  /** Message d'erreur affiché sous le champ (validation de formulaire). */
+  error?: string;
   disabled?: boolean;
   autoFocus?: boolean;
   onBlur?: () => void;
@@ -31,6 +33,7 @@ export function CustomFieldValueInput({
   value,
   onChange,
   showLabel = false,
+  error,
   disabled = false,
   autoFocus = false,
   onBlur,
@@ -91,6 +94,7 @@ export function CustomFieldValueInput({
         {field.required && <span className="text-danger-600"> •</span>}
       </span>
       {input}
+      {error && <span className="text-[11px] text-danger-600">{error}</span>}
     </label>
   );
 }

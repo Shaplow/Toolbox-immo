@@ -6,6 +6,7 @@ import { ChevronLeft, Film, Database, ArrowRight, CalendarDays, Instagram } from
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { AccountRecipesList, type RecipeItem } from "@/components/admin/AccountRecipesList";
+import { AccountDefaultTeam } from "@/components/admin/AccountDefaultTeam";
 import { PageShell } from "@/components/ui/PageShell";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { KPIPill } from "@/components/ui/molecules/KPIPill";
@@ -18,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     where: { id },
     select: { handle: true },
   });
-  return { title: `@${account?.handle ?? "Compte"} | Toolbox Immo Admin` };
+  return { title: `@${account?.handle ?? "Compte"}` };
 }
 
 export default async function AccountFichePage({ params }: Props) {
@@ -314,6 +315,18 @@ export default async function AccountFichePage({ params }: Props) {
     </>
   );
 
+  // Recettes actives dont un rôle reste vide une fois l'héritage du compte
+  // appliqué — le seul chiffre actionnable de cet en-tête.
+  const incompleteTeamCount = allRecipes.filter(
+    (r) =>
+      r.isActive &&
+      [
+        r.defaultAssigneeVideasteId ?? account.defaultAssigneeVideasteId,
+        r.defaultAssigneeMonteurId ?? account.defaultAssigneeMonteurId,
+        r.defaultAssigneeCmId ?? account.defaultAssigneeCmId,
+      ].some((id) => !id),
+  ).length;
+
   return (
     <PageShell variant="wide">
       <div className="px-6 sm:px-8 pt-6 pb-12">
@@ -325,6 +338,11 @@ export default async function AccountFichePage({ params }: Props) {
           kpis={
             <>
               <KPIPill label="Recettes actives" value={`${activeRecipesCount}/${totalRecipesCount}`} />
+              {/* Ce qui manque compte plus que ce qui existe : une recette sans
+                  équipe complète produit des publications que personne ne voit. */}
+              {incompleteTeamCount > 0 && (
+                <KPIPill label="Sans équipe complète" value={String(incompleteTeamCount)} />
+              )}
             </>
           }
           actions={
@@ -342,9 +360,28 @@ export default async function AccountFichePage({ params }: Props) {
         />
 
         <div className="space-y-8">
+          <AccountDefaultTeam
+            accountId={account.id}
+            initial={{
+              videasteId: account.defaultAssigneeVideasteId,
+              monteurId: account.defaultAssigneeMonteurId,
+              cmId: account.defaultAssigneeCmId,
+            }}
+            videastes={videasteUsers.map((u) => ({ id: u.id, name: u.name }))}
+            monteurs={monteurUsers.map((u) => ({ id: u.id, name: u.name }))}
+            cms={cmUsers.map((u) => ({ id: u.id, name: u.name }))}
+          />
+
           <AccountRecipesList
             accountId={account.id}
             accountHandle={account.handle}
+            accountDefaultTeam={{
+              videasteName:
+                videasteUsers.find((u) => u.id === account.defaultAssigneeVideasteId)?.name ?? null,
+              monteurName:
+                monteurUsers.find((u) => u.id === account.defaultAssigneeMonteurId)?.name ?? null,
+              cmName: cmUsers.find((u) => u.id === account.defaultAssigneeCmId)?.name ?? null,
+            }}
             initialRecipes={allRecipes}
             catalogTemplates={catalogTemplates}
             builderTemplates={builderTemplates}

@@ -2,11 +2,10 @@
  * PATCH  /api/entity-types/[id] — met à jour un type de fiche (ADMIN).
  * DELETE /api/entity-types/[id] — supprime un type custom (ADMIN).
  *
- * Types système (`isSystem=true`, ex-Bien/ex-Tournage) : seuls name/namePlural/
- * icon/fieldSchema restent éditables — visibility et les capacités structurelles
- * (hasPlanning/hasAccount/hasRushes/hasAssignees) sont figées (elles pilotent
- * `entityScope.ts` et le reste du système, un changement casserait le scoping).
- * Suppression toujours refusée pour un type système.
+ * Aucun type n'est verrouillé : les types seedés (ex-Bien/ex-Tournage) s'éditent
+ * et se suppriment comme les types custom. Restent les gardes métier : un type
+ * « équipe » exige la capacité « assignés », et un type encore référencé (fiches
+ * existantes, modèle de commande) refuse la suppression.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api/requireAuth";
@@ -18,8 +17,6 @@ import {
 } from "@/lib/customFields";
 
 const MAX_NAME = 100;
-
-const STRUCTURAL_KEYS = ["visibility", "hasPlanning", "hasAccount", "hasRushes", "hasAssignees"] as const;
 
 const entityTypeSelect = {
   id: true,
@@ -53,7 +50,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const existing = await prisma.entityType.findUnique({
     where: { id },
-    select: { id: true, isSystem: true },
+    select: { id: true },
   });
   if (!existing) return NextResponse.json({ error: "Type de fiche introuvable" }, { status: 404 });
 
@@ -62,18 +59,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     body = (await req.json()) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
-  }
-
-  if (existing.isSystem) {
-    const attemptedStructural = STRUCTURAL_KEYS.filter((k) => body[k] !== undefined);
-    if (attemptedStructural.length > 0) {
-      return NextResponse.json(
-        {
-          error: `Type système : ${attemptedStructural.join(", ")} non modifiable(s) (seuls name/namePlural/icon/fieldSchema le sont)`,
-        },
-        { status: 400 },
-      );
-    }
   }
 
   const data: Record<string, unknown> = {};
@@ -107,30 +92,28 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (body.needsClientValidation !== undefined) {
     data.needsClientValidation = body.needsClientValidation === true;
   }
-  if (!existing.isSystem) {
-    if (body.position !== undefined) {
-      data.position = typeof body.position === "number" ? body.position : 0;
-    }
-    if (body.hasPlanning !== undefined) data.hasPlanning = body.hasPlanning === true;
-    if (body.hasAccount !== undefined) data.hasAccount = body.hasAccount === true;
-    if (body.hasRushes !== undefined) data.hasRushes = body.hasRushes === true;
-    if (body.hasAssignees !== undefined) data.hasAssignees = body.hasAssignees === true;
-    if (body.visibility !== undefined) data.visibility = body.visibility === "team" ? "team" : "admin";
+  if (body.position !== undefined) {
+    data.position = typeof body.position === "number" ? body.position : 0;
+  }
+  if (body.hasPlanning !== undefined) data.hasPlanning = body.hasPlanning === true;
+  if (body.hasAccount !== undefined) data.hasAccount = body.hasAccount === true;
+  if (body.hasRushes !== undefined) data.hasRushes = body.hasRushes === true;
+  if (body.hasAssignees !== undefined) data.hasAssignees = body.hasAssignees === true;
+  if (body.visibility !== undefined) data.visibility = body.visibility === "team" ? "team" : "admin";
 
-    const nextVisibility = (data.visibility as string | undefined) ?? undefined;
-    const nextHasAssignees = data.hasAssignees as boolean | undefined;
-    if (nextVisibility === "team") {
-      const currentHasAssignees = await prisma.entityType.findUnique({
-        where: { id },
-        select: { hasAssignees: true },
-      });
-      const effectiveHasAssignees = nextHasAssignees ?? currentHasAssignees?.hasAssignees ?? false;
-      if (!effectiveHasAssignees) {
-        return NextResponse.json(
-          { error: "Un type « équipe » doit avoir la capacité « assignés » activée" },
-          { status: 400 },
-        );
-      }
+  const nextVisibility = (data.visibility as string | undefined) ?? undefined;
+  const nextHasAssignees = data.hasAssignees as boolean | undefined;
+  if (nextVisibility === "team") {
+    const currentHasAssignees = await prisma.entityType.findUnique({
+      where: { id },
+      select: { hasAssignees: true },
+    });
+    const effectiveHasAssignees = nextHasAssignees ?? currentHasAssignees?.hasAssignees ?? false;
+    if (!effectiveHasAssignees) {
+      return NextResponse.json(
+        { error: "Un type « équipe » doit avoir la capacité « assignés » activée" },
+        { status: 400 },
+      );
     }
   }
 
@@ -151,15 +134,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     where: { id },
     select: {
       id: true,
-      isSystem: true,
       _count: { select: { entities: true, orderTemplateItems: true } },
     },
   });
   if (!existing) return NextResponse.json({ error: "Type de fiche introuvable" }, { status: 404 });
 
-  if (existing.isSystem) {
-    return NextResponse.json({ error: "Un type système ne peut pas être supprimé" }, { status: 409 });
-  }
   if (existing._count.entities > 0) {
     return NextResponse.json(
       { error: "Ce type a des fiches existantes : supprimez-les (ou changez leur type) avant" },

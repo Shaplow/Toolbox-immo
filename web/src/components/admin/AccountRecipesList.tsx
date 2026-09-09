@@ -99,6 +99,8 @@ export interface AssigneeOption {
 interface Props {
   accountId: string;
   accountHandle: string;
+  /** Équipe par défaut du compte — repli affiché sur les cartes et le drawer. */
+  accountDefaultTeam?: AccountDefaultTeam;
   initialRecipes: RecipeItem[];
   catalogTemplates: CatalogTemplate[];
   builderTemplates: { id: string; name: string }[];
@@ -239,6 +241,13 @@ interface RecipeBindingApiResponse {
   };
 }
 
+/** Équipe par défaut d'un compte, telle qu'affichée (noms résolus). */
+export interface AccountDefaultTeam {
+  videasteName?: string | null;
+  monteurName?: string | null;
+  cmName?: string | null;
+}
+
 function findAssigneeName(options: AssigneeOption[], id: string | null): string | null {
   if (!id) return null;
   return options.find((o) => o.id === id)?.name ?? null;
@@ -316,6 +325,7 @@ function bindingResponseToRecipeItem(
 export function AccountRecipesList({
   accountId,
   accountHandle,
+  accountDefaultTeam,
   initialRecipes,
   catalogTemplates,
   builderTemplates,
@@ -604,6 +614,7 @@ export function AccountRecipesList({
               key={r.id}
               recipe={r}
               pendingToggle={r.bindingId ? pendingToggles.has(r.bindingId) : false}
+              accountDefaultTeam={accountDefaultTeam}
               onClick={() => openEdit(r)}
               onPeek={() => setPeekTemplateId(r.patternTemplateId)}
               onToggle={(next) => void toggleActive(r, next)}
@@ -641,6 +652,7 @@ export function AccountRecipesList({
             monteurs={monteurs}
             cms={cms}
             videastes={videastes}
+            accountDefaultTeam={accountDefaultTeam}
             builderTemplates={builderTemplates}
             videoLibraries={videoLibraries}
             captionPresets={captionPresets}
@@ -659,17 +671,31 @@ export function AccountRecipesList({
 interface RecipeCardProps {
   recipe: RecipeItem;
   pendingToggle: boolean;
+  accountDefaultTeam?: AccountDefaultTeam;
   onClick: () => void;
   onPeek: () => void;
   onToggle: (next: boolean) => void;
 }
 
-function RecipeCard({ recipe: r, pendingToggle, onClick, onPeek, onToggle }: RecipeCardProps) {
-  const assignees = [
-    r.defaultAssigneeVideasteName,
-    r.defaultAssigneeMonteurName,
-    r.defaultAssigneeCmName,
-  ].filter(Boolean);
+function RecipeCard({
+  recipe: r,
+  pendingToggle,
+  accountDefaultTeam,
+  onClick,
+  onPeek,
+  onToggle,
+}: RecipeCardProps) {
+  // Équipe EFFECTIVE : ce qui s'appliquera réellement, héritage du compte
+  // compris. Afficher la seule valeur stockée laissait croire qu'une recette
+  // n'avait personne alors que le compte fournissait l'équipe.
+  const effectiveTeam = [
+    { own: r.defaultAssigneeVideasteName, inherited: accountDefaultTeam?.videasteName },
+    { own: r.defaultAssigneeMonteurName, inherited: accountDefaultTeam?.monteurName },
+    { own: r.defaultAssigneeCmName, inherited: accountDefaultTeam?.cmName },
+  ]
+    .map(({ own, inherited }) => ({ name: own ?? inherited ?? null, isOwn: Boolean(own) }))
+    .filter((a): a is { name: string; isOwn: boolean } => a.name !== null);
+  const overrideCount = effectiveTeam.filter((a) => a.isOwn).length;
 
   return (
     <div
@@ -729,8 +755,26 @@ function RecipeCard({ recipe: r, pendingToggle, onClick, onPeek, onToggle }: Rec
             Disponible — activer pour planifier sur ce compte
           </p>
         )}
-        {assignees.length > 0 && (
-          <p className="truncate">{assignees.join(" · ")}</p>
+        {effectiveTeam.length > 0 ? (
+          <p className="truncate">
+            {effectiveTeam.map((a, i) => (
+              <span key={`${a.name}-${i}`}>
+                {i > 0 && <span className="text-muted-foreground/50"> · </span>}
+                {/* Atténué = hérité du compte ; normal = défini sur la recette. */}
+                <span
+                  className={a.isOwn ? "" : "text-muted-foreground/60"}
+                  title={a.isOwn ? "Défini sur cette recette" : "Hérité du compte"}
+                >
+                  {a.name}
+                </span>
+              </span>
+            ))}
+            {overrideCount > 0 && (
+              <span className="ml-1.5 text-[10px] text-muted-foreground/70">· surcharge</span>
+            )}
+          </p>
+        ) : (
+          <p className="truncate italic text-muted-foreground/70">Aucune équipe</p>
         )}
       </div>
 

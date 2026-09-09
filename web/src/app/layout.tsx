@@ -38,7 +38,12 @@ const caveat = Caveat({
 });
 
 export const metadata: Metadata = {
-  title: "TemplateGen Immo",
+  // `template` : toute page qui définit son propre titre est suffixée, celles
+  // qui n'en définissent pas retombent sur `default`.
+  title: {
+    default: "Toolbox Immo",
+    template: "%s | Toolbox Immo",
+  },
   description: "Générateur de visuels immobiliers conformes",
 };
 

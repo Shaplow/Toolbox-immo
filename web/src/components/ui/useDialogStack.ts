@@ -23,19 +23,18 @@
  * ```
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { create } from "zustand";
 
 const Z_BASE = 50;
 
 interface DialogStackEntry {
   id: string;
-  onClose?: () => void;
 }
 
 interface DialogStackStore {
   stack: DialogStackEntry[];
-  push: (id: string, onClose?: () => void) => void;
+  push: (id: string) => void;
   pop: (id: string) => void;
   indexOf: (id: string) => number;
   topId: () => string | null;
@@ -43,9 +42,9 @@ interface DialogStackStore {
 
 const useDialogStackStore = create<DialogStackStore>()((set, get) => ({
   stack: [],
-  push: (id, onClose) => {
+  push: (id) => {
     if (get().stack.some((e) => e.id === id)) return;
-    set({ stack: [...get().stack, { id, onClose }] });
+    set({ stack: [...get().stack, { id }] });
   },
   pop: (id) => {
     set({ stack: get().stack.filter((e) => e.id !== id) });
@@ -71,24 +70,33 @@ function generateId() {
  */
 export function useRegisterDialog(open: boolean, onClose?: () => void) {
   const id = useMemo(() => generateId(), []);
-  const [zIndex, setZIndex] = useState(Z_BASE);
   const stack = useDialogStackStore((s) => s.stack);
+
+  // `onClose` est presque toujours une lambda inline côté appelant, donc une
+  // nouvelle référence à chaque rendu. La garder hors des dépendances d'effet
+  // est ce qui évite la boucle : sinon register se rejoue à chaque rendu →
+  // pop+push → nouvelle référence de `stack` (à laquelle ce composant est
+  // abonné) → rendu → … jusqu'au « Maximum update depth exceeded ».
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   // Register / unregister.
   useEffect(() => {
     if (!open) return;
-    useDialogStackStore.getState().push(id, onClose);
+    useDialogStackStore.getState().push(id);
     return () => {
       useDialogStackStore.getState().pop(id);
     };
-  }, [open, id, onClose]);
+  }, [open, id]);
 
-  // Update zIndex à chaque fois que la stack change.
-  useEffect(() => {
-    if (!open) return;
-    const idx = useDialogStackStore.getState().indexOf(id);
-    if (idx >= 0) setZIndex(Z_BASE + idx * 10);
-  }, [open, id, stack]);
+  // Position dans la pile → z-index, dérivé au rendu. C'était auparavant un
+  // useState alimenté par un effet : ce setState relançait un rendu à chaque
+  // mutation du store, l'autre moitié de la boucle corrigée ci-dessus. Une
+  // valeur entièrement déductible de `stack` n'a pas à être un état.
+  const idx = stack.findIndex((e) => e.id === id);
+  const zIndex = idx >= 0 ? Z_BASE + idx * 10 : Z_BASE;
 
   // ESC handler — uniquement si je suis au sommet.
   useEffect(() => {
@@ -97,12 +105,12 @@ export function useRegisterDialog(open: boolean, onClose?: () => void) {
       if (e.key !== "Escape") return;
       if (useDialogStackStore.getState().topId() === id) {
         e.stopPropagation();
-        onClose?.();
+        onCloseRef.current?.();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, id, onClose]);
+  }, [open, id]);
 
   // Body scroll lock — gère le compteur via le store.
   useEffect(() => {
@@ -117,5 +125,7 @@ export function useRegisterDialog(open: boolean, onClose?: () => void) {
     };
   }, [open]);
 
-  return { zIndex, isTop: useDialogStackStore.getState().topId() === id };
+  // `isTop` se dérive de la même source que le z-index, donc se rafraîchit
+  // quand un autre dialogue s'ouvre ou se ferme au-dessus.
+  return { zIndex, isTop: stack.length > 0 && stack[stack.length - 1].id === id };
 }

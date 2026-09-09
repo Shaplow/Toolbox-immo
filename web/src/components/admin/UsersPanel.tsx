@@ -29,6 +29,7 @@ import { Switch } from "@/components/ui/Switch";
 import { Chip } from "@/components/ui/Chip";
 import { Avatar } from "@/components/ui/Avatar";
 import { toast } from "@/components/ui/Toast";
+import { ROLE_LABELS_FR } from "@/types/roles";
 
 type TemplateStub = { id: string; name: string; client: string };
 type PresetStub = { id: string; name: string; isBuiltin: boolean };
@@ -77,14 +78,7 @@ const ROLE_VARIANT: Record<string, "default" | "peach" | "sage" | "sky" | "rose"
   USER: "default",
 };
 
-const ROLE_LABEL: Record<string, string> = {
-  ADMIN: "Admin",
-  VIDEASTE: "Vidéaste",
-  MONTEUR: "Monteur",
-  CM: "CM",
-  EXTERNAL_GENERATOR: "Client externe",
-  USER: "User",
-};
+const ROLE_LABEL: Record<string, string> = ROLE_LABELS_FR;
 
 export function UsersPanel({ templates, presets, currentUserId, impersonatedUserId }: Props) {
   const router = useRouter();

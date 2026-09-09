@@ -42,6 +42,26 @@ export interface SlotStatusMeta {
 
 const NEUTRAL = "bg-gray-100 text-gray-700 border-gray-200";
 
+/**
+ * Libellé de badge tenant compte de la planification.
+ *
+ * `PLANNED` décrit l'avancement de *production*, pas la pose au calendrier :
+ * une publication tout juste créée (commande validée, génération) est
+ * `PLANNED` sans aucune date. L'afficher « Planifiée » à côté d'un « Choisir
+ * une date » se contredit à l'écran. Tant qu'elle n'est pas datée et qu'aucune
+ * production n'a démarré, le mot juste est celui déjà employé partout
+ * ailleurs : « En banque ».
+ */
+export function slotBadgeLabel(
+  status: SlotStatus,
+  scheduledAt: Date | string | null | undefined,
+): string {
+  const meta = SLOT_STATUS_META[status];
+  if (!meta) return status;
+  if (!scheduledAt && meta.phase === "planned") return "En banque";
+  return meta.label;
+}
+
 export const SLOT_STATUS_META: Record<SlotStatus, SlotStatusMeta> = {
   DRAFT: {
     label: "Brouillon",

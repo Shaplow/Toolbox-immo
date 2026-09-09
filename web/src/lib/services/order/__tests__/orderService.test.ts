@@ -17,9 +17,12 @@ const mockOrderUpdate = vi.fn();
 const mockOrderUpdateMany = vi.fn();
 const mockClientFindUnique = vi.fn();
 const mockOrderTemplateFindUnique = vi.fn();
+const mockBindingFindMany = vi.fn(async () => []);
 const mockEntityFindMany = vi.fn();
 const mockEntityCreate = vi.fn();
 const mockEntityUpdate = vi.fn();
+// Aucune fiche n'exige de compte : la garde « compte supprimé » laisse passer.
+const mockEntityCount = vi.fn(async () => 0);
 const mockEntityFindFirst = vi.fn();
 const mockAccountFindFirst = vi.fn();
 const mockSlotCount = vi.fn();
@@ -38,9 +41,11 @@ vi.mock("@/lib/prisma", () => ({
     },
     client: { findUnique: (...a: unknown[]) => mockClientFindUnique(...a) },
     orderTemplate: { findUnique: (...a: unknown[]) => mockOrderTemplateFindUnique(...a) },
+    patternBinding: { findMany: (...a: unknown[]) => mockBindingFindMany(...a) },
     entity: {
       findMany: (...a: unknown[]) => mockEntityFindMany(...a),
       findFirst: (...a: unknown[]) => mockEntityFindFirst(...a),
+      count: (...a: unknown[]) => mockEntityCount(...a),
       create: (...a: unknown[]) => mockEntityCreate(...a),
       update: (...a: unknown[]) => mockEntityUpdate(...a),
     },
@@ -56,7 +61,23 @@ const mockPrepareEntityCreate = vi.fn();
 vi.mock("@/lib/services/entity/entityService", () => ({
   attachSlotToEntity: (...a: unknown[]) => mockAttachSlotToEntity(...a),
   prepareEntityCreate: (...a: unknown[]) => mockPrepareEntityCreate(...a),
+  // Sa résolution propre est couverte dans entityService.test.ts ; ici on
+  // vérifie seulement ce que validateOrder fait du résultat.
+  resolveDefaultAssignees: (...a: unknown[]) => mockResolveDefaultAssignees(...a),
+  // Signal informatif affiché sur la commande — sa détection est testée dans
+  // entityService.test.ts.
+  detectRecipeAssigneeConflicts: (...a: unknown[]) => mockDetectConflicts(...a),
 }));
+
+const mockDetectConflicts = vi.fn(async () => []);
+
+const mockResolveDefaultAssignees = vi.fn(
+  async (
+    _accountId: unknown,
+    _recipeIds: unknown,
+    provided: { videasteId: string | null; monteurId: string | null; cmId: string | null },
+  ) => provided,
+);
 
 const mockCreateSlot = vi.fn();
 vi.mock("@/lib/services/slot/slotService", () => ({
@@ -118,6 +139,7 @@ function mockTemplate(over: Record<string, unknown> = {}) {
     id: "ot1",
     name: "Bien + tournage",
     isArchived: false,
+    recipes: [],
     items: [
       { entityTypeId: "etype_bien", entityType: bienType },
       { entityTypeId: "etype_tournage", entityType: tournageType },
@@ -284,6 +306,24 @@ describe("createOrder — résolution client + allowlist", () => {
     expect(calls[1][0].data.relatedEntityId).toBe("e1");
     expect(calls[1][0].data.orderId).toBe("o1");
   });
+  it("libellé des fiches suivantes dérivé de la première, pas de celui envoyé", async () => {
+    mockOrderTemplateFindUnique.mockResolvedValue(mockTemplate());
+    await createOrder(
+      {
+        orderTemplateId: "ot1",
+        accountId: "acc1",
+        fiches: [
+          { entityTypeId: "etype_bien", label: "12 rue des Lilas" },
+          // Ce que le client envoie pour la fiche suivante est ignoré.
+          { entityTypeId: "etype_tournage", label: "n'importe quoi" },
+        ],
+      },
+      ctx("EXTERNAL_GENERATOR", { clientId: "c1" }),
+    );
+    const calls = mockPrepareEntityCreate.mock.calls as { label: string }[][];
+    expect(calls[0][0].label).toBe("12 rue des Lilas");
+    expect(calls[1][0].label).toBe("Tournage — 12 rue des Lilas");
+  });
 });
 
 describe("validateOrder — instanciation", () => {
@@ -298,9 +338,29 @@ describe("validateOrder — instanciation", () => {
     mockOrderFindUniqueOrThrow.mockResolvedValue({
       id: "o1",
       accountId: "acc1",
+      account: { handle: "compte" },
       orderTemplate: { recipes },
-      entities,
+      // `backfillOrderAssignees` lit les fiches avec leur type et leurs
+      // assignés ; les fixtures d'instanciation n'en portent pas.
+      entities: (entities as { id?: string }[]).map((e) => ({
+        assigneeVideasteId: "vid-1",
+        defaultAssigneeMonteurId: null,
+        defaultAssigneeCmId: null,
+        label: "fiche",
+        type: { hasPlanning: false, hasRushes: false, hasAssignees: false },
+        ...e,
+      })),
     });
+    // Toutes les recettes du modèle sont actives sur le compte : la garde
+    // « recette inactive » a ses propres tests plus bas.
+    mockBindingFindMany.mockResolvedValue(
+      (recipes as { patternTemplate?: { id?: string } }[]).map((r) => ({
+        patternTemplateId: r.patternTemplate?.id ?? "pt-x",
+        defaultAssigneeVideasteId: null,
+        defaultAssigneeMonteurId: null,
+        defaultAssigneeCmId: null,
+      })),
+    );
   }
 
   const shootEntity = {
@@ -418,6 +478,89 @@ describe("validateOrder — instanciation", () => {
       expect.anything(),
     );
     expect(result.createdSlotIds).toEqual(["s3"]);
+  });
+
+  const RECIPE_PT1 = {
+    count: 1,
+    patternTemplate: {
+      id: "pt1",
+      label: "RVA1",
+      source: "manual_rushes",
+      requiresProperty: false,
+      requiresEntityTypeId: null,
+    },
+  };
+
+  it("recette du modèle inactive sur le compte → ConflictError, zéro instanciation", async () => {
+    setupValidate([RECIPE_PT1], [shootEntity]);
+    // Aucun binding actif : la publication naîtrait sans horaire ni assignés,
+    // invisible pour tout le monde.
+    mockBindingFindMany.mockResolvedValue([]);
+    await expect(validateOrder("o1", ctx("ADMIN"))).rejects.toBeInstanceOf(ConflictError);
+    await expect(validateOrder("o1", ctx("ADMIN"))).rejects.toThrow(/RVA1.*n'est pas active/s);
+    expect(mockAttachSlotToEntity).not.toHaveBeenCalled();
+  });
+
+  it("commande sans compte → pas de garde recette (recettes globales)", async () => {
+    setupValidate([RECIPE_PT1], [shootEntity]);
+    mockBindingFindMany.mockResolvedValue([]);
+    mockOrderFindUnique.mockImplementation(async (args: { select?: Record<string, unknown> }) => {
+      if (args?.select && "orderTemplate" in args.select) return orderDetail;
+      return { id: "o1", clientId: "c1", status: "SUBMITTED", accountId: null };
+    });
+    mockOrderFindUniqueOrThrow.mockResolvedValue({
+      id: "o1",
+      accountId: null,
+      account: null,
+      orderTemplate: { recipes: [RECIPE_PT1] },
+      entities: [],
+    });
+    mockEntityFindMany.mockResolvedValue([]);
+    await expect(validateOrder("o1", ctx("ADMIN"))).resolves.toBeDefined();
+  });
+
+  it("tournage sans vidéaste → remonté dans unassignedShoots", async () => {
+    setupValidate([RECIPE_PT1], [shootEntity]);
+    mockBindingFindMany.mockResolvedValue([
+      {
+        patternTemplateId: "pt1",
+        defaultAssigneeVideasteId: null,
+        defaultAssigneeMonteurId: "mon-1",
+        defaultAssigneeCmId: null,
+      },
+    ]);
+    mockOrderFindUniqueOrThrow.mockResolvedValue({
+      id: "o1",
+      accountId: "acc1",
+      account: { handle: "compte" },
+      orderTemplate: { recipes: [RECIPE_PT1] },
+      entities: [
+        {
+          id: "e-tournage",
+          label: "Tournage — 12 rue des Lilas",
+          assigneeVideasteId: null,
+          defaultAssigneeMonteurId: null,
+          defaultAssigneeCmId: null,
+          type: { hasPlanning: true, hasRushes: true, hasAssignees: true },
+        },
+      ],
+    });
+    mockResolveDefaultAssignees.mockResolvedValue({
+      videasteId: null,
+      monteurId: "mon-1",
+      cmId: null,
+    });
+    const result = await validateOrder("o1", ctx("ADMIN"));
+    expect(result.unassignedShoots).toEqual([
+      { id: "e-tournage", label: "Tournage — 12 rue des Lilas" },
+    ]);
+    // Le monteur, lui, a bien été complété depuis la recette commandée.
+    expect(mockEntityUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "e-tournage" },
+        data: expect.objectContaining({ defaultAssigneeMonteurId: "mon-1" }),
+      }),
+    );
   });
 
   it("CAS perdu (double validation concurrente) → ConflictError, zéro instanciation", async () => {

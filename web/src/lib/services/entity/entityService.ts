@@ -24,6 +24,7 @@ import {
   canAttachSlotToEntity,
   canCreateEntity,
   canUserAccessEntity,
+  isValidatedForTeam,
   whereClauseForUserEntity,
 } from "@/lib/permissions/entityScope";
 import { logEntityActivity, type EntityActivityType } from "@/lib/services/entity/entityActivity";
@@ -237,6 +238,9 @@ const entityListSelect = {
   status: true,
   assigneeVideasteId: true,
   assigneeVideaste: { select: { id: true, name: true } },
+  videasteConfirmation: true,
+  videasteConfirmationAt: true,
+  videasteDeclineReason: true,
   defaultAssigneeMonteurId: true,
   defaultAssigneeCmId: true,
   notes: true,
@@ -263,6 +267,9 @@ const entityDetailSelect = {
   status: true,
   assigneeVideasteId: true,
   assigneeVideaste: { select: { id: true, name: true } },
+  videasteConfirmation: true,
+  videasteConfirmationAt: true,
+  videasteDeclineReason: true,
   defaultAssigneeMonteurId: true,
   defaultAssigneeMonteur: { select: { id: true, name: true } },
   defaultAssigneeCmId: true,
@@ -272,6 +279,10 @@ const entityDetailSelect = {
   relatedEntityId: true,
   related: { select: { id: true, label: true, typeId: true } },
   relatedOf: { select: { id: true, label: true, typeId: true } },
+  // Commande d'origine : la commande pointe déjà vers ses fiches, le retour
+  // manquait — impossible depuis une fiche de savoir d'où elle venait.
+  orderId: true,
+  order: { select: { id: true, orderTemplate: { select: { name: true } } } },
   createdByUserId: true,
   createdAt: true,
   updatedAt: true,
@@ -334,6 +345,169 @@ const entityDetailSelect = {
 // ─── createEntity ─────────────────────────────────────────────────────────────
 
 /**
+ * Assignés par défaut, résolus en cascade :
+ *
+ *   valeur explicite  →  recette (binding)  →  compte Instagram  →  vide
+ *
+ * Le compte porte l'équipe habituelle, la recette ne sert qu'à surcharger.
+ * Sans ce dernier niveau, chaque recette repartait de zéro sur des champs dont
+ * la réponse est presque toujours la même — d'où des recettes activées sans
+ * personne dessus, et des tournages que nul ne voyait.
+ *
+ * Le vidéaste est traité comme le monteur et le CM : il était le seul à ne
+ * jamais être seedé, alors que la worklist vidéaste lit
+ * `Entity.assigneeVideasteId`.
+ *
+ * `recipeTemplateIds` limite les bindings consultés aux recettes réellement
+ * commandées, dans leur ordre ; le premier qui renseigne un rôle le fournit.
+ */
+export async function resolveDefaultAssignees(
+  accountId: string | null,
+  recipeTemplateIds: string[] | undefined,
+  provided: { videasteId: string | null; monteurId: string | null; cmId: string | null },
+): Promise<{ videasteId: string | null; monteurId: string | null; cmId: string | null }> {
+  const out = { ...provided };
+  if (!accountId || (out.videasteId && out.monteurId && out.cmId)) return out;
+
+  const bindings = await prisma.patternBinding.findMany({
+    where: {
+      accountId,
+      isActive: true,
+      ...(recipeTemplateIds?.length ? { patternTemplateId: { in: recipeTemplateIds } } : {}),
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      patternTemplateId: true,
+      defaultAssigneeVideasteId: true,
+      defaultAssigneeMonteurId: true,
+      defaultAssigneeCmId: true,
+    },
+  });
+  if (bindings.length === 0) {
+    await applyAccountDefaults(accountId, out);
+    return out;
+  }
+
+  for (const b of orderBindings(bindings, recipeTemplateIds)) {
+    out.videasteId ??= b.defaultAssigneeVideasteId;
+    out.monteurId ??= b.defaultAssigneeMonteurId;
+    out.cmId ??= b.defaultAssigneeCmId;
+    if (out.videasteId && out.monteurId && out.cmId) break;
+  }
+  await applyAccountDefaults(accountId, out);
+  return out;
+}
+
+/**
+ * Ordre de résolution : celui du modèle de commande quand il est connu (les
+ * recettes y sont triées par `position`), sinon l'ordre de création des
+ * bindings. Partagé par la résolution et la détection de divergences, pour que
+ * « la première recette gagne » désigne la MÊME recette des deux côtés.
+ */
+function orderBindings<T extends { patternTemplateId: string }>(
+  bindings: T[],
+  recipeTemplateIds: string[] | undefined,
+): T[] {
+  if (!recipeTemplateIds?.length) return bindings;
+  return recipeTemplateIds
+    .map((id) => bindings.find((b) => b.patternTemplateId === id))
+    .filter((b): b is T => b !== undefined);
+}
+
+export interface AssigneeConflict {
+  role: "videaste" | "monteur" | "cm";
+  /** Personne retenue (première recette qui renseigne le rôle) et sa recette. */
+  keptName: string;
+  keptRecipeLabel: string;
+  /** Recettes suivantes qui désignaient quelqu'un d'autre. */
+  ignored: { recipeLabel: string; name: string }[];
+}
+
+const CONFLICT_ROLES = [
+  ["videaste", "defaultAssigneeVideasteId", "defaultAssigneeVideaste"],
+  ["monteur", "defaultAssigneeMonteurId", "defaultAssigneeMonteur"],
+  ["cm", "defaultAssigneeCmId", "defaultAssigneeCm"],
+] as const;
+
+/**
+ * Divergences d'assignation entre les recettes commandées sur un même compte.
+ *
+ * `resolveDefaultAssignees` tranche silencieusement en faveur de la première
+ * recette qui renseigne un rôle (ex. RVA1 et RVA2 sur un vidéaste, RVA3 sur un
+ * autre : c'est celui de RVA1). Ce helper rend ce choix visible — il ne dépend
+ * pas de l'état des fiches, donc il reste vrai après la validation, quand les
+ * assignés sont déjà posés.
+ */
+export async function detectRecipeAssigneeConflicts(
+  accountId: string | null,
+  recipeTemplateIds: string[] | undefined,
+): Promise<AssigneeConflict[]> {
+  if (!accountId || !recipeTemplateIds?.length) return [];
+
+  const bindings = await prisma.patternBinding.findMany({
+    where: { accountId, isActive: true, patternTemplateId: { in: recipeTemplateIds } },
+    orderBy: { createdAt: "asc" },
+    select: {
+      patternTemplateId: true,
+      customLabel: true,
+      patternTemplate: { select: { label: true } },
+      defaultAssigneeVideasteId: true,
+      defaultAssigneeVideaste: { select: { name: true } },
+      defaultAssigneeMonteurId: true,
+      defaultAssigneeMonteur: { select: { name: true } },
+      defaultAssigneeCmId: true,
+      defaultAssigneeCm: { select: { name: true } },
+    },
+  });
+  if (bindings.length < 2) return [];
+
+  const ordered = orderBindings(bindings, recipeTemplateIds);
+  const conflicts: AssigneeConflict[] = [];
+
+  for (const [role, idKey, relKey] of CONFLICT_ROLES) {
+    let kept: { id: string; name: string; recipeLabel: string } | null = null;
+    const ignored: { recipeLabel: string; name: string }[] = [];
+    for (const b of ordered) {
+      const id = b[idKey];
+      if (!id) continue;
+      const name = b[relKey]?.name ?? "un utilisateur";
+      const recipeLabel = b.customLabel ?? b.patternTemplate.label;
+      if (!kept) kept = { id, name, recipeLabel };
+      else if (kept.id !== id) ignored.push({ recipeLabel, name });
+    }
+    if (kept && ignored.length > 0) {
+      conflicts.push({
+        role,
+        keptName: kept.name,
+        keptRecipeLabel: kept.recipeLabel,
+        ignored,
+      });
+    }
+  }
+  return conflicts;
+}
+
+/** Équipe par défaut du compte — dernier niveau de la cascade. */
+async function applyAccountDefaults(
+  accountId: string,
+  out: { videasteId: string | null; monteurId: string | null; cmId: string | null },
+): Promise<void> {
+  if (out.videasteId && out.monteurId && out.cmId) return;
+  const account = await prisma.instagramAccount.findUnique({
+    where: { id: accountId },
+    select: {
+      defaultAssigneeVideasteId: true,
+      defaultAssigneeMonteurId: true,
+      defaultAssigneeCmId: true,
+    },
+  });
+  if (!account) return;
+  out.videasteId ??= account.defaultAssigneeVideasteId;
+  out.monteurId ??= account.defaultAssigneeMonteurId;
+  out.cmId ??= account.defaultAssigneeCmId;
+}
+
+/**
  * Valide un input de création de fiche et prépare les données Prisma —
  * SANS le garde admin ni la transaction. Extraction réutilisée par :
  *  - `createEntity` (chemin admin classique) ;
@@ -345,7 +519,13 @@ const entityDetailSelect = {
  */
 export async function prepareEntityCreate(
   input: CreateEntityInput,
-  opts: { actorId: string; isExternalCreator: boolean; orderId?: string | null },
+  opts: {
+    actorId: string;
+    isExternalCreator: boolean;
+    orderId?: string | null;
+    /** Recettes du modèle de commande — source des assignés par défaut. */
+    recipeTemplateIds?: string[];
+  },
 ): Promise<Prisma.EntityUncheckedCreateInput> {
   if (!input.typeId) throw new ValidationError("Un type de fiche est requis");
   const type = await prisma.entityType.findUnique({ where: { id: input.typeId } });
@@ -397,20 +577,16 @@ export async function prepareEntityCreate(
     await assertAssigneeRole(input.defaultAssigneeCmId, ["CM", "ADMIN"], "CM par défaut");
   }
 
-  // Seed des défauts monteur/CM depuis le binding actif du compte (si non fournis).
-  let seededMonteurId = input.defaultAssigneeMonteurId ?? null;
-  let seededCmId = input.defaultAssigneeCmId ?? null;
-  if (input.accountId && (!seededMonteurId || !seededCmId)) {
-    const binding = await prisma.patternBinding.findFirst({
-      where: { accountId: input.accountId, isActive: true },
-      orderBy: { createdAt: "asc" },
-      select: { defaultAssigneeMonteurId: true, defaultAssigneeCmId: true },
-    });
-    if (binding) {
-      seededMonteurId ??= binding.defaultAssigneeMonteurId;
-      seededCmId ??= binding.defaultAssigneeCmId;
-    }
-  }
+  // Seed des assignés par défaut depuis les recettes du compte.
+  //
+  // `recipeTemplateIds` (bon de commande) restreint la recherche aux recettes
+  // réellement commandées ; sans lui (création manuelle) on retombe sur les
+  // bindings actifs du compte, dans l'ordre de création.
+  const seeded = await resolveDefaultAssignees(input.accountId ?? null, opts.recipeTemplateIds, {
+    videasteId: input.assigneeVideasteId ?? null,
+    monteurId: input.defaultAssigneeMonteurId ?? null,
+    cmId: input.defaultAssigneeCmId ?? null,
+  });
 
   return {
     typeId: input.typeId,
@@ -422,9 +598,9 @@ export async function prepareEntityCreate(
     scheduledAt,
     endAt,
     status,
-    assigneeVideasteId: input.assigneeVideasteId ?? null,
-    defaultAssigneeMonteurId: seededMonteurId,
-    defaultAssigneeCmId: seededCmId,
+    assigneeVideasteId: seeded.videasteId,
+    defaultAssigneeMonteurId: seeded.monteurId,
+    defaultAssigneeCmId: seeded.cmId,
     notes: input.notes ?? null,
     brief: input.brief ?? null,
     relatedEntityId: input.relatedEntityId ?? null,
@@ -528,10 +704,14 @@ const entityPatchAccessSelect = {
   status: true,
   scheduledAt: true,
   endAt: true,
+  validationStatus: true,
   assigneeVideasteId: true,
+  videasteConfirmation: true,
   defaultAssigneeMonteurId: true,
   defaultAssigneeCmId: true,
-  shootSlots: { select: { assigneeMonteurId: true, assigneeCmId: true } },
+  shootSlots: {
+    select: { assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
+  },
 } satisfies Prisma.EntitySelect;
 
 export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: UserContext) {
@@ -550,6 +730,41 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
   const data: Prisma.EntityUpdateInput & Record<string, unknown> = {};
   for (const key of Object.keys(patch)) {
     if (allowed.includes(key)) data[key] = patch[key];
+  }
+
+  // ── Confirmation de disponibilité du vidéaste ──
+  // La whitelist laisse passer les deux champs ; les gardes d'état sont ici.
+  const confirmation = data.videasteConfirmation;
+  if (confirmation !== undefined) {
+    if (confirmation !== "CONFIRMED" && confirmation !== "DECLINED") {
+      throw new ValidationError("Réponse de disponibilité invalide");
+    }
+    // La passerelle reel (entityScope) donne accès à la fiche à un vidéaste qui
+    // n'est PAS celui du tournage : lui ne répond pas à la place de l'assigné.
+    if (existing.assigneeVideasteId !== ctx.effectiveUser.id) {
+      throw new ValidationError("Vous n'êtes pas le vidéaste de ce tournage");
+    }
+    if (!isValidatedForTeam(existing.validationStatus)) {
+      throw new ConflictError("Ce tournage n'est pas encore validé");
+    }
+    data.videasteConfirmationAt = new Date();
+    // Un motif ne survit pas à une confirmation : il décrivait l'indisponibilité.
+    const reason = typeof data.videasteDeclineReason === "string" ? data.videasteDeclineReason.trim() : null;
+    data.videasteDeclineReason = confirmation === "DECLINED" ? (reason || null) : null;
+  } else if (data.videasteDeclineReason !== undefined) {
+    // Motif sans réponse : rien à enregistrer, on évite un update fantôme.
+    delete data.videasteDeclineReason;
+  }
+
+  // Réassigner le tournage remet la confirmation à zéro : le nouveau vidéaste
+  // n'a rien confirmé. Invariant central — sans ça, un tournage décliné puis
+  // réassigné garderait l'ancienne réponse.
+  const videasteChanged =
+    data.assigneeVideasteId !== undefined && data.assigneeVideasteId !== existing.assigneeVideasteId;
+  if (videasteChanged) {
+    data.videasteConfirmation = null;
+    data.videasteConfirmationAt = null;
+    data.videasteDeclineReason = null;
   }
 
   // Passage manuel à SHOT : on NE l'écrit pas via l'update générique — il doit
@@ -632,11 +847,22 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
     const hasGenericFields = Object.keys(data).length > 0;
     if (hasGenericFields) {
       result = await tx.entity.update({ where: { id }, data, select: entityListSelect });
+      const activityType = confirmation
+        ? confirmation === "CONFIRMED"
+          ? ("VIDEASTE_CONFIRMED" as const)
+          : ("VIDEASTE_DECLINED" as const)
+        : statusChanged
+          ? ("STATUS_CHANGED" as const)
+          : ("UPDATED" as const);
       await logEntityActivity(tx, {
         entityId: id,
         actorId: ctx.actualUser.id,
-        type: statusChanged ? "STATUS_CHANGED" : "UPDATED",
-        payload: statusChanged ? { from: existing.status, to: data.status } : { fields: Object.keys(data) },
+        type: activityType,
+        payload: confirmation
+          ? { reason: data.videasteDeclineReason ?? null }
+          : statusChanged
+            ? { from: existing.status, to: data.status }
+            : { fields: Object.keys(data) },
       });
     }
     if (wantsShot) {
@@ -821,10 +1047,13 @@ const entityAttachSelect = {
   type: { select: { visibility: true, hasPlanning: true, hasRushes: true } },
   accountId: true,
   status: true,
+  validationStatus: true,
   assigneeVideasteId: true,
   defaultAssigneeMonteurId: true,
   defaultAssigneeCmId: true,
-  shootSlots: { select: { assigneeMonteurId: true, assigneeCmId: true } },
+  shootSlots: {
+    select: { assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
+  },
 } satisfies Prisma.EntitySelect;
 
 type EntityAttachRow = Prisma.EntityGetPayload<{ select: typeof entityAttachSelect }>;
@@ -907,6 +1136,14 @@ async function attachMissionsToEntity(
         { requireAdmin: false },
       );
       createdIds.push(slot.id);
+      // Symétrique du chemin reel : sans ce log, une fiche data affiche un fil
+      // d'activité vide alors qu'elle vient de recevoir N publications.
+      await logEntityActivity(prisma, {
+        entityId,
+        actorId: ctx.actualUser.id,
+        type: "SLOT_ATTACHED",
+        payload: { slotId: slot.id, recipeId, label: template.label },
+      });
     } catch (err) {
       failed.push({
         recipeId,

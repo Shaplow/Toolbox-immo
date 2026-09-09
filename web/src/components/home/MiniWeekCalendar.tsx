@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { parisDayKey, parisToday } from "@/lib/date/formatFr";
 
 /**
  * MiniWeekCalendar — mini-calendrier hebdomadaire pour les dashboards rôle.
@@ -41,6 +42,17 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
+/**
+ * Clé jour d'une case de grille — construite en date « murale » (minuit
+ * local), à comparer au jour civil **de Paris** d'un instant. Sans ça, un
+ * tournage de 18:00 Paris tombait dans la colonne du lendemain pour un poste
+ * en avance, et le même tournage s'affichait un jour ici, un autre sur
+ * /fiches.
+ */
+function gridDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function MiniWeekCalendar({
   items,
   weekStartIso,
@@ -49,7 +61,7 @@ export function MiniWeekCalendar({
   /** Lundi de la semaine à afficher (ISO). Défaut : semaine courante. */
   weekStartIso?: string;
 }) {
-  const now = new Date();
+  const now = parisToday();
   const monday = weekStartIso ? new Date(weekStartIso) : mondayOf(now);
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
@@ -59,7 +71,7 @@ export function MiniWeekCalendar({
 
   const itemsByDay = days.map((day) =>
     items
-      .filter((it) => sameDay(new Date(it.dateIso), day))
+      .filter((it) => parisDayKey(it.dateIso) === gridDayKey(day))
       .sort((a, b) => new Date(a.dateIso).getTime() - new Date(b.dateIso).getTime()),
   );
 
