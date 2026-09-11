@@ -250,6 +250,8 @@ export async function POST(req: NextRequest) {
     // un payload modifié côté client.
     const sanitizedUsedAssets: {
       videoAssets?: Record<string, string>;
+      /** Blocs dont l'asset a été choisi à la main (cf. buildUsedAssets). */
+      manualVideoBlockIds?: string[];
       audioAssetId?: string;
       dataEntryId?: string;
       setSequencedLibraryIds?: string[];
@@ -262,7 +264,7 @@ export async function POST(req: NextRequest) {
     } = {};
 
     if (usedAssets && typeof usedAssets === "object") {
-    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown };
+    const raw = usedAssets as { videoAssets?: unknown; manualVideoBlockIds?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown };
 
       // Video assets: blockId → assetId
       if (raw.videoAssets && typeof raw.videoAssets === "object" && !Array.isArray(raw.videoAssets)) {
@@ -276,6 +278,16 @@ export async function POST(req: NextRequest) {
               .filter(([, v]) => typeof v === "string" && validIds.has(v as string)) as [string, string][]
           );
         }
+      }
+
+      // Blocs choisis à la main : simple marquage, restreint aux blocs
+      // effectivement épinglés ci-dessus (rien à gonfler côté usage).
+      if (Array.isArray(raw.manualVideoBlockIds)) {
+        const pinned = new Set(Object.keys(sanitizedUsedAssets.videoAssets ?? {}));
+        const manual = (raw.manualVideoBlockIds as unknown[]).filter(
+          (v): v is string => typeof v === "string" && pinned.has(v),
+        );
+        if (manual.length > 0) sanitizedUsedAssets.manualVideoBlockIds = manual;
       }
 
       // Audio asset

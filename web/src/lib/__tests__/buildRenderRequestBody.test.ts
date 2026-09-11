@@ -98,3 +98,33 @@ describe("buildUsedAssets", () => {
     expect(buildUsedAssets(ctx, { champ_video: null })).toBeUndefined();
   });
 });
+
+describe("buildUsedAssets — choix manuel", () => {
+  const ctx = makeContext({
+    fieldLibraryMap: {
+      // Pour un slot de séquence, `blockId` vaut l'id du SLOT
+      // (buildLibraryPrefillContext) — c'est cette clé que le rendu compare.
+      rva3raw: { type: "video", blockId: "v619ki", libraryId: "lib-1" },
+      intro: { type: "video", blockId: "fv2h7m", libraryId: "lib-2" },
+    },
+  } as Partial<LibraryPrefillContext>);
+  const selections = {
+    rva3raw: { id: "asset-manuel" } as LibraryAssetOption,
+    intro: { id: "asset-auto" } as LibraryAssetOption,
+  };
+
+  it("marque les blocs dont la valeur vient de « Changer »", () => {
+    const used = buildUsedAssets(ctx, selections, { rva3raw: "manual" });
+    expect(used?.videoAssets).toEqual({ v619ki: "asset-manuel", fv2h7m: "asset-auto" });
+    expect(used?.manualVideoBlockIds).toEqual(["v619ki"]);
+  });
+
+  it("aucune provenance manuelle → champ absent (payload inchangé)", () => {
+    const used = buildUsedAssets(ctx, selections, { rva3raw: "prefill" });
+    expect(used?.manualVideoBlockIds).toBeUndefined();
+  });
+
+  it("provenance omise → rétro-compatible", () => {
+    expect(buildUsedAssets(ctx, selections)?.manualVideoBlockIds).toBeUndefined();
+  });
+});

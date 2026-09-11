@@ -648,6 +648,9 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
             slotId: slotIdProp,
             context: libraryPrefillContext,
             selections: librarySelections,
+            // Un média choisi via « Changer » doit être monté, même sur un
+            // slot que la métadonnée résoudrait autrement.
+            provenance,
           }),
         ),
       });

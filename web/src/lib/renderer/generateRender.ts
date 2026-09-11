@@ -579,6 +579,8 @@ async function loadPrefillAssets(
   renderId: string,
 ): Promise<{
   videoAssets: Record<string, string>;
+  /** Blocs dont l'asset a été choisi à la main dans le formulaire. */
+  manualVideoBlockIds: string[];
   audioAssetId: string | null;
   /** Dossiers servis au prefill (trace `usedSetTagByLibrary`), par libraryId. */
   claimedSetTagByLibrary: Record<string, string>;
@@ -590,16 +592,18 @@ async function loadPrefillAssets(
     });
     const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as {
       videoAssets?: Record<string, string>;
+      manualVideoBlockIds?: string[];
       audioAssetId?: string;
       usedSetTagByLibrary?: Record<string, string>;
     };
     return {
       videoAssets: ua.videoAssets ?? {},
+      manualVideoBlockIds: ua.manualVideoBlockIds ?? [],
       audioAssetId: ua.audioAssetId ?? null,
       claimedSetTagByLibrary: ua.usedSetTagByLibrary ?? {},
     };
   } catch {
-    return { videoAssets: {}, audioAssetId: null, claimedSetTagByLibrary: {} };
+    return { videoAssets: {}, manualVideoBlockIds: [], audioAssetId: null, claimedSetTagByLibrary: {} };
   }
 }
 
@@ -721,6 +725,10 @@ async function findAssetIdByUrl(libraryId: string, url: string): Promise<{ id: s
   try {
     const asset = await prisma.mediaAsset.findFirst({
       where: { libraryId, url },
+      // `MediaAsset.url` n'est pas unique (ré-import, copie auto-save) : sans
+      // ordre explicite, deux exécutions pouvaient retenir des assets
+      // différents pour la même URL — donc claim et comptage divergents.
+      orderBy: { createdAt: "asc" },
       select: { id: true, metadata: true },
     });
     if (!asset) return null;
@@ -731,6 +739,40 @@ async function findAssetIdByUrl(libraryId: string, url: string): Promise<{ id: s
     console.warn(`[findAssetIdByUrl] failed libraryId=${libraryId} url=${url}:`, err);
     return null;
   }
+}
+
+/**
+ * Retrouve l'asset d'un bloc vidéo dont l'URL vient du formulaire.
+ *
+ * L'id épinglé au submit (`usedAssets.videoAssets[blockId]`) fait foi dès que
+ * son URL correspond : c'est exactement l'asset que l'utilisateur a choisi, et
+ * celui sur lequel le claim d'usage a été posé. Sans cette préférence, on
+ * re-devinait l'id par URL — non unique — et la clé du claim pouvait différer
+ * de celle du comptage au DONE.
+ */
+async function resolveBoundVideoAsset(
+  prefillAssetId: string | undefined,
+  libraryId: string,
+  videoUrl: string,
+): Promise<{ id: string; metadata: Record<string, string | number | null> } | null> {
+  if (prefillAssetId) {
+    try {
+      const pinned = await prisma.mediaAsset.findUnique({
+        where: { id: prefillAssetId },
+        select: { id: true, url: true, metadata: true },
+      });
+      // L'URL peut avoir été saisie à la main, sans rapport avec l'asset
+      // épinglé : on ne garde l'id que s'il décrit bien la vidéo montée.
+      if (pinned && pinned.url === videoUrl) {
+        let metadata: Record<string, string | number | null> = {};
+        try {
+          metadata = JSON.parse(pinned.metadata ?? "{}") as Record<string, string | number | null>;
+        } catch { /* non-critique */ }
+        return { id: pinned.id, metadata };
+      }
+    } catch { /* lookup échoué — repli sur la recherche par URL */ }
+  }
+  return findAssetIdByUrl(libraryId, videoUrl);
 }
 
 /**
@@ -882,7 +924,11 @@ async function generateVideoRender(
     // retrouver le MediaAsset matching pour que coverAuto extraie les frames du
     // clip de base (et non de la vidéo finale avec overlays).
     if (videoUrl && videoBlock.libraryId && !singleVideoAssetId) {
-      const matched = await findAssetIdByUrl(videoBlock.libraryId, videoUrl);
+      const matched = await resolveBoundVideoAsset(
+        videoBlock.id ? prefillVideoAssets[videoBlock.id] : undefined,
+        videoBlock.libraryId,
+        videoUrl,
+      );
       if (matched) {
         singleVideoAssetId = matched.id;
         singleVideoMetadata = matched.metadata;
@@ -1117,7 +1163,11 @@ async function generateVideoRenderLocal(
     // Si l'URL vient du form binding sans assetId, retrouver le MediaAsset
     // pour que coverAuto puisse extraire les frames du clip de base.
     if (rawVideoUrl && videoBlock.libraryId && !singleVideoAssetId) {
-      const matched = await findAssetIdByUrl(videoBlock.libraryId, rawVideoUrl);
+      const matched = await resolveBoundVideoAsset(
+        videoBlock.id ? prefillVideoAssets[videoBlock.id] : undefined,
+        videoBlock.libraryId,
+        rawVideoUrl,
+      );
       if (matched) {
         singleVideoAssetId = matched.id;
         singleVideoMetadata = matched.metadata;
@@ -1376,6 +1426,38 @@ async function generateVideoRenderLocal(
  * en mode theme_sequence, le 2ème slot (et suivants) reçoit le setTag/category déjà
  * sélectionné par le 1er slot afin de rester dans le même groupe (intro/outro).
  */
+/** Charge l'asset épinglé au submit, ou null si le lookup échoue. */
+async function loadPrefillAsset(assetId: string): Promise<{
+  url: string;
+  assetId: string;
+  resolvedSetTag: string | null;
+  metadata: Record<string, string | number | null>;
+  source: "prefill";
+} | null> {
+  try {
+    const assetRow = await prisma.mediaAsset.findUnique({
+      where: { id: assetId },
+      // NB : plus jamais `category` — colonne morte (Phase 3), drop N+1.
+      select: { id: true, url: true, filename: true, setTag: true, metadata: true },
+    });
+    if (!assetRow) return null;
+    let metadata: Record<string, string | number | null> = {};
+    try {
+      metadata = JSON.parse(assetRow.metadata ?? "{}") as Record<string, string | number | null>;
+    } catch { /* non-critical */ }
+    return {
+      url: assetRow.url,
+      assetId: assetRow.id,
+      resolvedSetTag: assetRow.setTag ?? null,
+      metadata,
+      source: "prefill",
+    };
+  } catch {
+    // DB lookup failed — l'appelant retombe sur la sélection bibliothèque.
+    return null;
+  }
+}
+
 async function resolveSlotVideoUrl(
   slot: VideoSequenceSlot,
   listingData: ListingData,
@@ -1385,6 +1467,8 @@ async function resolveSlotVideoUrl(
   prefillAssetId?: string | null,
   /** Durée minimale requise pour l'asset (s). Héritée du VideoBlock.minDuration ou slot.maxDuration. */
   minDuration?: number,
+  /** L'asset épinglé vient d'un choix explicite de l'utilisateur (« Changer »). */
+  prefillIsManual?: boolean,
 ): Promise<{
   url: string;
   assetId: string | null;
@@ -1405,6 +1489,17 @@ async function resolveSlotVideoUrl(
     if (raw && (raw.startsWith("http") || raw.startsWith("/"))) {
       return { url: raw, assetId: null, resolvedSetTag: null, metadata: {}, source: "binding" };
     }
+  }
+
+  // 1 bis. Choix manuel explicite : il prime sur la résolution par métadonnée.
+  //
+  // Un slot metadata-driven se résout depuis la valeur du select, ce qui écrase
+  // légitimement une SUGGESTION. Mais quand l'utilisateur a lui-même remplacé
+  // le média via « Changer », la vidéo doit monter ce média-là — sinon son
+  // choix est silencieusement ignoré.
+  if (prefillIsManual && prefillAssetId) {
+    const manual = await loadPrefillAsset(prefillAssetId);
+    if (manual) return manual;
   }
 
   // 2. Sélection metadata-driven : slot.videoBlockId lié à un select field optionsSource
@@ -1447,24 +1542,8 @@ async function resolveSlotVideoUrl(
   //    from the first slot's prefill asset — subsequent slots in the same library receive the
   //    correct prefill asset from their own prefillAssetId entry.
   if (prefillAssetId) {
-    try {
-      const assetRow = await prisma.mediaAsset.findUnique({
-        where: { id: prefillAssetId },
-        // NB : plus jamais `category` — colonne morte (Phase 3), drop N+1.
-        select: { id: true, url: true, filename: true, setTag: true, metadata: true },
-      });
-      if (assetRow) {
-        let metadata: Record<string, string | number | null> = {};
-        try { metadata = JSON.parse(assetRow.metadata ?? "{}") as Record<string, string | number | null>; } catch { /* non-critical */ }
-        return {
-          url: assetRow.url,
-          assetId: assetRow.id,
-          resolvedSetTag: assetRow.setTag ?? null,
-          metadata,
-          source: "prefill",
-        };
-      }
-    } catch { /* DB lookup failed — fall through to library selection */ }
+    const pinned = await loadPrefillAsset(prefillAssetId);
+    if (pinned) return pinned;
   }
 
   // 4. Résolution serveur depuis la bibliothèque
@@ -1587,25 +1666,30 @@ function accumulateSlotTracking(
 }
 
 /**
- * Pose un claim d'usage pour un asset REDÉCOUVERT au render-time.
+ * Pose un claim d'usage pour un asset résolu AU RENDER-TIME, donc non claimé au
+ * submit : `folder-draw` (redécouverte dans la bibliothèque) et `metadata`
+ * (sélection par la valeur d'un select).
  *
- * La branche folder-draw de `resolveSlotVideoUrl` retire dans la bibliothèque
- * sans rien écrire : `lastUsedAt` ne bougeait qu'au DONE, plusieurs minutes plus
- * tard. Toutes les générations lancées entre-temps qui repassaient par cette
- * redécouverte ressortaient donc le même asset. Le chemin non-folder, lui, était
- * déjà protégé (`selectAndClaimMediaAsset` claim sous verrou).
+ * Ces deux branches choisissent un asset sans rien écrire : `lastUsedAt` ne
+ * bougeait qu'au DONE, plusieurs minutes plus tard — et jamais si le render
+ * échouait. Toutes les générations lancées entre-temps ressortaient donc le
+ * même asset. Le chemin `prefill` n'a pas ce problème (claim posé au submit sur
+ * la sélection du formulaire) et le chemin non-folder est protégé par
+ * `selectAndClaimMediaAsset`, qui claim sous verrou.
  *
  * Le claim est posé PAR SLOT, dans la boucle : deux slots folder-draw de la même
  * bibliothèque sans prefill recevaient sinon le même asset (le premier découvre
  * le dossier, le second prend la branche « pinned » et rejoue la même requête LRU
  * sans que rien n'ait été écrit entre les deux).
  */
+const RENDER_TIME_CLAIM_SOURCES = new Set(["folder-draw", "metadata"]);
+
 async function claimRediscoveredSlotAsset(
   resolved: { assetId: string | null; source: string },
   accountId: string | null,
   claims: MediaUsageClaimState[],
 ): Promise<void> {
-  if (resolved.source !== "folder-draw" || !resolved.assetId) return;
+  if (!RENDER_TIME_CLAIM_SOURCES.has(resolved.source) || !resolved.assetId) return;
   try {
     const { prevMediaUsageStates } = await advanceMediaUsageOnSubmit(
       [resolved.assetId],
@@ -1757,6 +1841,7 @@ async function generateSequenceRender(
     // double-advance the rotation cursor and render different content than shown in the form.
     const {
       videoAssets: prefillVideoAssets,
+      manualVideoBlockIds,
       audioAssetId: prefillAudioAssetId,
       claimedSetTagByLibrary,
     } = await loadPrefillAssets(renderId);
@@ -1790,7 +1875,7 @@ async function generateSequenceRender(
           ? allBlocks.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined
           : undefined;
       const slotMinDuration: number | undefined = linkedVideoBlock?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
-      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDuration);
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDuration, manualVideoBlockIds.includes(slot.id));
       // Claim immédiat, dans la boucle : le slot suivant qui partage la même
       // bibliothèque doit voir cet asset comme « déjà servi ».
       await claimRediscoveredSlotAsset(resolved, accountId, rediscoveryClaims);
@@ -1991,6 +2076,7 @@ async function generateSequenceRenderLocal(
     // double-advance the rotation cursor and render different content than shown in the form.
     const {
       videoAssets: prefillVideoAssets,
+      manualVideoBlockIds,
       audioAssetId: prefillAudioAssetId,
       claimedSetTagByLibrary,
     } = await loadPrefillAssets(renderId);
@@ -2023,7 +2109,7 @@ async function generateSequenceRenderLocal(
           ? allBlocksLocal.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined
           : undefined;
       const slotMinDurationLocal: number | undefined = linkedVideoBlockLocal?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
-      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDurationLocal);
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDurationLocal, manualVideoBlockIds.includes(slot.id));
       // Claim immédiat, dans la boucle : le slot suivant qui partage la même
       // bibliothèque doit voir cet asset comme « déjà servi ».
       await claimRediscoveredSlotAsset(resolved, accountId, rediscoveryClaimsLocal);
