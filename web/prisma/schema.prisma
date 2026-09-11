@@ -1114,28 +1114,32 @@ model Property {
 /// Types système seedés : « Bien » (admin, capacités off) et « Tournage »
 /// (team, planning+compte+rushs+assignés).
 model EntityType {
-  id           String   @id @default(cuid())
-  name         String
-  namePlural   String?
+  id            String   @id @default(cuid())
+  name          String
+  namePlural    String?
   /// Nom d'icône lucide optionnel (ex: "home", "clapperboard").
-  icon         String?
+  icon          String?
   /// JSON CustomField[] — schéma des champs custom des fiches de ce type.
-  fieldSchema  String   @default("[]")
+  fieldSchema   String   @default("[]")
+  /// Modèle de libellé automatique des fiches de ce type — syntaxe `{{clé}}`
+  /// (lib/textTemplate) résolue contre `Entity.fields`, puis tokens système.
+  /// null/vide = pas de dérivation, le libellé reste saisi à la main.
+  labelTemplate String?
   /// Capacités structurelles activables par type.
-  hasPlanning  Boolean  @default(false)
-  hasAccount   Boolean  @default(false)
-  hasRushes    Boolean  @default(false)
-  hasAssignees Boolean  @default(false)
+  hasPlanning   Boolean  @default(false)
+  hasAccount    Boolean  @default(false)
+  hasRushes     Boolean  @default(false)
+  hasAssignees  Boolean  @default(false)
   /// "admin" : CRUD strictement admin (fiches data, ex-Property).
   /// "team"  : scoping par rôle via lib/permissions/entityScope.ts (ex-ShootEvent).
   ///           Garde-fou : un type team DOIT avoir hasAssignees=true.
-  visibility   String   @default("admin")
+  visibility    String   @default("admin")
   /// Ordre d'affichage des tabs sur /fiches.
-  position     Int      @default(0)
+  position      Int      @default(0)
   /// Types seedés (« Bien », « Tournage ») — non supprimables.
-  isSystem     Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isSystem      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   /// Validation bidirectionnelle (cf. Entity.validationStatus) :
   /// fiche créée par un client → validation admin requise.
@@ -1153,14 +1157,18 @@ model EntityType {
 /// les capacités du type. Migration id-preserving : les fiches reprennent les
 /// ids des Property/ShootEvent d'origine.
 model Entity {
-  id         String     @id @default(cuid())
-  typeId     String
-  type       EntityType @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  id            String     @id @default(cuid())
+  typeId        String
+  type          EntityType @relation(fields: [typeId], references: [id], onDelete: Restrict)
   /// Ex Property.label / ShootEvent.title.
-  label      String
+  label         String
+  /// Libellé posé ou renommé à la main : le recalcul depuis
+  /// `EntityType.labelTemplate` ne l'écrase jamais. Remis à false par l'admin
+  /// pour repasser en automatique.
+  labelIsCustom Boolean    @default(false)
   /// JSON Record<string,string> — valeurs des champs custom du type.
-  fields     String     @default("{}")
-  isArchived Boolean    @default(false)
+  fields        String     @default("{}")
+  isArchived    Boolean    @default(false)
 
   // ── Structurel (type.hasAccount / hasPlanning) ──
   accountId   String?

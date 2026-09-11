@@ -15,8 +15,10 @@ import {
   validateCustomFields,
   serializeCustomFields,
 } from "@/lib/customFields";
+import { findUnknownTemplateKeys } from "@/lib/entityLabel";
 
 const MAX_NAME = 100;
+const MAX_LABEL_TEMPLATE = 500;
 
 const entityTypeSelect = {
   id: true,
@@ -28,6 +30,7 @@ const entityTypeSelect = {
   hasAccount: true,
   hasRushes: true,
   hasAssignees: true,
+  labelTemplate: true,
   visibility: true,
   needsAdminValidation: true,
   needsClientValidation: true,
@@ -50,7 +53,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const existing = await prisma.entityType.findUnique({
     where: { id },
-    select: { id: true },
+    select: { id: true, fieldSchema: true, labelTemplate: true, hasAssignees: true },
   });
   if (!existing) return NextResponse.json({ error: "Type de fiche introuvable" }, { status: 404 });
 
@@ -86,6 +89,45 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (schemaErr) return NextResponse.json({ error: schemaErr }, { status: 400 });
     data.fieldSchema = serializeCustomFields(fieldSchema);
   }
+  // Déclenchée dès que L'UN DES DEUX bouge — pas seulement le modèle.
+  // Un PATCH qui n'envoie que `fieldSchema`, amputé d'une clé référencée,
+  // laissait sinon le modèle existant pointer dans le vide : le libellé
+  // s'ampute en silence, au pire jusqu'au repli daté, et on ne le découvre que
+  // sur une fiche déjà mal nommée.
+  if (body.labelTemplate !== undefined || body.fieldSchema !== undefined) {
+    const raw =
+      body.labelTemplate !== undefined
+        ? typeof body.labelTemplate === "string"
+          ? body.labelTemplate.trim()
+          : ""
+        : (existing.labelTemplate ?? "").trim();
+    if (raw.length > MAX_LABEL_TEMPLATE) {
+      return NextResponse.json(
+        { error: `Modèle de libellé trop long (max ${MAX_LABEL_TEMPLATE} caractères)` },
+        { status: 400 },
+      );
+    }
+    // Validé contre le schéma du MÊME body s'il est présent : le drawer envoie
+    // les champs et le modèle ensemble, et c'est le nouveau schéma qui fait foi.
+    const effectiveSchema =
+      body.fieldSchema !== undefined
+        ? normalizeCustomFields(body.fieldSchema)
+        : normalizeCustomFields(existing.fieldSchema);
+    const unknown = findUnknownTemplateKeys(raw, effectiveSchema);
+    if (unknown.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Modèle de libellé : ${unknown.length === 1 ? "champ inconnu" : "champs inconnus"} ${unknown
+            .map((k) => `« ${k} »`)
+            .join(", ")}`,
+        },
+        { status: 400 },
+      );
+    }
+    // Ne rien écrire quand seul le schéma a changé : `raw` vient alors de la
+    // base, le réécrire serait un no-op trompeur dans le diff.
+    if (body.labelTemplate !== undefined) data.labelTemplate = raw || null;
+  }
   if (body.needsAdminValidation !== undefined) {
     data.needsAdminValidation = body.needsAdminValidation === true;
   }
@@ -104,11 +146,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const nextVisibility = (data.visibility as string | undefined) ?? undefined;
   const nextHasAssignees = data.hasAssignees as boolean | undefined;
   if (nextVisibility === "team") {
-    const currentHasAssignees = await prisma.entityType.findUnique({
-      where: { id },
-      select: { hasAssignees: true },
-    });
-    const effectiveHasAssignees = nextHasAssignees ?? currentHasAssignees?.hasAssignees ?? false;
+    const effectiveHasAssignees = nextHasAssignees ?? existing.hasAssignees;
     if (!effectiveHasAssignees) {
       return NextResponse.json(
         { error: "Un type « équipe » doit avoir la capacité « assignés » activée" },

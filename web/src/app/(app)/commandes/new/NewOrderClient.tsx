@@ -21,6 +21,7 @@ import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
 import { isPastLocalInput, localInputToIso } from "@/lib/date/formatFr";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
 import type { CustomField } from "@/lib/customFields";
+import { renderLabelTemplate, resolveEntityLabel } from "@/lib/entityLabel";
 
 export interface OrderTemplateOption {
   id: string;
@@ -32,6 +33,8 @@ export interface OrderTemplateOption {
     hasPlanning: boolean;
     hasAccount: boolean;
     fieldSchema: CustomField[];
+    /** Modèle de libellé du type — non vide = plus de saisie de libellé. */
+    labelTemplate: string | null;
   }[];
   videoSummary: string;
   videoCount: number;
@@ -89,13 +92,36 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
   }
 
   /**
-   * Libellé des fiches secondaires — dérivé de la première, jamais saisi.
-   * Doit rester identique au calcul de `createOrder`, qui fait foi.
+   * Libellé effectif de la fiche primaire : calculé quand son type porte un
+   * modèle, saisi sinon. Sert de référence aux fiches suivantes.
+   *
+   * Passe par le MÊME helper que `createOrder` (lib/entityLabel) au lieu de
+   * réimplémenter le calcul : un miroir écrit à la main finit par diverger.
    */
+  function primaryEffectiveLabel(): string {
+    const primary = template?.items[0];
+    if (!primary) return "";
+    const draft = fiches[primary.entityTypeId];
+    return primary.labelTemplate
+      ? resolveEntityLabel(
+          { name: primary.typeName, labelTemplate: primary.labelTemplate },
+          draft?.fields ?? {},
+        )
+      : (draft?.label ?? "").trim();
+  }
+
+  /** Libellé des fiches secondaires sans modèle — dérivé de la première. */
   function derivedLabel(typeName: string): string {
-    const primaryTypeId = template?.items[0]?.entityTypeId;
-    const primary = primaryTypeId ? (fiches[primaryTypeId]?.label ?? "").trim() : "";
+    const primary = primaryEffectiveLabel();
     return primary ? `${typeName} — ${primary}` : "";
+  }
+
+  /** Libellé calculé d'une fiche à modèle, sans repli (vide tant que rien n'est saisi). */
+  function autoLabel(item: OrderTemplateOption["items"][number]): string {
+    return renderLabelTemplate(
+      { name: item.typeName, labelTemplate: item.labelTemplate },
+      fiches[item.entityTypeId]?.fields ?? {},
+    );
   }
 
   function patchFiche(entityTypeId: string, patch: Partial<FicheDraft>) {
@@ -124,8 +150,9 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
     if (isAdmin && !clientId) found.client = "Choisissez un client.";
     for (const [index, item] of template.items.entries()) {
       const draft = fiches[item.entityTypeId];
-      // Les fiches suivantes tirent leur libellé de la première.
-      if (index === 0 && !draft?.label.trim()) {
+      // Les fiches suivantes tirent leur libellé de la première ; un type à
+      // modèle ne demande aucune saisie.
+      if (index === 0 && !item.labelTemplate && !draft?.label.trim()) {
         found[`${item.entityTypeId}:label`] = "Libellé requis.";
       }
       if (item.hasPlanning && !draft?.scheduledAt) {
@@ -164,9 +191,14 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
             const draft = fiches[item.entityTypeId];
             return {
               entityTypeId: item.entityTypeId,
-              // Dérivé côté serveur pour les fiches suivantes ; envoyé pour que
-              // la requête reste valide si le calcul évolue.
-              label: index === 0 ? draft.label.trim() : derivedLabel(item.typeName),
+              // Un type à modèle : le serveur calcule, il reste seul
+              // propriétaire de la valeur (dont la date du repli).
+              // Sinon : saisi pour la première fiche, dérivé pour les suivantes.
+              label: item.labelTemplate
+                ? ""
+                : index === 0
+                  ? draft.label.trim()
+                  : derivedLabel(item.typeName),
               fields: draft.fields,
               scheduledAt:
                 item.hasPlanning && draft.scheduledAt
@@ -291,7 +323,20 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                     <p className="text-[13px] font-semibold text-foreground">
                       {idx + 1}. {item.typeName}
                     </p>
-                    {idx === 0 ? (
+                    {item.labelTemplate ? (
+                      /* Libellé calculé depuis les champs : rien à saisir. On
+                         montre le rendu réel, pas le repli daté — l'afficher
+                         avant toute saisie ressemblerait à un bug. */
+                      <FormField label="Libellé" help="Calculé à partir de vos réponses.">
+                        <p className="text-[13px] text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
+                          {autoLabel(item) || (
+                            <span className="italic">
+                              Renseignez les champs ci-dessous
+                            </span>
+                          )}
+                        </p>
+                      </FormField>
+                    ) : idx === 0 ? (
                       <FormField
                         label="Libellé"
                         required
@@ -351,6 +396,7 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                           })
                         }
                         showLabel
+                        validateNumberFormat
                         error={
                           (draft.fields[field.key] ?? "").trim()
                             ? undefined

@@ -15,6 +15,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { MAX_ENTITY_LABEL, hasLabelTemplate, resolveEntityLabel } from "@/lib/entityLabel";
 import { Prisma } from "@prisma/client";
 import type { UserContext } from "@/lib/userContext";
 import {
@@ -149,6 +150,7 @@ const orderDetailSelect = {
           hasRushes: true,
           hasAssignees: true,
           fieldSchema: true,
+          labelTemplate: true,
         },
       },
     },
@@ -219,6 +221,8 @@ function serializeOrder(order: OrderDetailRaw, opts: { forExternal: boolean }) {
       id: e.id,
       typeId: e.typeId,
       typeName: e.type.name,
+      // Non vide = le libellé est calculé : le formulaire n'en propose pas la saisie.
+      labelTemplate: e.type.labelTemplate,
       typeIcon: e.type.icon,
       hasPlanning: e.type.hasPlanning,
       label: e.label,
@@ -286,6 +290,8 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
               hasAccount: true,
               hasRushes: true,
               fieldSchema: true,
+              // Libellé dérivé des champs quand le type en porte un modèle.
+              labelTemplate: true,
             },
           },
         },
@@ -333,11 +339,26 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
       : null;
   const isExternalCreator = !ctx.canAdminBypass;
 
+  // Un seul instant de référence pour toute la commande : deux appels à
+  // `new Date()` de part et d'autre de minuit produiraient « Bien du 09/09 »
+  // et « Tournage — Bien du 10/09 ».
+  const now = new Date();
+
   // Libellé de référence = celui de la première fiche du modèle. Les fiches
   // suivantes en dérivent (« Tournage — 12 rue des Lilas ») au lieu d'être
   // ressaisies : une seule saisie, et deux fiches distinguables partout au lieu
   // de deux homonymes.
-  const primaryLabel = fichesByType.get(template.items[0]?.entityTypeId ?? "")?.label?.trim() ?? "";
+  //
+  // Quand le type de la fiche primaire porte un modèle de libellé, la référence
+  // est le libellé CALCULÉ — avec repli, jamais vide : sinon une primaire au
+  // rendu vide passerait pendant que la secondaire échouerait sur un label vide.
+  const primaryItem = template.items[0];
+  const primaryFiche = primaryItem ? fichesByType.get(primaryItem.entityTypeId) : undefined;
+  const primaryLabel = !primaryItem
+    ? ""
+    : hasLabelTemplate(primaryItem.entityType)
+      ? resolveEntityLabel(primaryItem.entityType, primaryFiche?.fields ?? {}, { now })
+      : (primaryFiche?.label?.trim() ?? "");
 
   // Préparation (validations complètes, hors tx) — une par item, dans l'ordre.
   const prepared: { data: Awaited<ReturnType<typeof prepareEntityCreate>>; isShoot: boolean }[] =
@@ -349,8 +370,12 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
     }
     // Seule la première fiche porte un libellé saisi ; les autres sont
     // dérivées côté serveur — ce que le client envoie pour elles est ignoré.
-    const label =
-      index === 0
+    //
+    // Un type qui porte son propre modèle l'emporte sur la dérivation : on
+    // laisse alors `prepareEntityCreate` calculer, d'où le libellé vide ici.
+    const label = hasLabelTemplate(item.entityType)
+      ? ""
+      : index === 0
         ? fiche.label
         : primaryLabel
           ? `${item.entityType.name} — ${primaryLabel}`
@@ -368,6 +393,7 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
       // Les assignés par défaut viennent des recettes réellement commandées,
       // pas d'un binding arbitraire du compte.
       recipeTemplateIds: template.recipes.map((r) => r.patternTemplateId),
+      now,
     });
     prepared.push({ data, isShoot: isShootType(item.entityType) });
   }
@@ -520,7 +546,14 @@ export async function updateOrderEntity(
     where: { id: entityId, orderId },
     select: {
       id: true,
-      type: { select: { hasPlanning: true, fieldSchema: true } },
+      label: true,
+      labelIsCustom: true,
+      // Valeurs en base : servent de référence à la tolérance rétro-compat
+      // des champs numériques (cf. validateFieldValues).
+      fields: true,
+      type: {
+        select: { hasPlanning: true, fieldSchema: true, name: true, labelTemplate: true },
+      },
     },
   });
   if (!entity) throw new NotFoundError("Fiche");
@@ -529,8 +562,14 @@ export async function updateOrderEntity(
   if (patch.label !== undefined) {
     const label = typeof patch.label === "string" ? patch.label.trim() : "";
     if (!label) throw new ValidationError("Le libellé ne peut pas être vide");
-    if (label.length > 200) throw new ValidationError("Libellé trop long (max 200 caractères)");
+    if (label.length > MAX_ENTITY_LABEL) {
+      throw new ValidationError(`Libellé trop long (max ${MAX_ENTITY_LABEL} caractères)`);
+    }
     data.label = label;
+    // Verrou seulement sur un VRAI changement : le formulaire renvoie le
+    // libellé avec les champs à chaque enregistrement, ce qui tuerait
+    // l'automatisation dès la première sauvegarde.
+    if (label !== entity.label) data.labelIsCustom = true;
   }
   if (patch.fields !== undefined) {
     if (typeof patch.fields !== "object" || patch.fields === null || Array.isArray(patch.fields)) {
@@ -547,10 +586,21 @@ export async function updateOrderEntity(
     const err = validateFieldValues(
       normalizeCustomFields(entity.type.fieldSchema),
       patch.fields,
-      { requireRequired: true, allowUnknownKeys: true },
+      {
+        requireRequired: true,
+        allowUnknownKeys: true,
+        previousValues: safeJSON<Record<string, string>>(entity.fields, {}),
+      },
     );
     if (err) throw new ValidationError(err);
     data.fields = JSON.stringify(patch.fields);
+    // Le libellé suit les champs, sauf s'il a été personnalisé (avant ou à
+    // l'instant même, ci-dessus).
+    const renamedNow = data.labelIsCustom === true;
+    if (!renamedNow && !entity.labelIsCustom && hasLabelTemplate(entity.type)) {
+      const next = resolveEntityLabel(entity.type, patch.fields);
+      if (next !== entity.label) data.label = next;
+    }
   }
   if (patch.scheduledAt !== undefined && entity.type.hasPlanning) {
     if (!patch.scheduledAt) throw new ValidationError("Une date est requise pour cette fiche");

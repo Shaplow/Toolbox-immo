@@ -23,7 +23,9 @@ export type EntityActivityType =
   | "VALIDATION_REJECTED"
   | "VALIDATION_REQUESTED"
   | "VIDEASTE_CONFIRMED"
-  | "VIDEASTE_DECLINED";
+  | "VIDEASTE_DECLINED"
+  /** Admin : demande de disponibilité relancée (réponse effacée, assigné conservé). */
+  | "VIDEASTE_RESET";
 
 export interface LogEntityActivityInput {
   entityId: string;

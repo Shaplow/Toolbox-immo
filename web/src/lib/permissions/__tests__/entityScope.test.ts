@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import {
   whereClauseForUserEntity,
   canUserAccessEntity,
+  isValidatedForTeam,
   canCreateEntity,
   canAttachSlotToEntity,
   canUploadEntityRushes,
@@ -30,7 +31,14 @@ describe("whereClauseForUserEntity", () => {
   it("VIDEASTE → team + OR vidéaste fiche | vidéaste d'un reel", () => {
     expect(whereClauseForUserEntity("VIDEASTE", "vid-1")).toEqual({
       type: { visibility: "team" },
-      validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] },
+      AND: [
+        {
+          OR: [
+            { validationStatus: null },
+            { validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] } },
+          ],
+        },
+      ],
       OR: [
         { assigneeVideasteId: "vid-1" },
         { shootSlots: { some: { assigneeVideasteId: "vid-1" } } },
@@ -41,7 +49,14 @@ describe("whereClauseForUserEntity", () => {
   it("MONTEUR → team + OR défaut monteur | reel assigné", () => {
     expect(whereClauseForUserEntity("MONTEUR", "mon-1")).toEqual({
       type: { visibility: "team" },
-      validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] },
+      AND: [
+        {
+          OR: [
+            { validationStatus: null },
+            { validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] } },
+          ],
+        },
+      ],
       OR: [
         { defaultAssigneeMonteurId: "mon-1" },
         { shootSlots: { some: { assigneeMonteurId: "mon-1" } } },
@@ -52,7 +67,14 @@ describe("whereClauseForUserEntity", () => {
   it("CM → team + OR défaut cm | reel assigné", () => {
     expect(whereClauseForUserEntity("CM", "cm-1")).toEqual({
       type: { visibility: "team" },
-      validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] },
+      AND: [
+        {
+          OR: [
+            { validationStatus: null },
+            { validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] } },
+          ],
+        },
+      ],
       OR: [
         { defaultAssigneeCmId: "cm-1" },
         { shootSlots: { some: { assigneeCmId: "cm-1" } } },
@@ -78,7 +100,42 @@ describe("whereClauseForUserEntity", () => {
   it("aucun rôle équipe ne voit une fiche en attente de validation admin", () => {
     for (const role of ["VIDEASTE", "MONTEUR", "CM"] as UserRole[]) {
       const clause = whereClauseForUserEntity(role, "u1") as Record<string, unknown>;
-      expect(clause.validationStatus).toEqual({ notIn: ["PENDING_ADMIN", "REJECTED"] });
+      expect(clause.AND).toEqual([
+        {
+          OR: [
+            { validationStatus: null },
+            { validationStatus: { notIn: ["PENDING_ADMIN", "REJECTED"] } },
+          ],
+        },
+      ]);
+    }
+  });
+
+  // Régression : un `notIn` seul se traduit par un `NOT IN` SQL, qui vaut
+  // UNKNOWN sur une colonne NULL — les fiches créées par l'équipe (le cas
+  // majoritaire) disparaissaient alors pour les trois rôles, pendant que
+  // `isValidatedForTeam(null)` les acceptait. Liste et détail se
+  // contredisaient. La branche `{ validationStatus: null }` est le correctif :
+  // la retirer rendrait à nouveau le vidéaste aveugle à ses propres missions.
+  it("les fiches sans validation (null) restent visibles par l'équipe", () => {
+    for (const role of ["VIDEASTE", "MONTEUR", "CM"] as UserRole[]) {
+      const clause = whereClauseForUserEntity(role, "u1") as Record<string, unknown>;
+      const and = clause.AND as Array<{ OR: Array<Record<string, unknown>> }>;
+      expect(and[0].OR).toContainEqual({ validationStatus: null });
+      // `isValidatedForTeam` est le pendant single-resource : les deux doivent
+      // s'accorder sur null, sinon on recrée la divergence liste ↔ détail.
+      expect(isValidatedForTeam(null)).toBe(true);
+    }
+  });
+
+  // Le filtre est spreadé À CÔTÉ du `OR` d'assignation : s'il exposait lui
+  // aussi un `OR`, il l'écraserait silencieusement et ouvrirait le scope à
+  // toutes les fiches d'équipe.
+  it("le filtre de validation n'entre pas en collision avec le OR d'assignation", () => {
+    for (const role of ["VIDEASTE", "MONTEUR", "CM"] as UserRole[]) {
+      const clause = whereClauseForUserEntity(role, "u1") as Record<string, unknown>;
+      expect(Array.isArray(clause.OR)).toBe(true);
+      expect((clause.OR as unknown[]).length).toBe(2);
     }
   });
 });
@@ -208,6 +265,10 @@ describe("capacités par rôle", () => {
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("scheduledAt");
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeVideasteId");
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("fields");
+    // Relance d'une demande de disponibilité : la garde « null uniquement »
+    // vit dans patchEntity, pas ici.
+    expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("videasteConfirmation");
+    expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("videasteDeclineReason");
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.VIDEASTE).toEqual([
       "status",
       "notes",

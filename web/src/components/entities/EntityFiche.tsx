@@ -37,6 +37,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Section } from "@/components/ui/molecules/Section";
 import { toast } from "@/components/ui/Toast";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
+import { MAX_DECLINE_REASON, needsVideasteAnswer } from "@/lib/entityAvailability";
 import type { CustomField } from "@/lib/customFields";
 import { AttachSlotModal, type AttachRecipeOption, type AttachAccountOption } from "./AttachSlotModal";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
@@ -87,6 +88,10 @@ export interface EntityFicheData {
   hasAssignees: boolean;
   visibility: "admin" | "team";
   label: string;
+  /** Libellé posé à la main : le recalcul auto ne l'écrase plus. */
+  labelIsCustom: boolean;
+  /** Modèle de libellé du type — null/vide = libellé saisi à la main. */
+  labelTemplate: string | null;
   isArchived: boolean;
   validationStatus: EntityValidationStatus | null;
   /** Le type a la validation client activée (bouton « Redemander »). */
@@ -153,6 +158,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   VALIDATION_REQUESTED: "Validation client demandée",
   VIDEASTE_CONFIRMED: "Disponibilité confirmée",
   VIDEASTE_DECLINED: "Vidéaste indisponible",
+  VIDEASTE_RESET: "Disponibilité relancée",
 };
 
 export function EntityFiche({
@@ -233,6 +239,9 @@ export function EntityFiche({
       }
       toast.success("Champs enregistrés.");
       setFieldsDirty(false);
+      // Le libellé peut avoir été recalculé côté serveur : sans refresh, le
+      // titre de la page garderait l'ancienne valeur.
+      router.refresh();
     } catch {
       toast.error("Erreur réseau.");
     } finally {
@@ -280,6 +289,30 @@ export function EntityFiche({
     }
   }
 
+  // ─── Libellé automatique ────────────────────────────────────────────────
+  const [releasingLabel, setReleasingLabel] = useState(false);
+  async function releaseCustomLabel() {
+    setReleasingLabel(true);
+    try {
+      const res = await fetch(`/api/entities/${entity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ labelIsCustom: false }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error ?? "Échec de l'enregistrement.");
+        return;
+      }
+      toast.success("Libellé recalculé depuis les champs.");
+      router.refresh();
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setReleasingLabel(false);
+    }
+  }
+
   // ─── Disponibilité du vidéaste ──────────────────────────────────────────
   // Le vidéaste assigné répond sur un tournage validé : l'admin sait qui sera
   // là avant le jour J, au lieu de le découvrir par l'absence.
@@ -313,6 +346,36 @@ export function EntityFiche({
       toast.error("Erreur réseau.");
     } finally {
       setAnswering(false);
+    }
+  }
+
+  /**
+   * ADMIN : remet la disponibilité « en attente » sans réassigner.
+   *
+   * Sans cette action, un refus était définitif — le vidéaste ne pouvait plus
+   * répondre et l'admin n'avait que la réassignation pour débloquer, ce qui
+   * perdait l'assigné d'origine.
+   */
+  const [resetting, setResetting] = useState(false);
+  async function resetAvailability() {
+    setResetting(true);
+    try {
+      const res = await fetch(`/api/entities/${entity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videasteConfirmation: null }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error ?? "Échec de la relance.");
+        return;
+      }
+      toast.success("Demande de disponibilité relancée.");
+      router.refresh();
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -449,15 +512,16 @@ export function EntityFiche({
   const attachButtonLabel = attachMode === "reel" ? "Ajouter un reel" : "Lancer des missions";
   const status = entity.status ?? "PLANNED";
 
-  // Le bandeau ne s'adresse qu'au vidéaste du tournage : la passerelle d'accès
+  // Le bandeau ne s'adresse qu'à l'ASSIGNÉ du tournage : la passerelle d'accès
   // par reel (entityScope) amène ici d'autres vidéastes, qui ne répondent pas
-  // à sa place. L'admin voit le badge, pas les boutons.
-  const isAssignedVideaste = !isAdmin && currentUserId === entity.assigneeVideasteId;
-  const showAvailabilityPrompt =
-    isAssignedVideaste &&
-    entity.hasPlanning &&
-    status === "PLANNED" &&
-    entity.videasteConfirmation !== "CONFIRMED";
+  // à sa place — et le serveur les refuserait.
+  //
+  // Le test ne porte plus `!isAdmin` : le select des vidéastes accepte les
+  // comptes ADMIN (fiches/[id]/page.tsx), et un admin ainsi assigné se
+  // retrouvait sans aucun moyen de répondre — la fiche affichait « en attente »
+  // indéfiniment. C'est l'identité de l'assigné qui décide, pas le rôle.
+  const isAssignedVideaste = currentUserId === entity.assigneeVideasteId;
+  const showAvailabilityPrompt = isAssignedVideaste && needsVideasteAnswer(entity);
 
 
   const assigneeOptions = (opts: { id: string; name: string }[]) => [
@@ -532,6 +596,33 @@ export function EntityFiche({
               <span className="rounded-md bg-muted px-1.5 py-0.5 border border-border text-[11px]">
                 {entity.typeName}
               </span>
+              {/* Sans cet indicateur, un libellé qui bouge tout seul après une
+                  édition de champs passe pour un bug. */}
+              {entity.labelTemplate &&
+                (entity.labelIsCustom ? (
+                  isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => void releaseCustomLabel()}
+                      disabled={releasingLabel}
+                      className="rounded-md bg-muted px-1.5 py-0.5 border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-ring"
+                      title="Recalculer le libellé depuis les champs et le laisser suivre leurs modifications"
+                    >
+                      Libellé personnalisé — revenir à l&apos;automatique
+                    </button>
+                  ) : (
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 border border-border text-[11px] text-muted-foreground">
+                      Libellé personnalisé
+                    </span>
+                  )
+                ) : (
+                  <span
+                    className="rounded-md bg-muted px-1.5 py-0.5 border border-border text-[11px] text-muted-foreground"
+                    title="Recalculé quand les champs changent"
+                  >
+                    Libellé automatique
+                  </span>
+                ))}
               {entity.isArchived && (
                 <span className="rounded-md bg-muted px-1.5 py-0.5 border border-border text-[11px] text-muted-foreground">
                   Archivée
@@ -695,22 +786,25 @@ export function EntityFiche({
             </p>
             <p className="text-[12px] text-muted-foreground">
               {entity.videasteConfirmation === "DECLINED"
-                ? "L'admin est prévenu et doit réassigner le tournage."
+                ? "L'admin est prévenu. Vous pouvez encore revenir sur votre réponse."
                 : entity.scheduledAtLabel
                   ? `Prévu le ${entity.scheduledAtLabel}. Confirmez pour que l'admin sache que la date est tenue.`
                   : "Confirmez pour que l'admin sache que la mission est prise en charge."}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            {entity.videasteConfirmation !== "DECLINED" && (
-              <Button
-                size="sm"
-                onClick={() => void answerAvailability("CONFIRMED")}
-                disabled={answering}
-              >
-                Je suis disponible
-              </Button>
-            )}
+            {/* Reste proposé après un refus : se libérer est le cas normal, et
+                le serveur accepte déjà DECLINED → CONFIRMED. Sans ce bouton,
+                seul l'admin pouvait débloquer, en réassignant. */}
+            <Button
+              size="sm"
+              onClick={() => void answerAvailability("CONFIRMED")}
+              disabled={answering}
+            >
+              {entity.videasteConfirmation === "DECLINED"
+                ? "Finalement, je suis disponible"
+                : "Je suis disponible"}
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -748,6 +842,8 @@ export function EntityFiche({
                 value={fields[field.key] ?? ""}
                 onChange={(v) => setFieldValue(field.key, v)}
                 showLabel
+                validateNumberFormat
+                previousValue={entity.fields[field.key] ?? ""}
                 disabled={!isAdmin}
               />
             ))}
@@ -815,15 +911,41 @@ export function EntityFiche({
                         .
                       </p>
                     ) : entity.videasteConfirmation === "DECLINED" ? (
-                      <p className="mt-1 text-[11px] text-danger-700">
-                        Indisponible
-                        {entity.videasteDeclineReason ? ` — ${entity.videasteDeclineReason}` : ""}.
-                        Réassignez le tournage.
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="text-[11px] text-danger-700">
+                          Indisponible
+                          {entity.videasteDeclineReason ? ` — ${entity.videasteDeclineReason}` : ""}.
+                        </p>
+                        {isAdmin && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void resetAvailability()}
+                            disabled={resetting}
+                          >
+                            Relancer la demande
+                          </Button>
+                        )}
+                      </div>
                     ) : (
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        En attente de confirmation du vidéaste.
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="text-[11px] text-muted-foreground">
+                          En attente de confirmation du vidéaste.
+                        </p>
+                        {/* Relance utile seulement si une réponse a déjà été
+                            donnée puis effacée : sinon la demande est déjà en
+                            attente, le bouton ne ferait rien de visible. */}
+                        {isAdmin && entity.videasteConfirmationAt && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void resetAvailability()}
+                            disabled={resetting}
+                          >
+                            Relancer la demande
+                          </Button>
+                        )}
+                      </div>
                     ))}
                 </>
               </FormField>
@@ -969,7 +1091,7 @@ export function EntityFiche({
       <ConfirmDialog
         open={declineOpen}
         title="Signaler une indisponibilité ?"
-        description="L'admin est prévenu et devra réassigner le tournage à un autre vidéaste."
+        description="L'admin est prévenu. Vous pourrez revenir sur cette réponse tant que le tournage n'a pas eu lieu."
         confirmLabel="Je ne suis pas disponible"
         variant="danger"
         loading={answering}
@@ -983,6 +1105,7 @@ export function EntityFiche({
           value={declineReason}
           onChange={(e) => setDeclineReason(e.target.value)}
           rows={3}
+          maxLength={MAX_DECLINE_REASON}
           placeholder="Motif (optionnel, visible par l'admin)…"
           className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
         />

@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
+import { renderLabelTemplate } from "@/lib/entityLabel";
 import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
 import { isoToLocalInput, localInputToIso, shortDateTimeFr } from "@/lib/date/formatFr";
@@ -181,7 +182,7 @@ export function OrderDetailClient({
     }));
   }
 
-  async function saveFiche(entityId: string, hasPlanning: boolean) {
+  async function saveFiche(entityId: string, hasPlanning: boolean, hasLabelTemplate = false) {
     const draft = ficheDrafts[entityId];
     if (!draft) return;
     if (hasPlanning && !draft.scheduledAt) {
@@ -196,7 +197,9 @@ export function OrderDetailClient({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          label: draft.label,
+          // Un type à modèle calcule son libellé : le renvoyer ici le
+          // marquerait « personnalisé » dès le premier enregistrement.
+          ...(hasLabelTemplate ? {} : { label: draft.label }),
           fields: draft.fields,
           ...(hasPlanning && draft.scheduledAt
             ? { scheduledAt: localInputToIso(draft.scheduledAt) }
@@ -414,7 +417,9 @@ export function OrderDetailClient({
             <div key={entity.id} className="bg-card border border-border rounded-lg p-4 space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-[13px] font-semibold text-foreground flex-1 min-w-0">
-                  {entity.typeName} · {entity.label}
+                  {entity.label.startsWith(entity.typeName)
+                    ? entity.label
+                    : `${entity.typeName} · ${entity.label}`}
                 </p>
                 {validation && (
                   <span
@@ -445,9 +450,20 @@ export function OrderDetailClient({
 
               {editable && draft ? (
                 <div className="space-y-3">
-                  <FormField label="Libellé">
-                    <Input value={draft.label} onChange={(v) => patchDraft(entity.id, { label: v })} />
-                  </FormField>
+                  {entity.labelTemplate ? (
+                    <FormField label="Libellé" help="Calculé à partir des champs.">
+                      <p className="text-[13px] text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
+                        {renderLabelTemplate(
+                          { name: entity.typeName, labelTemplate: entity.labelTemplate },
+                          draft.fields,
+                        ) || <span className="italic">Renseignez les champs</span>}
+                      </p>
+                    </FormField>
+                  ) : (
+                    <FormField label="Libellé">
+                      <Input value={draft.label} onChange={(v) => patchDraft(entity.id, { label: v })} />
+                    </FormField>
+                  )}
                   {entity.hasPlanning && (
                     <FormField label="Date souhaitée">
                       <DateTimeField
@@ -465,13 +481,17 @@ export function OrderDetailClient({
                         patchDraft(entity.id, { fields: { ...draft.fields, [field.key]: v } })
                       }
                       showLabel
+                      validateNumberFormat
+                      previousValue={entity.fields[field.key] ?? ""}
                     />
                   ))}
                   {draft.dirty && (
                     <div className="flex justify-end">
                       <Button
                         size="sm"
-                        onClick={() => void saveFiche(entity.id, entity.hasPlanning)}
+                        onClick={() =>
+                          void saveFiche(entity.id, entity.hasPlanning, !!entity.labelTemplate)
+                        }
                         disabled={busy}
                       >
                         Enregistrer

@@ -42,12 +42,45 @@ import type { UserRole } from "@/types/roles";
  */
 export const ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES = ["PENDING_ADMIN", "REJECTED"] as const;
 
-/** WHERE partiel : exclut les fiches non tranchées par l'admin. */
-const VALIDATED_FOR_TEAM = {
-  validationStatus: { notIn: [...ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES] },
-} satisfies Prisma.EntityWhereInput;
+/**
+ * WHERE partiel : exclut les fiches non tranchées par l'admin.
+ *
+ * Deux détails de forme sont OBLIGATOIRES, et chacun a coûté un bug :
+ *
+ * 1. La branche `{ validationStatus: null }` explicite. Un `notIn` seul se
+ *    traduit par un `NOT IN` SQL, qui vaut UNKNOWN — donc faux — sur une
+ *    colonne `NULL` : les fiches créées par l'équipe (le cas majoritaire,
+ *    cf. l.33) disparaissaient pour les trois rôles, alors que le pendant
+ *    single-resource `isValidatedForTeam(null)` les acceptait. Liste et
+ *    détail se contredisaient, d'où des 404 sur des fiches listées ailleurs.
+ * 2. L'encapsulation dans `AND`. Les branches de rôle spreadent ce WHERE
+ *    À CÔTÉ de leur propre clé `OR` d'assignation : exposer un `OR` ici
+ *    écraserait silencieusement celle-là.
+ */
+function validatedForTeamWhere(): Prisma.EntityWhereInput {
+  return {
+    AND: [
+      {
+        OR: [
+          { validationStatus: null },
+          { validationStatus: { notIn: [...ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES] } },
+        ],
+      },
+    ],
+  };
+}
 
-/** Pendant single-resource de `VALIDATED_FOR_TEAM`. */
+/**
+ * Même filtre, exporté pour les requêtes qui scopent à la main (worklists,
+ * inbox) et n'appellent pas `whereClauseForUserEntity`. Sans ce partage, le
+ * filtre était recopié à l'identique sur trois sites — et n'a été corrigé
+ * sur aucun.
+ */
+export function validatedForTeamFilter(): Prisma.EntityWhereInput {
+  return validatedForTeamWhere();
+}
+
+/** Pendant single-resource de `validatedForTeamWhere`. */
 export function isValidatedForTeam(validationStatus: string | null): boolean {
   return !(ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES as readonly string[]).includes(
     validationStatus ?? "",
@@ -67,6 +100,12 @@ export function isValidatedForTeam(validationStatus: string | null): boolean {
  * const scope = whereClauseForUserEntity(role, userId);
  * const entities = await prisma.entity.findMany({ where: { ...scope } });
  * ```
+ *
+ * ATTENTION à l'appelant : pour les rôles équipe, la clause retournée porte
+ * une clé `AND` (cf. `validatedForTeamWhere`). Un appelant qui ajoute la
+ * sienne doit FUSIONNER les deux tableaux — un spread naïf
+ * `{ ...scope, AND: [...] }` effacerait le filtre de validation et exposerait
+ * des fiches que l'équipe ne doit pas voir.
  */
 export function whereClauseForUserEntity(
   role: UserRole,
@@ -83,7 +122,7 @@ export function whereClauseForUserEntity(
     case "VIDEASTE":
       return {
         type: { visibility: "team" },
-        ...VALIDATED_FOR_TEAM,
+        ...validatedForTeamWhere(),
         OR: [
           { assigneeVideasteId: userId },
           { shootSlots: { some: { assigneeVideasteId: userId } } },
@@ -93,7 +132,7 @@ export function whereClauseForUserEntity(
     case "MONTEUR":
       return {
         type: { visibility: "team" },
-        ...VALIDATED_FOR_TEAM,
+        ...validatedForTeamWhere(),
         OR: [
           { defaultAssigneeMonteurId: userId },
           { shootSlots: { some: { assigneeMonteurId: userId } } },
@@ -103,7 +142,7 @@ export function whereClauseForUserEntity(
     case "CM":
       return {
         type: { visibility: "team" },
-        ...VALIDATED_FOR_TEAM,
+        ...validatedForTeamWhere(),
         OR: [
           { defaultAssigneeCmId: userId },
           { shootSlots: { some: { assigneeCmId: userId } } },
@@ -214,6 +253,8 @@ export function canUploadEntityRushes(
 export const ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> = {
   ADMIN: [
     "label",
+    // Relâcher le verrou de libellé personnalisé (repasser en automatique).
+    "labelIsCustom",
     "fields",
     "isArchived",
     "accountId",
@@ -226,6 +267,12 @@ export const ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly stri
     "defaultAssigneeCmId",
     "notes",
     "brief",
+    // Relancer une demande de disponibilité (remise à `null` uniquement — les
+    // gardes de valeur sont dans patchEntity). Sans ça, un refus du vidéaste
+    // était définitif : lui ne pouvait plus répondre, et l'admin n'avait que la
+    // réassignation pour débloquer, ce qui perdait l'assigné d'origine.
+    "videasteConfirmation",
+    "videasteDeclineReason",
   ],
   // Le vidéaste peut annuler/mettre à jour le statut (ex : shoot reporté),
   // écrire des notes de terrain, et répondre sur sa disponibilité — les gardes

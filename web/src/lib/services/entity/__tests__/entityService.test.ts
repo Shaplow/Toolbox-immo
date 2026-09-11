@@ -73,6 +73,9 @@ function nonAdminCtx() {
 
 const BIEN_TYPE = {
   id: "etype_bien",
+  name: "Bien",
+  fieldSchema: "[]",
+  labelTemplate: null,
   hasPlanning: false,
   hasAccount: false,
   hasRushes: false,
@@ -82,6 +85,9 @@ const BIEN_TYPE = {
 
 const TOURNAGE_TYPE = {
   id: "etype_tournage",
+  name: "Tournage",
+  fieldSchema: "[]",
+  labelTemplate: null,
   hasPlanning: true,
   hasAccount: true,
   hasRushes: true,
@@ -497,6 +503,50 @@ describe("patchEntity — confirmation de disponibilité du vidéaste", () => {
     ).rejects.toThrow();
   });
 
+  it("le vidéaste décliné peut se raviser (DECLINED → CONFIRMED)", async () => {
+    // Le serveur l'a toujours accepté ; c'est l'UI qui masquait le bouton et
+    // enfermait le vidéaste dans son refus.
+    mockEntityFindUnique.mockResolvedValue({
+      ...TOURNAGE_ACCESS,
+      videasteConfirmation: "DECLINED",
+    });
+    await patchEntity("ent-1", { videasteConfirmation: "CONFIRMED" }, nonAdminCtx());
+    const data = mockEntityUpdate.mock.calls[0][0].data;
+    expect(data.videasteConfirmation).toBe("CONFIRMED");
+    expect(data.videasteDeclineReason).toBeNull();
+  });
+
+  it("le motif d'indisponibilité est borné à 500 caractères", async () => {
+    await patchEntity(
+      "ent-1",
+      { videasteConfirmation: "DECLINED", videasteDeclineReason: "x".repeat(900) },
+      nonAdminCtx(),
+    );
+    const data = mockEntityUpdate.mock.calls[0][0].data;
+    expect((data.videasteDeclineReason as string).length).toBe(500);
+  });
+
+  it("l'admin relance la demande (null) → réponse effacée, assigné conservé", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...TOURNAGE_ACCESS,
+      videasteConfirmation: "DECLINED",
+    });
+    await patchEntity("ent-1", { videasteConfirmation: null }, adminCtx());
+    const data = mockEntityUpdate.mock.calls[0][0].data;
+    expect(data.videasteConfirmation).toBeNull();
+    expect(data.videasteConfirmationAt).toBeNull();
+    expect(data.videasteDeclineReason).toBeNull();
+    // L'assigné reste : c'est tout l'intérêt face à une réassignation.
+    expect(data.assigneeVideasteId).toBeUndefined();
+  });
+
+  it("un non-admin ne peut pas relancer la demande", async () => {
+    // La whitelist VIDEASTE laisse passer la clé — la garde est dans le service.
+    await expect(
+      patchEntity("ent-1", { videasteConfirmation: null }, nonAdminCtx()),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
   it("l'admin réassigne le vidéaste → la confirmation repart de zéro", async () => {
     mockEntityFindUnique.mockResolvedValue({
       ...TOURNAGE_ACCESS,
@@ -509,5 +559,183 @@ describe("patchEntity — confirmation de disponibilité du vidéaste", () => {
     expect(data.videasteConfirmation).toBeNull();
     expect(data.videasteConfirmationAt).toBeNull();
     expect(data.videasteDeclineReason).toBeNull();
+  });
+});
+
+describe("prepareEntityCreate — libellé automatique", () => {
+  const AVEC_MODELE = {
+    ...BIEN_TYPE,
+    fieldSchema: JSON.stringify([
+      { key: "adresse", label: "Adresse", type: "text" },
+      { key: "ville", label: "Ville", type: "text" },
+    ]),
+    labelTemplate: "{{adresse}}, {{ville}}",
+  };
+
+  it("type à modèle → libellé dérivé des champs, le label envoyé est ignoré", async () => {
+    mockEntityTypeFindUnique.mockResolvedValue(AVEC_MODELE);
+    await createEntity(
+      {
+        typeId: "etype_bien",
+        label: "n'importe quoi",
+        fields: { adresse: "12 rue des Lilas", ville: "Lyon" },
+      },
+      adminCtx(),
+    );
+    const data = mockEntityCreate.mock.calls.at(-1)![0].data;
+    expect(data.label).toBe("12 rue des Lilas, Lyon");
+    expect(data.labelIsCustom).toBe(false);
+  });
+
+  it("type à modèle + champs vides → repli daté, AUCUNE erreur", async () => {
+    mockEntityTypeFindUnique.mockResolvedValue(AVEC_MODELE);
+    await expect(
+      createEntity({ typeId: "etype_bien", label: "", fields: {} }, adminCtx()),
+    ).resolves.toBeDefined();
+    const data = mockEntityCreate.mock.calls.at(-1)![0].data;
+    expect(data.label).toMatch(/^Bien du \d{2}\/\d{2}\/\d{4}$/);
+    expect(data.labelIsCustom).toBe(false);
+  });
+
+  it("type sans modèle → libellé requis (comportement historique)", async () => {
+    mockEntityTypeFindUnique.mockResolvedValue(BIEN_TYPE);
+    await expect(
+      createEntity({ typeId: "etype_bien", label: "   " }, adminCtx()),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("type sans modèle + libellé saisi → verrouillé d'emblée", async () => {
+    mockEntityTypeFindUnique.mockResolvedValue(BIEN_TYPE);
+    await createEntity({ typeId: "etype_bien", label: "Saisi à la main" }, adminCtx());
+    const data = mockEntityCreate.mock.calls.at(-1)![0].data;
+    expect(data.label).toBe("Saisi à la main");
+    expect(data.labelIsCustom).toBe(true);
+  });
+
+  it("champs invalides → l'erreur de champ remonte AVANT toute dérivation", async () => {
+    // Fige le réordonnancement : le libellé dépend désormais des champs.
+    mockEntityTypeFindUnique.mockResolvedValue({
+      ...AVEC_MODELE,
+      fieldSchema: JSON.stringify([
+        { key: "type", label: "Type", type: "select", options: ["vente", "location"] },
+      ]),
+    });
+    await expect(
+      createEntity(
+        { typeId: "etype_bien", label: "", fields: { type: "hors-options" } },
+        adminCtx(),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(mockEntityCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("patchEntity — libellé automatique", () => {
+  const TYPE_AVEC_MODELE = {
+    visibility: "admin",
+    hasPlanning: false,
+    fieldSchema: JSON.stringify([{ key: "adresse", label: "Adresse", type: "text" }]),
+    name: "Bien",
+    labelTemplate: "{{adresse}}",
+  };
+  const BASE = {
+    id: "ent-1",
+    typeId: "etype_bien",
+    type: TYPE_AVEC_MODELE,
+    label: "12 rue des Lilas",
+    labelIsCustom: false,
+    fields: JSON.stringify({ adresse: "12 rue des Lilas" }),
+    orderId: null,
+    order: null,
+    status: null,
+    scheduledAt: null,
+    endAt: null,
+    validationStatus: "APPROVED",
+    assigneeVideasteId: null,
+    videasteConfirmation: null,
+    defaultAssigneeMonteurId: null,
+    defaultAssigneeCmId: null,
+    shootSlots: [],
+  };
+
+  function lastUpdateData() {
+    return mockEntityUpdate.mock.calls.at(-1)![0].data as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    mockEntityUpdate.mockClear();
+    mockEntityFindUnique.mockResolvedValue(BASE);
+    const updated = { id: "ent-1", fields: "{}", type: { fieldSchema: "[]" } };
+    mockEntityUpdate.mockResolvedValue(updated);
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        entity: {
+          update: (...a: unknown[]) => mockEntityUpdate(...a),
+          findUnique: () => updated,
+        },
+        entityActivity: { create: mockEntityActivityCreate },
+      }),
+    );
+  });
+
+  it("champs modifiés, libellé non personnalisé → recalcul", async () => {
+    await patchEntity("ent-1", { fields: { adresse: "8 avenue Foch" } }, adminCtx());
+    expect(lastUpdateData().label).toBe("8 avenue Foch");
+  });
+
+  it("champs modifiés, libellé personnalisé → le libellé ne bouge PAS", async () => {
+    mockEntityFindUnique.mockResolvedValue({ ...BASE, labelIsCustom: true });
+    await patchEntity("ent-1", { fields: { adresse: "8 avenue Foch" } }, adminCtx());
+    expect(lastUpdateData().label).toBeUndefined();
+  });
+
+  it("champs modifiés sur un type SANS modèle → pas de recalcul", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...BASE,
+      type: { ...TYPE_AVEC_MODELE, labelTemplate: null },
+    });
+    await patchEntity("ent-1", { fields: { adresse: "8 avenue Foch" } }, adminCtx());
+    expect(lastUpdateData().label).toBeUndefined();
+  });
+
+  it("renommage manuel → verrou posé", async () => {
+    await patchEntity("ent-1", { label: "Mon nom à moi" }, adminCtx());
+    const data = lastUpdateData();
+    expect(data.label).toBe("Mon nom à moi");
+    expect(data.labelIsCustom).toBe(true);
+  });
+
+  it("libellé renvoyé À L'IDENTIQUE → pas de verrou (anti round-trip)", async () => {
+    await patchEntity("ent-1", { label: "12 rue des Lilas" }, adminCtx());
+    expect(lastUpdateData().labelIsCustom).toBeUndefined();
+  });
+
+  it("labelIsCustom:false → retour à l'automatique, recalcul immédiat", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...BASE,
+      labelIsCustom: true,
+      label: "Mon nom à moi",
+    });
+    await patchEntity("ent-1", { labelIsCustom: false }, adminCtx());
+    const data = lastUpdateData();
+    expect(data.label).toBe("12 rue des Lilas");
+    expect(data.labelIsCustom).toBe(false);
+  });
+
+  it("labelIsCustom:true explicite → refusé", async () => {
+    await expect(
+      patchEntity("ent-1", { labelIsCustom: true }, adminCtx()),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("labelIsCustom:false sur un type sans modèle → refusé", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...BASE,
+      labelIsCustom: true,
+      type: { ...TYPE_AVEC_MODELE, labelTemplate: null },
+    });
+    await expect(
+      patchEntity("ent-1", { labelIsCustom: false }, adminCtx()),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 });

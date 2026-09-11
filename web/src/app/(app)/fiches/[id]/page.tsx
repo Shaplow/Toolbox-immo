@@ -144,6 +144,8 @@ export default async function EntityDetailPage({ params }: Params) {
     hasAssignees: entity.type.hasAssignees,
     visibility: entity.type.visibility === "team" ? "team" : "admin",
     label: entity.label,
+    labelIsCustom: entity.labelIsCustom,
+    labelTemplate: entity.type.labelTemplate,
     isArchived: entity.isArchived,
     validationStatus: (entity.validationStatus as EntityFicheData["validationStatus"]) ?? null,
     needsClientValidation: entity.type.needsClientValidation,

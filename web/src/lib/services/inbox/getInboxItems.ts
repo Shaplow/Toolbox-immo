@@ -16,7 +16,7 @@
 
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { prisma } from "@/lib/prisma";
-import { ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES } from "@/lib/permissions/entityScope";
+import { validatedForTeamFilter } from "@/lib/permissions/entityScope";
 import type { SlotStatus } from "@/types/roles";
 
 export type InboxTypology =
@@ -75,6 +75,13 @@ export interface InboxItem {
 }
 
 const ITEM_LIMIT_PER_TYPE = 20;
+
+/** Fenêtre de rattrapage des tournages passés jamais confirmés (jours). */
+const SHOOT_UNCONFIRMED_GRACE_DAYS = 30;
+
+function inboxShootFloor(now: Date): Date {
+  return new Date(now.getTime() - SHOOT_UNCONFIRMED_GRACE_DAYS * 24 * 60 * 60 * 1000);
+}
 const MAX_TOTAL_ITEMS = 60;
 
 // Statuts considérés "actifs" (en cours, non terminés).
@@ -176,7 +183,8 @@ export async function getInboxItems(): Promise<InboxItem[]> {
     noPatternSlots,
     rushesOverdueSlots,
     bankReadySlots,
-    shootAvailabilityEntities,
+    shootDeclinedEntities,
+    shootUnconfirmedEntities,
   ] = await Promise.all([
     // Versions à valider (EDIT_REVIEW + version pending).
     prisma.publicationSlot.findMany({
@@ -259,19 +267,41 @@ export async function getInboxItems(): Promise<InboxItem[]> {
       orderBy: { updatedAt: "desc" },
       take: ITEM_LIMIT_PER_TYPE,
     }),
-    // Tournages à venir dont la disponibilité du vidéaste n'est pas acquise :
-    // pas encore répondu, ou explicitement décliné (il faut réassigner).
-    // Restreint aux fiches visibles par l'équipe : un tournage encore en
-    // attente de validation admin est déjà remonté par la commande.
+    // Tournages DÉCLINÉS — sans plancher de date : un refus sur un tournage
+    // déjà passé reste un problème ouvert (personne n'a tourné), et c'est
+    // précisément celui qu'il ne faut pas laisser filer.
     prisma.entity.findMany({
       where: {
         type: { hasPlanning: true, visibility: "team" },
         isArchived: false,
         status: "PLANNED",
-        scheduledAt: { gte: now },
         assigneeVideasteId: { not: null },
-        validationStatus: { notIn: [...ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES] },
-        OR: [{ videasteConfirmation: null }, { videasteConfirmation: "DECLINED" }],
+        ...validatedForTeamFilter(),
+        videasteConfirmation: "DECLINED",
+      },
+      select: ENTITY_SELECT,
+      orderBy: { updatedAt: "desc" },
+      take: ITEM_LIMIT_PER_TYPE,
+    }),
+    // Tournages SANS RÉPONSE — requête séparée, et non un simple OR, parce que
+    // les deux typologies ne pèsent pas pareil : mutualisées sous un unique
+    // `take: 20` trié par date, les plus anciennes rempliraient la page et
+    // évinceraient les refus, qui sont bien plus urgents.
+    //
+    // Plancher glissant plutôt que `gte: now` : un tournage passé jamais
+    // confirmé disparaissait du radar admin pendant que le bandeau côté
+    // vidéaste, lui, continuait de réclamer une réponse. Deux vérités
+    // différentes sur la même fiche. La fenêtre borne le rattrapage sans
+    // ressusciter un arriéré sans fin.
+    prisma.entity.findMany({
+      where: {
+        type: { hasPlanning: true, visibility: "team" },
+        isArchived: false,
+        status: "PLANNED",
+        scheduledAt: { gte: inboxShootFloor(now) },
+        assigneeVideasteId: { not: null },
+        ...validatedForTeamFilter(),
+        videasteConfirmation: null,
       },
       select: ENTITY_SELECT,
       orderBy: { scheduledAt: "asc" },
@@ -323,15 +353,20 @@ export async function getInboxItems(): Promise<InboxItem[]> {
 
   // Tournages : un vidéaste indisponible bloque la date (score haut, juste
   // sous les retards) ; une absence de réponse est un rappel (score bas).
-  const entityItems: InboxItem[] = shootAvailabilityEntities.map((e) => {
-    const declined = e.videasteConfirmation === "DECLINED";
-    return {
+  const entityItems: InboxItem[] = [
+    ...shootDeclinedEntities.map((e) => ({
       id: `entity:${e.id}`,
-      typology: declined ? ("shoot_declined" as const) : ("shoot_unconfirmed" as const),
-      score: declined ? 85 : 45,
+      typology: "shoot_declined" as const,
+      score: 85,
       entity: serializeEntity(e),
-    };
-  });
+    })),
+    ...shootUnconfirmedEntities.map((e) => ({
+      id: `entity:${e.id}`,
+      typology: "shoot_unconfirmed" as const,
+      score: 45,
+      entity: serializeEntity(e),
+    })),
+  ];
 
   const all = [...Array.from(byId.values()), ...entityItems];
   const sortKey = (i: InboxItem) => i.slot?.updatedAt ?? i.entity?.updatedAt ?? "";

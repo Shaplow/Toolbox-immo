@@ -33,6 +33,8 @@ import { hasTool, TOOLS } from "@/lib/permissions";
 import { deleteR2Prefix } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
 import { normalizeCustomFields, validateFieldValues } from "@/lib/customFields";
+import { MAX_DECLINE_REASON } from "@/lib/entityAvailability";
+import { MAX_ENTITY_LABEL, hasLabelTemplate, resolveEntityLabel } from "@/lib/entityLabel";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
 
@@ -137,7 +139,6 @@ export function initialValidationStatus(
  */
 const REEL_ATTACHABLE_SOURCES = ["manual_rushes", "external_upload"] as const;
 
-const MAX_LABEL = 200;
 const MAX_KEY = 100;
 const MAX_VALUE = 5000;
 
@@ -224,9 +225,11 @@ const entityListSelect = {
       hasRushes: true,
       hasAssignees: true,
       fieldSchema: true,
+      labelTemplate: true,
     },
   },
   label: true,
+  labelIsCustom: true,
   fields: true,
   isArchived: true,
   validationStatus: true,
@@ -254,8 +257,10 @@ const entityListSelect = {
 const entityDetailSelect = {
   id: true,
   typeId: true,
+  // `type: true` ramène tout l'EntityType, labelTemplate compris.
   type: true,
   label: true,
+  labelIsCustom: true,
   fields: true,
   isArchived: true,
   validationStatus: true,
@@ -525,16 +530,20 @@ export async function prepareEntityCreate(
     orderId?: string | null;
     /** Recettes du modèle de commande — source des assignés par défaut. */
     recipeTemplateIds?: string[];
+    /**
+     * Instant de référence du libellé de repli. `createOrder` en passe UN seul
+     * pour toute la commande : sinon une soumission à cheval sur minuit
+     * produirait « Bien du 09/09 » et « Tournage — Bien du 10/09 ».
+     */
+    now?: Date;
   },
 ): Promise<Prisma.EntityUncheckedCreateInput> {
   if (!input.typeId) throw new ValidationError("Un type de fiche est requis");
   const type = await prisma.entityType.findUnique({ where: { id: input.typeId } });
   if (!type) throw new NotFoundError("Type de fiche");
 
-  const label = input.label?.trim();
-  if (!label) throw new ValidationError("Un libellé est requis");
-  if (label.length > MAX_LABEL) throw new ValidationError(`Libellé trop long (max ${MAX_LABEL} caractères)`);
-
+  // Les champs sont validés AVANT le libellé : quand le type porte un modèle,
+  // le libellé en dérive, donc il n'a de sens qu'une fois les champs sûrs.
   const fieldsErr = validateFields(input.fields);
   if (fieldsErr) throw new ValidationError(fieldsErr);
 
@@ -546,6 +555,29 @@ export async function prepareEntityCreate(
     { requireRequired: true, allowUnknownKeys: false }
   );
   if (schemaValuesErr) throw new ValidationError(schemaValuesErr);
+
+  // Libellé : dérivé du modèle du type, ou saisi à la main.
+  //
+  // `labelIsCustom = true` sur la branche manuelle donne l'invariant qui régit
+  // tout le recalcul : true ⟺ ce texte n'a jamais été calculé. Il couvre aussi
+  // les libellés secondaires d'une commande (« Tournage — … »), qui ne doivent
+  // pas davantage être réécrits.
+  let label: string;
+  let labelIsCustom: boolean;
+  if (hasLabelTemplate(type)) {
+    // resolveEntityLabel ne rend jamais vide ni trop long : aucune erreur
+    // possible ici, une commande client ne se bloque pas sur un champ non rempli.
+    label = resolveEntityLabel(type, input.fields ?? {}, { now: opts.now });
+    labelIsCustom = false;
+  } else {
+    const provided = input.label?.trim();
+    if (!provided) throw new ValidationError("Un libellé est requis");
+    if (provided.length > MAX_ENTITY_LABEL) {
+      throw new ValidationError(`Libellé trop long (max ${MAX_ENTITY_LABEL} caractères)`);
+    }
+    label = provided;
+    labelIsCustom = true;
+  }
 
   let scheduledAt: Date | null = null;
   let endAt: Date | null = null;
@@ -591,6 +623,7 @@ export async function prepareEntityCreate(
   return {
     typeId: input.typeId,
     label,
+    labelIsCustom,
     fields: input.fields !== undefined ? JSON.stringify(input.fields) : "{}",
     validationStatus: initialValidationStatus(type, { isExternalCreator: opts.isExternalCreator }),
     orderId: opts.orderId ?? null,
@@ -698,7 +731,19 @@ export async function getEntity(id: string, ctx: UserContext) {
 const entityPatchAccessSelect = {
   id: true,
   typeId: true,
-  type: { select: { visibility: true, hasPlanning: true, fieldSchema: true } },
+  type: {
+    select: {
+      visibility: true,
+      hasPlanning: true,
+      fieldSchema: true,
+      // Recalcul du libellé quand les champs changent (cf. plus bas).
+      name: true,
+      labelTemplate: true,
+    },
+  },
+  label: true,
+  labelIsCustom: true,
+  fields: true,
   orderId: true,
   order: { select: { status: true } },
   status: true,
@@ -735,12 +780,25 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
   // ── Confirmation de disponibilité du vidéaste ──
   // La whitelist laisse passer les deux champs ; les gardes d'état sont ici.
   const confirmation = data.videasteConfirmation;
-  if (confirmation !== undefined) {
+  // `null` explicite = RELANCE admin : la question redevient ouverte sans
+  // réassigner. Avant, un refus était sans retour — le vidéaste ne pouvait plus
+  // répondre (bouton masqué) et l'admin devait changer d'assigné pour débloquer.
+  // Branche distincte du `undefined` (champ simplement absent du patch).
+  const isAvailabilityReset = confirmation === null && "videasteConfirmation" in data;
+  if (isAvailabilityReset) {
+    if (!ctx.canAdminBypass) {
+      throw new ForbiddenError("Seul un admin peut relancer une demande de disponibilité");
+    }
+    data.videasteConfirmationAt = null;
+    data.videasteDeclineReason = null;
+  } else if (confirmation !== undefined) {
     if (confirmation !== "CONFIRMED" && confirmation !== "DECLINED") {
       throw new ValidationError("Réponse de disponibilité invalide");
     }
     // La passerelle reel (entityScope) donne accès à la fiche à un vidéaste qui
     // n'est PAS celui du tournage : lui ne répond pas à la place de l'assigné.
+    // Le test porte sur l'identité, pas sur le rôle : un compte ADMIN peut être
+    // l'assigné (le select des vidéastes l'autorise) et doit pouvoir répondre.
     if (existing.assigneeVideasteId !== ctx.effectiveUser.id) {
       throw new ValidationError("Vous n'êtes pas le vidéaste de ce tournage");
     }
@@ -749,7 +807,12 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
     }
     data.videasteConfirmationAt = new Date();
     // Un motif ne survit pas à une confirmation : il décrivait l'indisponibilité.
-    const reason = typeof data.videasteDeclineReason === "string" ? data.videasteDeclineReason.trim() : null;
+    // Borné : texte libre écrit par un rôle non-admin, désormais saisissable
+    // depuis deux surfaces (la fiche et la worklist /home).
+    const reason =
+      typeof data.videasteDeclineReason === "string"
+        ? data.videasteDeclineReason.trim().slice(0, MAX_DECLINE_REASON)
+        : null;
     data.videasteDeclineReason = confirmation === "DECLINED" ? (reason || null) : null;
   } else if (data.videasteDeclineReason !== undefined) {
     // Motif sans réponse : rien à enregistrer, on évite un update fantôme.
@@ -797,9 +860,13 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
   if (typeof data.label === "string") {
     const trimmed = data.label.trim();
     if (!trimmed) throw new ValidationError("Le libellé ne peut pas être vide");
-    if (trimmed.length > MAX_LABEL) throw new ValidationError(`Libellé trop long (max ${MAX_LABEL} caractères)`);
+    if (trimmed.length > MAX_ENTITY_LABEL)
+      throw new ValidationError(`Libellé trop long (max ${MAX_ENTITY_LABEL} caractères)`);
     data.label = trimmed;
   }
+  // Capturé AVANT le JSON.stringify : c'est l'état final des champs, donc la
+  // base du recalcul de libellé plus bas.
+  let nextFields: Record<string, string> | null = null;
   if (data.fields !== undefined) {
     const err = validateFields(data.fields);
     if (err) throw new ValidationError(err);
@@ -808,10 +875,43 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
     const schemaErr = validateFieldValues(
       normalizeCustomFields(existing.type.fieldSchema),
       data.fields as Record<string, string>,
-      { requireRequired: false, allowUnknownKeys: true }
+      {
+        requireRequired: false,
+        allowUnknownKeys: true,
+        // Le formulaire renvoie l'objet `fields` COMPLET, pas un delta : sans
+        // la comparaison à la base, une valeur numérique historique non
+        // conforme bloquerait l'édition de n'importe quel AUTRE champ.
+        previousValues: safeJSON<Record<string, string>>(existing.fields, {}),
+      }
     );
     if (schemaErr) throw new ValidationError(schemaErr);
+    nextFields = data.fields as Record<string, string>;
     data.fields = JSON.stringify(data.fields);
+  }
+
+  // ── Libellé automatique ──────────────────────────────────────────────────
+  // Trois branches ORDONNÉES : le retour à l'auto prime, puis le renommage,
+  // puis le recalcul.
+  const typeHasTemplate = hasLabelTemplate(existing.type);
+  if (data.labelIsCustom !== undefined) {
+    if (data.labelIsCustom !== false) {
+      throw new ValidationError("Le libellé personnalisé ne peut être que relâché");
+    }
+    if (!typeHasTemplate) {
+      throw new ValidationError("Ce type de fiche n'a pas de modèle de libellé");
+    }
+    // Retour à l'automatique : on recalcule tout de suite, l'admin voit le
+    // résultat sans second aller-retour.
+    const fields = nextFields ?? safeJSON<Record<string, string>>(existing.fields, {});
+    data.label = resolveEntityLabel(existing.type, fields);
+  } else if (typeof data.label === "string" && data.label !== existing.label) {
+    // Renommage manuel → verrou. La comparaison est essentielle : un formulaire
+    // qui renvoie le libellé à l'identique ne doit pas tuer l'automatisation.
+    data.labelIsCustom = true;
+  } else if (nextFields && !existing.labelIsCustom && typeHasTemplate && data.label === undefined) {
+    const next = resolveEntityLabel(existing.type, nextFields);
+    // N'écrire que si ça change : pas d'updatedAt ni d'activité pour rien.
+    if (next !== existing.label) data.label = next;
   }
   if (typeof data.status === "string" && !ENTITY_STATUSES.includes(data.status as never)) {
     throw new ValidationError("Statut de fiche invalide");
@@ -847,18 +947,22 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
     const hasGenericFields = Object.keys(data).length > 0;
     if (hasGenericFields) {
       result = await tx.entity.update({ where: { id }, data, select: entityListSelect });
-      const activityType = confirmation
-        ? confirmation === "CONFIRMED"
-          ? ("VIDEASTE_CONFIRMED" as const)
-          : ("VIDEASTE_DECLINED" as const)
-        : statusChanged
-          ? ("STATUS_CHANGED" as const)
-          : ("UPDATED" as const);
+      const activityType = isAvailabilityReset
+        ? ("VIDEASTE_RESET" as const)
+        : confirmation
+          ? confirmation === "CONFIRMED"
+            ? ("VIDEASTE_CONFIRMED" as const)
+            : ("VIDEASTE_DECLINED" as const)
+          : statusChanged
+            ? ("STATUS_CHANGED" as const)
+            : ("UPDATED" as const);
       await logEntityActivity(tx, {
         entityId: id,
         actorId: ctx.actualUser.id,
         type: activityType,
-        payload: confirmation
+        payload: isAvailabilityReset
+          ? { previous: existing.videasteConfirmation ?? null }
+          : confirmation
           ? { reason: data.videasteDeclineReason ?? null }
           : statusChanged
             ? { from: existing.status, to: data.status }

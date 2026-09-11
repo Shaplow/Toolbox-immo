@@ -329,7 +329,67 @@ async function main() {
     });
   }
 
+  // Jobs autocut : de quoi vérifier que les compteurs ne comptent QUE le
+  // validable (done + pending_review) et que la section « Échecs » regroupe par
+  // cause. Sous l'ancien filtre (reviewStatus seul), le badge aurait affiché 3.
+  const autocutBatch = await prisma.mediaAutocutBatch.upsert({
+    where: { id: "test-autocut-batch" },
+    update: {},
+    create: {
+      id: "test-autocut-batch",
+      libraryId: videoLib.id,
+      status: "partial",
+      totalCount: 3,
+      doneCount: 1,
+      failCount: 2,
+      errorMsg: "Pack RunPod — RunPod status: TIMED_OUT",
+    },
+  });
+
+  for (const spec of [
+    {
+      i: 0,
+      status: "done",
+      errorMsg: null as string | null,
+      proposedStart: 0.4,
+      proposedEnd: 4.2,
+    },
+    {
+      i: 1,
+      status: "failed",
+      errorMsg: "Pack RunPod — RunPod status: TIMED_OUT",
+      proposedStart: null,
+      proposedEnd: null,
+    },
+    {
+      i: 2,
+      status: "failed",
+      errorMsg: "[autocut] Aucun segment Whisper produit pour test_video_2.mp4",
+      proposedStart: null,
+      proposedEnd: null,
+    },
+  ]) {
+    await prisma.mediaAutocutJob.upsert({
+      where: { id: `test-autocut-job-${spec.i}` },
+      update: {},
+      create: {
+        id: `test-autocut-job-${spec.i}`,
+        assetId: `test-media-asset-video-${spec.i}`,
+        libraryId: videoLib.id,
+        batchId: autocutBatch.id,
+        status: spec.status,
+        reviewStatus: "pending_review",
+        errorMsg: spec.errorMsg,
+        proposedStart: spec.proposedStart,
+        proposedEnd: spec.proposedEnd,
+        confirmedStart: spec.proposedStart,
+        confirmedEnd: spec.proposedEnd,
+      },
+    });
+  }
+
   console.log(`  ✓ MediaLibraries : video=${videoLib.id}, audio=${audioLib.id}`);
+  console.log(`  ✓ MediaAutocutJobs : 1 done + 2 failed (batch ${autocutBatch.id})`);
 
   // ─── V8 fixtures : pattern captions manuel + cover manualSelect ──────────
   // Sépare des fixtures de base (qui sont en mode auto par défaut) pour ne

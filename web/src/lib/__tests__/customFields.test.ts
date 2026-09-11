@@ -6,6 +6,8 @@ import {
   validateFieldValues,
   inferDefaultFieldType,
   type CustomField,
+  isNumericFieldValue,
+  isPartialNumericInput,
 } from "@/lib/customFields";
 
 describe("normalizeCustomFields", () => {
@@ -198,5 +200,86 @@ describe("validateFieldValues", () => {
 
   it("schéma vide : tout est accepté (type sans schéma configuré)", () => {
     expect(validateFieldValues([], { libre: "x" })).toBeNull();
+  });
+});
+
+describe("isNumericFieldValue", () => {
+  it("accepte les formats numériques réellement saisis", () => {
+    for (const v of ["68", "68,5", "68.5", "1 200", "1 200,50", "-5", "0", "007"]) {
+      expect(isNumericFieldValue(v)).toBe(true);
+    }
+  });
+
+  it("refuse tout ce qui n'est pas un nombre", () => {
+    // « 68 m² », « abc12 » et « 120-150 » sont précisément les valeurs que
+    // toFlexibleNumber coerce (en 68, 12 et 120150) : le confondre avec un
+    // validateur laisserait passer exactement ce qu'on veut bloquer.
+    for (const v of ["abc", "68 m²", "abc12", "12abc", "120-150", "1.2.3", "12%", "N/A"]) {
+      expect(isNumericFieldValue(v)).toBe(false);
+    }
+  });
+});
+
+describe("isPartialNumericInput", () => {
+  it("laisse taper les états intermédiaires", () => {
+    for (const v of ["", "-", "6", "68", "68,", "68,5", "1 200", "-3."]) {
+      expect(isPartialNumericInput(v)).toBe(true);
+    }
+  });
+
+  it("bloque dès le caractère fautif", () => {
+    for (const v of ["a", "68a", "68 m", "1,2,", "--5"]) {
+      expect(isPartialNumericInput(v)).toBe(false);
+    }
+  });
+});
+
+describe("validateFieldValues — champs number", () => {
+  const schema: CustomField[] = [
+    { key: "surface", label: "Surface", type: "number" },
+    { key: "type_bien", label: "Type de bien", type: "select", options: ["Maison"] },
+  ];
+
+  it("rejette du texte dans un champ nombre", () => {
+    expect(validateFieldValues(schema, { surface: "abc" })).toMatch(/Surface/);
+    expect(validateFieldValues(schema, { surface: "68 m²" })).toMatch(/Surface/);
+    expect(validateFieldValues(schema, { surface: "120-150" })).toMatch(/Surface/);
+  });
+
+  it("accepte les nombres, virgule française comprise", () => {
+    expect(validateFieldValues(schema, { surface: "68" })).toBeNull();
+    expect(validateFieldValues(schema, { surface: "1 200,50" })).toBeNull();
+    expect(validateFieldValues(schema, { surface: "-3.5" })).toBeNull();
+  });
+
+  it("vide toléré quand le champ n'est pas requis", () => {
+    expect(validateFieldValues(schema, { surface: "" })).toBeNull();
+    expect(validateFieldValues(schema, {})).toBeNull();
+  });
+
+  it("valeur historique invalide INCHANGÉE : tolérée", () => {
+    // Le formulaire renvoie l'objet complet : sans ça, éditer n'importe quel
+    // autre champ d'une fiche ancienne deviendrait impossible.
+    expect(
+      validateFieldValues(schema, { surface: "68 m²" }, { previousValues: { surface: "68 m²" } }),
+    ).toBeNull();
+  });
+
+  it("valeur historique invalide MODIFIÉE : rejetée", () => {
+    expect(
+      validateFieldValues(schema, { surface: "70 m²" }, { previousValues: { surface: "68 m²" } }),
+    ).toMatch(/Surface/);
+  });
+
+  it("la tolérance ne déborde pas sur les choix fermés", () => {
+    // Un court-circuit générique « valeur inchangée » ouvrirait le seul filtre
+    // de forme appliqué aux données d'un client externe.
+    expect(
+      validateFieldValues(
+        schema,
+        { type_bien: "Chalet" },
+        { previousValues: { type_bien: "Chalet" } },
+      ),
+    ).toMatch(/Chalet/);
   });
 });

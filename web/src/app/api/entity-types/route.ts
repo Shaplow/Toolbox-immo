@@ -15,8 +15,11 @@ import {
   validateCustomFields,
   serializeCustomFields,
 } from "@/lib/customFields";
+import { findUnknownTemplateKeys } from "@/lib/entityLabel";
 
 const MAX_NAME = 100;
+
+const MAX_LABEL_TEMPLATE = 500;
 
 const entityTypeSelect = {
   id: true,
@@ -28,6 +31,7 @@ const entityTypeSelect = {
   hasAccount: true,
   hasRushes: true,
   hasAssignees: true,
+  labelTemplate: true,
   visibility: true,
   needsAdminValidation: true,
   needsClientValidation: true,
@@ -80,6 +84,28 @@ export async function POST(req: NextRequest) {
   const schemaErr = validateCustomFields(fieldSchema);
   if (schemaErr) return NextResponse.json({ error: schemaErr }, { status: 400 });
 
+  // Modèle de libellé : les clés `{{…}}` doivent exister dans le schéma qu'on
+  // enregistre, sinon le libellé s'amputerait silencieusement à la création.
+  const labelTemplate =
+    typeof body.labelTemplate === "string" ? body.labelTemplate.trim() : "";
+  if (labelTemplate.length > MAX_LABEL_TEMPLATE) {
+    return NextResponse.json(
+      { error: `Modèle de libellé trop long (max ${MAX_LABEL_TEMPLATE} caractères)` },
+      { status: 400 },
+    );
+  }
+  const unknownKeys = findUnknownTemplateKeys(labelTemplate, fieldSchema);
+  if (unknownKeys.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Modèle de libellé : ${unknownKeys.length === 1 ? "champ inconnu" : "champs inconnus"} ${unknownKeys
+          .map((k) => `« ${k} »`)
+          .join(", ")}`,
+      },
+      { status: 400 },
+    );
+  }
+
   const visibility = body.visibility === "team" ? "team" : "admin";
   const hasAssignees = body.hasAssignees === true;
   // Garde-fou : un type team DOIT avoir hasAssignees=true (sinon son scope
@@ -100,6 +126,7 @@ export async function POST(req: NextRequest) {
       namePlural: typeof body.namePlural === "string" && body.namePlural.trim() ? body.namePlural.trim() : null,
       icon: typeof body.icon === "string" && body.icon.trim() ? body.icon.trim() : null,
       fieldSchema: serializeCustomFields(fieldSchema),
+      labelTemplate: labelTemplate || null,
       hasPlanning: body.hasPlanning === true,
       hasAccount: body.hasAccount === true,
       hasRushes: body.hasRushes === true,

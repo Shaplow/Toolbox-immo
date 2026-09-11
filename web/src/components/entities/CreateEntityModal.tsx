@@ -2,6 +2,7 @@
 
 import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
 import { localInputToIso } from "@/lib/date/formatFr";
+import { hasLabelTemplate, renderLabelTemplate } from "@/lib/entityLabel";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
@@ -97,7 +98,7 @@ export function CreateEntityModal({
 
   async function submit() {
     setError(null);
-    if (!label.trim()) return setError("Un libellé est requis");
+    if (!hasLabelTemplate(type) && !label.trim()) return setError("Un libellé est requis");
     if (type.hasAccount && !accountId) return setError("Un compte est requis");
     if (type.hasPlanning && !scheduledAt) return setError("Une date est requise");
     for (const f of type.fieldSchema) {
@@ -113,7 +114,8 @@ export function CreateEntityModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           typeId: type.id,
-          label: label.trim(),
+          // Type à modèle : le serveur calcule le libellé depuis les champs.
+          label: hasLabelTemplate(type) ? "" : label.trim(),
           fields,
           accountId: type.hasAccount ? accountId || null : null,
           relatedEntityId: relatedEntityId || null,
@@ -149,9 +151,19 @@ export function CreateEntityModal({
     <Modal open={open} onClose={onClose} size="lg">
       <Modal.Header onClose={onClose}>Nouvelle fiche « {type.name} »</Modal.Header>
       <Modal.Body className="space-y-4 max-h-[70vh] overflow-y-auto">
-        <FormField label="Libellé" required>
-          <Input value={label} onChange={setLabel} placeholder={`Ex : ${type.name} …`} />
-        </FormField>
+        {hasLabelTemplate(type) ? (
+          <FormField label="Libellé" help="Calculé à partir des champs ci-dessous.">
+            <p className="text-[13px] text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
+              {renderLabelTemplate(type, fields) || (
+                <span className="italic">Renseignez les champs</span>
+              )}
+            </p>
+          </FormField>
+        ) : (
+          <FormField label="Libellé" required>
+            <Input value={label} onChange={setLabel} placeholder={`Ex : ${type.name} …`} />
+          </FormField>
+        )}
 
         {(type.hasAccount || (type.hasPlanning && relatedOptions.length > 0)) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -200,6 +212,7 @@ export function CreateEntityModal({
                 value={fields[f.key] ?? ""}
                 onChange={(v) => setFields((prev) => ({ ...prev, [f.key]: v }))}
                 showLabel
+                validateNumberFormat
               />
             ))}
           </div>

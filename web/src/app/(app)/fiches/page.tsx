@@ -44,6 +44,7 @@ export default async function FichesPage({ searchParams }: PageProps) {
       namePlural: true,
       icon: true,
       fieldSchema: true,
+      labelTemplate: true,
       hasPlanning: true,
       hasAccount: true,
       hasRushes: true,

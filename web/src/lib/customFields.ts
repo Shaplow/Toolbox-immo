@@ -163,13 +163,56 @@ export function validateCustomFields(fields: CustomField[]): string | null {
  *   pour les créations et les écritures externes (whitelist stricte).
  * - Un select non vide doit appartenir aux options ; `""` est toléré quand le
  *   champ n'est pas requis (ou que `requireRequired` est false).
- * - Pas de coercition/validation numérique : les valeurs restent des strings
- *   libres (cohérent avec tout le repo, le type pilote le rendu).
+ * - Un champ `number` doit avoir un format numérique (cf. `isNumericFieldValue`).
+ *   Les valeurs restent STOCKÉES en string — on valide la forme, on ne coerce
+ *   pas : c'est le rendu qui décide du formatage.
+ * - `previousValues` : valeurs actuellement EN BASE. Une valeur numérique
+ *   invalide qui n'a pas changé est laissée passer. Sans ce garde-fou, durcir
+ *   la règle rendrait insauvable toute fiche portant une valeur historique non
+ *   conforme — quelqu'un qui corrige une faute de frappe dans un autre champ se
+ *   verrait bloqué par une donnée qu'il n'a pas touchée. La tolérance est
+ *   strictement confinée au type `number` : relâcher aussi les choix fermés
+ *   ouvrirait le seul filtre de forme appliqué aux saisies d'un client externe.
  */
+/**
+ * Format accepté pour un champ `number` : entier ou décimal, virgule OU point,
+ * signe négatif, séparateurs de milliers en espaces (y compris insécables).
+ *
+ * Volontairement STRICT, et volontairement PAS `toFlexibleNumber`
+ * (`lib/numberFormatting`) : ce dernier est une coercition d'affichage, qui
+ * retire tous les caractères non numériques — il rend 68 pour « 68 m² », 12
+ * pour « abc12 » et 120150 pour « 120-150 ». Exactement les saisies qu'on
+ * cherche à refuser ici.
+ */
+const NUMERIC_FIELD_VALUE = /^-?\d+(?:[.,]\d+)?$/;
+
+/** Espaces, y compris fine et insécable, utilisés comme séparateurs de milliers. */
+const THOUSANDS_SPACES = /[\s\u202F\u00A0]/g;
+
+/** Valeur acceptable pour un champ de type `number`. */
+export function isNumericFieldValue(value: string): boolean {
+  return NUMERIC_FIELD_VALUE.test(value.trim().replace(THOUSANDS_SPACES, ""));
+}
+
+/**
+ * Saisie EN COURS pour un champ `number` : tolère les états intermédiaires
+ * qu'un utilisateur traverse forcément en tapant (« », « - », « 68, »).
+ * Sert au filtre de frappe côté UI, pas à la validation d'un enregistrement.
+ */
+const PARTIAL_NUMERIC = /^-?[\d\s\u202F\u00A0]*(?:[.,]\d*)?$/;
+
+export function isPartialNumericInput(value: string): boolean {
+  return PARTIAL_NUMERIC.test(value);
+}
+
 export function validateFieldValues(
   schema: CustomField[],
   values: Record<string, string>,
-  opts: { requireRequired?: boolean; allowUnknownKeys?: boolean } = {}
+  opts: {
+    requireRequired?: boolean;
+    allowUnknownKeys?: boolean;
+    previousValues?: Record<string, string>;
+  } = {}
 ): string | null {
   const byKey = new Map(schema.map((f) => [f.key, f]));
 
@@ -189,6 +232,13 @@ export function validateFieldValues(
       const options = field.options ?? [];
       if (!options.includes(value)) {
         return `Valeur « ${value} » invalide pour « ${field.label || field.key} » (choix fermé)`;
+      }
+    }
+    if (field.type === "number" && value) {
+      const previous = opts.previousValues?.[field.key];
+      const unchanged = typeof previous === "string" && value === previous.trim();
+      if (!unchanged && !isNumericFieldValue(value)) {
+        return `Le champ « ${field.label || field.key} » attend un nombre (reçu « ${value} »)`;
       }
     }
   }

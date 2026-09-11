@@ -11,7 +11,9 @@ import {
   getEndOfToday,
 } from "@/types/worklist";
 import { ENTITY_STATUS_DOT, type EntityStatus } from "@/types/entities";
-import { ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES } from "@/lib/permissions/entityScope";
+import { validatedForTeamFilter } from "@/lib/permissions/entityScope";
+import { ShootAvailabilityStrip, type PendingShoot } from "./ShootAvailabilityStrip";
+import { isPastShoot, needsVideasteAnswer } from "@/lib/entityAvailability";
 import { timeFr, shortDateTimeFr, longDateTimeFr } from "@/lib/date/formatFr";
 
 interface HomeVideasteProps {
@@ -36,9 +38,12 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
       assigneeVideasteId: userId,
       // Une commande client non tranchée par l'admin n'est pas encore une
       // mission : le tournage n'apparaît qu'une fois validé.
-      validationStatus: { notIn: [...ENTITY_TEAM_HIDDEN_VALIDATION_STATUSES] },
+      ...validatedForTeamFilter(),
       status: { in: ["PLANNED", "SHOT"] },
-      scheduledAt: { not: null },
+      // Filtré en JS, pas en SQL : un tournage assigné SANS date doit quand
+      // même réclamer une réponse de disponibilité (le bandeau ci-dessous le
+      // couvre), même s'il n'a sa place ni dans les todos ni au calendrier.
+      isArchived: false,
     },
     orderBy: { scheduledAt: "asc" },
     select: {
@@ -46,12 +51,32 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
       label: true,
       scheduledAt: true,
       status: true,
+      isArchived: true,
+      validationStatus: true,
+      videasteConfirmation: true,
       account: { select: { handle: true } },
       _count: { select: { rushes: { where: { deletedAt: null } } } },
     },
   });
-  // scheduledAt filtré non-null ci-dessus — narrowing manuel pour le typage.
-  const events = rawEntities.map((e) => ({ ...e, scheduledAt: e.scheduledAt as Date }));
+  // Le reste de la page (todos, calendrier, prochain tournage) raisonne sur des
+  // tournages DATÉS : on restreint ici plutôt qu'en SQL, pour que le bandeau de
+  // disponibilité ci-dessous puisse, lui, voir aussi les fiches sans date.
+  const events = rawEntities
+    .filter((e) => e.scheduledAt !== null)
+    .map((e) => ({ ...e, scheduledAt: e.scheduledAt as Date }));
+
+  // Missions dont la disponibilité n'est pas acquise. `hasPlanning: true` est
+  // acquis ici (typeId = etype_tournage), le prédicat partagé fait le reste.
+  const pendingShoots: PendingShoot[] = rawEntities
+    .filter((e) => needsVideasteAnswer({ ...e, hasPlanning: true }))
+    .map((e) => ({
+      id: e.id,
+      label: e.label,
+      dateLabel: e.scheduledAt ? longDateTimeFr(e.scheduledAt) : null,
+      isPast: isPastShoot(e.scheduledAt),
+      accountHandle: e.account?.handle ?? null,
+      declined: e.videasteConfirmation === "DECLINED",
+    }));
 
   // Todo : shoots en retard (PLANNED non tourné, passé) + shoots du jour ENCORE
   // à tourner. On exclut les SHOT du bandeau « À faire » (déjà tournés) — ils
@@ -116,17 +141,27 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
           </h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
             {events.length === 0
-              ? "Aucun tournage à venir."
+              ? pendingShoots.length > 0
+                ? `${pendingShoots.length} mission${pendingShoots.length > 1 ? "s" : ""} à confirmer`
+                : "Aucun tournage à venir."
               : `${events.length} tournage${events.length > 1 ? "s" : ""} en cours`}
           </p>
         </header>
 
+        {/* En tête : ce qu'on ATTEND de lui passe avant ce qu'il a à faire. Une
+            mission non confirmée bloque l'admin, qui ne sait pas si la date
+            tient — et elle peut n'avoir aucune date, donc être absente de tout
+            le reste de la page. */}
+        <ShootAvailabilityStrip shoots={pendingShoots} />
+
         {events.length === 0 ? (
-          <EmptyState
-            icon={<Video size={20} className="text-muted-foreground" />}
-            title="Rien à tourner"
-            description="Aucun tournage ne vous est assigné pour l'instant."
-          />
+          pendingShoots.length === 0 ? (
+            <EmptyState
+              icon={<Video size={20} className="text-muted-foreground" />}
+              title="Rien à tourner"
+              description="Aucun tournage ne vous est assigné pour l'instant."
+            />
+          ) : null
         ) : (
           <>
             {nextShoot && (

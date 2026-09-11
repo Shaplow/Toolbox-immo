@@ -22,6 +22,8 @@ export interface EntityTypeSummary {
   namePlural: string | null;
   icon: string | null;
   fieldSchema: CustomField[];
+  /** Modèle de libellé `{{clé}}` — null/vide = libellé saisi à la main. */
+  labelTemplate: string | null;
   hasPlanning: boolean;
   hasAccount: boolean;
   hasRushes: boolean;

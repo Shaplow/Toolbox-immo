@@ -48,6 +48,7 @@ export default async function NewOrderPage() {
               hasPlanning: true,
               hasAccount: true,
               fieldSchema: true,
+              labelTemplate: true,
             },
           },
         },
@@ -69,6 +70,7 @@ export default async function NewOrderPage() {
       hasPlanning: i.entityType.hasPlanning,
       hasAccount: i.entityType.hasAccount,
       fieldSchema: normalizeCustomFields(i.entityType.fieldSchema),
+      labelTemplate: i.entityType.labelTemplate,
     })),
     videoSummary: t.recipes
       .map((r) => (r.count > 1 ? `${r.patternTemplate.label} ×${r.count}` : r.patternTemplate.label))

@@ -2,7 +2,7 @@
 
 import { ENTITY_TYPE_ICON_KEYS } from "@/components/entities/entityTypeIcons";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileStack, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +17,13 @@ import { Table, type TableColumn } from "@/components/ui/Table";
 import { toast } from "@/components/ui/Toast";
 import { CustomFieldsSchemaEditor } from "@/components/fields/CustomFieldsSchemaEditor";
 import type { CustomField } from "@/lib/customFields";
+import {
+  MAX_ENTITY_LABEL,
+  findUnknownTemplateKeys,
+  renderLabelTemplate,
+  resolveEntityLabel,
+} from "@/lib/entityLabel";
+import { TemplateTextField } from "@/components/fields/TemplateTextField";
 
 export interface EntityTypeRow {
   id: string;
@@ -24,6 +31,7 @@ export interface EntityTypeRow {
   namePlural: string | null;
   icon: string | null;
   fieldSchema: CustomField[];
+  labelTemplate: string | null;
   hasPlanning: boolean;
   hasAccount: boolean;
   hasRushes: boolean;
@@ -41,6 +49,7 @@ interface Draft {
   namePlural: string;
   icon: string;
   fieldSchema: CustomField[];
+  labelTemplate: string;
   hasPlanning: boolean;
   hasAccount: boolean;
   hasRushes: boolean;
@@ -57,6 +66,7 @@ function toDraft(t: EntityTypeRow | null): Draft {
     namePlural: t?.namePlural ?? "",
     icon: t?.icon ?? "",
     fieldSchema: t?.fieldSchema ?? [],
+    labelTemplate: t?.labelTemplate ?? "",
     hasPlanning: t?.hasPlanning ?? false,
     hasAccount: t?.hasAccount ?? false,
     hasRushes: t?.hasRushes ?? false,
@@ -80,6 +90,30 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
   const [types, setTypes] = useState<EntityTypeRow[]>(initialTypes);
   const [editing, setEditing] = useState<EntityTypeRow | null | undefined>(undefined);
   const [draft, setDraft] = useState<Draft>(toDraft(null));
+
+  /**
+   * Aperçu du modèle de libellé. Il n'y a pas de fiche ici : on rend contre un
+   * échantillon synthétique (la valeur d'un champ = son libellé, ou sa première
+   * option), puis une seconde fois à vide pour montrer le repli.
+   */
+  const labelPreview = useMemo(() => {
+    const type = { name: draft.name.trim() || "Fiche", labelTemplate: draft.labelTemplate };
+    const sample = Object.fromEntries(
+      draft.fieldSchema.map((f) => [
+        f.key,
+        f.type === "select" ? (f.options?.[0] ?? f.label) : f.label,
+      ]),
+    );
+    const filled = renderLabelTemplate(type, sample);
+    return {
+      filled: filled || resolveEntityLabel(type, sample),
+      empty: resolveEntityLabel(type, {}),
+      unknownKeys: findUnknownTemplateKeys(draft.labelTemplate, draft.fieldSchema),
+      // Un modèle sans variable donne le même libellé à toutes les fiches.
+      constant: draft.labelTemplate.trim().length > 0 && !draft.labelTemplate.includes("{{"),
+      tooLong: filled.length >= MAX_ENTITY_LABEL,
+    };
+  }, [draft.name, draft.labelTemplate, draft.fieldSchema]);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<EntityTypeRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -112,6 +146,7 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
         namePlural: draft.namePlural.trim() || null,
         icon: draft.icon.trim() || null,
         fieldSchema: draft.fieldSchema,
+        labelTemplate: draft.labelTemplate.trim() || null,
         needsAdminValidation: draft.needsAdminValidation,
         needsClientValidation: draft.needsClientValidation,
         hasPlanning: draft.hasPlanning,
@@ -208,6 +243,16 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
       id: "fields",
       label: "Champs",
       cell: (row) => <span className="text-xs text-muted-foreground">{row.fieldSchema.length}</span>,
+    },
+    {
+      id: "labelMode",
+      label: "Libellé",
+      cell: (row) =>
+        (row.labelTemplate ?? "").trim() ? (
+          <span className="text-[11px] text-success-700">Automatique</span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">Saisi à la main</span>
+        ),
     },
     {
       id: "entityCount",
@@ -351,6 +396,63 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
             </div>
           </FormField>
 
+          {/* AVANT l'éditeur de schéma, volontairement : en dernier position
+              d'un drawer long, sous un éditeur haut, ce réglage restait sous la
+              ligne de flottaison — livré mais jamais vu, donc jamais activé.
+              Les chips se recalculent depuis `draft.fieldSchema` à chaque
+              frappe : la position n'a aucune incidence technique. */}
+          <FormField
+            label="Modèle de libellé"
+            help="Laissez vide pour saisir le libellé à la main sur chaque fiche. Rempli, le libellé est calculé depuis les champs et suit leurs modifications."
+          >
+            <TemplateTextField
+              value={draft.labelTemplate}
+              onChange={(v) => setDraft((d) => ({ ...d, labelTemplate: v }))}
+              keys={draft.fieldSchema}
+              placeholder="{{adresse}}, {{ville}}"
+              emptyKeysHint="Ajoutez d'abord des champs ci-dessous pour pouvoir les insérer."
+              unknownKeys={labelPreview.unknownKeys}
+              preview={
+                draft.labelTemplate.trim() ? (
+                  <div className="space-y-0.5 text-[11px]">
+                    <p className="text-muted-foreground">
+                      Aperçu :{" "}
+                      <span className="text-foreground font-medium">{labelPreview.filled}</span>
+                    </p>
+                    {/* Sans cette ligne, le repli reste invisible jusqu'à la
+                        première fiche mal remplie. */}
+                    <p className="text-muted-foreground">
+                      Si les champs sont vides :{" "}
+                      <span className="text-foreground font-medium">{labelPreview.empty}</span>
+                    </p>
+                    {labelPreview.constant && (
+                      <p className="text-warning-700">
+                        Modèle sans aucun champ — toutes les fiches auront le même libellé.
+                      </p>
+                    )}
+                    {labelPreview.tooLong && (
+                      <p className="text-warning-700">
+                        Aperçu au-delà de {MAX_ENTITY_LABEL} caractères — le libellé sera tronqué.
+                      </p>
+                    )}
+                  </div>
+                ) : draft.fieldSchema.length > 0 ? (
+                  // Amorce : sans elle, un type sans modèle ne dit rien de son
+                  // état — la saisie manuelle passe pour une fatalité alors
+                  // qu'elle est évitable en un clic sur une puce ci-dessus.
+                  <p className="text-[11px] text-muted-foreground">
+                    Les fiches de ce type demandent un libellé à la main. Insérez un champ
+                    ci-dessus pour l&apos;automatiser — par exemple{" "}
+                    <span className="text-foreground font-medium">
+                      {`{{${draft.fieldSchema[0].key}}}`}
+                    </span>
+                    .
+                  </p>
+                ) : null
+              }
+            />
+          </FormField>
+
           <FormField label="Champs custom">
             <CustomFieldsSchemaEditor
               fields={draft.fieldSchema}
@@ -358,6 +460,7 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
               allowRequired
             />
           </FormField>
+
         </Drawer.Body>
         <Drawer.Footer>
           {editing && (
