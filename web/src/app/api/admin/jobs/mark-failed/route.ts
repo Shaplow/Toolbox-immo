@@ -46,7 +46,20 @@ export async function POST(req: Request) {
         await prisma.coverFramePack.update({ where: { id }, data: { status: "FAILED" } });
         break;
       case "autocut":
-        await prisma.mediaAutocutJob.update({ where: { id }, data: { status: "FAILED" } });
+        // Minuscules : le domaine de MediaAutocutJob.status est
+        // pending|processing|done|failed. Écrire "FAILED" rendait le job invisible
+        // à tous les filtres de l'atelier — et sans errorMsg, l'admin n'avait
+        // aucune trace de pourquoi il avait disparu.
+        await prisma.mediaAutocutJob.update({
+          where: { id },
+          data: {
+            status: "failed",
+            // Pas d'id d'utilisateur ici : errorMsg est affiché dans l'atelier à
+            // tout rôle passant canManageMediaAssets. La traçabilité de l'acteur
+            // vit dans le captureMessage ci-dessous.
+            errorMsg: "Marqué en échec manuellement depuis /admin/jobs",
+          },
+        });
         break;
     }
 

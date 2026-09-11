@@ -28,6 +28,8 @@ import shutil
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from ctypes.util import find_library
 from pathlib import Path
 from typing import Any
@@ -103,7 +105,11 @@ def _upload_to_r2(key: str, filepath: Path, content_type: str = "video/mp4") -> 
     return _r2_public_url(key)
 
 
-def _download_file(url: str, dest: Path) -> None:
+class DownloadBudgetExceeded(RuntimeError):
+    """Le corps de la réponse n'a pas fini d'arriver dans le budget imparti."""
+
+
+def _download_file(url: str, dest: Path, *, budget_s: float | None = None) -> None:
     """
     Télécharge une URL vers un fichier local (streaming).
 
@@ -112,12 +118,39 @@ def _download_file(url: str, dest: Path) -> None:
     transcription, utiliser `_prepare_audio_for_transcription` : le disque du
     worker ne fait que quelques Go utiles et cédait dès ~20 Go de rush
     ([Errno 28] No space left on device).
+
+    budget_s borne la durée TOTALE du transfert (défaut None = illimité, le
+    comportement historique de tous les appelants). `timeout=120` ne borne que
+    chaque opération individuelle : un socket muet lève bien ReadTimeout, mais
+    une connexion qui débite au ralenti réarme ce timeout à chaque chunk et peut
+    durer indéfiniment. C'est ce qui a figé un pack autocut entier
+    (batch=cmtvr7g2m…, asset 5/16 bloqué après le 200 OK, aucune trace) jusqu'au
+    kill RunPod. Seuls les handlers qui traitent N sources en série sous
+    contrainte de temps passent un budget.
     """
+    started = time.monotonic()
+    received = 0
     with httpx.stream("GET", url, follow_redirects=True, timeout=120) as resp:
         resp.raise_for_status()
         with open(dest, "wb") as f:
             for chunk in resp.iter_bytes(chunk_size=65536):
                 f.write(chunk)
+                received += len(chunk)
+                if budget_s is not None and (time.monotonic() - started) > budget_s:
+                    elapsed = time.monotonic() - started
+                    mb = received / 1024 ** 2
+                    raise DownloadBudgetExceeded(
+                        f"téléchargement interrompu après {budget_s:.0f}s "
+                        f"({mb:.0f} Mo reçus à {mb / max(elapsed, 1e-3):.2f} Mo/s) — "
+                        f"source trop lente ou flux qui ne se termine pas"
+                    )
+    elapsed = time.monotonic() - started
+    mb = received / 1024 ** 2
+    print(
+        f"[download] {dest.name} — {mb:.1f} Mo en {elapsed:.1f}s "
+        f"({mb / max(elapsed, 1e-3):.1f} Mo/s)",
+        flush=True,
+    )
 
 
 def _prepare_audio_for_transcription(
@@ -1617,22 +1650,94 @@ def _handle_transcribe_multilingual(inp: dict) -> dict[str, Any]:
 
 # ─── Media autocut batch handler ─────────────────────────────────────────────
 
+# Budgets autocut — dimensionnés sur le régime nominal observé en prod (rushs de
+# 5-20 s, ~1,3 s/asset de bout en bout, modèle Whisper déjà chaud dans le process).
+# Surchargeables par variable d'environnement sur l'endpoint RunPod, SANS rebuild.
+#
+#   download 180 s : nominal ~1 s. À 1,2 Mo/s (lien dégradé) ça autorise ~200 Mo ;
+#                    en régime DC↔CDN normal, 10 Go. Un asset de médiathèque qui
+#                    ne descend pas en 3 min est pathologique par définition.
+#   item     420 s : 180 (download) + 240 (transcription). Un rush de 3 min sur
+#                    GPU chaud tourne en 30-60 s : marge ×7 sur le pire cas légitime.
+#   pack    1500 s : 10 assets × 60 s pire cas = 10 min, ×2,5 de marge. Doit rester
+#                    nettement sous l'executionTimeout envoyé par le web (30 min).
+_AUTOCUT_DOWNLOAD_BUDGET_S = float(os.environ.get("AUTOCUT_DOWNLOAD_BUDGET_S", "180"))
+_AUTOCUT_ITEM_BUDGET_S = float(os.environ.get("AUTOCUT_ITEM_BUDGET_S", "420"))
+_AUTOCUT_PACK_BUDGET_S = float(os.environ.get("AUTOCUT_PACK_BUDGET_S", "1500"))
+# Sous ce reliquat de budget, on n'entame pas un nouvel asset : mieux vaut le
+# marquer « à relancer » que le laisser coupé en deux par le kill RunPod.
+_AUTOCUT_MIN_ITEM_S = 90.0
+# Marge gardée pour sérialiser et retourner results avant l'executionTimeout.
+_AUTOCUT_RETURN_MARGIN_S = 30.0
+
+
+def _autocut_one_asset(
+    asset_url: str,
+    dest: Path,
+    model_size: str,
+    language: str,
+    stage: dict,
+) -> dict:
+    """
+    Traite un asset : téléchargement borné puis analyse. Exécuté dans un thread
+    jetable pour que l'appelant puisse abandonner un asset qui ne rend pas la main.
+
+    `stage` est muté au fil des étapes. En cas de timeout, il dit à l'appelant si
+    le gel est côté réseau (thread inoffensif : il lèvera DownloadBudgetExceeded
+    à son propre budget et mourra seul) ou côté Whisper (le thread mort détient
+    encore le modèle CTranslate2 mis en cache, enchaîner serait hasardeux).
+    """
+    # Le finally englobe AUSSI le download : sinon un téléchargement abandonné
+    # (le cas même pour lequel le watchdog existe) laisse son fichier partiel sur
+    # le disque jusqu'à la fin du pack. Avec 10 assets, quelques partiels de
+    # plusieurs Go suffisent à reproduire le [Errno 28] No space left on device
+    # documenté dans _download_file.
+    try:
+        stage["v"] = "download"
+        _download_file(asset_url, dest, budget_s=_AUTOCUT_DOWNLOAD_BUDGET_S)
+        stage["v"] = "analyze"
+        return analyze_autocut(
+            audio_path=dest,
+            model_size=model_size,
+            language=language,
+        )
+    finally:
+        dest.unlink(missing_ok=True)
+
+
 def _handle_media_autocut_batch(inp: dict) -> dict:
     """
     Analyse en lot N assets avec Whisper pour proposer des timings de coupe.
     Whisper est chargé une seule fois (cache worker) pour tout le pack.
 
+    Trois garde-fous emboîtés, du plus précis au plus grossier — chacun rattrape
+    ce que le précédent laisse passer :
+      1. budget de téléchargement par asset (_download_file(budget_s=…)) ;
+      2. budget total par asset, via un thread jetable abandonnable ;
+      3. budget du pack : la boucle s'arrête AVANT l'executionTimeout RunPod et
+         retourne ce qui a déjà été analysé.
+
+    Invariant : `results` contient exactement une entrée par asset d'entrée, quoi
+    qu'il arrive. Sans lui, un pack qui déborde laissait ses jobs en `processing`
+    à vie côté web et perdait les analyses déjà payées.
+
+    Thread jetable plutôt que signal.SIGALRM (inopérant hors thread principal —
+    et le chemin Pod On-Demand exécute ce handler dans un thread secondaire) ni
+    sous-process (qui évincerait le cache modèle module-level de engine.transcribe
+    et imposerait un rechargement large-v3-turbo par asset).
+
     Input:
-      batch_id   : MediaAutocutBatch.id (pour logs + webhook)
-      language   : code langue (ex: "fr")
-      model_size : modèle Whisper (défaut: "large-v3-turbo")
-      assets     : [{ job_id, asset_url }, ...]  — max 20 items
+      batch_id      : MediaAutocutBatch.id (pour logs + webhook)
+      language      : code langue (ex: "fr")
+      model_size    : modèle Whisper (défaut: "large-v3-turbo")
+      pack_budget_s : budget du pack en secondes (défaut: _AUTOCUT_PACK_BUDGET_S)
+      assets        : [{ job_id, asset_url, filename? }, ...]
 
     Output:
       {
         batch_id: str,
         results: [
-          { job_id, proposed_start, proposed_end, transcript_json, language, fallback? }
+          { job_id, proposed_start, proposed_end, transcript_json, language, fallback }
           | { job_id, error: str }
         ]
       }
@@ -1642,68 +1747,164 @@ def _handle_media_autocut_batch(inp: dict) -> dict:
     language: str = inp.get("language", "fr")
     model_size: str = inp.get("model_size", "large-v3-turbo")
     assets: list[dict] = inp["assets"]
+    try:
+        pack_budget_s = float(inp.get("pack_budget_s") or _AUTOCUT_PACK_BUDGET_S)
+    except (TypeError, ValueError):
+        pack_budget_s = _AUTOCUT_PACK_BUDGET_S
 
     print(
         f"[worker/media_autocut_batch] batch={batch_id} "
-        f"assets={len(assets)} lang={language} model={model_size}",
+        f"assets={len(assets)} lang={language} model={model_size} "
+        f"budget_pack={int(pack_budget_s)}s",
         flush=True,
     )
 
     results: list[dict] = []
+    pack_started = time.monotonic()
+    abort_reason: str | None = None
 
-    with tempfile.TemporaryDirectory() as tmp:
+    # ignore_cleanup_errors : un thread abandonné peut encore écrire dans tmp au
+    # moment où le context manager nettoie.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         tmp_path = Path(tmp)
-        import time as _time
 
         for idx, asset in enumerate(assets):
             job_id: str = asset.get("job_id", f"unknown_{idx}")
             asset_url: str = asset.get("asset_url", "")
+            filename: str = (
+                asset.get("filename")
+                or Path(asset_url.split("?")[0]).name
+                or f"asset_{idx}"
+            )
 
             if not asset_url:
                 results.append({"job_id": job_id, "error": "asset_url manquant"})
                 continue
 
+            elapsed = time.monotonic() - pack_started
+            remaining = pack_budget_s - elapsed - _AUTOCUT_RETURN_MARGIN_S
+
+            if abort_reason:
+                results.append({"job_id": job_id, "error": abort_reason[:500]})
+                continue
+            if remaining < _AUTOCUT_MIN_ITEM_S:
+                results.append({
+                    "job_id": job_id,
+                    "error": (
+                        f"Vidéo non analysée — temps de traitement du pack épuisé "
+                        f"({int(elapsed)}s). Relancez l'analyse sur ce fichier."
+                    )[:500],
+                })
+                continue
+
+            item_timeout = min(_AUTOCUT_ITEM_BUDGET_S, remaining)
+            src_ext = Path(asset_url.split("?")[0]).suffix or ".mp4"
+            src_path = tmp_path / f"asset_{idx}{src_ext}"
+
+            # Le nom de fichier AVANT le download : sur un gel, le dernier log
+            # désigne le coupable sans aller-retour en base.
             print(
-                f"[worker/media_autocut_batch] [{idx+1}/{len(assets)}] job={job_id}",
+                f"[worker/media_autocut_batch] [{idx + 1}/{len(assets)}] job={job_id} "
+                f"file={filename} url={asset_url.split('?')[0]} "
+                f"elapsed={int(elapsed)}s budget_item={int(item_timeout)}s",
                 flush=True,
             )
 
+            stage: dict = {"v": "start"}
+            executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"autocut{idx}")
+            future = executor.submit(
+                _autocut_one_asset, asset_url, src_path, model_size, language, stage
+            )
+            item_started = time.monotonic()
+
             try:
-                stamp = int(_time.time() * 1000)
-                src_ext = Path(asset_url.split("?")[0]).suffix or ".mp4"
-                src_path = tmp_path / f"asset_{stamp}_{idx}{src_ext}"
-
-                _download_file(asset_url, src_path)
-
-                result = analyze_autocut(
-                    audio_path=src_path,
-                    model_size=model_size,
-                    language=language,
-                )
-
-                import json as _json
+                result = future.result(timeout=item_timeout)
                 results.append({
                     "job_id": job_id,
                     "proposed_start": result["proposed_start"],
                     "proposed_end": result["proposed_end"],
-                    "transcript_json": _json.dumps(result["transcript_json"], ensure_ascii=False),
+                    "transcript_json": json.dumps(result["transcript_json"], ensure_ascii=False),
                     "language": result["language"],
                     "fallback": result["fallback"],
                 })
+                print(
+                    f"[worker/media_autocut_batch] [{idx + 1}/{len(assets)}] OK "
+                    f"en {time.monotonic() - item_started:.1f}s",
+                    flush=True,
+                )
+                executor.shutdown(wait=False)
 
-            except Exception as e:
+            except FuturesTimeoutError:
+                last_stage = stage.get("v", "start")
+                # Un thread abandonné pendant le download n'est inoffensif que
+                # s'il va mourir tout seul, c'est-à-dire si le budget de l'item
+                # dépasse celui du download : dans ce cas il a forcément déjà
+                # crevé son propre plafond et lèvera DownloadBudgetExceeded.
+                # Si l'item a été raboté sous ce plafond (fin de pack, ou
+                # AUTOCUT_ITEM_BUDGET_S mal réglé en env), le download peut
+                # encore RÉUSSIR et enchaîner sur analyze_autocut en fond —
+                # deux inférences Whisper concurrentes sur le même modèle mis
+                # en cache, sans verrou. On arrête alors le pack.
+                download_thread_is_doomed = item_timeout > _AUTOCUT_DOWNLOAD_BUDGET_S
+                if last_stage == "download" and download_thread_is_doomed:
+                    msg = (
+                        f"Téléchargement de « {filename} » toujours en cours après "
+                        f"{int(item_timeout)}s — fichier inaccessible ou source trop "
+                        f"lente. Vérifiez le fichier puis relancez l'analyse."
+                    )
+                elif last_stage == "download":
+                    msg = (
+                        f"Téléchargement de « {filename} » interrompu après "
+                        f"{int(item_timeout)}s (fin du budget du pack) — à relancer."
+                    )
+                    abort_reason = (
+                        "Vidéo non analysée — pack interrompu par un téléchargement "
+                        "qui n'a pas pu être abandonné sans risque. À relancer."
+                    )
+                else:
+                    msg = (
+                        f"Analyse de « {filename} » bloquée après {int(item_timeout)}s "
+                        f"— fichier probablement illisible (piste audio corrompue). "
+                        f"Relancez après réencodage."
+                    )
+                    # Le thread mort détient encore le modèle CTranslate2 en cache :
+                    # enchaîner ferait tourner deux inférences sur la même instance.
+                    # On rend ce qu'on a plutôt que de risquer un second gel.
+                    abort_reason = (
+                        "Vidéo non analysée — pack interrompu par un fichier qui a "
+                        "bloqué la transcription. Relancez l'analyse sur ce fichier."
+                    )
+                print(
+                    f"[worker/media_autocut_batch] [{idx + 1}/{len(assets)}] TIMEOUT "
+                    f"stage={last_stage} file={filename}",
+                    flush=True,
+                )
+                results.append({"job_id": job_id, "error": msg[:500]})
+                # Thread abandonné, jamais joint : il meurt à son propre budget ou
+                # avec le conteneur. Un shutdown bloquant re-bloquerait la boucle.
+                executor.shutdown(wait=False, cancel_futures=True)
+                # Libère le partiel tout de suite plutôt que d'attendre la fin du
+                # pack. Sous POSIX, unlink pendant que le thread écrit est sûr :
+                # son fd reste valide et l'espace est rendu à la fermeture.
+                src_path.unlink(missing_ok=True)
+
+            except Exception as e:  # inclut DownloadBudgetExceeded
                 err_msg = str(e)[:500]
                 print(
-                    f"[worker/media_autocut_batch] job={job_id} ERREUR: {err_msg}",
+                    f"[worker/media_autocut_batch] [{idx + 1}/{len(assets)}] ERREUR "
+                    f"file={filename}: {err_msg}",
                     flush=True,
                 )
                 results.append({"job_id": job_id, "error": err_msg})
+                executor.shutdown(wait=False)
+                src_path.unlink(missing_ok=True)
 
     success = sum(1 for r in results if "error" not in r)
     fail = len(results) - success
     print(
         f"[worker/media_autocut_batch] batch={batch_id} terminé — "
-        f"{success} ok, {fail} erreur(s)",
+        f"{success} ok, {fail} erreur(s), "
+        f"budget_utilisé={int(time.monotonic() - pack_started)}s",
         flush=True,
     )
 

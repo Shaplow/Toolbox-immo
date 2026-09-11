@@ -28,8 +28,10 @@ interface UseMediaAssetsPollingParams {
 }
 
 interface UseMediaAssetsPollingResult {
-  /** F2.3 — count des jobs autocut en attente de review (badge « Analyse auto »). */
+  /** F2.3 — jobs autocut réellement validables (done + pending_review) : le badge. */
   autocutPendingCount: number;
+  /** Jobs autocut en échec — affichés dans le title du badge, actionnables dans l'atelier. */
+  autocutFailedCount: number;
 }
 
 export function useMediaAssetsPolling({
@@ -109,10 +111,17 @@ export function useMediaAssetsPolling({
     return () => clearInterval(timer);
   }, [silentPoll]);
 
-  // F2.3 — Fetch le count des jobs autocut en attente de review (badge sur
-  // "Analyse auto"). Refresh à chaque fermeture de l'atelier. Pas de fetch
-  // pour les bibliothèques audio (pas d'autocut).
-  const [autocutPendingCount, setAutocutPendingCount] = useState(0);
+  // F2.3 — Fetch les compteurs autocut (badge sur "Analyse auto"). Refresh à
+  // chaque fermeture de l'atelier. Pas de fetch pour les bibliothèques audio.
+  //
+  // `summary=1` plutôt qu'un count paginé : la définition du « validable »
+  // (done + pending_review) vit côté serveur dans @/lib/mediaAutocut, partagée
+  // avec la file de review. L'ancien appel filtrait sur reviewStatus seul et
+  // comptait donc aussi les jobs en cours et en échec — d'où le « 99+ » permanent.
+  const [counts, setCounts] = useState<{ reviewable: number; failed: number }>({
+    reviewable: 0,
+    failed: 0,
+  });
   useEffect(() => {
     if (libraryType !== "video") return;
     if (!canManageAssets) return;
@@ -120,11 +129,16 @@ export function useMediaAssetsPolling({
     void (async () => {
       try {
         const res = await fetch(
-          `/api/admin/libraries/media/${libraryId}/autocut-queue?reviewStatus=pending_review&pageSize=1&lean=1`,
+          `/api/admin/libraries/media/${libraryId}/autocut-queue?summary=1`,
         );
         if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { total?: number };
-        if (!cancelled) setAutocutPendingCount(data.total ?? 0);
+        const data = (await res.json()) as { counts?: { reviewable?: number; failed?: number } };
+        if (!cancelled) {
+          setCounts({
+            reviewable: data.counts?.reviewable ?? 0,
+            failed: data.counts?.failed ?? 0,
+          });
+        }
       } catch {
         // silent
       }
@@ -132,5 +146,5 @@ export function useMediaAssetsPolling({
     return () => { cancelled = true; };
   }, [libraryId, libraryType, showAtelier, canManageAssets]);
 
-  return { autocutPendingCount };
+  return { autocutPendingCount: counts.reviewable, autocutFailedCount: counts.failed };
 }

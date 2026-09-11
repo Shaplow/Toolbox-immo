@@ -6,6 +6,8 @@ import {
   AlertTriangle, Wand2, ChevronRight, X, Trash2,
 } from "lucide-react";
 import { AutocutReviewCard, type AutocutJob } from "./AutocutReviewCard";
+import { AutocutFailuresSection } from "./mediaAssets/AutocutFailuresSection";
+import { explainAutocutError, type AutocutCounts, type AutocutFailureItem } from "@/lib/mediaAutocut";
 import { formatTimecode } from "@/lib/time";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +18,7 @@ import { Slider } from "@/components/ui/Slider";
 import { Pagination } from "@/components/ui/Pagination";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/components/ui/useConfirm";
 
@@ -44,7 +47,39 @@ type AssetWithJobStatus = MediaAsset & {
   autocutJobId: string | null;
   /** Durée conservée après le cut (confirmedEnd - confirmedStart), null si non appliqué */
   cutDuration: number | null;
+  /** Message d'échec du dernier job — affiché sur la ligne et groupé en tête de vue. */
+  autocutErrorMsg: string | null;
 };
+
+/** Champs réellement renvoyés par autocut-queue?lean=1 (pas de transcript, pas d'asset). */
+type AutocutJobLite = Pick<
+  AutocutJob,
+  "id" | "assetId" | "status" | "reviewStatus" | "errorMsg" | "confirmedStart" | "confirmedEnd" | "createdAt"
+>;
+
+/**
+ * Récupère TOUS les jobs de la lib, pas seulement les 500 premiers.
+ *
+ * Le plafond précédent (pageSize=500 en un seul appel) faisait silencieusement
+ * repasser les assets au-delà en `autocutStatus: "none"` : ils redevenaient
+ * sélectionnables et se faisaient ré-analyser en double.
+ */
+const QUEUE_PAGE_SIZE = 500;
+const QUEUE_MAX_PAGES = 10; // garde-fou anti-boucle (50 000 jobs)
+
+async function fetchAllAutocutJobsLean(libraryId: string): Promise<AutocutJobLite[]> {
+  const out: AutocutJobLite[] = [];
+  for (let page = 1; page <= QUEUE_MAX_PAGES; page += 1) {
+    const res = await fetch(
+      `/api/admin/libraries/media/${libraryId}/autocut-queue?pageSize=${QUEUE_PAGE_SIZE}&page=${page}&lean=1`,
+    );
+    if (!res.ok) break;
+    const data = (await res.json()) as { jobs: AutocutJobLite[]; total: number };
+    out.push(...data.jobs);
+    if (out.length >= data.total || data.jobs.length < QUEUE_PAGE_SIZE) break;
+  }
+  return out;
+}
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -62,6 +97,8 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   const [submitResult, setSubmitResult] = useState<{ batches: number; skipped: number } | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetResult, setResetResult] = useState<{ deleted: number } | null>(null);
+  /** Compteurs serveur — même définition du « validable » que le badge de la toolbar. */
+  const [counts, setCounts] = useState<AutocutCounts | null>(null);
 
   // ── Vue 2 : review ────────────────────────────────────────────────────────
   const [jobs, setJobs] = useState<AutocutJob[]>([]);
@@ -82,21 +119,23 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   // ── Charger les assets + statuts autocut ─────────────────────────────────
   const loadAssets = useCallback(async () => {
     try {
-      const [assetsRes, queueRes] = await Promise.all([
+      const [assetsRes, queueData, summaryRes] = await Promise.all([
         fetch(`/api/admin/libraries/media/${library.id}/assets`),
         // lean=1 : skip les includes asset/editJob — on n'a besoin que des statuts ici
-        fetch(`/api/admin/libraries/media/${library.id}/autocut-queue?pageSize=500&lean=1`),
+        fetchAllAutocutJobsLean(library.id),
+        fetch(`/api/admin/libraries/media/${library.id}/autocut-queue?summary=1`),
       ]);
 
       if (!assetsRes.ok) throw new Error("Impossible de charger les assets");
 
       const assetsData = await assetsRes.json() as MediaAsset[];
-      const queueData = queueRes.ok
-        ? (await queueRes.json() as { jobs: AutocutJob[] }).jobs
-        : [];
+      if (summaryRes.ok) {
+        const summary = (await summaryRes.json()) as { counts?: AutocutCounts };
+        if (summary.counts) setCounts(summary.counts);
+      }
 
       // Construire un map jobId par assetId (dernier job connu)
-      const jobByAsset = new Map<string, AutocutJob>();
+      const jobByAsset = new Map<string, AutocutJobLite>();
       for (const job of queueData) {
         const existing = jobByAsset.get(job.assetId);
         if (!existing || new Date(job.createdAt as string) > new Date(existing.createdAt as string)) {
@@ -119,7 +158,13 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
             autocutStatus = job.status as AssetWithJobStatus["autocutStatus"];
           }
         }
-        return { ...a, autocutStatus, cutDuration, autocutJobId: job?.id ?? null };
+        return {
+          ...a,
+          autocutStatus,
+          cutDuration,
+          autocutJobId: job?.id ?? null,
+          autocutErrorMsg: autocutStatus === "failed" ? job?.errorMsg ?? null : null,
+        };
       });
 
       setAssets(enriched);
@@ -153,7 +198,10 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
     setLoadingJobs(true);
     try {
       const res = await fetch(
-        `/api/admin/libraries/media/${library.id}/autocut-queue?reviewStatus=pending_review&pageSize=20&page=${page}`
+        // status=done indispensable : reviewStatus vaut "pending_review" dès la
+        // création, donc filtrer dessus seul remontait aussi les jobs en cours et
+        // en échec — des cartes de review inutilisables, et un total faux.
+        `/api/admin/libraries/media/${library.id}/autocut-queue?reviewStatus=pending_review&status=done&pageSize=20&page=${page}`
       );
       if (!res.ok) throw new Error("Erreur chargement queue");
       const data = await res.json() as { jobs: AutocutJob[]; total: number; page: number };
@@ -250,8 +298,8 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
     }
   };
 
-  const handleAnalyze = async () => {
-    if (selectedIds.size === 0) return;
+  const submitAnalysis = async (assetIds: string[]) => {
+    if (assetIds.length === 0) return;
     setSubmitting(true);
     setSubmitError(null);
     setSubmitResult(null);
@@ -259,7 +307,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
       const res = await fetch(`/api/admin/libraries/media/${library.id}/autocut-packs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetIds: Array.from(selectedIds) }),
+        body: JSON.stringify({ assetIds }),
       });
       const data = await res.json() as {
         batches: Array<{ batchId: string; assetCount: number; status: string }>;
@@ -283,7 +331,24 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
     }
   };
 
+  const handleAnalyze = () => submitAnalysis(Array.from(selectedIds));
+
+  /** Relance directe depuis la section Échecs — sélectionne puis soumet. */
+  const handleRelaunch = (assetIds: string[]) => {
+    setSelectedIds(new Set(assetIds));
+    void submitAnalysis(assetIds);
+  };
+
   // ── Actions review ────────────────────────────────────────────────────────
+  /**
+   * Décrémente le compteur serveur en local après un accept/skip.
+   * Sans ça, le bouton « Valider les analyses (N) » de la vue select gardait le
+   * chiffre du dernier chargement : l'admin revenait sur un compteur qui n'avait
+   * pas bougé alors qu'il venait de vider la file.
+   */
+  const consumeReviewable = () =>
+    setCounts((c) => (c ? { ...c, reviewable: Math.max(0, c.reviewable - 1) } : c));
+
   const handleAccept = async (jobId: string, confirmedStart: number, confirmedEnd: number, tags: string[]) => {
     // Retrouver les données du job pour la section de tracking
     const jobData = jobs.find((j) => j.id === jobId);
@@ -347,6 +412,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
 
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
     setReviewTotal((t) => Math.max(0, t - 1));
+    consumeReviewable();
   };
 
   const handleSkip = async (jobId: string) => {
@@ -358,6 +424,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
     if (!res.ok) throw new Error("Erreur lors du skip");
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
     setReviewTotal((t) => Math.max(0, t - 1));
+    consumeReviewable();
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────
@@ -369,6 +436,12 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
     (a) => a.autocutStatus === "pending" || a.autocutStatus === "processing"
   ).length;
   const doneCount = assets.filter((a) => a.autocutStatus === "done").length;
+  // counts (serveur) fait autorité quand il est chargé ; le calcul client sert de
+  // repli pendant le premier fetch et juste après une action locale.
+  const reviewableCount = counts?.reviewable ?? doneCount;
+  const failures: AutocutFailureItem[] = assets
+    .filter((a) => a.autocutStatus === "failed")
+    .map((a) => ({ assetId: a.id, filename: a.filename, errorMsg: a.autocutErrorMsg }));
 
   const statusLabel = (asset: AssetWithJobStatus) => {
     switch (asset.autocutStatus) {
@@ -384,7 +457,16 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
         </span>
       );
       case "done": return <Badge variant="success" icon={CheckCircle2}>Analysé</Badge>;
-      case "failed": return <Badge variant="danger" icon={AlertTriangle}>Erreur</Badge>;
+      case "failed": {
+        const { label, detail } = explainAutocutError(asset.autocutErrorMsg);
+        return (
+          <Tooltip content={detail ?? label}>
+            <span className="inline-flex">
+              <Badge variant="danger" icon={AlertTriangle}>Erreur</Badge>
+            </span>
+          </Tooltip>
+        );
+      }
       case "cut": return (
         <span className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
           ✂ Coupé{asset.cutDuration != null ? <span className="text-muted-foreground">· {asset.cutDuration}s</span> : null}
@@ -410,9 +492,9 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
                 <span className="text-xs text-muted-foreground truncate">— {library.name}</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {doneCount > 0 && (
+                {reviewableCount > 0 && (
                   <Button size="sm" icon={ChevronRight} iconRight onClick={() => setView("review")}>
-                    Valider les analyses ({doneCount})
+                    Valider les analyses ({reviewableCount})
                   </Button>
                 )}
                 {cutCount > 0 && (
@@ -472,6 +554,14 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
                 </Button>
               </div>
             </div>
+
+            {/* Échecs groupés — au-dessus du feedback, sous la toolbar qui porte la relance */}
+            <AutocutFailuresSection
+              failures={failures}
+              onSelect={(ids) => setSelectedIds(new Set(ids))}
+              onRelaunch={handleRelaunch}
+              busy={submitting}
+            />
 
             {/* Feedback */}
             {submitError && (
@@ -603,9 +693,17 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
                       ? "Aucune analyse à valider pour le moment."
                       : `${reviewTotal} analyse${reviewTotal > 1 ? "s" : ""} restante${reviewTotal > 1 ? "s" : ""} à valider.`
                   }
+                  description={
+                    reviewTotal === 0 && failures.length > 0
+                      ? `${failures.length} vidéo${failures.length > 1 ? "s" : ""} en échec — à relancer depuis la sélection.`
+                      : undefined
+                  }
                   cta={
                     reviewTotal === 0
-                      ? { label: "Retour à la sélection", onClick: () => setView("select") }
+                      ? {
+                          label: failures.length > 0 ? "Voir les échecs" : "Retour à la sélection",
+                          onClick: () => setView("select"),
+                        }
                       : { label: "Charger la suite", onClick: () => { setReviewPage(1); void loadReviewQueue(1); } }
                   }
                 />

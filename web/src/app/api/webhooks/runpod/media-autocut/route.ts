@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAndParseRunpodWebhook } from "@/lib/webhooks/runpod";
 import { notifyAll } from "@/lib/sseStore";
+import { type MediaAutocutBatchOutput } from "@/lib/mediaAutocut";
+import { applyAutocutBatchResults, failAutocutBatch } from "@/lib/mediaAutocutServer";
 
 /**
  * POST /api/webhooks/runpod/media-autocut
@@ -9,24 +11,11 @@ import { notifyAll } from "@/lib/sseStore";
  * Reçoit la callback RunPod quand un job media_autocut_batch termine.
  * Résout chaque MediaAutocutJob individuellement depuis le tableau de résultats.
  * Sécurité : voir verifyAndParseRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
+ *
+ * La logique métier (mise en échec, application des résultats) vit dans
+ * @/lib/mediaAutocut : la réconciliation périodique la rejoue à l'identique
+ * quand un webhook se perd.
  */
-
-type AutocutJobResult = {
-  job_id: string;
-  proposed_start?: number;
-  proposed_end?: number;
-  transcript_json?: string;
-  language?: string;
-  fallback?: boolean;
-  error?: string;
-};
-
-type MediaAutocutBatchOutput = {
-  batch_id?: string;
-  results?: AutocutJobResult[];
-  error?: string;
-};
-
 export async function POST(req: NextRequest) {
   // Security-auditor Critical-1 — auth HMAC body-signed.
   const parsed = await verifyAndParseRunpodWebhook<MediaAutocutBatchOutput>(req);
@@ -63,113 +52,33 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Échec global du job RunPod ───────────────────────────────────────────
+  // Le vrai message part sur le batch ET sur chacun de ses jobs : avant, les jobs
+  // recevaient la constante « Échec global du job RunPod » et l'admin n'avait
+  // aucun moyen de savoir ce qui s'était réellement passé.
   if (status !== "COMPLETED" || !output?.results) {
-    const errorMsg = output?.error ?? error ?? `RunPod status: ${status}`;
-    console.error(`[webhook/media-autocut] batch=${batch.id} failed: ${errorMsg}`);
-
-    await prisma.$transaction(async (tx) => {
-      await tx.mediaAutocutBatch.update({
-        where: { id: batch!.id },
-        data: { status: "failed", errorMsg },
-      });
-      await tx.mediaAutocutJob.updateMany({
-        where: { batchId: batch!.id, status: "processing" },
-        data: { status: "failed", errorMsg: "Échec global du job RunPod" },
-      });
-    });
-
-    // Fix bug audit 2026-05-30 (M2) : SSE notify (broadcast — pas d'userId
-    // trackable sur le batch). L'admin connecté voit le batch passer FAILED.
-    notifyAll({ jobType: "media-autocut", jobId: batch.id, status: "FAILED", errorMsg });
-
+    const raw = output?.error ?? error ?? `RunPod status: ${status}`;
+    console.error(`[webhook/media-autocut] batch=${batch.id} failed: ${raw}`);
+    await failAutocutBatch(batch.id, raw);
     return NextResponse.json({ ok: true });
   }
 
   // ── Traiter les résultats individuels ────────────────────────────────────
-  const results = output.results;
-
-  // Utiliser updateMany au lieu de update pour éviter P2025 si un job a été supprimé
-  // (ex. asset supprimé en cascade pendant le processing).
-  // Les compteurs sont déclarés dans la callback pour être retry-safe.
-  // Bug-hunter #10 (2026-06-01) : notifyAll déplacée hors transaction.
-  // Avant : SSE était émis dans le callback `$transaction` avant le commit
-  // → si rollback, le client recevait un done erroné ; si replica lag, polling
-  // immédiat post-SSE renvoyait l'ancien status. Maintenant les variables
-  // (batchStatus, doneCount, failCount) sont remontées et l'event part après await.
   try {
-    const txResult = await prisma.$transaction(async (tx) => {
-      let doneCount = 0;
-      let failCount = 0;
+    const outcome = await applyAutocutBatchResults(batch.id, output.results);
 
-      for (const result of results) {
-        if (!result.job_id) continue;
-
-        if (result.error) {
-          const r = await tx.mediaAutocutJob.updateMany({
-            where: { id: result.job_id },
-            data: {
-              status: "failed",
-              errorMsg: result.error.slice(0, 500),
-            },
-          });
-          if (r.count > 0) failCount++;
-        } else {
-          const r = await tx.mediaAutocutJob.updateMany({
-            where: { id: result.job_id },
-            data: {
-              status: "done",
-              reviewStatus: "pending_review",
-              proposedStart: result.proposed_start ?? null,
-              proposedEnd: result.proposed_end ?? null,
-              transcriptJson: result.transcript_json ?? null,
-              language: result.language ?? null,
-              // Pré-remplir les confirmed avec les proposed pour simplifier la review
-              confirmedStart: result.proposed_start ?? null,
-              confirmedEnd: result.proposed_end ?? null,
-            },
-          });
-          if (r.count > 0) doneCount++;
-        }
-      }
-
-      // Mettre à jour le batch
-      const batchStatus =
-        failCount === 0 ? "done" :
-        doneCount === 0 ? "failed" :
-        "partial";
-
-      await tx.mediaAutocutBatch.update({
-        where: { id: batch!.id },
-        data: { status: batchStatus, doneCount, failCount },
-      });
-
-      console.info(
-        `[webhook/media-autocut] batch=${batch!.id} done=${doneCount} failed=${failCount}`
-      );
-
-      return { batchStatus, doneCount, failCount };
-    });
-
-    // SSE émis après commit garanti. notifyAll broadcast car le modèle ne
-    // tracke pas l'admin déclencheur.
+    // SSE émis après commit garanti (bug-hunter #10). notifyAll broadcast car le
+    // modèle ne tracke pas l'admin déclencheur.
     notifyAll({
       jobType: "media-autocut",
       jobId: batch.id,
-      status: txResult.batchStatus.toUpperCase(),
-      doneCount: txResult.doneCount,
-      failCount: txResult.failCount,
+      status: outcome.batchStatus.toUpperCase(),
+      doneCount: outcome.doneCount,
+      failCount: outcome.failCount,
     });
   } catch (txErr) {
     console.error(`[webhook/media-autocut] transaction failed for batch=${batch.id}:`, txErr);
-    // Libérer les jobs bloqués en "processing" pour permettre une re-soumission
-    await prisma.mediaAutocutBatch.update({
-      where: { id: batch.id },
-      data: { status: "failed", errorMsg: String(txErr).slice(0, 500) },
-    }).catch(() => {});
-    await prisma.mediaAutocutJob.updateMany({
-      where: { batchId: batch.id, status: "processing" },
-      data: { status: "failed", errorMsg: "Erreur lors du traitement des résultats" },
-    }).catch(() => {});
+    // Libérer les jobs bloqués en pending/processing pour permettre une re-soumission
+    await failAutocutBatch(batch.id, txErr, { prefix: "Traitement des résultats" }).catch(() => {});
   }
 
   return NextResponse.json({ ok: true });

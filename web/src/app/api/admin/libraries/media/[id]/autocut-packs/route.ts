@@ -5,12 +5,35 @@ import { prisma } from "@/lib/prisma";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { mapWithConcurrency } from "@/lib/concurrency";
+import { failAutocutBatch } from "@/lib/mediaAutocutServer";
 
 type Params = { params: Promise<{ id: string }> };
 
 const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY ?? "";
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID ?? "";
-const PACK_SIZE = 20;
+/**
+ * 10 et non 20 : le worker borne désormais son temps (budget par item + budget de
+ * pack) et rend ses résultats partiels, mais un kill dur du conteneur (OOM,
+ * préemption) ne renvoie toujours rien. Des packs plus petits divisent par deux
+ * le rayon de souffle résiduel ; le surcoût est quasi nul, le modèle Whisper
+ * étant mis en cache dans le process et les workers RunPod restant chauds.
+ */
+const PACK_SIZE = 10;
+
+/**
+ * Budget de traitement d'un pack côté worker, en secondes (AUTOCUT_PACK_BUDGET_S).
+ * Envoyé dans l'input pour que le web reste maître du couple budget/timeout.
+ */
+const PACK_BUDGET_S = 1500;
+
+/**
+ * Doit rester STRICTEMENT supérieur à PACK_BUDGET_S : le worker gagne la course
+ * et retourne ses résultats partiels avant que RunPod ne tue le job. Posé
+ * explicitement pour ne pas dépendre du réglage console de l'endpoint.
+ * Sans effet sur le chemin Pod On-Demand, qui n'a aucun timeout d'exécution —
+ * là, seul le budget worker protège.
+ */
+const EXECUTION_TIMEOUT_MS = (PACK_BUDGET_S + 300) * 1000;
 
 /**
  * POST /api/admin/libraries/media/[libraryId]/autocut-packs
@@ -57,7 +80,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // ── Sécurité : vérifier que tous les assetIds appartiennent à cette lib et ne sont pas désactivés ──
   const validAssets = await prisma.mediaAsset.findMany({
     where: { id: { in: assetIds }, libraryId, disabled: false },
-    select: { id: true, url: true },
+    select: { id: true, url: true, filename: true },
   });
   if (validAssets.length !== assetIds.length) {
     return NextResponse.json(
@@ -67,9 +90,20 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // ── Filtrer les assets ayant déjà un job actif ────────────────────────────
-  // Un job est considéré actif seulement s'il a été mis à jour dans les 2 dernières heures.
-  // Au-delà, on considère que le webhook a été perdu et on autorise la re-soumission.
-  const STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+  // Un job est considéré actif tant qu'il a été mis à jour récemment. Au-delà, on
+  // suppose le webhook perdu et on autorise la re-soumission.
+  //
+  // Ce seuil DOIT rester au-dessus de EXECUTION_TIMEOUT_MS : c'est la durée que
+  // RunPod accorde au pack, à laquelle s'ajoute son temps de file d'attente. Le
+  // caler dessus (ou dessous) rendrait « re-soumissible » un pack qui tourne
+  // encore — sa relance effacerait ses jobs, le batch orphelin serait purgé, et
+  // le webhook légitime qui arrive ensuite ne retrouverait plus rien à écrire :
+  // des analyses déjà payées, perdues. La marge de 15 min couvre la file RunPod.
+  //
+  // Contrairement au sweep (qui coupe à l'ancienneté seule), la réconciliation
+  // interroge RunPod avant de déclarer un batch mort — c'est elle qui rattrape
+  // les vrais zombies, pas ce seuil.
+  const STALE_THRESHOLD_MS = EXECUTION_TIMEOUT_MS + 15 * 60 * 1000;
   const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS);
   const activeJobs = await prisma.mediaAutocutJob.findMany({
     where: {
@@ -91,10 +125,39 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
   }
 
+  // ── Invariant : une seule analyse vivante par asset ───────────────────────
+  // Sans ça, un asset relancé accumule ses anciens jobs : les compteurs (par
+  // ligne) divergent de l'affichage (par asset, dernier job), et la liste des
+  // échecs montre un historique au lieu de l'état courant.
+  //
+  // On ne supprime QUE des jobs en état terminal. Un job encore `pending` ou
+  // `processing` n'est jamais touché, même jugé périmé par STALE_THRESHOLD_MS :
+  // supprimer les jobs d'un pack qui tourne encore ferait purger son batch
+  // devenu orphelin, et son webhook n'aurait plus rien à écrire. Le zombie
+  // survivant est inoffensif — la réconciliation le passera en échec, et
+  // l'affichage retient de toute façon le job le plus récent par asset.
+  //
+  // `accepted` est exclu comme `applied` : le job porte des timings validés par
+  // un admin et attend son batch-apply. L'UI empêche déjà de le sélectionner,
+  // mais l'API ne doit pas dépendre de ce garde-fou côté client.
+  const targetIds = toProcess.map((a) => a.id);
+  await prisma.mediaAutocutJob.deleteMany({
+    where: {
+      assetId: { in: targetIds },
+      status: { in: ["done", "failed"] },
+      reviewStatus: { notIn: ["applied", "accepted"] },
+      editJobId: null,
+    },
+  });
+  await prisma.mediaAutocutBatch.deleteMany({ where: { libraryId, jobs: { none: {} } } });
+
   // ── Découper en packs, créer les batches, puis dispatcher RunPod EN FOND ──
   const batches: Array<{ batchId: string; assetCount: number; status: string }> = [];
   // Batches à soumettre à RunPod — dispatché en tâche de fond après la réponse.
-  const toDispatch: Array<{ batchId: string; assetUrls: string[]; jobIds: string[] }> = [];
+  const toDispatch: Array<{
+    batchId: string;
+    assets: Array<{ job_id: string; asset_url: string; filename: string }>;
+  }> = [];
 
   for (let i = 0; i < toProcess.length; i += PACK_SIZE) {
     const pack = toProcess.slice(i, i + PACK_SIZE);
@@ -130,10 +193,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       continue;
     }
 
+    // Appariement explicite plutôt que deux tableaux parallèles indexés : le
+    // filename part avec l'URL pour que les logs du worker nomment le fichier
+    // qui bloque, sans aller-retour en base.
     toDispatch.push({
       batchId: batch.id,
-      assetUrls: pack.map((asset) => asset.url),
-      jobIds: jobs.map((j) => j.id),
+      assets: pack.map((asset, i) => ({
+        job_id: jobs[i].id,
+        asset_url: asset.url,
+        filename: asset.filename,
+      })),
     });
     batches.push({ batchId: batch.id, assetCount: pack.length, status: "processing" });
   }
@@ -151,7 +220,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
     void (async () => {
-      await mapWithConcurrency(toDispatch, 2, async ({ batchId, assetUrls, jobIds }) => {
+      await mapWithConcurrency(toDispatch, 2, async ({ batchId, assets: packAssets }) => {
         try {
           const runpodResp = await submitRunpodJob<{ id: string }>(
             RUNPOD_ENDPOINT_ID,
@@ -162,11 +231,10 @@ export async function POST(req: NextRequest, { params }: Params) {
                 batch_id: batchId,
                 language,
                 model_size: modelSize,
-                assets: assetUrls.map((asset_url, idx) => ({
-                  job_id: jobIds[idx],
-                  asset_url,
-                })),
+                pack_budget_s: PACK_BUDGET_S,
+                assets: packAssets,
               },
+              policy: { executionTimeout: EXECUTION_TIMEOUT_MS },
               ...(webhookUrl ? { webhook: webhookUrl } : {}),
             }
           );
@@ -182,12 +250,8 @@ export async function POST(req: NextRequest, { params }: Params) {
           });
         } catch (err) {
           console.error(`[autocut-packs] RunPod submit failed for batch ${batchId} (async):`, err);
-          await prisma.mediaAutocutBatch
-            .update({ where: { id: batchId }, data: { status: "failed", errorMsg: String(err) } })
-            .catch(() => {});
-          await prisma.mediaAutocutJob
-            .updateMany({ where: { batchId }, data: { status: "failed", errorMsg: "Échec soumission RunPod" } })
-            .catch(() => {});
+          // Le vrai message part sur le batch ET sur ses jobs, tronqué à 500.
+          await failAutocutBatch(batchId, err, { prefix: "Soumission RunPod" }).catch(() => {});
         }
       });
     })();

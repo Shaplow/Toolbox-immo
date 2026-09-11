@@ -135,9 +135,16 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
+    // ⚠️ MediaAutocutJob stocke ses statuts en MINUSCULES (pending|processing|
+    // done|failed), contrairement à tous les autres jobs de ce tableau. Le filtre
+    // ["QUEUED","PROCESSING"] d'origine ne matchait donc jamais rien : aucun job
+    // autocut n'est jamais remonté ici depuis la création de la feature.
     prisma.mediaAutocutJob.findMany({
-      where: { status: { in: ["QUEUED", "PROCESSING"] } },
-      select: { id: true, status: true, assetId: true, createdAt: true, updatedAt: true },
+      where: { status: { in: ["pending", "processing"] } },
+      select: {
+        id: true, status: true, assetId: true, createdAt: true, updatedAt: true,
+        asset: { select: { filename: true, libraryId: true } },
+      },
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
@@ -206,12 +213,15 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
     ...autocuts.map((a): JobRow => ({
       type: "autocut",
       id: a.id,
-      status: a.status,
+      // Normalisé pour l'affichage : les autres types du tableau sont uppercase.
+      status: a.status.toUpperCase(),
       userId: null,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
-      label: `Asset ${a.assetId.slice(0, 8)}…`,
-      href: `/admin/libraries/media`,
+      label: a.asset?.filename ?? `Asset ${a.assetId.slice(0, 8)}…`,
+      href: a.asset?.libraryId
+        ? `/admin/libraries/media/${a.asset.libraryId}`
+        : `/admin/libraries/media`,
     })),
   ];
 

@@ -21,6 +21,7 @@ import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/slot/activity";
 import { releaseJobSources } from "@/lib/upload/releaseJobSource";
+import { AUTOCUT_FAILED_RETENTION_MS, reconcileAutocutJobs } from "@/lib/mediaAutocutServer";
 
 // Fix bug 2026-05-30 : seuils réduits — l'UI alerte déjà dès 30min, et les
 // jobs PROCESSING > 30min sont en pratique morts (Next hot-reload, render-engine
@@ -201,11 +202,27 @@ export async function POST() {
     }),
   ]);
 
+  // ── MediaAutocutJob ───────────────────────────────────────────────────────
+  // AVANT le passage en échec des batches ci-dessous, et c'est l'ordre qui
+  // compte : ce helper interroge RunPod pour chaque batch encore `processing` et
+  // rejoue l'output d'un job qui a réussi mais dont le webhook s'est perdu.
+  // Basculer les batches en échec d'abord les sortirait de ce filtre — on
+  // jetterait précisément les analyses qu'on cherche à récupérer.
+  // Il fait aussi hériter les messages, passe les zombies en échec et purge les
+  // vieux. Le même helper tourne dans /api/cron/pod-reconcile — c'est lui qui
+  // rend la purge automatique, ce sweep n'étant déclenché qu'à la main.
+  const autocutJobs = await reconcileAutocutJobs({
+    processingCutoff,
+    queuedCutoff,
+    failedRetentionCutoff: new Date(now.getTime() - AUTOCUT_FAILED_RETENTION_MS),
+  });
+
   // ── MediaAutocutBatch ─────────────────────────────────────────────────────
   // Batch d'analyse Whisper de plusieurs assets. Si le batch reste processing
-  // au-delà du seuil, on le passe failed. Pas de revert sur les jobs internes
-  // (les MediaAutocutJob non terminés du batch sont laissés tels quels — on
-  // peut les retraiter via un re-run du batch).
+  // au-delà du seuil, on le passe failed. Les MediaAutocutJob internes sont
+  // repris juste après par reconcileAutocutJobs : les laisser en plan (choix
+  // initial) faisait qu'ils gonflaient les compteurs de l'atelier indéfiniment
+  // et bloquaient la re-soumission de leur asset.
   const [autocutBatchProcessing, autocutBatchPending] = await Promise.all([
     prisma.mediaAutocutBatch.updateMany({
       where: { status: "processing", updatedAt: { lt: processingCutoff } },
@@ -266,6 +283,7 @@ export async function POST() {
       processing: autocutBatchProcessing.count,
       pending:    autocutBatchPending.count,
     },
+    autocutJobs,
     /** Médias sources R2 effectivement libérés par ce sweep (rushs de jobs
      *  abandonnés). Sans ça, ces fichiers restaient facturés à vie. */
     releasedSources,
@@ -282,6 +300,9 @@ export async function POST() {
       renderProcessing.count + renderPending.count +
       mediaEditProcessing.count + mediaEditPending.count +
       autocutBatchProcessing.count + autocutBatchPending.count +
+      // `purged` et `recovered` ne comptent pas : le total mesure les jobs remis
+      // dans un état terminal, pas le ménage ni les récupérations.
+      autocutJobs.inherited + autocutJobs.processing + autocutJobs.pending +
       coverProcessing.count + coverQueued.count,
   };
 

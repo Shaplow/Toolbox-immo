@@ -21,6 +21,7 @@ import { maybeStopIdlePod } from "@/lib/podOrchestrator";
 import { prisma } from "@/lib/prisma";
 import { timingSafeEqualStrings } from "@/lib/utils";
 import { reconcileDispatchedCoverPacks } from "@/lib/coverAuto";
+import { AUTOCUT_FAILED_RETENTION_MS, reconcileAutocutJobs } from "@/lib/mediaAutocutServer";
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -49,9 +50,25 @@ export async function GET(req: NextRequest) {
   // le GET /api/cover-packs, poll toutes les 3 s, ne doit pas interroger RunPod.
   const covers = await reconcileDispatchedCoverPacks();
 
+  // Même logique pour les packs d'analyse auto (autocut) : un webhook perdu dont
+  // le job RunPod a réussi est rejoué (les analyses sont récupérées au lieu d'être
+  // jetées), un job zombie est passé en échec avec un message lisible, et les
+  // vieux échecs sont purgés. Le sweep admin appelle le même helper, mais il est
+  // manuel : c'est ici que la purge devient automatique.
+  const now = new Date();
+  const autocut = await reconcileAutocutJobs({
+    processingCutoff: new Date(now.getTime() - 30 * 60 * 1000),
+    queuedCutoff: new Date(now.getTime() - 10 * 60 * 1000),
+    failedRetentionCutoff: new Date(now.getTime() - AUTOCUT_FAILED_RETENTION_MS),
+  }).catch((err) => {
+    console.warn("[cron/pod-reconcile] réconciliation autocut échouée:", err);
+    return null;
+  });
+
   return NextResponse.json({
     ok: true,
     covers,
+    autocut,
     before: before
       ? { status: before.status, activeJobCount: before.activeJobCount, podId: before.podId }
       : null,

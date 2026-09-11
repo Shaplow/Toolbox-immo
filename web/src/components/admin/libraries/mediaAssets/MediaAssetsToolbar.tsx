@@ -35,6 +35,7 @@ interface Props {
   onOpenUpload: () => void;
   onOpenAtelier: () => void;
   autocutPendingCount?: number;
+  autocutFailedCount?: number;
   resetError: string | null;
   search: string;
   setSearch: Dispatch<SetStateAction<string>>;
@@ -71,6 +72,7 @@ export function MediaAssetsToolbar({
   onOpenUpload,
   onOpenAtelier,
   autocutPendingCount = 0,
+  autocutFailedCount = 0,
   resetError,
   search,
   setSearch,
@@ -127,7 +129,12 @@ export function MediaAssetsToolbar({
             {autocutPendingCount > 0 && (
               <span
                 className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-warning-600 text-white text-[10px] font-semibold leading-none ring-2 ring-card shadow-sm"
-                title={`${autocutPendingCount} analyse${autocutPendingCount > 1 ? "s" : ""} à valider`}
+                title={
+                  `${autocutPendingCount} analyse${autocutPendingCount > 1 ? "s" : ""} à valider` +
+                  (autocutFailedCount > 0
+                    ? ` · ${autocutFailedCount} en échec (voir l'atelier)`
+                    : "")
+                }
               >
                 {autocutPendingCount > 99 ? "99+" : autocutPendingCount}
               </span>

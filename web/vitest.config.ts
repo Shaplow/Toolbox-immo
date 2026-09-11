@@ -20,6 +20,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "./src"),
+      // `server-only` est fourni par le bundler Next, pas par node_modules : sans
+      // cet alias, tout test qui importe un module marqué server-only échoue au
+      // chargement. Le marqueur reste utile — c'est lui qui empêche un module
+      // touchant Prisma de repartir dans un bundle client.
+      "server-only": resolve(__dirname, "./src/test/serverOnlyStub.ts"),
     },
   },
 });

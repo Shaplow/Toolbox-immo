@@ -168,7 +168,7 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
   // dans useMediaAssetsPolling (split C1-v2). Le fetch du badge est gaté sur
   // `canManageAssets` — même condition que la visibilité du bouton « Analyse
   // auto » côté Toolbar, donc jamais de fetch pour un badge invisible.
-  const { autocutPendingCount } = useMediaAssetsPolling({
+  const { autocutPendingCount, autocutFailedCount } = useMediaAssetsPolling({
     libraryId: library.id,
     libraryType: library.type,
     canManageAssets,
@@ -458,6 +458,7 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
         onOpenUpload={() => setShowUploadModal(true)}
         onOpenAtelier={() => setShowAtelier(true)}
         autocutPendingCount={autocutPendingCount}
+        autocutFailedCount={autocutFailedCount}
         resetError={resetError}
         search={search}
         setSearch={setSearch}
