@@ -37,9 +37,48 @@ import {
   resolveSlotEffectivePattern,
   slotEffectivePatternSelect,
 } from "@/lib/services/slot/effectivePattern";
-import { resolveCaptionWithDataLibrary } from "@/lib/publications/captionDataLibrary";
+import {
+  resolveCaptionWithDataLibrary,
+  type CaptionLibraryResolution,
+  type CaptionSourceName,
+} from "@/lib/publications/captionDataLibrary";
 import { claimDataEntryForCaption } from "@/lib/contentLibraryResolver";
 import { logActivity } from "@/lib/services/slot/activity";
+
+/**
+ * Traduit le diagnostic en une phrase qui dit la VRAIE cause.
+ *
+ * Avant, tout échec rendait « Aucune fiche de données disponible (bibliothèque
+ * vide, épuisée ou rotation désactivée) » — y compris quand aucune bibliothèque
+ * n'était configurée. La cause réelle est presque toujours une clé absente, et
+ * ce message envoyait chercher au mauvais endroit.
+ */
+function explainFailure(
+  diagnostic: CaptionLibraryResolution["diagnostic"],
+  sourcesConsulted: CaptionSourceName[],
+): string {
+  const where =
+    sourcesConsulted.length > 0
+      ? ` Fiches consultées : ${sourcesConsulted.join(", ")}.`
+      : " Aucune fiche n'est rattachée à cette publication.";
+
+  switch (diagnostic?.reason) {
+    case "no_template":
+      return "Cette recette n'a pas de modèle de légende — renseignez-le dans la recette.";
+    case "unresolved_keys":
+      return `Aucune valeur trouvée pour ${diagnostic.keys
+        .map((k) => `{{${k}}}`)
+        .join(", ")}.${where} Légende inchangée.`;
+    case "blank_result":
+      return "Le modèle de légende s'est résolu à du vide — légende inchangée.";
+    case "no_entry_drawn":
+      return "Aucune fiche de données disponible (bibliothèque vide, épuisée ou rotation désactivée) — légende inchangée.";
+    case "mode_off":
+      return "Cette recette ne pré-remplit pas la légende.";
+    default:
+      return "Légende inchangée.";
+  }
+}
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -67,7 +106,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       accountId: true,
       needsDescriptionOverride: true,
       entity: { select: { fields: true } },
-      shootEntity: { select: { fields: true } },
+      shootEntity: { select: { fields: true, related: { select: { fields: true } } } },
       captionDataEntry: { select: { id: true, fields: true, setTag: true, libraryId: true } },
       ...slotEffectivePatternSelect,
     },
@@ -91,7 +130,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const { caption, usedEntry, drewNewEntry } = await resolveCaptionWithDataLibrary({
+  const { caption, usedEntry, drewNewEntry, diagnostic, sourcesConsulted, unresolvedKeys } =
+    await resolveCaptionWithDataLibrary({
     config: {
       needsDescription: resolvedNeedsDescription,
       descriptionFixedText: effectivePattern?.descriptionFixedText ?? null,
@@ -104,6 +144,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     redraw,
     shootEntityFieldsJson: slot.shootEntity?.fields ?? null,
     entityFieldsJson: slot.entity?.fields ?? null,
+    shootRelatedFieldsJson: slot.shootEntity?.related?.fields ?? null,
   });
 
   if (caption === null) {
@@ -112,8 +153,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       updated: false,
       description: null,
       entry: null,
-      message:
-        "Aucune fiche de données disponible (bibliothèque vide, épuisée ou rotation désactivée) — légende inchangée.",
+      message: explainFailure(diagnostic, sourcesConsulted),
     });
   }
 
@@ -149,5 +189,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     entry: usedEntry
       ? { entryId: usedEntry.entryId, setTag: usedEntry.setTag, libraryId: usedEntry.libraryId, isNew: drewNewEntry }
       : null,
+    // Une légende peut se résoudre ET laisser des trous : le modèle porte du
+    // texte fixe autour de ses clés, et une clé absente rend une chaîne vide
+    // sans rien signaler. C'est le cas le plus fréquent en pratique.
+    unresolvedKeys,
   });
 }

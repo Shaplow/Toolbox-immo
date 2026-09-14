@@ -18,6 +18,7 @@ const mockBindingFindMany = vi.fn(async () => []);
 const mockEntityCreate = vi.fn();
 const mockEntityUpdate = vi.fn();
 const mockEntityActivityCreate = vi.fn();
+const mockSlotUpdateMany = vi.fn();
 const mockTransaction = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
@@ -35,6 +36,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: (...a: unknown[]) => mockBindingFindMany(...a),
     },
     entityActivity: { create: (...a: unknown[]) => mockEntityActivityCreate(...a) },
+    publicationSlot: { updateMany: (...a: unknown[]) => mockSlotUpdateMany(...a) },
     $transaction: (...a: unknown[]) => mockTransaction(...a),
   },
 }));
@@ -841,5 +843,83 @@ describe("patchEntity — champs obligatoires bloquants", () => {
     await expect(
       patchEntity("ent-1", { fields: { accord: "true" } }, adminCtx()),
     ).resolves.toBeDefined();
+  });
+});
+
+/**
+ * Un tournage qui gagne son bien APRÈS coup : ses reels n'ont aucun moyen de le
+ * découvrir seuls. `slot.entityId` n'est câblé qu'à la création du reel et au
+ * rattachement d'un tournage — entre les deux, rien ne repropageait, et la
+ * légende restait vide pour toujours.
+ */
+describe("patchEntity — le bien se propage aux reels du tournage", () => {
+  const BASE = {
+    id: "shoot-1",
+    typeId: "etype_tournage",
+    type: {
+      visibility: "team",
+      hasPlanning: true,
+      fieldSchema: "[]",
+      name: "Tournage",
+      labelTemplate: null,
+    },
+    label: "Tournage",
+    labelIsCustom: true,
+    fields: "{}",
+    orderId: null,
+    order: null,
+    status: "PLANNED",
+    scheduledAt: null,
+    endAt: null,
+    validationStatus: "APPROVED",
+    assigneeVideasteId: null,
+    videasteConfirmation: null,
+    defaultAssigneeMonteurId: null,
+    defaultAssigneeCmId: null,
+    isArchived: false,
+    relatedEntityId: null,
+    shootSlots: [],
+  };
+
+  beforeEach(() => {
+    mockEntityUpdate.mockClear();
+    mockSlotUpdateMany.mockClear();
+    mockEntityFindUnique.mockResolvedValue(BASE);
+    mockEntityUpdate.mockResolvedValue({
+      id: "shoot-1",
+      fields: "{}",
+      type: { fieldSchema: "[]" },
+    });
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        entity: {
+          update: (...a: unknown[]) => mockEntityUpdate(...a),
+          findUnique: () => ({ id: "shoot-1", fields: "{}", type: { fieldSchema: "[]" } }),
+        },
+        entityActivity: { create: mockEntityActivityCreate },
+        publicationSlot: { updateMany: (...a: unknown[]) => mockSlotUpdateMany(...a) },
+      }),
+    );
+  });
+
+  it("lier un bien remplit les reels qui n'en ont pas", async () => {
+    await patchEntity("shoot-1", { relatedEntityId: "bien-1" }, adminCtx());
+
+    expect(mockSlotUpdateMany).toHaveBeenCalledWith({
+      // Fill-only : un bien déjà choisi sur une publication n'est jamais remplacé.
+      where: { shootEntityId: "shoot-1", entityId: null },
+      data: { entityId: "bien-1" },
+    });
+  });
+
+  it("un patch sans changement de bien ne touche à aucun reel", async () => {
+    await patchEntity("shoot-1", { notes: "juste une note" }, adminCtx());
+    expect(mockSlotUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("re-poser le MÊME bien ne déclenche rien", async () => {
+    mockEntityFindUnique.mockResolvedValue({ ...BASE, relatedEntityId: "bien-1" });
+    await patchEntity("shoot-1", { relatedEntityId: "bien-1" }, adminCtx());
+    expect(mockSlotUpdateMany).not.toHaveBeenCalled();
   });
 });

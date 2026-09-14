@@ -46,10 +46,12 @@ describe("resolveCaptionWithDataLibrary", () => {
       shootEntityFieldsJson: null,
       entityFieldsJson: JSON.stringify({ adresse: "12 rue de la Paix", ville: "Paris" }),
     });
-    expect(res).toEqual({
+    expect(res).toMatchObject({
       caption: "🏡 12 rue de la Paix — Paris",
       usedEntry: null,
       drewNewEntry: false,
+      diagnostic: null,
+      unresolvedKeys: [],
     });
     expect(mockSelectDataEntry).not.toHaveBeenCalled();
     expect(mockDataLibraryFindUnique).not.toHaveBeenCalled();
@@ -270,5 +272,95 @@ describe("resolveCaptionWithDataLibrary", () => {
     expect(res.usedEntry?.entryId).toBe("e-legacy");
     expect(res.drewNewEntry).toBe(true);
     expect(res.caption).toBe("350 000 €");
+  });
+});
+
+/**
+ * Le bien lié au tournage et le diagnostic — ajoutés pour que « pourquoi ma
+ * légende est vide » ait une réponse exacte, et pour que le bien d'un tournage
+ * soit lu sans avoir été recopié sur la publication.
+ */
+describe("resolveCaptionWithDataLibrary — bien du tournage et diagnostic", () => {
+  it("le bien du tournage traverse la branche SANS bibliothèque", async () => {
+    const res = await resolveCaptionWithDataLibrary({
+      config: { ...baseConfig, descriptionDataLibraryId: null },
+      accountId: "acc-1",
+      storedEntry: null,
+      shootEntityFieldsJson: JSON.stringify({ adresse: "12 rue de la Paix" }),
+      entityFieldsJson: null,
+      shootRelatedFieldsJson: JSON.stringify({ ville: "Paris" }),
+    });
+    expect(res.caption).toBe("🏡 12 rue de la Paix — Paris");
+    expect(res.sourcesConsulted).toEqual(["tournage", "bien du tournage"]);
+  });
+
+  it("le bien du tournage traverse aussi la branche AVEC bibliothèque", async () => {
+    mockDataLibraryFindUnique.mockResolvedValue({ id: "lib-1", rotationScope: "shared" });
+    mockSelectDataEntry.mockResolvedValue(null);
+
+    const res = await resolveCaptionWithDataLibrary({
+      config: { ...baseConfig, descriptionDataLibraryId: "lib-1" },
+      accountId: "acc-1",
+      storedEntry: null,
+      shootEntityFieldsJson: JSON.stringify({ adresse: "12 rue de la Paix" }),
+      entityFieldsJson: null,
+      shootRelatedFieldsJson: JSON.stringify({ ville: "Paris" }),
+    });
+    expect(res.caption).toBe("🏡 12 rue de la Paix — Paris");
+  });
+
+  /**
+   * Le cœur de la correction : accuser la bibliothèque n'est exact QUE si une
+   * bibliothèque est configurée et que le tirage n'a rien rendu. Partout
+   * ailleurs, le message envoyait chercher au mauvais endroit.
+   */
+  it("bibliothèque configurée mais tirage vide → no_entry_drawn", async () => {
+    mockDataLibraryFindUnique.mockResolvedValue({ id: "lib-1", rotationScope: "shared" });
+    mockSelectDataEntry.mockResolvedValue(null);
+
+    // Modèle réduit à sa seule variable : avec du texte fixe autour, le rendu
+    // « 🏡  — » n'est pas vide et la légende se résout malgré tout.
+    const res = await resolveCaptionWithDataLibrary({
+      config: {
+        ...baseConfig,
+        descriptionFixedText: "{{adresse}}",
+        descriptionDataLibraryId: "lib-1",
+      },
+      accountId: "acc-1",
+      storedEntry: null,
+      shootEntityFieldsJson: null,
+      entityFieldsJson: null,
+    });
+    expect(res.caption).toBeNull();
+    expect(res.diagnostic).toEqual({ reason: "no_entry_drawn" });
+  });
+
+  it("sans bibliothèque, une clé absente n'accuse PAS la bibliothèque", async () => {
+    const res = await resolveCaptionWithDataLibrary({
+      config: {
+        ...baseConfig,
+        descriptionFixedText: "{{adresse}}",
+        descriptionDataLibraryId: null,
+      },
+      accountId: "acc-1",
+      storedEntry: null,
+      shootEntityFieldsJson: null,
+      entityFieldsJson: null,
+    });
+    expect(res.caption).toBeNull();
+    expect(res.diagnostic).toEqual({ reason: "unresolved_keys", keys: ["adresse"] });
+  });
+
+  it("signale les clés sans valeur même quand la légende se résout", async () => {
+    const res = await resolveCaptionWithDataLibrary({
+      config: { ...baseConfig, descriptionDataLibraryId: null },
+      accountId: "acc-1",
+      storedEntry: null,
+      shootEntityFieldsJson: null,
+      entityFieldsJson: JSON.stringify({ adresse: "12 rue de la Paix" }),
+    });
+    expect(res.caption).toBe("🏡 12 rue de la Paix — ");
+    expect(res.diagnostic).toBeNull();
+    expect(res.unresolvedKeys).toEqual(["ville"]);
   });
 });

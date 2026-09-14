@@ -761,6 +761,9 @@ const entityPatchAccessSelect = {
   defaultAssigneeCmId: true,
   // Exemption des fiches archivées au blocage des champs requis (cf. plus bas).
   isArchived: true,
+  // Propagation du bien aux reels du tournage (cf. patchEntity) : il faut
+  // savoir si la fiche en avait déjà un pour ne réagir qu'à la transition.
+  relatedEntityId: true,
   shootSlots: {
     select: { assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   },
@@ -992,6 +995,26 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
     if (wantsShot) {
       // Pose SHOT + shotAt + bump reels + log SHOT, atomiquement.
       await markEntityShot(tx, id, ctx.actualUser.id);
+    }
+    /**
+     * Un tournage qui gagne son bien APRÈS coup : ses reels n'ont aucun moyen
+     * de le découvrir seuls. `slot.entityId` n'est câblé qu'à la création du
+     * reel et au rattachement d'un tournage — entre les deux, rien ne
+     * repropage, et la légende reste vide pour toujours.
+     *
+     * Fill-only : un bien déjà choisi sur une publication n'est jamais
+     * remplacé. La légende, elle, n'est pas retouchée ici — c'est le bouton
+     * « Recalculer » de la publication qui s'en charge, désormais correctement.
+     */
+    if (
+      typeof data.relatedEntityId === "string" &&
+      data.relatedEntityId &&
+      data.relatedEntityId !== existing.relatedEntityId
+    ) {
+      await tx.publicationSlot.updateMany({
+        where: { shootEntityId: id, entityId: null },
+        data: { entityId: data.relatedEntityId },
+      });
     }
     if (!result) {
       result = await tx.entity.findUnique({ where: { id }, select: entityListSelect });

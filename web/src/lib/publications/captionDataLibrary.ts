@@ -15,17 +15,46 @@
 
 import { prisma } from "@/lib/prisma";
 import {
+  diagnosePrefilledCaption,
+  mergeCaptionSources,
+  referencedTemplateKeys,
   resolvePrefilledCaptionFromEntities,
+  unresolvedTemplateKeys,
   type PrefilledCaptionConfig,
+  type PrefilledCaptionFailure,
+  type PrefilledCaptionSources,
 } from "@/lib/publications/preFilledDescription";
 import { selectDataEntry } from "@/lib/contentLibraryResolver";
-import { extractTemplateVars, extractConditionFields } from "@/lib/textTemplate";
+
+/** Source consultée, nommée pour l'utilisateur (cf. `sourcesConsulted`). */
+export type CaptionSourceName = "fiche" | "tournage" | "bien du tournage" | "bibliothèque";
 
 export interface CaptionLibraryResolution {
   caption: string | null;
   usedEntry: { entryId: string; fields: Record<string, string>; setTag: string | null; libraryId: string } | null;
   /** true ⇒ l'appelant DOIT persister captionDataEntryId + claimDataEntryForCaption + logActivity. */
   drewNewEntry: boolean;
+  /**
+   * Pourquoi la légende est vide — `null` quand elle se résout.
+   * `no_entry_drawn` n'est posé QUE si une bibliothèque est configurée et que
+   * le tirage n'a rien rendu : c'est-à-dire exactement le cas que l'ancien
+   * message unique prétendait décrire pour tous les échecs.
+   */
+  diagnostic: PrefilledCaptionFailure | { reason: "no_entry_drawn" } | null;
+  /** Fiches réellement consultées — pour dire OÙ on a cherché. */
+  sourcesConsulted: CaptionSourceName[];
+  /** Clés du modèle restées sans valeur, même quand la légende se résout. */
+  unresolvedKeys: string[];
+}
+
+/** Nomme les sources qui portent effectivement des champs. */
+function namedSources(sources: PrefilledCaptionSources, drewEntry: boolean): CaptionSourceName[] {
+  const out: CaptionSourceName[] = [];
+  if (sources.entityFields) out.push("fiche");
+  if (sources.shootEntityFields) out.push("tournage");
+  if (sources.shootRelatedFields) out.push("bien du tournage");
+  if (drewEntry) out.push("bibliothèque");
+  return out;
 }
 
 /** Parse tolérant d'une colonne `fields` DataEntry (miroir de `selectDataEntry`). */
@@ -40,25 +69,6 @@ function parseEntryFields(raw: string): Record<string, string> {
   }
 }
 
-/**
- * Clés du modèle de légende référencées par une DataEntry : `{{clé}}` +
- * champs des conditions `{{#if champ == "x"}}` + alias legacy
- * `descriptionSourceFieldKey` quand le modèle (`descriptionFixedText`) est
- * vide — ce dernier compte comme LA variable du modèle (lookup direct, cf.
- * `resolvePrefilledCaption`).
- */
-function referencedTemplateKeys(config: PrefilledCaptionConfig): Set<string> {
-  const template =
-    typeof config.descriptionFixedText === "string" ? config.descriptionFixedText : "";
-  if (template.trim().length > 0) {
-    const keys = new Set(extractTemplateVars(template));
-    for (const cond of extractConditionFields(template)) keys.add(cond.field);
-    return keys;
-  }
-  const legacyKey = config.descriptionSourceFieldKey?.trim();
-  return legacyKey ? new Set([legacyKey]) : new Set();
-}
-
 export async function resolveCaptionWithDataLibrary(params: {
   config: PrefilledCaptionConfig & {
     descriptionDataLibraryId: string | null;
@@ -70,15 +80,38 @@ export async function resolveCaptionWithDataLibrary(params: {
   redraw?: boolean;
   shootEntityFieldsJson: string | Record<string, unknown> | null | undefined;
   entityFieldsJson: string | Record<string, unknown> | null | undefined;
+  /** Bien lié au tournage (`shootEntity.relatedEntityId`) — comble les trous. */
+  shootRelatedFieldsJson?: string | Record<string, unknown> | null;
 }): Promise<CaptionLibraryResolution> {
-  const { config, accountId, storedEntry, redraw, shootEntityFieldsJson, entityFieldsJson } = params;
+  const {
+    config,
+    accountId,
+    storedEntry,
+    redraw,
+    shootEntityFieldsJson,
+    entityFieldsJson,
+    shootRelatedFieldsJson,
+  } = params;
+  const baseSources: PrefilledCaptionSources = {
+    entityFields: entityFieldsJson,
+    shootEntityFields: shootEntityFieldsJson,
+    shootRelatedFields: shootRelatedFieldsJson,
+  };
 
   // a. Pas de bibliothèque configurée → chemin legacy strictement identique
   // (3 sources). storedEntry est ignoré : une recette qui perd sa
   // bibliothèque repasse en pure ré-interpolation.
   if (!config.descriptionDataLibraryId) {
-    const caption = resolvePrefilledCaptionFromEntities(config, shootEntityFieldsJson, entityFieldsJson);
-    return { caption, usedEntry: null, drewNewEntry: false };
+    const merged = mergeCaptionSources(baseSources);
+    const caption = resolvePrefilledCaptionFromEntities(config, baseSources);
+    return {
+      caption,
+      usedEntry: null,
+      drewNewEntry: false,
+      diagnostic: caption === null ? diagnosePrefilledCaption(config, merged) : null,
+      sourcesConsulted: namedSources(baseSources, false),
+      unresolvedKeys: unresolvedTemplateKeys(config, merged),
+    };
   }
 
   const libraryId = config.descriptionDataLibraryId;
@@ -149,18 +182,27 @@ export async function resolveCaptionWithDataLibrary(params: {
     }
   }
 
-  // d. Résolution pure — entity > shootEntity > dataEntry (fill-only).
-  const caption = resolvePrefilledCaptionFromEntities(
-    config,
-    shootEntityFieldsJson,
-    entityFieldsJson,
-    candidate?.fields,
-  );
+  // d. Résolution pure — fiche > tournage > bien du tournage > bibliothèque.
+  const sources: PrefilledCaptionSources = { ...baseSources, dataEntryFields: candidate?.fields };
+  const merged = mergeCaptionSources(sources);
+  const caption = resolvePrefilledCaptionFromEntities(config, sources);
+  const consulted = namedSources(sources, candidate !== null);
 
   // e. Résolution vide/blanche → on ne wipe jamais la légende avec du vide :
   // une résolution vide ne consomme rien et ne stocke rien.
   if (caption === null) {
-    return { caption: null, usedEntry: null, drewNewEntry: false };
+    // Une bibliothèque configurée dont le tirage n'a rien rendu est la SEULE
+    // situation où accuser la bibliothèque est exact.
+    const diagnostic: CaptionLibraryResolution["diagnostic"] =
+      candidate === null ? { reason: "no_entry_drawn" } : diagnosePrefilledCaption(config, merged);
+    return {
+      caption: null,
+      usedEntry: null,
+      drewNewEntry: false,
+      diagnostic,
+      sourcesConsulted: consulted,
+      unresolvedKeys: unresolvedTemplateKeys(config, merged),
+    };
   }
 
   return {
@@ -169,5 +211,8 @@ export async function resolveCaptionWithDataLibrary(params: {
       ? { entryId: candidate.entryId, fields: candidate.fields, setTag: candidate.setTag, libraryId }
       : null,
     drewNewEntry,
+    diagnostic: null,
+    sourcesConsulted: consulted,
+    unresolvedKeys: unresolvedTemplateKeys(config, merged),
   };
 }

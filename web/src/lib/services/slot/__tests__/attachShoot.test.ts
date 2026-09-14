@@ -30,6 +30,25 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/r2", () => ({ deleteR2Prefix: vi.fn(), r2Configured: () => false }));
 
+// La légende est recalculée au rattachement : on espionne l'orchestrateur
+// plutôt que de remonter toute la chaîne de tirage (testée chez elle).
+const mockResolveCaption = vi.fn(async () => ({
+  caption: null as string | null,
+  usedEntry: null,
+  drewNewEntry: false,
+  diagnostic: null,
+  sourcesConsulted: [],
+  unresolvedKeys: [],
+}));
+vi.mock("@/lib/publications/captionDataLibrary", () => ({
+  resolveCaptionWithDataLibrary: (...a: unknown[]) => mockResolveCaption(...(a as [])),
+}));
+vi.mock("@/lib/contentLibraryResolver", () => ({
+  claimDataEntryForCaption: vi.fn(),
+  selectDataEntry: vi.fn(),
+  resolveCaptionWithDataLibrary: vi.fn(),
+}));
+
 import { attachShootToSlot } from "@/lib/services/slot/slotService";
 import {
   ConflictError,
@@ -62,6 +81,10 @@ const SLOT = {
   assigneeCmId: null,
   assigneeVideasteId: null,
   needsRushesOverride: null,
+  needsDescriptionOverride: null,
+  description: null,
+  entity: null,
+  captionDataEntry: null,
   patternBinding: null,
   patternTemplate: {
     id: "pt1",
@@ -78,6 +101,8 @@ const SHOOT = {
   relatedEntityId: "bien-1",
   status: "PLANNED",
   validationStatus: "APPROVED",
+  fields: JSON.stringify({ ville: "Paris" }),
+  related: { fields: JSON.stringify({ prix: "350 000 €" }) },
   assigneeVideasteId: "vid-9",
   defaultAssigneeMonteurId: "mon-9",
   defaultAssigneeCmId: "cm-9",
@@ -260,5 +285,82 @@ describe("attachShootToSlot — traçabilité", () => {
         }),
       }),
     );
+  });
+});
+
+/**
+ * Le rattachement pose la fiche liée — il doit en tirer la légende dans la
+ * foulée. Sans ça, le bien était là, ses données étaient là, et la légende
+ * restait vide jusqu'à un « Recalculer » manuel que rien ne signalait.
+ */
+describe("attachShootToSlot — légende", () => {
+  beforeEach(() => {
+    mockSlotFindUnique.mockResolvedValue({
+      ...SLOT,
+      needsDescriptionOverride: "preFilled",
+    });
+  });
+
+  it("recalcule la légende quand elle est vide", async () => {
+    mockResolveCaption.mockResolvedValue({
+      caption: "🏡 Paris — 350 000 €",
+      usedEntry: null,
+      drewNewEntry: false,
+      diagnostic: null,
+      sourcesConsulted: [],
+      unresolvedKeys: [],
+    });
+
+    await attachShootToSlot("slot-1", "shoot-1", ctx());
+
+    expect(lastData().description).toBe("🏡 Paris — 350 000 €");
+    // Le bien du tournage est bien transmis comme source.
+    expect(mockResolveCaption).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shootEntityFieldsJson: SHOOT.fields,
+        shootRelatedFieldsJson: SHOOT.related.fields,
+      }),
+    );
+  });
+
+  // Rattacher un tournage arrive souvent sur un reel déjà travaillé par un CM.
+  it("n'écrase JAMAIS une légende déjà écrite", async () => {
+    mockSlotFindUnique.mockResolvedValue({
+      ...SLOT,
+      needsDescriptionOverride: "preFilled",
+      description: "Légende écrite à la main par le CM",
+    });
+
+    await attachShootToSlot("slot-1", "shoot-1", ctx());
+
+    expect(mockResolveCaption).not.toHaveBeenCalled();
+    expect(lastData()).not.toHaveProperty("description");
+  });
+
+  it("ne touche pas à la légende quand la recette ne la pré-remplit pas", async () => {
+    mockSlotFindUnique.mockResolvedValue({
+      ...SLOT,
+      needsDescriptionOverride: "manualWrite",
+    });
+
+    await attachShootToSlot("slot-1", "shoot-1", ctx());
+
+    expect(mockResolveCaption).not.toHaveBeenCalled();
+    expect(lastData()).not.toHaveProperty("description");
+  });
+
+  it("une résolution vide ne pose pas de description vide", async () => {
+    mockResolveCaption.mockResolvedValue({
+      caption: null,
+      usedEntry: null,
+      drewNewEntry: false,
+      diagnostic: { reason: "unresolved_keys" as const, keys: ["prix"] },
+      sourcesConsulted: [],
+      unresolvedKeys: ["prix"],
+    });
+
+    await attachShootToSlot("slot-1", "shoot-1", ctx());
+
+    expect(lastData()).not.toHaveProperty("description");
   });
 });

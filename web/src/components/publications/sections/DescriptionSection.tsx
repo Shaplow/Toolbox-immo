@@ -423,6 +423,7 @@ function DescriptionSectionInner({
         description?: string | null;
         entry?: { entryId: string; setTag: string | null; libraryId: string; isNew: boolean } | null;
         message?: string;
+        unresolvedKeys?: string[];
       };
       if (!res.ok) {
         toast.error(data.error ?? `Erreur ${res.status}`);
@@ -432,14 +433,21 @@ function DescriptionSectionInner({
         setValue(data.description);
         setSaved(false);
         const folderLabel = data.entry ? data.entry.setTag ?? "(sans dossier)" : null;
+        // Les clés sans valeur sont mentionnées même en cas de succès : sinon
+        // un « {{prix}} » absent disparaît silencieusement de la légende.
+        const gaps = data.unresolvedKeys?.length
+          ? ` — ${data.unresolvedKeys.length} clé${data.unresolvedKeys.length > 1 ? "s" : ""} sans valeur (${data.unresolvedKeys
+              .map((k) => `{{${k}}}`)
+              .join(", ")})`
+          : "";
         toast.success(
-          redraw
+          (redraw
             ? folderLabel
               ? `Nouvelle fiche tirée — dossier « ${folderLabel} ».`
               : "Nouvelle fiche tirée."
             : folderLabel
               ? `Légende recalculée — dossier « ${folderLabel} ».`
-              : "Légende recalculée depuis la fiche."
+              : "Légende recalculée depuis la fiche.") + gaps
         );
       } else {
         toast.info(data.message ?? "Aucune valeur exploitable — légende inchangée.");

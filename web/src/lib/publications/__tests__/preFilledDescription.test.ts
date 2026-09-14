@@ -15,6 +15,8 @@ import { describe, it, expect } from "vitest";
 import {
   resolvePrefilledCaption,
   resolvePrefilledCaptionFromEntities,
+  diagnosePrefilledCaption,
+  unresolvedTemplateKeys,
   normalizeFixedText,
   normalizeSourceFieldKey,
 } from "../preFilledDescription";
@@ -203,27 +205,28 @@ describe("resolvePrefilledCaptionFromEntities", () => {
     descriptionSourceFieldKey: null,
   };
 
-  it("fusionne fiche tournage < fiche data (la fiche data l'emporte sur collision de clé)", () => {
-    const shootFields = JSON.stringify({ adresse: "Ancienne adresse (tournage)", date: "2026-08-18" });
-    const entityFields = JSON.stringify({ adresse: "12 rue de la Paix", prix: "350 000 €" });
-    expect(resolvePrefilledCaptionFromEntities(config, shootFields, entityFields)).toBe(
-      "🏡 12 rue de la Paix — 350 000 €",
-    );
+  it("la fiche data l'emporte sur le tournage en cas de collision", () => {
+    expect(
+      resolvePrefilledCaptionFromEntities(config, {
+        shootEntityFields: JSON.stringify({ adresse: "Ancienne adresse (tournage)", date: "2026-08-18" }),
+        entityFields: JSON.stringify({ adresse: "12 rue de la Paix", prix: "350 000 €" }),
+      }),
+    ).toBe("🏡 12 rue de la Paix — 350 000 €");
   });
 
   it("utilise la fiche tournage seule si aucune fiche data n'est rattachée", () => {
-    const shootFields = JSON.stringify({ adresse: "Adresse du tournage", prix: "" });
-    expect(resolvePrefilledCaptionFromEntities(config, shootFields, null)).toBe(
-      "🏡 Adresse du tournage — ",
-    );
+    expect(
+      resolvePrefilledCaptionFromEntities(config, {
+        shootEntityFields: JSON.stringify({ adresse: "Adresse du tournage", prix: "" }),
+      }),
+    ).toBe("🏡 Adresse du tournage — ");
   });
 
-  it("tolère les deux fiches absentes (aucun champ résolu, template littéral conservé)", () => {
+  it("tolère toutes les fiches absentes (template littéral conservé)", () => {
     expect(
       resolvePrefilledCaptionFromEntities(
         { needsDescription: "fixed", descriptionFixedText: "Texte fixe, sans clé", descriptionSourceFieldKey: null },
-        null,
-        null,
+        {},
       ),
     ).toBe("Texte fixe, sans clé");
   });
@@ -232,67 +235,188 @@ describe("resolvePrefilledCaptionFromEntities", () => {
     expect(
       resolvePrefilledCaptionFromEntities(
         { needsDescription: "manualWrite", descriptionFixedText: "{{adresse}}", descriptionSourceFieldKey: null },
-        null,
-        JSON.stringify({ adresse: "12 rue de la Paix" }),
+        { entityFields: JSON.stringify({ adresse: "12 rue de la Paix" }) },
       ),
     ).toBeNull();
   });
 
-  describe("4e source — dataEntryFieldsJson (fill-only, entity > shootEntity > dataEntry)", () => {
-    it("entrée seule (aucune fiche rattachée) → ses champs résolvent le modèle", () => {
+  /**
+   * Le bien lié au TOURNAGE (`shootEntity.relatedEntityId`).
+   *
+   * Avant, il n'était lisible que s'il avait été recopié sur `slot.entityId` à
+   * la création du reel. Un tournage qui gagnait son bien après coup laissait
+   * la légende définitivement vide — et « Recalculer » relisait la même fiche
+   * absente.
+   */
+  describe("bien du tournage", () => {
+    it("comble une clé absente de la fiche et du tournage", () => {
       expect(
-        resolvePrefilledCaptionFromEntities(
-          config,
-          null,
-          null,
-          JSON.stringify({ adresse: "Depuis l'entrée data", prix: "290 000 €" }),
-        ),
-      ).toBe("🏡 Depuis l'entrée data — 290 000 €");
-    });
-
-    it("entrée + fiches : la fiche (entity/shootEntity) prime sur l'entrée en cas de collision", () => {
-      const shootFields = JSON.stringify({ adresse: "Adresse tournage" });
-      const entityFields = JSON.stringify({ prix: "350 000 €" });
-      const dataFields = JSON.stringify({ adresse: "Adresse entrée (ignorée)", prix: "999 €" });
-      expect(
-        resolvePrefilledCaptionFromEntities(config, shootFields, entityFields, dataFields),
-      ).toBe("🏡 Adresse tournage — 350 000 €");
-    });
-
-    it("valeur BLANCHE (\"\") de fiche ne masque PAS la valeur de l'entrée (fill-only, pas un spread)", () => {
-      // La fiche data porte `prix: ""` (volontairement vide) — un simple
-      // spread `{...dataEntry, ...shoot, ...entity}` laisserait ce "" gagner
-      // et écraserait silencieusement la valeur de l'entrée.
-      const entityFields = JSON.stringify({ adresse: "12 rue de la Paix", prix: "" });
-      const dataFields = JSON.stringify({ prix: "350 000 €" });
-      expect(
-        resolvePrefilledCaptionFromEntities(config, null, entityFields, dataFields),
+        resolvePrefilledCaptionFromEntities(config, {
+          shootEntityFields: JSON.stringify({ adresse: "12 rue de la Paix" }),
+          shootRelatedFields: JSON.stringify({ prix: "350 000 €" }),
+        }),
       ).toBe("🏡 12 rue de la Paix — 350 000 €");
     });
 
-    it("absence d'entrée (undefined) → comportement 3-sources inchangé", () => {
-      const shootFields = JSON.stringify({ adresse: "Ancienne adresse (tournage)" });
-      const entityFields = JSON.stringify({ adresse: "12 rue de la Paix", prix: "350 000 €" });
-      expect(resolvePrefilledCaptionFromEntities(config, shootFields, entityFields)).toBe(
-        resolvePrefilledCaptionFromEntities(config, shootFields, entityFields, undefined),
-      );
-      expect(resolvePrefilledCaptionFromEntities(config, shootFields, entityFields)).toBe(
-        "🏡 12 rue de la Paix — 350 000 €",
-      );
+    it("n'écrase ni la fiche data ni le tournage", () => {
+      expect(
+        resolvePrefilledCaptionFromEntities(config, {
+          entityFields: JSON.stringify({ adresse: "Fiche data" }),
+          shootEntityFields: JSON.stringify({ prix: "Tournage" }),
+          shootRelatedFields: JSON.stringify({ adresse: "Bien (ignoré)", prix: "Bien (ignoré)" }),
+        }),
+      ).toBe("🏡 Fiche data — Tournage");
     });
 
-    it("mode legacy \"fixed\" (alias descriptionSourceFieldKey) : l'entrée comble le champ absent de la fiche", () => {
-      const legacyConfig = {
-        needsDescription: "fixed",
-        descriptionFixedText: null,
-        descriptionSourceFieldKey: "description",
-      };
-      const entityFields = JSON.stringify({ autreChamp: "peu importe" });
-      const dataFields = JSON.stringify({ description: "Depuis l'entrée data tirée." });
+    // Une donnée réelle sur le sujet prime sur du texte de rotation générique.
+    it("passe AVANT la bibliothèque", () => {
       expect(
-        resolvePrefilledCaptionFromEntities(legacyConfig, null, entityFields, dataFields),
+        resolvePrefilledCaptionFromEntities(config, {
+          shootRelatedFields: JSON.stringify({ adresse: "Le vrai bien", prix: "350 000 €" }),
+          dataEntryFields: JSON.stringify({ adresse: "Texte générique", prix: "999 €" }),
+        }),
+      ).toBe("🏡 Le vrai bien — 350 000 €");
+    });
+
+    it("la bibliothèque comble ce que le bien ne porte pas", () => {
+      expect(
+        resolvePrefilledCaptionFromEntities(config, {
+          shootRelatedFields: JSON.stringify({ adresse: "Le vrai bien" }),
+          dataEntryFields: JSON.stringify({ prix: "350 000 €" }),
+        }),
+      ).toBe("🏡 Le vrai bien — 350 000 €");
+    });
+  });
+
+  /**
+   * Correction de comportement : toutes les couches sont désormais fill-only.
+   * Avant, les deux premières s'écrasaient par simple spread — un bien portant
+   * `prix: ""` effaçait le prix du tournage et rendait une légende vide.
+   */
+  describe("fill-only à tous les étages", () => {
+    it('une valeur vide de la fiche data ne masque plus celle du tournage', () => {
+      expect(
+        resolvePrefilledCaptionFromEntities(config, {
+          entityFields: JSON.stringify({ adresse: "12 rue de la Paix", prix: "" }),
+          shootEntityFields: JSON.stringify({ prix: "250 000 €" }),
+        }),
+      ).toBe("🏡 12 rue de la Paix — 250 000 €");
+    });
+
+    it("une valeur vide de fiche ne masque pas celle de la bibliothèque", () => {
+      expect(
+        resolvePrefilledCaptionFromEntities(config, {
+          entityFields: JSON.stringify({ adresse: "12 rue de la Paix", prix: "" }),
+          dataEntryFields: JSON.stringify({ prix: "350 000 €" }),
+        }),
+      ).toBe("🏡 12 rue de la Paix — 350 000 €");
+    });
+
+    it("la fiche prime sur la bibliothèque quand elle porte une vraie valeur", () => {
+      expect(
+        resolvePrefilledCaptionFromEntities(config, {
+          shootEntityFields: JSON.stringify({ adresse: "Adresse tournage" }),
+          entityFields: JSON.stringify({ prix: "350 000 €" }),
+          dataEntryFields: JSON.stringify({ adresse: "Adresse entrée (ignorée)", prix: "999 €" }),
+        }),
+      ).toBe("🏡 Adresse tournage — 350 000 €");
+    });
+
+    it("l'entrée seule résout le modèle quand aucune fiche n'est rattachée", () => {
+      expect(
+        resolvePrefilledCaptionFromEntities(config, {
+          dataEntryFields: JSON.stringify({ adresse: "Depuis l'entrée data", prix: "290 000 €" }),
+        }),
+      ).toBe("🏡 Depuis l'entrée data — 290 000 €");
+    });
+
+    it('mode legacy "fixed" : l\'entrée comble le champ absent de la fiche', () => {
+      expect(
+        resolvePrefilledCaptionFromEntities(
+          {
+            needsDescription: "fixed",
+            descriptionFixedText: null,
+            descriptionSourceFieldKey: "description",
+          },
+          {
+            entityFields: JSON.stringify({ autreChamp: "peu importe" }),
+            dataEntryFields: JSON.stringify({ description: "Depuis l'entrée data tirée." }),
+          },
+        ),
       ).toBe("Depuis l'entrée data tirée.");
     });
+  });
+});
+
+/**
+ * Le diagnostic existe parce que tout échec de légende était attribué en bloc
+ * à la bibliothèque de données, y compris quand aucune n'était configurée.
+ */
+describe("diagnosePrefilledCaption", () => {
+  const config = {
+    needsDescription: "preFilled",
+    descriptionFixedText: "🏡 {{adresse}} — {{prix}}",
+    descriptionSourceFieldKey: null,
+  };
+
+  it("null quand la légende se résout", () => {
+    expect(
+      diagnosePrefilledCaption(config, { adresse: "12 rue de la Paix", prix: "350 000 €" }),
+    ).toBeNull();
+  });
+
+  /**
+   * Le diagnostic ne parle que des ÉCHECS. Un modèle qui porte du texte fixe
+   * (« 🏡 », un tiret) se résout même avec toutes ses clés vides : il produit
+   * « 🏡  — », inutile mais non vide. C'est `unresolvedTemplateKeys` qui couvre
+   * ce cas-là — et c'est le plus fréquent en pratique.
+   */
+  it("nomme les clés absentes quand le modèle N'A QUE des clés", () => {
+    const keyOnly = { ...config, descriptionFixedText: "{{adresse}}" };
+    expect(diagnosePrefilledCaption(keyOnly, {})).toEqual({
+      reason: "unresolved_keys",
+      keys: ["adresse"],
+    });
+  });
+
+  it("un modèle avec du texte fixe résout, mais les clés manquantes restent signalées", () => {
+    const merged = { adresse: "12 rue de la Paix" };
+    expect(diagnosePrefilledCaption(config, merged)).toBeNull();
+    expect(unresolvedTemplateKeys(config, merged)).toEqual(["prix"]);
+  });
+
+  it("ne signale aucune clé quand tout résout", () => {
+    expect(
+      unresolvedTemplateKeys(config, { adresse: "12 rue de la Paix", prix: "350 000 €" }),
+    ).toEqual([]);
+  });
+
+  it("une valeur vide compte comme absente", () => {
+    expect(unresolvedTemplateKeys(config, { adresse: "12 rue", prix: "" })).toEqual(["prix"]);
+  });
+
+  it("mode inactif", () => {
+    expect(
+      diagnosePrefilledCaption({ ...config, needsDescription: "manualWrite" }, {}),
+    ).toEqual({ reason: "mode_off" });
+  });
+
+  it("recette sans modèle de légende", () => {
+    expect(
+      diagnosePrefilledCaption(
+        { needsDescription: "preFilled", descriptionFixedText: null, descriptionSourceFieldKey: null },
+        { adresse: "12 rue de la Paix" },
+      ),
+    ).toEqual({ reason: "no_template" });
+  });
+
+  it("modèle qui se résout à du vide alors que ses clés sont pleines", () => {
+    expect(
+      diagnosePrefilledCaption(
+        { needsDescription: "preFilled", descriptionFixedText: "   ", descriptionSourceFieldKey: null },
+        {},
+      ),
+    ).toEqual({ reason: "no_template" });
   });
 });
 

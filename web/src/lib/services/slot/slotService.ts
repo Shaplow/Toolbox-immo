@@ -210,6 +210,8 @@ export async function createSlot(
     defaultAssigneeMonteurId: string | null;
     defaultAssigneeCmId: string | null;
     fields: string | null;
+    /** Bien lié au tournage — source de repli pour la légende. */
+    related: { fields: string | null } | null;
   } | null = null;
   if (input.eventId) {
     shootEvent = await prisma.entity.findUnique({
@@ -223,9 +225,12 @@ export async function createSlot(
         assigneeVideasteId: true,
         defaultAssigneeMonteurId: true,
         defaultAssigneeCmId: true,
-        // Légende « Pré-remplie (modèle) » : fiche tournage < fiche data
-        // (même précédence que le pré-remplissage de génération).
+        // Légende « Pré-remplie (modèle) » : fiche < tournage < bien du
+        // tournage (même précédence que le pré-remplissage de génération).
         fields: true,
+        // Le bien du tournage comble les trous de la légende même quand il
+        // n'est PAS recopié sur le slot (propertyId explicite différent).
+        related: { select: { fields: true } },
       },
     });
     if (!shootEvent) throw new NotFoundError("Tournage");
@@ -476,6 +481,7 @@ export async function createSlot(
       storedEntry: null,
       shootEntityFieldsJson: shootEvent?.fields ?? null,
       entityFieldsJson: propertyFields,
+      shootRelatedFieldsJson: shootEvent?.related?.fields ?? null,
     });
     prefilledDescription = caption;
     if (usedEntry) {
@@ -1126,7 +1132,7 @@ export async function patchSlot(
       // Légende « Pré-remplie (modèle) » : fiche tournage (fixe depuis la
       // création, jamais patchée) < fiche data — même précédence que
       // createSlot et le pré-remplissage de génération.
-      shootEntity: { select: { fields: true } },
+      shootEntity: { select: { fields: true, related: { select: { fields: true } } } },
       // DataEntry mémorisée (tirage précédent) — reuse au re-rattachement
       // (idempotent) plutôt que de retirer systématiquement.
       captionDataEntry: { select: { id: true, fields: true, setTag: true, libraryId: true } },
@@ -1435,6 +1441,7 @@ export async function patchSlot(
       storedEntry: slot.captionDataEntry,
       shootEntityFieldsJson: slot.shootEntity?.fields ?? null,
       entityFieldsJson: property?.fields ?? null,
+      shootRelatedFieldsJson: slot.shootEntity?.related?.fields ?? null,
     });
     if (caption != null) prefilledDescription = caption;
     if (usedEntry) {
@@ -2013,6 +2020,12 @@ export async function attachShootToSlot(
       assigneeCmId: true,
       assigneeVideasteId: true,
       needsRushesOverride: true,
+      needsDescriptionOverride: true,
+      // Le rattachement pose la fiche liée : il doit pouvoir en tirer la
+      // légende dans la foulée, comme le font createSlot et patchSlot.
+      description: true,
+      entity: { select: { fields: true } },
+      captionDataEntry: { select: { id: true, fields: true, setTag: true, libraryId: true } },
       ...slotEffectivePatternSelect,
     },
   });
@@ -2044,6 +2057,8 @@ export async function attachShootToSlot(
       isArchived: true,
       accountId: true,
       relatedEntityId: true,
+      fields: true,
+      related: { select: { fields: true } },
       status: true,
       validationStatus: true,
       assigneeVideasteId: true,
@@ -2071,6 +2086,56 @@ export async function attachShootToSlot(
     (shoot.status === "SHOT" || shoot.status === "DONE") &&
     (REEL_STATUSES_BUMPED_ON_SHOT as readonly string[]).includes(slot.status);
 
+  /**
+   * Légende — le rattachement pose la fiche liée, il doit en tirer la légende
+   * dans la foulée. Sans ça, le bien était là, ses données étaient là, et la
+   * légende restait vide jusqu'à un « Recalculer » manuel que rien ne
+   * signalait (asymétrie avec createSlot et patchSlot).
+   *
+   * UNIQUEMENT si la légende est vide : contrairement à patchSlot (changement
+   * explicite de fiche source), rattacher un tournage arrive souvent sur un
+   * reel déjà travaillé par un CM. Écraser un texte écrit à la main serait
+   * destructif.
+   */
+  const effectiveNeedsDescription =
+    slot.needsDescriptionOverride ?? pattern?.needsDescription ?? "none";
+  let prefilledDescription: string | null = null;
+  let prefilledCaptionEntry: { entryId: string; setTag: string | null; libraryId: string } | null = null;
+  let prefilledCaptionDrewNew = false;
+
+  if (
+    (slot.description ?? "").trim() === "" &&
+    (effectiveNeedsDescription === "preFilled" || effectiveNeedsDescription === "fixed")
+  ) {
+    const { caption, usedEntry, drewNewEntry } = await resolveCaptionWithDataLibrary({
+      config: {
+        needsDescription: effectiveNeedsDescription,
+        descriptionFixedText: pattern?.descriptionFixedText ?? null,
+        descriptionSourceFieldKey: pattern?.descriptionSourceFieldKey ?? null,
+        descriptionDataLibraryId: pattern?.descriptionDataLibraryId ?? null,
+        descriptionDataSetTag: pattern?.descriptionDataSetTag ?? null,
+      },
+      accountId: slot.accountId ?? shoot.accountId,
+      storedEntry: slot.captionDataEntry,
+      // La fiche data d'APRÈS l'update : celle du slot si elle existe, sinon
+      // le bien du tournage qu'on vient de poser ci-dessous.
+      entityFieldsJson: slot.entityId
+        ? (slot.entity?.fields ?? null)
+        : (shoot.related?.fields ?? null),
+      shootEntityFieldsJson: shoot.fields,
+      shootRelatedFieldsJson: shoot.related?.fields ?? null,
+    });
+    prefilledDescription = caption;
+    if (usedEntry) {
+      prefilledCaptionEntry = {
+        entryId: usedEntry.entryId,
+        setTag: usedEntry.setTag,
+        libraryId: usedEntry.libraryId,
+      };
+      prefilledCaptionDrewNew = drewNewEntry;
+    }
+  }
+
   const updated = await prisma.publicationSlot.update({
     where: { id: slotId },
     data: {
@@ -2097,6 +2162,10 @@ export async function attachShootToSlot(
       // rushs vivent sur le tournage », pas « on oublie ce que l'admin a réglé ».
       ...(slot.needsRushesOverride === null ? { needsRushesOverride: false } : {}),
       ...(bumpsToEdit ? { status: "IN_EDIT" } : {}),
+      ...(prefilledDescription !== null ? { description: prefilledDescription } : {}),
+      ...(prefilledCaptionDrewNew && prefilledCaptionEntry
+        ? { captionDataEntryId: prefilledCaptionEntry.entryId }
+        : {}),
     },
   });
 
@@ -2111,6 +2180,26 @@ export async function attachShootToSlot(
       reason: "attach-shoot",
     },
   });
+
+  // Claim hors de l'écriture du slot : best-effort, comme partout ailleurs —
+  // une entrée non consommée fait au pire retomber la rotation, elle ne doit
+  // pas faire échouer un rattachement déjà écrit.
+  if (prefilledCaptionDrewNew && prefilledCaptionEntry) {
+    await claimDataEntryForCaption(prefilledCaptionEntry.entryId, slot.accountId ?? shoot.accountId);
+    await logActivity(prisma, {
+      slotId,
+      actorId: ctx.actualUser.id,
+      type: "DESCRIPTION_PREFILLED",
+      payload: { trigger: "attach-shoot", entryId: prefilledCaptionEntry.entryId },
+    });
+  } else if (prefilledDescription !== null) {
+    await logActivity(prisma, {
+      slotId,
+      actorId: ctx.actualUser.id,
+      type: "DESCRIPTION_PREFILLED",
+      payload: { trigger: "attach-shoot" },
+    });
+  }
 
   return updated;
 }

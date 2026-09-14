@@ -291,7 +291,7 @@ export function PatternTemplateFields({
   descriptionPrompts,
   videoLibraries,
 }: PatternTemplateFieldsProps) {
-  const { entityTypes, propertyFieldKeys, dataLibraries } = useRecipeEntityBinding({
+  const { entityTypes, propertyFieldKeys, relatedFieldKeys, dataLibraries } = useRecipeEntityBinding({
     requiresEntityTypeId: v.requiresEntityTypeId,
     needsDescription: v.needsDescription,
   });
@@ -313,8 +313,8 @@ export function PatternTemplateFields({
     !!selectedDataLibrary &&
     !libraryFolders.some((f) => f.setTag === v.descriptionDataSetTag);
   const propertyFieldKeySet = useMemo(
-    () => new Set(propertyFieldKeys.map((f) => f.key)),
-    [propertyFieldKeys],
+    () => new Set([...propertyFieldKeys, ...relatedFieldKeys].map((f) => f.key)),
+    [propertyFieldKeys, relatedFieldKeys],
   );
   // Remplacement du modèle par une seule variable {{clé}} — confirmé si le
   // modèle actuel n'est pas vide pour éviter d'écraser un texte déjà rédigé.
@@ -528,6 +528,38 @@ export function PatternTemplateFields({
                         </Chip>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Le bien lié au tournage : la résolution le lit, mais le
+                    picker ne le proposait pas — l'admin tapait ses clés à
+                    l'aveugle. */}
+                {relatedFieldKeys.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1">
+                      Champs du bien lié
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {relatedFieldKeys.map((f) => (
+                        <Chip
+                          key={f.key}
+                          size="sm"
+                          onClick={() =>
+                            onChange({
+                              descriptionFixedText: v.descriptionFixedText
+                                ? `${v.descriptionFixedText} {{${f.key}}}`
+                                : `{{${f.key}}}`,
+                            })
+                          }
+                        >
+                          {f.label === f.key ? f.key : `${f.label} · ${f.key}`}
+                        </Chip>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Ces valeurs viennent du bien rattaché au tournage — elles ne
+                      remplissent la légende que si le tournage en a un.
+                    </p>
                   </div>
                 )}
 

@@ -21,6 +21,10 @@
  * `requiredEntityTypeId()` (lib/publications/entityRequirement.ts), pas ici.
  */
 import { useEffect, useState } from "react";
+import { SYSTEM_ENTITY_TYPE_IDS } from "@/lib/entityTypes";
+
+/** Référence stable — un `[]` littéral relancerait les mémos des appelants. */
+const EMPTY_FIELD_KEYS: PropertyFieldKey[] = [];
 
 export interface EntityTypeOption {
   id: string;
@@ -71,7 +75,7 @@ export function useRecipeEntityBinding(opts: {
 
   const [propertyFieldKeys, setPropertyFieldKeys] = useState<PropertyFieldKey[]>([]);
   const { requiresEntityTypeId, needsDescription } = opts;
-  const fieldKeysTypeId = requiresEntityTypeId || "etype_bien";
+  const fieldKeysTypeId = requiresEntityTypeId || SYSTEM_ENTITY_TYPE_IDS.bien;
   useEffect(() => {
     if (needsDescription !== "preFilled") return;
     let cancelled = false;
@@ -90,6 +94,46 @@ export function useRecipeEntityBinding(opts: {
       cancelled = true;
     };
   }, [needsDescription, fieldKeysTypeId]);
+
+  /**
+   * Clés du BIEN lié au tournage.
+   *
+   * La résolution de légende lit la fiche du slot, le tournage ET le bien du
+   * tournage — mais le picker ne proposait que les clés d'UN type. Pour une
+   * recette qui exige « Tournage », l'admin ne voyait jamais les clés du Bien
+   * qu'il pointe : il tapait `{{prix}}` à l'aveugle, sans rien pour confirmer
+   * que ça résoudrait.
+   *
+   * Chargé seulement quand la recette exige un type AUTRE que le Bien —
+   * sinon ce sont les mêmes clés que `propertyFieldKeys`.
+   */
+  const [relatedFieldKeys, setRelatedFieldKeys] = useState<PropertyFieldKey[]>([]);
+  const needsRelatedKeys =
+    needsDescription === "preFilled" &&
+    !!requiresEntityTypeId &&
+    requiresEntityTypeId !== SYSTEM_ENTITY_TYPE_IDS.bien;
+  useEffect(() => {
+    // Pas de `setState([])` dans la branche inactive : on DÉRIVE la valeur
+    // exposée plus bas. Vider l'état ici serait un setState synchrone dans un
+    // effet — et déclencherait un rendu en cascade pour rien.
+    if (!needsRelatedKeys) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/entity-types/${SYSTEM_ENTITY_TYPE_IDS.bien}/field-keys`,
+        );
+        if (!r.ok) return;
+        const data = (await r.json()) as PropertyFieldKey[];
+        if (!cancelled) setRelatedFieldKeys(data);
+      } catch {
+        /* suggestions indisponibles — la saisie libre reste possible */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsRelatedKeys]);
 
   const [dataLibraries, setDataLibraries] = useState<DataLibraryOption[]>([]);
   useEffect(() => {
@@ -110,5 +154,12 @@ export function useRecipeEntityBinding(opts: {
     };
   }, [needsDescription]);
 
-  return { entityTypes, propertyFieldKeys, dataLibraries };
+  return {
+    entityTypes,
+    propertyFieldKeys,
+    // Dérivé : la liste chargée ne doit pas rester visible si la recette
+    // cesse d'exiger un type autre que le Bien.
+    relatedFieldKeys: needsRelatedKeys ? relatedFieldKeys : EMPTY_FIELD_KEYS,
+    dataLibraries,
+  };
 }

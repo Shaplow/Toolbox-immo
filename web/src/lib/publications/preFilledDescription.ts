@@ -23,7 +23,11 @@
  *     changement de fiche, mais seulement avec une valeur non vide »).
  */
 
-import { resolveTextTemplate } from "@/lib/textTemplate";
+import {
+  extractConditionFields,
+  extractTemplateVars,
+  resolveTextTemplate,
+} from "@/lib/textTemplate";
 import { resolveSystemTokens } from "@/lib/systemTokens";
 import { isEmptyValue } from "@/lib/generate/provenance";
 import type { ListingData } from "@/types/listing";
@@ -118,39 +122,146 @@ function parseFields(
 }
 
 /**
- * Fusionne les champs bruts de la fiche tournage et de la fiche data (même
- * précédence que `createSlot`/`patchSlot` : fiche tournage < fiche data) puis
- * résout la légende — pure, aucun accès DB. Extrait pour que la logique de
- * (re)calcul soit partagée entre les call sites qui la déclenchent (create,
- * patch au rattachement, `POST /api/publications/[id]/recompute-caption`)
- * au lieu de réimplémenter la fusion à chaque endroit.
+ * Clés du modèle de légende : `{{clé}}` + champs des conditions
+ * `{{#if champ == "x"}}` + alias legacy `descriptionSourceFieldKey` quand le
+ * modèle est vide — ce dernier compte alors comme LA variable du modèle
+ * (lookup direct, cf. `resolvePrefilledCaption`).
  *
- * @param dataEntryFieldsJson Champs d'une DataEntry tirée (cf.
- *   `lib/publications/captionDataLibrary.ts`), 4e source OPTIONNELLE.
- *   Fusion **fill-only** (pas un spread) : une clé de l'entrée ne comble que
- *   les trous du merge fiche tournage/fiche data — jamais elle n'écrase une
- *   valeur déjà présente, y compris une valeur vide (`""`) volontairement
- *   laissée par une fiche (cf. `canAssignFieldValue` /
- *   `lib/generate/provenance.ts`, même garde que le pré-remplissage de
- *   génération). Précédence résultante : entity > shootEntity > dataEntry.
+ * Vit ici et non dans `captionDataLibrary` : la garde anti-gaspillage de la
+ * bibliothèque ET le diagnostic ci-dessous ont besoin de la même liste, et
+ * deux définitions divergeraient.
+ */
+export function referencedTemplateKeys(config: PrefilledCaptionConfig): Set<string> {
+  const template =
+    typeof config.descriptionFixedText === "string" ? config.descriptionFixedText : "";
+  if (template.trim().length > 0) {
+    const keys = new Set(extractTemplateVars(template));
+    for (const cond of extractConditionFields(template)) keys.add(cond.field);
+    return keys;
+  }
+  const legacyKey = config.descriptionSourceFieldKey?.trim();
+  return legacyKey ? new Set([legacyKey]) : new Set();
+}
+
+/**
+ * Pourquoi une légende ne s'est pas résolue.
+ *
+ * Existe parce que l'échec était jusqu'ici attribué en bloc à la bibliothèque
+ * de données (« bibliothèque vide, épuisée ou rotation désactivée »), y compris
+ * quand aucune bibliothèque n'était configurée. La cause réelle est presque
+ * toujours une clé absente — silencieuse, puisque `textTemplate` rend une
+ * chaîne vide pour une variable inconnue.
+ */
+export type PrefilledCaptionFailure =
+  | { reason: "mode_off" }
+  | { reason: "no_template" }
+  | { reason: "unresolved_keys"; keys: string[] }
+  | { reason: "blank_result" };
+
+/** `null` = la légende se résout. Sinon, la raison exacte. */
+export function diagnosePrefilledCaption(
+  config: PrefilledCaptionConfig,
+  merged: Record<string, unknown>,
+): PrefilledCaptionFailure | null {
+  const mode = config.needsDescription;
+  if (mode !== "preFilled" && mode !== "fixed") return { reason: "mode_off" };
+
+  const keys = [...referencedTemplateKeys(config)];
+  const hasTemplate =
+    typeof config.descriptionFixedText === "string" &&
+    config.descriptionFixedText.trim().length > 0;
+  if (!hasTemplate && keys.length === 0) return { reason: "no_template" };
+
+  if (resolvePrefilledCaption(config, merged) !== null) return null;
+
+  const unresolved = keys.filter((key) => isEmptyValue(merged[key]));
+  // Toutes les clés résolvent mais le rendu est blanc : le modèle lui-même ne
+  // produit rien (conditions toutes fausses, texte réduit à des espaces).
+  return unresolved.length > 0
+    ? { reason: "unresolved_keys", keys: unresolved }
+    : { reason: "blank_result" };
+}
+
+/** Clés du modèle restées sans valeur, même quand la légende se résout. */
+export function unresolvedTemplateKeys(
+  config: PrefilledCaptionConfig,
+  merged: Record<string, unknown>,
+): string[] {
+  return [...referencedTemplateKeys(config)].filter((key) => isEmptyValue(merged[key]));
+}
+
+type FieldSource = string | Record<string, unknown> | null | undefined;
+
+/**
+ * Les quatre sources de champs d'une légende, de la plus spécifique à la plus
+ * générique. L'ordre des propriétés ci-dessous EST l'ordre de précédence.
+ */
+export interface PrefilledCaptionSources {
+  /** Fiche data rattachée à la publication (`slot.entityId`). */
+  entityFields?: FieldSource;
+  /** Fiche tournage (`slot.shootEntityId`). */
+  shootEntityFields?: FieldSource;
+  /**
+   * Bien lié AU TOURNAGE (`shootEntity.relatedEntityId`).
+   *
+   * Sans cette source, le bien n'était lisible que s'il avait été RECOPIÉ sur
+   * `slot.entityId` à la création du reel. Un tournage qui gagnait son bien
+   * après coup laissait la légende définitivement vide : rien ne repropageait,
+   * et « Recalculer » relisait la même fiche absente.
+   */
+  shootRelatedFields?: FieldSource;
+  /** Entrée de bibliothèque tirée (cf. `captionDataLibrary.ts`). */
+  dataEntryFields?: FieldSource;
+}
+
+/**
+ * Empile des couches de champs : la PREMIÈRE couche qui porte une valeur non
+ * vide pour une clé gagne.
+ *
+ * Fill-only à tous les étages, et c'est un changement volontaire : les deux
+ * premières couches se écrasaient auparavant par simple spread, si bien qu'un
+ * bien portant `prix: ""` effaçait le `prix: "250 000 €"` du tournage et
+ * rendait une légende vide. Une valeur vide n'est pas une valeur — même garde
+ * que le pré-remplissage de génération (`lib/generate/provenance.ts`).
+ */
+function mergeFieldLayers(layers: FieldSource[]): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  for (const layer of layers) {
+    const fields = parseFields(layer);
+    if (!fields) continue;
+    for (const [key, value] of Object.entries(fields)) {
+      if (isEmptyValue(merged[key])) merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+/**
+ * Fusionne les sources de champs puis résout la légende — pure, aucun accès DB.
+ * Extraite pour que la logique de (re)calcul soit partagée entre les call sites
+ * qui la déclenchent (create, patch, rattachement de tournage,
+ * `POST /api/publications/[id]/recompute-caption`) au lieu de réimplémenter la
+ * fusion à chaque endroit.
+ *
+ * Précédence : fiche data > fiche tournage > bien du tournage > bibliothèque.
+ * Le bien passe AVANT la bibliothèque : une donnée réelle sur le sujet prime
+ * sur du texte de rotation générique.
  */
 export function resolvePrefilledCaptionFromEntities(
   config: PrefilledCaptionConfig,
-  shootEntityFieldsJson: string | Record<string, unknown> | null | undefined,
-  entityFieldsJson: string | Record<string, unknown> | null | undefined,
-  dataEntryFieldsJson?: string | Record<string, unknown> | null,
+  sources: PrefilledCaptionSources,
 ): string | null {
-  const mergedFields: Record<string, unknown> = {
-    ...(parseFields(shootEntityFieldsJson) ?? {}),
-    ...(parseFields(entityFieldsJson) ?? {}),
-  };
-  const dataFields = parseFields(dataEntryFieldsJson);
-  if (dataFields) {
-    for (const [key, value] of Object.entries(dataFields)) {
-      if (isEmptyValue(mergedFields[key])) {
-        mergedFields[key] = value;
-      }
-    }
-  }
-  return resolvePrefilledCaption(config, mergedFields);
+  return resolvePrefilledCaption(config, mergeCaptionSources(sources));
+}
+
+/** Le merge seul — utile au diagnostic, qui doit inspecter les mêmes valeurs. */
+export function mergeCaptionSources(
+  sources: PrefilledCaptionSources,
+): Record<string, unknown> {
+  return mergeFieldLayers([
+    sources.entityFields,
+    sources.shootEntityFields,
+    sources.shootRelatedFields,
+    sources.dataEntryFields,
+  ]);
 }
