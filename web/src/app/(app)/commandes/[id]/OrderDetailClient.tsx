@@ -73,6 +73,17 @@ export function OrderDetailClient({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  /**
+   * Une publication déjà publiée bloque la suppression côté service — autant le
+   * dire dans le dialogue plutôt que de laisser l'admin découvrir le refus
+   * après avoir cliqué. `isAdminSlot` : la vue externe n'a pas de statut, mais
+   * elle n'a pas non plus le bouton.
+   */
+  const publishedSlotCount = order.slots.filter(
+    (slot) => isAdminSlot(slot) && slot.status === "PUBLISHED",
+  ).length;
 
   const editable = !isAdmin && (order.status === "SUBMITTED" || order.status === "REJECTED");
 
@@ -81,6 +92,13 @@ export function OrderDetailClient({
    * Validation : le succès seul ne suffit pas. Un tournage resté sans vidéaste
    * n'apparaît dans la worklist de personne — l'admin doit le savoir tout de
    * suite, et le bandeau au-dessus le lui rappellera ensuite.
+   *
+   * MAIS : depuis que le compte se choisit au placement, une commande SANS
+   * compte n'a par construction aucun assigné par défaut (ils vivent sur les
+   * bindings, per-compte). Crier à l'anomalie à chaque validation apprendrait
+   * en trois jours à ignorer l'alerte. On dit alors l'état normal et la suite à
+   * donner, et on garde l'alerte pour le cas où elle veut encore dire quelque
+   * chose : un compte est posé, et pourtant personne ne tourne.
    */
   async function runValidate(opts: { retry?: boolean } = {}) {
     const done = opts.retry ? "Instanciation relancée" : "Commande validée";
@@ -103,7 +121,7 @@ export function OrderDetailClient({
           `Publications non créées : ${data.failed.map((f) => `${f.label} (${f.error})`).join(" · ")}`,
         );
       }
-      if (data.unassignedShoots?.length) {
+      if (data.unassignedShoots?.length && order.account) {
         toast.error(
           `${done}, mais aucun vidéaste sur ${data.unassignedShoots
             .map((e) => `« ${e.label} »`)
@@ -115,13 +133,25 @@ export function OrderDetailClient({
         // instanciée. Les trois cas se disent maintenant à voix haute.
         const created = data.createdSlotIds?.length ?? 0;
         if (created > 0) {
+          const n = `${created} publication${created > 1 ? "s" : ""} créée${created > 1 ? "s" : ""}`;
           toast.success(
-            `${done} — ${created} publication${created > 1 ? "s" : ""} créée${created > 1 ? "s" : ""}, à placer depuis l'onglet Missions du calendrier.`,
+            order.account
+              ? `${done} — ${n}, à placer depuis l'onglet Missions du calendrier.`
+              : `${done} — ${n} en banque, sans compte. Choisissez-le en les plaçant sur le calendrier : la recette et l'équipe suivront.`,
           );
         } else if (data.requested === 0) {
-          toast.error(
-            `${done}, mais son modèle ne déclenche aucune vidéo — ajoutez une recette au modèle, puis réessayez l'instanciation.`,
-          );
+          // Zéro vidéo est NORMAL pour un type « nombre décidé plus tard »
+          // (RPOD) : le crier comme une erreur de configuration ferait douter
+          // d'une commande parfaitement valide.
+          if (order.shootType?.videosDecidedLater) {
+            toast.success(
+              `${done} — les vidéos seront créées par l'équipe après le tournage.`,
+            );
+          } else {
+            toast.error(
+              `${done}, mais son modèle ne déclenche aucune vidéo — ajoutez une recette au modèle, puis réessayez l'instanciation.`,
+            );
+          }
         } else {
           toast.info(`${done} — les publications existaient déjà.`);
         }
@@ -165,6 +195,35 @@ export function OrderDetailClient({
     } catch {
       toast.error("Erreur réseau.");
       return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Suppression définitive. Pas `runAction` : c'est un DELETE, et surtout la
+   * commande n'existe plus après — rafraîchir la page mènerait à un 404. On
+   * retourne à la liste.
+   */
+  async function runDelete() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/orders/${order.id}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        slotsDeleted?: number;
+        entitiesKept?: number;
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? "Échec de la suppression.");
+        return;
+      }
+      const parts = [`${data.slotsDeleted ?? 0} publication(s) supprimée(s)`];
+      if (data.entitiesKept) parts.push(`${data.entitiesKept} fiche(s) conservée(s)`);
+      toast.success(`Commande supprimée — ${parts.join(", ")}.`);
+      router.push("/commandes");
+    } catch {
+      toast.error("Erreur réseau.");
     } finally {
       setBusy(false);
     }
@@ -308,6 +367,10 @@ export function OrderDetailClient({
             </h1>
             <div className="mt-1.5 flex items-center gap-3 flex-wrap text-[12.5px] text-muted-foreground">
               {isAdmin && <span>{order.client.name}</span>}
+              {/* Le type de tournage retenu : c'est lui qui explique quelles
+                  vidéos ont été proposées, et pourquoi il n'y en a parfois
+                  aucune. */}
+              {order.shootType && <span>{order.shootType.label}</span>}
               {order.account && <span>@{order.account.handle}</span>}
               <span>Créée le {shortDateTimeFr(order.createdAt)}</span>
               {order.validatedAt && <span>Validée le {shortDateTimeFr(order.validatedAt)}</span>}
@@ -380,6 +443,11 @@ export function OrderDetailClient({
               : order.status === "SUBMITTED") && (
               <Button size="sm" variant="ghost" onClick={() => setCancelOpen(true)} disabled={busy}>
                 Annuler
+              </Button>
+            )}
+            {isAdmin && (
+              <Button size="sm" variant="ghost" onClick={() => setDeleteOpen(true)} disabled={busy}>
+                Supprimer
               </Button>
             )}
           </div>
@@ -694,6 +762,37 @@ export function OrderDetailClient({
           if (ok) setCancelOpen(false);
         }}
         onCancel={() => setCancelOpen(false)}
+      />
+
+      {/* Chiffrer l'impact AVANT le clic : « supprimer une commande » ne dit pas
+          de lui-même que des publications partent avec, ni que les fiches
+          restent. */}
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Supprimer définitivement cette commande ?"
+        description={
+          publishedSlotCount > 0
+            ? `${publishedSlotCount} publication(s) de cette commande sont déjà publiées : la suppression sera refusée. Annulez la commande plutôt.`
+            : [
+                order.slots.length > 0
+                  ? `${order.slots.length} publication(s) seront supprimées.`
+                  : "Cette commande n'a créé aucune publication.",
+                order.entities.length > 0
+                  ? `${order.entities.length} fiche(s) seront conservées, simplement détachées.`
+                  : null,
+                "Cette action est définitive.",
+              ]
+                .filter(Boolean)
+                .join(" ")
+        }
+        confirmLabel="Supprimer la commande"
+        variant="danger"
+        loading={busy}
+        onConfirm={async () => {
+          await runDelete();
+          setDeleteOpen(false);
+        }}
+        onCancel={() => setDeleteOpen(false)}
       />
     </>
   );

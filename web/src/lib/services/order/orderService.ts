@@ -34,7 +34,7 @@ import {
   type AssigneeConflict,
   type CreateEntityInput,
 } from "@/lib/services/entity/entityService";
-import { createSlot } from "@/lib/services/slot/slotService";
+import { createSlot, deleteSlot } from "@/lib/services/slot/slotService";
 import { logEntityActivity } from "@/lib/services/entity/entityActivity";
 import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
 import { normalizeCustomFields, validateFieldValues } from "@/lib/customFields";
@@ -81,6 +81,59 @@ export interface CreateOrderInput {
   recipes?: { patternTemplateId: string; count: number }[];
   /** ADMIN uniquement : créer au nom d'un client explicite. */
   clientId?: string | null;
+  /**
+   * Type de tournage retenu, quand le modèle en propose. Il commande quelles
+   * vidéos sont instanciées — pas seulement lesquelles étaient affichées.
+   */
+  shootTypeId?: string | null;
+}
+
+/**
+ * Corps JSON brut → `CreateOrderInput`.
+ *
+ * Ici et pas dans la route parce que c'est là qu'un champ se perd sans bruit :
+ * `recipes` était envoyé par le formulaire, traité par le service, couvert par
+ * les tests — et la route ne le lisait pas. Toutes les commandes retombaient
+ * donc sur `defaultSelected`, et décocher une vidéo n'avait aucun effet. Le
+ * repo n'ayant pas de test de routes, extraire ce parsing est ce qui le rend
+ * vérifiable.
+ */
+export function parseCreateOrderInput(body: Record<string, unknown>): CreateOrderInput {
+  return {
+    orderTemplateId: typeof body.orderTemplateId === "string" ? body.orderTemplateId : "",
+    accountId: typeof body.accountId === "string" && body.accountId ? body.accountId : null,
+    notes: typeof body.notes === "string" ? body.notes : null,
+    clientId: typeof body.clientId === "string" && body.clientId ? body.clientId : null,
+    shootTypeId: typeof body.shootTypeId === "string" && body.shootTypeId ? body.shootTypeId : null,
+    /**
+     * Vidéos retenues parmi les OPTIONNELLES.
+     *
+     * Ce champ n'était pas lu : le formulaire l'envoyait, le service savait le
+     * traiter, les tests le couvraient — et la route le jetait. Toutes les
+     * commandes retombaient donc silencieusement sur `defaultSelected`, et
+     * décocher une vidéo n'avait aucun effet. `undefined` (et non `[]`) quand
+     * le tableau est absent : c'est ce qui distingue « rien envoyé, applique
+     * les défauts » de « tout décoché ».
+     */
+    recipes: Array.isArray(body.recipes)
+      ? (body.recipes as Record<string, unknown>[]).map((r) => ({
+          patternTemplateId: typeof r?.patternTemplateId === "string" ? r.patternTemplateId : "",
+          count: typeof r?.count === "number" ? r.count : NaN,
+        }))
+      : undefined,
+    fiches: Array.isArray(body.fiches)
+      ? (body.fiches as Record<string, unknown>[]).map((f) => ({
+          entityTypeId: typeof f?.entityTypeId === "string" ? f.entityTypeId : "",
+          label: typeof f?.label === "string" ? f.label : "",
+          fields:
+            f?.fields !== undefined && typeof f.fields === "object" && f.fields !== null
+              ? (f.fields as Record<string, string>)
+              : undefined,
+          scheduledAt:
+            typeof f?.scheduledAt === "string" && f.scheduledAt ? f.scheduledAt : null,
+        }))
+      : [],
+  };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -107,6 +160,30 @@ export function effectiveRecipeCount(
   const selected = patternTemplateId ? selectionByPattern.get(patternTemplateId) : undefined;
   if (selected !== undefined) return Math.min(selected, recipe.count);
   return recipe.defaultSelected ? recipe.count : 0;
+}
+
+/**
+ * Les vidéos d'un modèle qui concernent le type de tournage retenu.
+ *
+ * `shootTypeId: null` sur une ligne = vidéo COMMUNE, proposée quel que soit le
+ * type — c'est la valeur de toutes les lignes existantes, donc le comportement
+ * d'avant est strictement préservé sans backfill.
+ *
+ * Ce filtre doit vivre ICI, côté service, et pas seulement dans le formulaire :
+ * filtré uniquement à l'affichage, un négo qui coche RVA1 verrait aussi naître
+ * les vidéos des autres types à la validation.
+ */
+export function recipesForShootType<T extends { shootTypeId?: string | null }>(
+  recipes: T[],
+  shootTypeId: string | null | undefined,
+): T[] {
+  return recipes.filter(
+    // `undefined` traité comme `null` — donc COMMUNE, donc visible. Le filtre
+    // échoue ouvert : une projection qui oublierait `shootTypeId` afficherait
+    // une vidéo de trop, au lieu de toutes les faire disparaître en silence.
+    // Même raisonnement que le SetNull de la clé étrangère.
+    (r) => r.shootTypeId === null || r.shootTypeId === undefined || r.shootTypeId === shootTypeId,
+  );
 }
 
 /** Type « tournage-like » : planning + rushs (mode reel des fiches). */
@@ -146,6 +223,8 @@ const orderDetailSelect = {
   account: { select: { id: true, name: true, handle: true } },
   createdBy: { select: { id: true, name: true } },
   validatedBy: { select: { id: true, name: true } },
+  shootTypeId: true,
+  shootType: { select: { id: true, label: true, videosDecidedLater: true } },
   orderTemplate: {
     select: {
       id: true,
@@ -158,7 +237,10 @@ const orderDetailSelect = {
           isOptional: true,
           defaultSelected: true,
           minCount: true,
-          patternTemplate: { select: { label: true, source: true } },
+          shootTypeId: true,
+          patternTemplate: {
+            select: { label: true, clientLabel: true, source: true },
+          },
         },
         orderBy: { position: "asc" },
       },
@@ -241,13 +323,24 @@ function serializeOrder(order: OrderDetailRaw, opts: { forExternal: boolean }) {
     account: order.account,
     createdBy: opts.forExternal ? null : order.createdBy,
     validatedBy: opts.forExternal ? null : order.validatedBy,
+    shootType: order.shootType
+      ? {
+          id: order.shootType.id,
+          label: order.shootType.label,
+          videosDecidedLater: order.shootType.videosDecidedLater,
+        }
+      : null,
     template: {
       id: order.orderTemplate.id,
       name: order.orderTemplate.name,
       description: order.orderTemplate.description,
-      recipes: order.orderTemplate.recipes.map((r) => ({
+      // Le récap ne montre que les vidéos du type retenu — celles des autres
+      // types n'ont jamais été proposées ni instanciées pour cette commande.
+      recipes: recipesForShootType(order.orderTemplate.recipes, order.shootTypeId).map((r) => ({
         patternTemplateId: r.patternTemplateId,
-        label: r.patternTemplate.label,
+        // Libellé CLIENT quand il existe : « RVA1 » est du jargon interne, et
+        // c'est ce que le récap affichait.
+        label: r.patternTemplate.clientLabel ?? r.patternTemplate.label,
         source: r.patternTemplate.source,
         count: r.count,
         isOptional: r.isOptional,
@@ -342,6 +435,7 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
         },
       },
       accesses: { select: { clientId: true } },
+      shootTypes: { select: { id: true }, orderBy: { position: "asc" } },
       // Recettes du modèle : source des assignés par défaut des fiches, et
       // référentiel de validation de la sélection du négo.
       recipes: {
@@ -351,6 +445,7 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
           isOptional: true,
           defaultSelected: true,
           minCount: true,
+          shootTypeId: true,
         },
         orderBy: { position: "asc" },
       },
@@ -362,8 +457,42 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
   const clientAllowed = template.accesses.some((a) => a.clientId === clientId);
   if (!clientAllowed && !ctx.canAdminBypass) throw new NotFoundError("Modèle de commande");
 
-  // Compte cible : requis si un type de fiche l'exige ; toujours ∈ comptes du client.
-  const needsAccount = template.items.some((i) => i.entityType.hasAccount);
+  /**
+   * Type de tournage : requis dès que le modèle en propose, puisqu'il commande
+   * quelles vidéos naissent. Un modèle qui n'en propose aucun se comporte
+   * exactement comme avant — c'est le cas de tous les modèles existants.
+   */
+  let shootTypeId: string | null = null;
+  if (template.shootTypes.length > 0) {
+    if (!input.shootTypeId) {
+      throw new ValidationError("Choisissez un type de tournage");
+    }
+    if (!template.shootTypes.some((t) => t.id === input.shootTypeId)) {
+      throw new ValidationError("Type de tournage inconnu pour ce modèle de commande");
+    }
+    shootTypeId = input.shootTypeId;
+  }
+
+  // Toute la suite ne raisonne QUE sur les vidéos du type retenu : la
+  // validation de la sélection du négo comme les assignés par défaut.
+  const templateRecipes = recipesForShootType(template.recipes, shootTypeId);
+
+  /**
+   * Compte cible — OPTIONNEL désormais, et plus jamais demandé au demandeur.
+   *
+   * Il se pose au placement sur le calendrier (`assignSlotAccount`) : une même
+   * vidéo peut atterrir sur plusieurs comptes, et ce n'est pas au négo de
+   * trancher. Le champ reste accepté par l'API (commandes créées par script,
+   * ou par un admin qui sait déjà où ça va) mais aucune surface ne l'envoie.
+   *
+   * La contrainte qui demeure est la seule qui protège : un compte fourni doit
+   * appartenir au client de la commande.
+   *
+   * Conséquence assumée : sans compte, les fiches et publications naissent sans
+   * assignés par défaut (ils vivent sur les bindings, per-compte). Ils arrivent
+   * avec le compte, au placement. Pas de repli « le client n'a qu'un compte,
+   * prenons-le » : ce serait réintroduire l'implicite qu'on supprime.
+   */
   let accountId: string | null = null;
   if (input.accountId) {
     const account = await prisma.instagramAccount.findFirst({
@@ -372,9 +501,6 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
     });
     if (!account) throw new ValidationError("Compte Instagram invalide pour ce client");
     accountId = account.id;
-  }
-  if (needsAccount && !accountId) {
-    throw new ValidationError("Un compte Instagram est requis pour cette commande");
   }
 
   // Une entrée fiche par item du modèle, matching par type, whitelist stricte
@@ -447,8 +573,14 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
       isExternalCreator,
       // Les assignés par défaut viennent des recettes réellement commandées,
       // pas d'un binding arbitraire du compte.
-      recipeTemplateIds: template.recipes.map((r) => r.patternTemplateId),
+      // Du type retenu seulement : une recette d'un autre type n'a aucune
+      // raison de fournir le monteur par défaut de cette commande.
+      recipeTemplateIds: templateRecipes.map((r) => r.patternTemplateId),
       now,
+      // Le compte ne se choisit plus à la commande : exiger celui de la fiche
+      // bloquerait toute commande dès qu'un type coche `hasAccount` (c'est le
+      // cas du Tournage). Il arrive au placement, sur les publications.
+      accountDeferred: !accountId,
     });
     prepared.push({ data, isShoot: isShootType(item.entityType) });
   }
@@ -462,10 +594,12 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
    */
   const recipeSelections: { patternTemplateId: string; count: number }[] = [];
   if (input.recipes?.length) {
-    const byId = new Map(template.recipes.map((r) => [r.patternTemplateId, r]));
+    const byId = new Map(templateRecipes.map((r) => [r.patternTemplateId, r]));
     for (const wanted of input.recipes) {
       const recipe = byId.get(wanted.patternTemplateId);
       if (!recipe) {
+        // Couvre aussi « cette vidéo appartient à un autre type de tournage » :
+        // du point de vue de cette commande, elle n'existe pas.
         throw new ValidationError("Vidéo demandée hors du modèle de commande");
       }
       if (!recipe.isOptional) {
@@ -482,7 +616,7 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
     // Une optionnelle absente du payload est un refus EXPLICITE : sans cette
     // ligne à 0, elle retomberait sur `defaultSelected` et serait instanciée
     // alors que le négo l'a décochée.
-    for (const recipe of template.recipes) {
+    for (const recipe of templateRecipes) {
       if (!recipe.isOptional) continue;
       if (recipeSelections.some((s) => s.patternTemplateId === recipe.patternTemplateId)) continue;
       recipeSelections.push({ patternTemplateId: recipe.patternTemplateId, count: 0 });
@@ -495,6 +629,7 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
         orderTemplateId: template.id,
         clientId,
         accountId,
+        shootTypeId,
         status: "SUBMITTED",
         notes,
         createdByUserId: ctx.actualUser.id,
@@ -611,7 +746,9 @@ export async function getOrder(id: string, ctx: UserContext): Promise<OrderDetai
   // c'est lui qui arbitre, et le client n'a pas à voir l'équipe interne.
   const assigneeConflicts = await detectRecipeAssigneeConflicts(
     order.accountId,
-    order.orderTemplate.recipes.map((r) => r.patternTemplateId),
+    recipesForShootType(order.orderTemplate.recipes, order.shootTypeId).map(
+      (r) => r.patternTemplateId,
+    ),
   );
   return { ...serialized, assigneeConflicts };
 }
@@ -740,11 +877,15 @@ async function loadOrderForTransition(id: string, ctx: UserContext) {
 }
 
 /**
- * Refuse la validation si une recette du modèle n'est pas active sur le compte
- * de la commande.
+ * Refuse la validation si le modèle ne déclenche aucune vidéo, et — quand la
+ * commande porte un compte — si une de ses recettes n'y est pas active.
  *
- * Une commande sans compte (aucun type de fiche n'en exige) sort par le haut :
- * ses recettes sont alors globales et n'ont pas de binding par construction.
+ * ATTENTION en relisant : depuis que le compte se choisit au placement, la
+ * plupart des commandes n'en ont PAS, et la seconde moitié de cette fonction
+ * sort par le haut sans rien vérifier. Ce n'est pas un oubli : le contrôle
+ * « recette active sur ce compte » a DÉMÉNAGÉ dans `assignSlotAccount`, au
+ * moment où le compte est enfin connu. Ne pas le croire mort, et ne pas le
+ * dupliquer ici.
  */
 async function assertOrderIsInstantiable(orderId: string): Promise<void> {
   const order = await prisma.order.findUniqueOrThrow({
@@ -752,11 +893,16 @@ async function assertOrderIsInstantiable(orderId: string): Promise<void> {
     select: {
       accountId: true,
       account: { select: { handle: true } },
+      shootTypeId: true,
+      shootType: { select: { label: true, videosDecidedLater: true } },
       orderTemplate: {
         select: {
           name: true,
           recipes: {
-            select: { patternTemplate: { select: { id: true, label: true } } },
+            select: {
+              shootTypeId: true,
+              patternTemplate: { select: { id: true, label: true, clientLabel: true } },
+            },
             orderBy: { position: "asc" },
           },
         },
@@ -764,21 +910,31 @@ async function assertOrderIsInstantiable(orderId: string): Promise<void> {
     },
   });
 
-  // Modèle sans recette = zéro vidéo déclenchée. instantiateOrderSlots ferait
-  // zéro tour de boucle et retournerait { createdSlotIds: [], failed: [] } :
-  // aucun toast, aucun échec, une commande VALIDATED sans la moindre
-  // publication et un bouton « Réessayer » qui ne s'affiche même pas
-  // (0 < 0 est faux). C'est le SEUL chemin totalement muet de la validation —
-  // refuser ici plutôt que produire cet état mort.
-  if (order.orderTemplate.recipes.length === 0) {
+  // Seules les vidéos du type de tournage retenu comptent.
+  const applicable = recipesForShootType(order.orderTemplate.recipes, order.shootTypeId);
+
+  // Zéro vidéo déclenchée : instantiateOrderSlots ferait zéro tour de boucle et
+  // retournerait { createdSlotIds: [], failed: [] } — aucun toast, aucun échec,
+  // une commande VALIDATED sans la moindre publication, et un bouton
+  // « Réessayer » qui ne s'affiche même pas (0 < 0 est faux). C'était le SEUL
+  // chemin totalement muet de la validation.
+  //
+  // SAUF si le type l'assume (`videosDecidedLater`) : pour un RPOD on ignore
+  // combien de vidéos sortiront du contenu tourné, donc zéro est la bonne
+  // réponse et la commande se valide sans publication. C'est précisément
+  // pourquoi ce drapeau est explicite plutôt que déduit de « aucune recette
+  // attachée » : une vraie erreur de configuration continue de parler.
+  if (applicable.length === 0 && !order.shootType?.videosDecidedLater) {
     throw new ValidationError(
-      `Le modèle « ${order.orderTemplate.name} » ne déclenche aucune vidéo — ajoutez au moins une recette dans Configuration → Modèles de commande avant de valider.`,
+      order.shootType
+        ? `Le type « ${order.shootType.label} » ne déclenche aucune vidéo — attachez-lui des vidéos dans Configuration → Modèles de commande, ou cochez « nombre décidé plus tard ».`
+        : `Le modèle « ${order.orderTemplate.name} » ne déclenche aucune vidéo — ajoutez au moins une recette dans Configuration → Modèles de commande avant de valider.`,
     );
   }
 
   if (!order.accountId) return;
 
-  const recipes = order.orderTemplate.recipes.map((r) => r.patternTemplate);
+  const recipes = applicable.map((r) => r.patternTemplate);
 
   const active = await prisma.patternBinding.findMany({
     where: {
@@ -817,9 +973,13 @@ async function backfillOrderAssignees(
     where: { id: orderId },
     select: {
       accountId: true,
+      shootTypeId: true,
       orderTemplate: {
         select: {
-          recipes: { select: { patternTemplateId: true }, orderBy: { position: "asc" } },
+          recipes: {
+            select: { patternTemplateId: true, shootTypeId: true },
+            orderBy: { position: "asc" },
+          },
         },
       },
       entities: {
@@ -835,7 +995,9 @@ async function backfillOrderAssignees(
     },
   });
 
-  const recipeIds = order.orderTemplate.recipes.map((r) => r.patternTemplateId);
+  const recipeIds = recipesForShootType(order.orderTemplate.recipes, order.shootTypeId).map(
+    (r) => r.patternTemplateId,
+  );
   const unassignedShoots: { id: string; label: string }[] = [];
 
   for (const e of order.entities) {
@@ -894,26 +1056,16 @@ export async function validateOrder(id: string, ctx: UserContext) {
     throw new ValidationError("Seule une commande soumise (ou refusée) peut être validée");
   }
 
-  // Le modèle doit déclencher au moins une vidéo, et toutes ses recettes
-  // doivent être actives sur le compte cible. Sans binding, une publication
-  // naît sans horaire de publication ni assignés et personne ne la voit :
-  // mieux vaut refuser la validation et renvoyer l'admin activer la recette
-  // que produire des publications orphelines — ou aucune, en silence.
+  // Le modèle doit déclencher au moins une vidéo. Quand la commande porte un
+  // compte (cas résiduel : commandes antérieures, ou création par script), les
+  // recettes doivent y être actives — sinon le contrôle vit désormais au
+  // placement, cf. `assertOrderIsInstantiable`.
   await assertOrderIsInstantiable(id);
 
-  // Le compte de la commande a pu être supprimé entre soumission et validation
-  // (Order.accountId SetNull) — re-vérifier l'exigence réelle portée par les
-  // fiches avant d'instancier des slots sans compte.
-  if (!order.accountId) {
-    const needsAccount = await prisma.entity.count({
-      where: { orderId: id, type: { hasAccount: true } },
-    });
-    if (needsAccount > 0) {
-      throw new ConflictError(
-        "Le compte Instagram de la commande a été supprimé — rattachez un compte avant de valider",
-      );
-    }
-  }
+  // Il n'y a plus de garde « compte manquant » ici : une commande SANS compte
+  // est devenue le cas nominal — il se choisit au placement sur le calendrier.
+  // L'ancienne garde refusait la validation dès qu'un type de fiche portait
+  // `hasAccount`, ce qui bloquerait aujourd'hui absolument toutes les commandes.
 
   if (order.status !== "VALIDATED") {
     const entities = await prisma.entity.findMany({
@@ -974,6 +1126,7 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
     select: {
       id: true,
       accountId: true,
+      shootTypeId: true,
       orderTemplate: {
         select: {
           recipes: {
@@ -981,6 +1134,7 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
               count: true,
               isOptional: true,
               defaultSelected: true,
+              shootTypeId: true,
               patternTemplate: {
                 select: {
                   id: true,
@@ -1014,6 +1168,9 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
   const selectionByPattern = new Map(
     order.recipeSelections.map((s) => [s.patternTemplateId, s.count]),
   );
+  // LE filtre qui compte : sans lui, un négo ayant coché RVA1 verrait aussi
+  // naître les vidéos des autres types du modèle.
+  const applicableRecipes = recipesForShootType(order.orderTemplate.recipes, order.shootTypeId);
 
   const createdSlotIds: string[] = [];
   const failed: { patternTemplateId: string; label: string; error: string }[] = [];
@@ -1021,12 +1178,12 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
   /// l'appelant de distinguer « 0 créée parce que tout existait déjà » de
   /// « 0 créée parce que rien n'était demandé » — les deux rendaient un
   /// createdSlotIds vide et un failed vide, donc le même silence.
-  const requested = order.orderTemplate.recipes.reduce(
+  const requested = applicableRecipes.reduce(
     (sum, r) => sum + effectiveRecipeCount(r, selectionByPattern, r.patternTemplate.id),
     0,
   );
 
-  for (const recipe of order.orderTemplate.recipes) {
+  for (const recipe of applicableRecipes) {
     const pt = recipe.patternTemplate;
     // Fiche data : celle du type exigé par la recette si possible, sinon la première.
     const requiredTypeId = requiredEntityTypeId(pt);
@@ -1254,4 +1411,101 @@ export async function markOrderDone(id: string, ctx: UserContext) {
     throw new ConflictError("La commande a changé d'état — rechargez la page");
   }
   return getOrder(id, ctx);
+}
+
+/**
+ * Supprime définitivement une commande, et avec elle les publications qu'elle a
+ * fait naître. Admin only.
+ *
+ * Pourquoi ça n'existait pas : rien ne l'interdisait — ni garde en base (aucune
+ * FK Restrict ne pointe vers Order), ni refus applicatif. Il n'y avait ni
+ * route, ni service, ni bouton. La seule sortie était `cancelOrder`, qui refuse
+ * dès qu'une publication non terminale est liée : une commande ayant produit
+ * des vidéos ne pouvait donc même pas être annulée, et restait à vie dans la
+ * liste — en verrouillant au passage la suppression de son client et de son
+ * modèle, tous deux en `Restrict` depuis Order.
+ *
+ * Ce qui part, ce qui reste :
+ *  · les publications PARTENT — elles n'existaient que par la commande. Via
+ *    `deleteSlot`, jamais un `deleteMany` : c'est lui qui nettoie le préfixe R2
+ *    (rushs, versions, covers), qu'un delete en masse laisserait orphelin ;
+ *  · les fiches RESTENT, simplement détachées. Décision déjà actée dans le
+ *    schéma (`Entity.orderId` en SetNull) : un bien ou un tournage sont des
+ *    données réelles, réutilisables, souvent enrichies à la main depuis ;
+ *  · une publication déjà publiée BLOQUE tout — on ne réécrit pas un
+ *    historique. Les autres statuts terminaux (archivée, annulée) partent.
+ *
+ * Tout ou rien au niveau de la commande : si une publication résiste, la
+ * commande survit et l'erreur nomme les coupables. Supprimer quand même
+ * délierait ces publications en silence (SetNull) et laisserait des orphelines
+ * que plus rien ne rattache à leur origine.
+ */
+export async function deleteOrder(id: string, ctx: UserContext) {
+  if (!ctx.canAdminBypass) throw new ForbiddenError("Réservé aux administrateurs");
+  // Scope + 404 anti-énumération, comme toutes les transitions.
+  await loadOrderForTransition(id, ctx);
+
+  const slots = await prisma.publicationSlot.findMany({
+    where: { orderId: id },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, title: true, status: true, publishedUrl: true },
+  });
+
+  const published = slots.filter((s) => s.status === "PUBLISHED" || s.publishedUrl);
+  if (published.length > 0) {
+    throw new ConflictError(
+      published.length === 1
+        ? "Une publication de cette commande est déjà publiée — on ne supprime pas un historique. Annulez la commande plutôt que de la supprimer."
+        : `${published.length} publications de cette commande sont déjà publiées — on ne supprime pas un historique. Annulez la commande plutôt que de la supprimer.`,
+    );
+  }
+
+  // `deleteSlot` fait sa propre transaction + son nettoyage R2 : on ne peut pas
+  // l'envelopper dans une transaction commune. D'où la boucle, et la reddition
+  // de comptes ci-dessous.
+  const failed: { id: string; label: string; error: string }[] = [];
+  for (const slot of slots) {
+    try {
+      await deleteSlot(slot.id, ctx);
+    } catch (err) {
+      failed.push({
+        id: slot.id,
+        label: slot.title ?? slot.id,
+        error: err instanceof Error ? err.message : "Erreur inconnue",
+      });
+    }
+  }
+  if (failed.length > 0) {
+    const labels = failed.map((f) => f.label).join(", ");
+    throw new ConflictError(
+      `${failed.length} publication(s) n'ont pas pu être supprimées (${labels}) — la commande est conservée. Réessayez : celles déjà supprimées ne le seront pas deux fois.`,
+    );
+  }
+
+  // Les fiches survivent, mais pas leur demande de validation : un
+  // PENDING_ADMIN/REJECTED orphelin les rendrait inutilisables pour toujours
+  // (assertEntityValidated), sans plus aucune commande pour le lever. Même
+  // raisonnement que `cancelOrder`.
+  const blocked = await prisma.entity.findMany({
+    where: { orderId: id, validationStatus: { in: ["PENDING_ADMIN", "REJECTED"] } },
+    select: { id: true, validationStatus: true },
+  });
+
+  const entityCount = await prisma.entity.count({ where: { orderId: id } });
+
+  await prisma.$transaction(async (tx) => {
+    for (const e of blocked) {
+      await tx.entity.update({ where: { id: e.id }, data: { validationStatus: null } });
+      await logEntityActivity(tx, {
+        entityId: e.id,
+        actorId: ctx.actualUser.id,
+        type: "UPDATED",
+        payload: { validationCleared: e.validationStatus, orderId: id, reason: "order_deleted" },
+      });
+    }
+    // Détache les slots survivants (aucun ici) et cascade OrderRecipeSelection.
+    await tx.order.delete({ where: { id } });
+  });
+
+  return { deleted: true as const, slotsDeleted: slots.length, entitiesKept: entityCount };
 }

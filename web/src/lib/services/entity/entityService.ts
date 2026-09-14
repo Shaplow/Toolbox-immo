@@ -541,6 +541,16 @@ export async function prepareEntityCreate(
      * produirait « Bien du 09/09 » et « Tournage — Bien du 10/09 ».
      */
     now?: Date;
+    /**
+     * Le compte est choisi PLUS TARD — au placement des publications sur le
+     * calendrier. Lève l'exigence portée par `EntityType.hasAccount`, sans la
+     * supprimer : une fiche créée à la main la garde.
+     *
+     * C'est `createOrder` qui la pose : le demandeur ne choisit plus de compte
+     * (une même vidéo peut atterrir sur plusieurs comptes), donc exiger celui de
+     * la fiche rendrait toute commande impossible dès qu'un type coche la case.
+     */
+    accountDeferred?: boolean;
   },
 ): Promise<Prisma.EntityUncheckedCreateInput> {
   if (!input.typeId) throw new ValidationError("Un type de fiche est requis");
@@ -597,7 +607,7 @@ export async function prepareEntityCreate(
     status = "PLANNED";
   }
 
-  if (type.hasAccount && !input.accountId) {
+  if (type.hasAccount && !input.accountId && !opts.accountDeferred) {
     throw new ValidationError("Un compte Instagram est requis pour ce type de fiche");
   }
   if (input.accountId) await assertAccountExists(input.accountId);

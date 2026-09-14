@@ -89,6 +89,8 @@ export default async function PatternEditPage({ params }: PageProps) {
       initial={{
         id: tpl.id,
         label: tpl.label,
+        clientLabel: tpl.clientLabel,
+        clientDescription: tpl.clientDescription,
         source: tpl.source,
         templateId: tpl.templateId,
         captionPresetId: tpl.captionPresetId,

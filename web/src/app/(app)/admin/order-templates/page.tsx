@@ -68,6 +68,13 @@ export default async function OrderTemplatesPage() {
       isOptional: r.isOptional,
       defaultSelected: r.defaultSelected,
       minCount: r.minCount,
+      shootTypeId: r.shootTypeId,
+    })),
+    shootTypes: t.shootTypes.map((st) => ({
+      id: st.id,
+      label: st.label,
+      description: st.description,
+      videosDecidedLater: st.videosDecidedLater,
     })),
     clientIds: t.accesses.map((a) => a.clientId),
     clientNames: t.accesses.map((a) => a.client.name),

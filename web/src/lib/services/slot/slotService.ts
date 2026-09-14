@@ -2204,6 +2204,165 @@ export async function attachShootToSlot(
   return updated;
 }
 
+/**
+ * Pose (ou change) le compte Instagram d'une publication déjà créée.
+ *
+ * Pourquoi une route dédiée et pas un champ de PATCH : `accountId` est absent
+ * d'`ALLOWED_PATCH_FIELDS_BY_ROLE`, et `patchSlot` FILTRE SILENCIEUSEMENT les
+ * champs non whitelistés — l'appel réussissait sans rien faire. L'ouvrir là-bas
+ * ne suffirait pas non plus : poser un compte doit re-résoudre le binding
+ * (donc la recette effective, les horaires, le label) et compléter les
+ * assignés. C'est une opération en cascade, comme `attachShootToSlot`, pas
+ * l'écriture d'une colonne.
+ *
+ * Le besoin : le compte n'est plus choisi à la commande (« une vidéo pourrait
+ * atterrir parfois sur plusieurs comptes ») mais par celui qui place au
+ * calendrier. Les publications naissent donc en banque sans compte — un cas
+ * déjà nominal en base (`PublicationSlot.accountId` est nullable) mais qui
+ * n'avait aucune porte de sortie : `mark-published` réclamait déjà « assignez
+ * d'abord un compte » en désignant un écran qui n'existait pas.
+ *
+ * C'est aussi ici qu'atterrit le contrôle « la recette est-elle active sur ce
+ * compte ? ». Il vivait dans `assertOrderIsInstantiable`, qui sort par le haut
+ * quand la commande n'a pas de compte : sans ce déplacement, il ne
+ * s'exécuterait tout simplement plus nulle part.
+ */
+export async function assignSlotAccount(slotId: string, accountId: string, ctx: UserContext) {
+  if (!ctx.canAdminBypass) throw new ForbiddenError("Réservé aux administrateurs");
+
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id: slotId },
+    select: {
+      id: true,
+      status: true,
+      accountId: true,
+      publishedUrl: true,
+      assigneeMonteurId: true,
+      assigneeCmId: true,
+      assigneeVideasteId: true,
+      order: { select: { clientId: true } },
+      shootEntity: { select: { accountId: true } },
+      ...slotEffectivePatternSelect,
+    },
+  });
+  if (!slot) throw new NotFoundError("Slot");
+
+  // Re-choisir le même compte n'est pas une erreur : le picker doit pouvoir
+  // être reconfirmé sans rien casser.
+  if (slot.accountId === accountId) {
+    return prisma.publicationSlot.findUniqueOrThrow({ where: { id: slotId } });
+  }
+
+  // Déjà en ligne : le compte fait partie de ce qui s'est passé.
+  if (slot.status === "PUBLISHED" || slot.publishedUrl) {
+    throw new ConflictError(
+      "Cette publication est déjà publiée — son compte Instagram ne peut plus changer.",
+    );
+  }
+
+  const account = await prisma.instagramAccount.findUnique({
+    where: { id: accountId },
+    select: {
+      id: true,
+      handle: true,
+      clientId: true,
+      defaultAssigneeVideasteId: true,
+      defaultAssigneeMonteurId: true,
+      defaultAssigneeCmId: true,
+    },
+  });
+  if (!account) throw new NotFoundError("Compte Instagram");
+
+  // Cloison client : une publication issue d'une commande ne doit pas pouvoir
+  // sauter chez un autre client par un identifiant deviné.
+  if (slot.order && account.clientId !== slot.order.clientId) {
+    throw new ValidationError(
+      "Ce compte Instagram n'appartient pas au client de la commande.",
+    );
+  }
+
+  // Miroir de la garde d'`attachShootToSlot` : le tournage impose son compte.
+  if (slot.shootEntity?.accountId && slot.shootEntity.accountId !== accountId) {
+    throw new ConflictError(
+      "Le tournage rattaché à cette publication est sur un autre compte Instagram.",
+    );
+  }
+
+  /**
+   * La recette doit être active sur le compte cible, sinon la publication
+   * naîtrait sans horaire ni équipe et personne ne la verrait passer — c'est
+   * exactement ce que refusait la validation de commande.
+   */
+  const pattern = resolveSlotEffectivePattern(slot);
+  const patternTemplateId = slot.patternBinding?.patternTemplateId ?? slot.patternTemplate?.id ?? null;
+  let binding: {
+    id: string;
+    defaultAssigneeVideasteId: string | null;
+    defaultAssigneeMonteurId: string | null;
+    defaultAssigneeCmId: string | null;
+  } | null = null;
+
+  if (patternTemplateId) {
+    binding = await prisma.patternBinding.findFirst({
+      where: { accountId, patternTemplateId, isActive: true },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        defaultAssigneeVideasteId: true,
+        defaultAssigneeMonteurId: true,
+        defaultAssigneeCmId: true,
+      },
+    });
+    if (!binding) {
+      throw new ConflictError(
+        `La recette « ${pattern?.label ?? "de cette publication"} » n'est pas active sur @${account.handle} — activez-la sur le compte avant d'y placer cette publication.`,
+      );
+    }
+  }
+
+  // Assignés : on ne COMBLE que les trous. Un monteur posé à la main tient,
+  // même si le compte en propose un autre.
+  const videasteId =
+    slot.assigneeVideasteId ??
+    binding?.defaultAssigneeVideasteId ??
+    account.defaultAssigneeVideasteId;
+  const monteurId =
+    slot.assigneeMonteurId ??
+    binding?.defaultAssigneeMonteurId ??
+    account.defaultAssigneeMonteurId;
+  const cmId =
+    slot.assigneeCmId ?? binding?.defaultAssigneeCmId ?? account.defaultAssigneeCmId;
+
+  const updated = await prisma.publicationSlot.update({
+    where: { id: slotId },
+    data: {
+      accountId,
+      // Le binding EST la recette appliquée à ce compte : sans lui, le slot
+      // resterait piloté par la recette globale, donc sans horaire ni label
+      // propres au compte.
+      ...(binding ? { patternBindingId: binding.id } : {}),
+      assigneeVideasteId: videasteId,
+      assigneeMonteurId: monteurId,
+      assigneeCmId: cmId,
+    },
+  });
+
+  await logActivity(prisma, {
+    slotId,
+    actorId: ctx.actualUser.id,
+    type: "ASSIGNEE_CHANGED",
+    payload: {
+      reason: "assign-account",
+      accountId,
+      handle: account.handle,
+      from: slot.accountId,
+      patternBindingId: binding?.id ?? null,
+    },
+  });
+
+  return updated;
+}
+
 /** Motif de retrait — obligatoire, et borné comme tout texte libre non-admin. */
 const MAX_CANCEL_REASON = 500;
 

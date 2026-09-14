@@ -60,6 +60,11 @@ beforeEach(() => {
       orderTemplateItem: { createMany: vi.fn(), deleteMany: vi.fn() },
       orderTemplateRecipe: { createMany: vi.fn(), deleteMany: vi.fn() },
       orderTemplateAccess: { createMany: vi.fn(), deleteMany: vi.fn() },
+      orderTemplateShootType: {
+        deleteMany: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        create: vi.fn().mockResolvedValue({ id: "st-new" }),
+      },
     }),
   );
 });
@@ -133,5 +138,69 @@ describe("deleteOrderTemplate", () => {
   it("409 si des commandes utilisent le modèle", async () => {
     mockOrderTemplateFindUnique.mockResolvedValue({ id: "ot1", _count: { orders: 2 } });
     await expect(deleteOrderTemplate("ot1")).rejects.toBeInstanceOf(ConflictError);
+  });
+});
+
+/**
+ * Types de tournage — la partie qui ne se voit pas : les ids sont PRÉSERVÉS.
+ *
+ * Items, recettes et allowlist sont remplacés en bloc à chaque enregistrement.
+ * Traiter les types pareil leur donnerait un nouvel id à chaque sauvegarde, et
+ * les commandes passées perdraient le leur en silence (`Order.shootTypeId` est
+ * en SetNull). C'est ce que ces tests ferment.
+ */
+describe("types de tournage", () => {
+  const inputWith = (over: Partial<OrderTemplateInput> = {}) =>
+    baseInput({ recipes: [], clientIds: [], ...over });
+
+  it("refuse un type sans libellé", async () => {
+    await expect(
+      createOrderTemplate(inputWith({ shootTypes: [{ key: "k1", label: "  " }] })),
+    ).rejects.toThrow(/libellé/);
+  });
+
+  it("refuse deux types du même nom", async () => {
+    await expect(
+      createOrderTemplate(
+        inputWith({
+          shootTypes: [
+            { key: "k1", label: "RVA" },
+            { key: "k2", label: "rva" },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/même nom/);
+  });
+
+  it("refuse une vidéo qui référence un type inexistant", async () => {
+    await expect(
+      createOrderTemplate(
+        inputWith({
+          shootTypes: [{ key: "k1", label: "RVA" }],
+          recipes: [{ patternTemplateId: "pt1", count: 1, shootTypeKey: "k-fantome" }],
+        }),
+      ),
+    ).rejects.toThrow(/type de tournage inconnu/);
+  });
+
+  it("accepte une vidéo sans type — elle est commune à tous", async () => {
+    await expect(
+      createOrderTemplate(
+        inputWith({
+          shootTypes: [{ key: "k1", label: "RVA" }],
+          recipes: [{ patternTemplateId: "pt1", count: 1 }],
+        }),
+      ),
+    ).resolves.toBeTruthy();
+  });
+
+  it("borne le nombre de types", async () => {
+    await expect(
+      createOrderTemplate(
+        inputWith({
+          shootTypes: Array.from({ length: 11 }, (_, i) => ({ key: `k${i}`, label: `T${i}` })),
+        }),
+      ),
+    ).rejects.toThrow(/Trop de types/);
   });
 });

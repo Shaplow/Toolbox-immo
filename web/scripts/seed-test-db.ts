@@ -161,16 +161,6 @@ async function main() {
     create: {
       id: "etype_tournage",
       needsAdminValidation: true,
-      // Miroir de la migration 20260914120000 : la base e2e est montée par
-      // `db push` + ce seed, les migrations n'y passent pas toutes.
-      fieldSchema: JSON.stringify([
-        {
-          key: "type_tournage",
-          label: "Type de tournage",
-          type: "select",
-          options: ["RVA", "RPOD", "Interview"],
-        },
-      ]),
       name: "Tournage",
       namePlural: "Tournages",
       icon: "clapperboard",

@@ -4,10 +4,14 @@
  * Formulaire guidé de bon de commande :
  * 1. choix du modèle (composition affichée),
  * 2. une section par fiche à remplir (champs custom du type + date si planning),
- * 3. compte Instagram cible + notes, puis soumission → /commandes/[id].
+ * 3. notes, puis soumission → /commandes/[id].
+ *
+ * Le compte Instagram ne se choisit PAS ici : il est posé au placement sur le
+ * calendrier (cf. assignSlotAccount). Les publications naissent en banque, sans
+ * compte.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Button } from "@/components/ui/Button";
@@ -18,6 +22,7 @@ import { NumberStepper } from "@/components/ui/NumberStepper";
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { Alert } from "@/components/ui/Alert";
 import { Textarea } from "@/components/ui/Textarea";
 import { toast } from "@/components/ui/Toast";
 import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
@@ -39,14 +44,28 @@ export interface OrderTemplateOption {
     /** Modèle de libellé du type — non vide = plus de saisie de libellé. */
     labelTemplate: string | null;
   }[];
-  /** Lignes de vidéos du modèle — imposées ou au choix du demandeur. */
+  /**
+   * Lignes de vidéos du modèle — imposées ou au choix du demandeur.
+   * `label` et `description` sont déjà les textes CLIENT : la page a résolu
+   * `clientLabel ?? label` avant de les envoyer ici.
+   */
   recipes: {
     patternTemplateId: string;
     label: string;
+    description: string | null;
     count: number;
     isOptional: boolean;
     defaultSelected: boolean;
     minCount: number;
+    /** null = vidéo proposée quel que soit le type de tournage. */
+    shootTypeId: string | null;
+  }[];
+  /** Types de tournage proposés — vide = le modèle n'en a pas. */
+  shootTypes: {
+    id: string;
+    label: string;
+    description: string | null;
+    videosDecidedLater: boolean;
   }[];
   videoSummary: string;
   videoCount: number;
@@ -54,7 +73,6 @@ export interface OrderTemplateOption {
 
 interface NewOrderClientProps {
   templates: OrderTemplateOption[];
-  accounts: { id: string; name: string; handle: string; clientId: string | null }[];
   clients: { id: string; name: string }[];
   isAdmin: boolean;
 }
@@ -65,12 +83,12 @@ interface FicheDraft {
   scheduledAt: string;
 }
 
-export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrderClientProps) {
+export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientProps) {
   const router = useRouter();
   const [templateId, setTemplateId] = useState<string>("");
   const [clientId, setClientId] = useState<string>("");
-  const [accountId, setAccountId] = useState<string>("");
   const [notes, setNotes] = useState("");
+  const [shootTypeId, setShootTypeId] = useState<string>("");
   const [fiches, setFiches] = useState<Record<string, FicheDraft>>({});
   const [submitting, setSubmitting] = useState(false);
   // Erreurs par champ : le formulaire est long, un toast seul oblige à
@@ -88,32 +106,51 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
    */
   const [recipeCounts, setRecipeCounts] = useState<Record<string, number>>({});
 
+  const shootTypes = template?.shootTypes ?? [];
+  const shootType = shootTypes.find((t) => t.id === shootTypeId) ?? null;
+
+  /**
+   * Les vidéos qui concernent le type retenu : celles qui lui sont rattachées,
+   * plus les communes (`shootTypeId: null`). Tant qu'aucun type n'est choisi sur
+   * un modèle qui en propose, on ne montre RIEN : afficher les communes seules
+   * laisserait croire que c'est toute la commande.
+   *
+   * Le même filtre existe côté service — ce n'est pas une duplication
+   * décorative : filtré ici seulement, cocher RVA1 ferait quand même naître les
+   * vidéos des autres types à la validation.
+   */
+  const applicableRecipes =
+    shootTypes.length > 0 && !shootTypeId
+      ? []
+      : (template?.recipes ?? []).filter(
+          (r) => r.shootTypeId === null || r.shootTypeId === shootTypeId,
+        );
+
   useEffect(() => {
     setRecipeCounts(
       Object.fromEntries(
-        (template?.recipes ?? [])
+        applicableRecipes
           .filter((r) => r.isOptional)
           .map((r) => [r.patternTemplateId, r.defaultSelected ? r.count : 0]),
       ),
     );
-  }, [template]);
+    // Volontairement sur (template, shootTypeId) : changer de type rejoue les
+    // valeurs par défaut, sinon une quantité cochée sur RVA resterait collée
+    // au passage sur RPOD.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [template, shootTypeId]);
 
-  const optionalRecipes = (template?.recipes ?? []).filter((r) => r.isOptional);
-  const requiredRecipes = (template?.recipes ?? []).filter((r) => !r.isOptional);
+  const optionalRecipes = applicableRecipes.filter((r) => r.isOptional);
+  const requiredRecipes = applicableRecipes.filter((r) => !r.isOptional);
 
-  const visibleAccounts = useMemo(
-    () => (isAdmin ? accounts.filter((a) => a.clientId === clientId) : accounts),
-    [accounts, clientId, isAdmin],
-  );
-  const needsAccount = template?.items.some((i) => i.hasAccount) ?? false;
-  // Un seul compte disponible → présélection.
-  const effectiveAccountId =
-    accountId || (visibleAccounts.length === 1 ? visibleAccounts[0].id : "");
 
   function selectTemplate(id: string) {
     // Re-clic sur le modèle déjà sélectionné : ne pas purger les saisies.
     if (id === templateId) return;
     setTemplateId(id);
+    // Le type appartient au modèle : le garder d'un modèle à l'autre pointerait
+    // sur un type qui n'existe pas ici.
+    setShootTypeId("");
     const t = templates.find((x) => x.id === id);
     setFiches(
       Object.fromEntries(
@@ -182,6 +219,9 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
     // au lieu de re-soumettre autant de fois qu'il y a de champs vides.
     const found: Record<string, string> = {};
     if (isAdmin && !clientId) found.client = "Choisissez un client.";
+    if (shootTypes.length > 0 && !shootTypeId) {
+      found.shootType = "Choisissez un type de tournage.";
+    }
     for (const [index, item] of template.items.entries()) {
       const draft = fiches[item.entityTypeId];
       // Les fiches suivantes tirent leur libellé de la première ; un type à
@@ -198,8 +238,6 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
         }
       }
     }
-    if (needsAccount && !effectiveAccountId) found.account = "Choisissez un compte Instagram.";
-
     setErrors(found);
     const missing = Object.keys(found).length;
     if (missing > 0) {
@@ -218,13 +256,13 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderTemplateId: template.id,
+          shootTypeId: shootTypeId || null,
           // Seulement les optionnelles : les imposées sont instanciées quoi
           // qu'il arrive, et le serveur refuse qu'on les lui envoie.
           recipes: optionalRecipes.map((r) => ({
             patternTemplateId: r.patternTemplateId,
             count: recipeCounts[r.patternTemplateId] ?? 0,
           })),
-          accountId: effectiveAccountId || null,
           notes: notes.trim() || null,
           clientId: isAdmin ? clientId : undefined,
           fiches: template.items.map((item, index) => {
@@ -335,7 +373,6 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                     value={clientId}
                     onChange={(v) => {
                       setClientId(v);
-                      setAccountId("");
                       setErrors((prev) => {
                         const next = { ...prev };
                         delete next.client;
@@ -344,6 +381,31 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                     }}
                     options={clients.map((c) => ({ value: c.id, label: c.name }))}
                     placeholder="Choisir un client…"
+                  />
+                </FormField>
+              )}
+
+              {/* 1bis. Type de tournage — il commande quelles vidéos sont
+                  proposées, donc il vient AVANT les fiches et les vidéos. */}
+              {shootTypes.length > 0 && (
+                <FormField
+                  label="Type de tournage"
+                  required
+                  error={shootTypeId ? undefined : errors.shootType}
+                  help={shootType?.description ?? "Il détermine les vidéos proposées."}
+                >
+                  <Select
+                    value={shootTypeId}
+                    onChange={(v) => {
+                      setShootTypeId(v);
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.shootType;
+                        return next;
+                      });
+                    }}
+                    options={shootTypes.map((t) => ({ value: t.id, label: t.label }))}
+                    placeholder="Choisir un type…"
                   />
                 </FormField>
               )}
@@ -470,12 +532,19 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                   {requiredRecipes.map((r) => (
                     <div
                       key={r.patternTemplateId}
-                      className="flex items-center gap-2 text-[13px] text-foreground"
+                      className="flex items-start gap-2 text-[13px] text-foreground"
                     >
                       <Badge variant="default" size="sm">
                         Incluse
                       </Badge>
-                      <span className="flex-1 min-w-0 truncate">{r.label}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="block truncate">{r.label}</span>
+                        {r.description && (
+                          <span className="block text-[11.5px] text-muted-foreground">
+                            {r.description}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[12px] tabular-nums text-muted-foreground">
                         ×{r.count}
                       </span>
@@ -486,7 +555,7 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                     const value = recipeCounts[r.patternTemplateId] ?? 0;
                     const checked = value > 0;
                     return (
-                      <div key={r.patternTemplateId} className="flex items-center gap-2">
+                      <div key={r.patternTemplateId} className="flex items-start gap-2">
                         <Checkbox
                           checked={checked}
                           onChange={(next) =>
@@ -500,9 +569,16 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                           size="sm"
                           label={r.label}
                         />
-                        <span className="flex-1 min-w-0 truncate text-[13px] text-foreground">
-                          {r.label}
-                        </span>
+                        <div className="flex-1 min-w-0">
+                          <span className="block truncate text-[13px] text-foreground">
+                            {r.label}
+                          </span>
+                          {r.description && (
+                            <span className="block text-[11.5px] text-muted-foreground">
+                              {r.description}
+                            </span>
+                          )}
+                        </div>
                         {checked && r.count > 1 && (
                           <div className="w-24 shrink-0">
                             <NumberStepper
@@ -527,38 +603,23 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                 </div>
               )}
 
-              {/* 4. Compte + notes */}
-              {(needsAccount || visibleAccounts.length > 0) && (
-                <FormField
-                  label="Compte Instagram"
-                  required={needsAccount}
-                  error={effectiveAccountId ? undefined : errors.account}
-                  help="Compte sur lequel les vidéos seront publiées."
-                >
-                  <Select
-                    value={effectiveAccountId}
-                    onChange={(v) => {
-                      setAccountId(v);
-                      setErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.account;
-                        return next;
-                      });
-                    }}
-                    options={visibleAccounts.map((a) => ({
-                      value: a.id,
-                      label: `${a.name} (@${a.handle})`,
-                    }))}
-                    placeholder={
-                      visibleAccounts.length === 0
-                        ? "Aucun compte disponible"
-                        : "Choisir un compte…"
-                    }
-                    disabled={visibleAccounts.length === 0}
-                  />
-                </FormField>
+              {/* Un type « nombre décidé plus tard » (RPOD) ne propose aucune
+                  case. Sans un mot, le demandeur croirait que sa commande ne
+                  produira rien — c'est exactement le silence qu'on chasse. */}
+              {shootType?.videosDecidedLater && applicableRecipes.length === 0 && (
+                <Alert variant="info">
+                  Le nombre de vidéos sera décidé par l&apos;équipe après le tournage — il
+                  dépend du contenu tourné. Rien à cocher ici.
+                </Alert>
               )}
 
+              {/* 4. Notes.
+                  PAS de compte Instagram ici : il se choisit au placement sur
+                  le calendrier, par l'admin — une même vidéo peut atterrir sur
+                  plusieurs comptes, et le demandeur n'a pas à trancher. Le
+                  champ s'affichait d'ailleurs dès que le client avait un compte,
+                  indépendamment de la capacité « compte » des fiches, et se
+                  présélectionnait tout seul quand il n'y en avait qu'un. */}
               <FormField label="Notes" help="Précisions pour l'équipe (optionnel).">
                 <Textarea value={notes} onChange={setNotes} rows={3} />
               </FormField>

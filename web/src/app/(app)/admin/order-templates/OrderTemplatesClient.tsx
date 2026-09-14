@@ -40,6 +40,13 @@ export interface OrderTemplateRow {
     isOptional: boolean;
     defaultSelected: boolean;
     minCount: number;
+    shootTypeId: string | null;
+  }[];
+  shootTypes: {
+    id: string;
+    label: string;
+    description: string | null;
+    videosDecidedLater: boolean;
   }[];
   clientIds: string[];
   clientNames: string[];
@@ -64,8 +71,30 @@ interface Draft {
     isOptional: boolean;
     defaultSelected: boolean;
     minCount: number;
+    /** `key` d'un type de `shootTypes`, ou "" pour « toutes les variantes ». */
+    shootTypeKey: string;
+  }[];
+  /**
+   * `key` est l'identité LOCALE d'un type dans ce brouillon ; `id` n'existe que
+   * pour un type déjà en base. C'est ce couple qui permet au serveur de
+   * préserver les ids existants — les commandes passées les référencent, et les
+   * recréer leur ferait perdre leur type en silence.
+   */
+  shootTypes: {
+    key: string;
+    id: string | null;
+    label: string;
+    description: string;
+    videosDecidedLater: boolean;
   }[];
   clientIds: string[];
+}
+
+/** Clé locale d'un type de tournage ajouté dans le drawer. */
+function newShootTypeKey(existing: { key: string }[]): string {
+  let n = existing.length + 1;
+  while (existing.some((t) => t.key === `new-${n}`)) n += 1;
+  return `new-${n}`;
 }
 
 /** Au-delà de ce nombre de clients, la liste passe en mode filtrable. */
@@ -84,6 +113,17 @@ function toDraft(t: OrderTemplateRow | null): Draft {
         isOptional: r.isOptional,
         defaultSelected: r.defaultSelected,
         minCount: r.minCount,
+        // Un type déjà en base a pour clé son propre id : les recettes y
+        // réfèrent sans indirection.
+        shootTypeKey: r.shootTypeId ?? "",
+      })) ?? [],
+    shootTypes:
+      t?.shootTypes.map((st) => ({
+        key: st.id,
+        id: st.id,
+        label: st.label,
+        description: st.description ?? "",
+        videosDecidedLater: st.videosDecidedLater,
       })) ?? [],
     clientIds: t?.clientIds ?? [],
   };
@@ -145,7 +185,14 @@ export function OrderTemplatesClient({
             isOptional: boolean;
             defaultSelected: boolean;
             minCount: number;
+            shootTypeId: string | null;
             patternTemplate: { label: string };
+          }[];
+          shootTypes: {
+            id: string;
+            label: string;
+            description: string | null;
+            videosDecidedLater: boolean;
           }[];
           accesses: { clientId: string; client: { name: string } }[];
           _count: { orders: number };
@@ -169,7 +216,9 @@ export function OrderTemplatesClient({
             isOptional: r.isOptional,
             defaultSelected: r.defaultSelected,
             minCount: r.minCount,
+            shootTypeId: r.shootTypeId,
           })),
+          shootTypes: t.shootTypes ?? [],
           clientIds: t.accesses.map((a) => a.clientId),
           clientNames: t.accesses.map((a) => a.client.name),
           orderCount: t._count.orders,
@@ -196,7 +245,18 @@ export function OrderTemplatesClient({
         description: draft.description.trim() || null,
         isArchived: draft.isArchived,
         items: draft.itemTypeIds.map((entityTypeId) => ({ entityTypeId })),
-        recipes: draft.recipes,
+        recipes: draft.recipes.map((r) => ({
+          ...r,
+          // "" = vidéo commune à tous les types.
+          shootTypeKey: r.shootTypeKey || null,
+        })),
+        shootTypes: draft.shootTypes.map((st) => ({
+          id: st.id ?? undefined,
+          key: st.key,
+          label: st.label.trim(),
+          description: st.description.trim() || null,
+          videosDecidedLater: st.videosDecidedLater,
+        })),
         clientIds: draft.clientIds,
       };
       const res = editing
@@ -439,6 +499,106 @@ export function OrderTemplatesClient({
             </div>
           </FormField>
 
+          {/* Le type de tournage commande quelles vidéos sont cochables. Il
+              vivait comme un champ de la fiche Tournage, où il ne pilotait
+              rien. */}
+          <FormField
+            label="Types de tournage"
+            help="Le demandeur en choisit un, et ne voit que les vidéos qui lui sont rattachées. Laissez vide si ce modèle n'en a pas besoin."
+          >
+            <div className="space-y-2">
+              {draft.shootTypes.map((st) => (
+                <div
+                  key={st.key}
+                  className="rounded-md border border-border bg-muted/30 p-2.5 space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={st.label}
+                      onChange={(v) =>
+                        setDraft((d) => ({
+                          ...d,
+                          shootTypes: d.shootTypes.map((x) =>
+                            x.key === st.key ? { ...x, label: v } : x,
+                          ),
+                        }))
+                      }
+                      placeholder="Ex : Tournage RVA"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraft((d) => ({
+                          ...d,
+                          shootTypes: d.shootTypes.filter((x) => x.key !== st.key),
+                          // Ses vidéos redeviennent communes plutôt que de
+                          // disparaître : une vidéo affichée en trop se voit,
+                          // une vidéo évaporée, non.
+                          recipes: d.recipes.map((r) =>
+                            r.shootTypeKey === st.key ? { ...r, shootTypeKey: "" } : r,
+                          ),
+                        }))
+                      }
+                      className="p-1 rounded text-muted-foreground hover:text-danger-600 shrink-0"
+                      aria-label="Retirer le type de tournage"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  <Input
+                    value={st.description}
+                    onChange={(v) =>
+                      setDraft((d) => ({
+                        ...d,
+                        shootTypes: d.shootTypes.map((x) =>
+                          x.key === st.key ? { ...x, description: v } : x,
+                        ),
+                      }))
+                    }
+                    placeholder="Ce que c'est, dit au client, sans jargon (optionnel)"
+                  />
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Switch
+                      checked={st.videosDecidedLater}
+                      onChange={(v) =>
+                        setDraft((d) => ({
+                          ...d,
+                          shootTypes: d.shootTypes.map((x) =>
+                            x.key === st.key ? { ...x, videosDecidedLater: v } : x,
+                          ),
+                        }))
+                      }
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      Nombre de vidéos décidé plus tard (aucune case à cocher)
+                    </span>
+                  </label>
+                </div>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setDraft((d) => ({
+                    ...d,
+                    shootTypes: [
+                      ...d.shootTypes,
+                      {
+                        key: newShootTypeKey(d.shootTypes),
+                        id: null,
+                        label: "",
+                        description: "",
+                        videosDecidedLater: false,
+                      },
+                    ],
+                  }))
+                }
+              >
+                Ajouter un type de tournage
+              </Button>
+            </div>
+          </FormField>
+
           <FormField
             label="Vidéos déclenchées"
             help="Recettes instanciées à la validation de la commande — les publications naissent en banque, à placer sur le calendrier."
@@ -498,6 +658,33 @@ export function OrderTemplatesClient({
                 {/* Réglages « au choix » — sous la ligne, pour ne pas alourdir
                     le cas nominal (vidéo imposée). */}
                 <div className="flex flex-wrap items-center gap-3 pl-1">
+                  {draft.shootTypes.length > 0 && (
+                    <label className="flex items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground shrink-0">Type</span>
+                      <div className="w-48">
+                        <Select
+                          value={r.shootTypeKey}
+                          onChange={(v) =>
+                            setDraft((d) => ({
+                              ...d,
+                              recipes: d.recipes.map((x) =>
+                                x.patternTemplateId === r.patternTemplateId
+                                  ? { ...x, shootTypeKey: v }
+                                  : x,
+                              ),
+                            }))
+                          }
+                          options={[
+                            { value: "", label: "Tous les types" },
+                            ...draft.shootTypes.map((st) => ({
+                              value: st.key,
+                              label: st.label.trim() || "Type sans nom",
+                            })),
+                          ]}
+                        />
+                      </div>
+                    </label>
+                  )}
                   <label className="flex items-center gap-2 cursor-pointer">
                     <Switch
                       checked={r.isOptional}
@@ -585,6 +772,9 @@ export function OrderTemplatesClient({
                           isOptional: false,
                           defaultSelected: true,
                           minCount: 0,
+                          // Commune à tous les types : le choix par défaut
+                          // reproduit le comportement d'avant les types.
+                          shootTypeKey: "",
                         },
                       ],
                     }))

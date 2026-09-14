@@ -36,8 +36,27 @@ import {
   normalizeFixedText,
 } from "@/lib/publications/preFilledDescription";
 
+/** Un libellé client sur une ligne, pas une notice. */
+const MAX_CLIENT_LABEL = 60;
+/** Deux phrases pour expliquer le format à quelqu'un d'extérieur à l'équipe. */
+const MAX_CLIENT_DESCRIPTION = 300;
+
+/** Texte client normalisé : trimé, borné, vide → null (le libellé interne reprend la main). */
+function normalizeClientText(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, max) : null;
+}
+
 export interface PatternTemplateInputPayload {
   label?: string;
+  /**
+   * Comment la recette se présente AU CLIENT. « RVA1 » ou « RPOD » sont du
+   * jargon interne, et c'est pourtant ce que le formulaire de commande
+   * affichait. Vide = on retombe sur `label`.
+   */
+  clientLabel?: string | null;
+  clientDescription?: string | null;
   source?: string;
   templateId?: string | null;
   captionPresetId?: string | null;
@@ -221,6 +240,8 @@ export function toPatternTemplateCreateData(
 ): Prisma.PatternTemplateUncheckedCreateInput {
   return {
     label: payload.label!.trim(),
+    clientLabel: normalizeClientText(payload.clientLabel, MAX_CLIENT_LABEL),
+    clientDescription: normalizeClientText(payload.clientDescription, MAX_CLIENT_DESCRIPTION),
     source: payload.source!,
     templateId: payload.templateId ?? null,
     captionPresetId: payload.captionPresetId ?? null,
@@ -256,6 +277,12 @@ export function toPatternTemplateUpdateData(
 ): Prisma.PatternTemplateUncheckedUpdateInput {
   return {
     ...(payload.label !== undefined ? { label: payload.label.trim() } : {}),
+    ...(payload.clientLabel !== undefined
+      ? { clientLabel: normalizeClientText(payload.clientLabel, MAX_CLIENT_LABEL) }
+      : {}),
+    ...(payload.clientDescription !== undefined
+      ? { clientDescription: normalizeClientText(payload.clientDescription, MAX_CLIENT_DESCRIPTION) }
+      : {}),
     ...(payload.source !== undefined ? { source: payload.source } : {}),
     ...(payload.templateId !== undefined ? { templateId: payload.templateId } : {}),
     ...(payload.captionPresetId !== undefined ? { captionPresetId: payload.captionPresetId } : {}),

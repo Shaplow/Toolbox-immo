@@ -18,6 +18,8 @@ import {
 function baseValues(overrides: Partial<PatternTemplateFieldValues> = {}): PatternTemplateFieldValues {
   return {
     label: "Recette test",
+    clientLabel: "",
+    clientDescription: "",
     source: "manual_rushes",
     templateId: "",
     coverMode: "auto",

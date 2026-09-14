@@ -10,6 +10,13 @@
  *
  * Le serveur émet automatiquement une activité BANK_SLOT_SCHEDULED en plus
  * de la mise à jour normale.
+ *
+ * C'est ici que se choisit le COMPTE INSTAGRAM des publications issues d'une
+ * commande : il n'est plus demandé au demandeur (« une vidéo pourrait atterrir
+ * parfois sur plusieurs comptes »), donc elles arrivent en banque sans compte
+ * et c'est celui qui place qui tranche. Poser le compte AVANT de programmer :
+ * l'opération peut échouer (recette non active sur ce compte), et une
+ * publication datée sur un compte qu'elle n'a pas serait pire que rien.
  */
 
 import { useState } from "react";
@@ -18,11 +25,16 @@ import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { toast } from "@/components/ui/Toast";
 import type { PublicationSlot } from "@/types/calendar";
 
 interface ScheduleFromBankModalProps {
   slot: PublicationSlot;
+  /** Comptes proposables quand la publication n'en a pas encore. */
+  accounts: { id: string; name: string; handle: string }[];
+  /** Jour déjà choisi (glisser-déposer sur une colonne) — pré-rempli. */
+  initialDate?: string;
   onScheduled: (slotId: string, scheduledAtIso: string) => void;
   onClose: () => void;
 }
@@ -32,19 +44,30 @@ const DEFAULT_TIME = "10:00";
 
 export function ScheduleFromBankModal({
   slot,
+  accounts,
+  initialDate,
   onScheduled,
   onClose,
 }: ScheduleFromBankModalProps) {
   const todayISO = new Date().toISOString().slice(0, 10);
-  const [date, setDate] = useState<string>(todayISO);
+  const [date, setDate] = useState<string>(initialDate ?? todayISO);
   const [time, setTime] = useState<string>(DEFAULT_TIME);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string>("");
+
+  // Une publication sans compte doit en recevoir un ici, pas plus tard : une
+  // fois posée sur le calendrier sans compte, plus rien ne la signale.
+  const needsAccount = !slot.account;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!date || !time) {
       setError("Date et heure sont requises.");
+      return;
+    }
+    if (needsAccount && !accountId) {
+      setError("Choisissez le compte Instagram de cette publication.");
       return;
     }
     const parsed = new Date(`${date}T${time}:00`);
@@ -57,6 +80,20 @@ export function ScheduleFromBankModal({
     setSaving(true);
     setError(null);
     try {
+      // D'abord le compte : il peut être refusé (recette non active dessus), et
+      // on ne veut pas d'une publication datée sur un compte qu'elle n'a pas.
+      if (needsAccount) {
+        const accRes = await fetch(`/api/publications/${slot.id}/account`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId }),
+        });
+        if (!accRes.ok) {
+          const body = (await accRes.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error ?? `Erreur ${accRes.status}`);
+        }
+      }
+
       const res = await fetch(`/api/calendar/slots/${slot.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -93,9 +130,32 @@ export function ScheduleFromBankModal({
           </p>
         </div>
 
+        {needsAccount && (
+          <div className="mt-4">
+            <FormField
+              label="Compte Instagram"
+              required
+              help="La recette et l'équipe par défaut du compte suivront."
+            >
+              <Select
+                value={accountId}
+                onChange={setAccountId}
+                options={accounts.map((a) => ({
+                  value: a.id,
+                  label: `${a.name} (@${a.handle})`,
+                }))}
+                placeholder={
+                  accounts.length === 0 ? "Aucun compte disponible" : "Choisir un compte…"
+                }
+                disabled={accounts.length === 0}
+              />
+            </FormField>
+          </div>
+        )}
+
         <div className="mt-4 grid grid-cols-2 gap-3">
           <FormField label="Date">
-            <DatePicker value={date} onChange={setDate} min={todayISO} />
+            <DatePicker value={date} onChange={setDate} min={initialDate ?? todayISO} />
           </FormField>
           <FormField label="Heure">
             <Input

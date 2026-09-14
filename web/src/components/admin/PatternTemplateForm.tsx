@@ -46,6 +46,8 @@ interface LinkedBinding {
 export interface PatternTemplateInitial {
   id?: string;
   label: string;
+  clientLabel?: string | null;
+  clientDescription?: string | null;
   source: string;
   templateId: string | null;
   captionPresetId: string | null;

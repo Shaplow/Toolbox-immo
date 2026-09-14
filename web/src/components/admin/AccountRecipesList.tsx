@@ -49,6 +49,9 @@ export interface RecipeItem {
   label: string;
   // Template
   templateLabel: string;
+  /** Nom et description vus par le client sur le bon de commande. */
+  clientLabel: string | null;
+  clientDescription: string | null;
   source: string;
   templateId: string | null;
   coverMode: string;
@@ -225,6 +228,8 @@ interface RecipeBindingApiResponse {
   notes: string | null;
   patternTemplate: {
     label: string;
+    clientLabel?: string | null;
+    clientDescription?: string | null;
     source: string;
     templateId: string | null;
     coverMode: string;
@@ -287,6 +292,8 @@ function bindingResponseToRecipeItem(
     patternTemplateId: b.patternTemplateId,
     label: patternLabel({ customLabel: b.customLabel, patternTemplate: { label: tpl.label } }),
     templateLabel: tpl.label,
+    clientLabel: tpl.clientLabel ?? null,
+    clientDescription: tpl.clientDescription ?? null,
     source: tpl.source,
     templateId: tpl.templateId,
     coverMode: tpl.coverMode,

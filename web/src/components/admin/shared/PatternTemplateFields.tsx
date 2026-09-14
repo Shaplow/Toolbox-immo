@@ -54,6 +54,8 @@ import {
 
 export interface PatternTemplateFieldValues {
   label: string;
+  clientLabel: string;
+  clientDescription: string;
   source: string;
   templateId: string;
   coverMode: string;
@@ -77,6 +79,8 @@ export interface PatternTemplateFieldValues {
 /** Forme source acceptée par `decodePatternTemplateFields` (projection PatternTemplate). */
 export interface PatternTemplateFieldsSource {
   label: string;
+  clientLabel?: string | null;
+  clientDescription?: string | null;
   source: string;
   templateId?: string | null;
   coverMode: string;
@@ -102,6 +106,8 @@ export interface PatternTemplateFieldsSource {
 /** Payload API — forme envoyée aux routes POST/PATCH (recipes + patterns). */
 export interface PatternTemplateFieldsPayload {
   label: string;
+  clientLabel: string | null;
+  clientDescription: string | null;
   source: string;
   templateId: string | null;
   coverMode: string;
@@ -153,6 +159,8 @@ export function decodePatternTemplateFields(
         : "";
   return {
     label: source?.label ?? "",
+    clientLabel: source?.clientLabel ?? "",
+    clientDescription: source?.clientDescription ?? "",
     source: source?.source ?? "manual_rushes",
     templateId: source?.templateId ?? "",
     coverMode: source?.coverMode ?? "none",
@@ -190,6 +198,10 @@ export function encodePatternTemplateFieldsPayload(
 ): PatternTemplateFieldsPayload {
   return {
     label: values.label.trim(),
+    // "" → null : vide veut dire « pas de nom client », et c'est `label` qui
+    // reprend la main partout. Pas une chaîne vide affichée à la place.
+    clientLabel: values.clientLabel.trim() || null,
+    clientDescription: values.clientDescription.trim() || null,
     source: values.source,
     templateId: values.templateId || null,
     coverMode: values.coverMode,
@@ -336,11 +348,39 @@ export function PatternTemplateFields({
 
       {/* Identité */}
       <div className="space-y-4">
-        <FormField label="Nom de la recette" required>
+        <FormField
+          label="Nom de la recette"
+          required
+          help="Nom interne, celui que l'équipe voit partout."
+        >
           <Input
             value={v.label}
             onChange={(val) => onChange({ label: val })}
             placeholder="Ex : Reels marché immo"
+          />
+        </FormField>
+
+        {/* Le client ne connaît pas « RVA1 » ni « RPOD » — et c'est pourtant ce
+            que le formulaire de commande lui montrait. */}
+        <FormField
+          label="Nom vu par le client"
+          help="Sur le bon de commande. Vide = le nom interne est affiché tel quel."
+        >
+          <Input
+            value={v.clientLabel}
+            onChange={(val) => onChange({ clientLabel: val })}
+            placeholder={v.label ? `Vide → « ${v.label} »` : "Ex : Visite guidée du bien"}
+          />
+        </FormField>
+
+        <FormField
+          label="Description pour le client"
+          help="Une phrase qui dit ce que c'est, sans jargon technique."
+        >
+          <Input
+            value={v.clientDescription}
+            onChange={(val) => onChange({ clientDescription: val })}
+            placeholder="Ex : Une vidéo de 30 s qui fait le tour du bien"
           />
         </FormField>
 

@@ -60,12 +60,24 @@ export default async function NewOrderPage() {
           isOptional: true,
           defaultSelected: true,
           minCount: true,
-          patternTemplate: { select: { label: true } },
+          shootTypeId: true,
+          patternTemplate: {
+            select: { label: true, clientLabel: true, clientDescription: true },
+          },
         },
+        orderBy: { position: "asc" },
+      },
+      shootTypes: {
+        select: { id: true, label: true, description: true, videosDecidedLater: true },
         orderBy: { position: "asc" },
       },
     },
   });
+
+  /** Le client ne voit jamais « RVA1 » : le libellé interne est un repli. */
+  const clientFacing = (r: {
+    patternTemplate: { label: string; clientLabel: string | null };
+  }) => r.patternTemplate.clientLabel ?? r.patternTemplate.label;
 
   const templates: OrderTemplateOption[] = templatesRaw.map((t) => ({
     id: t.id,
@@ -81,30 +93,35 @@ export default async function NewOrderPage() {
     })),
     recipes: t.recipes.map((r) => ({
       patternTemplateId: r.patternTemplateId,
-      label: r.patternTemplate.label,
+      label: clientFacing(r),
+      description: r.patternTemplate.clientDescription,
       count: r.count,
       isOptional: r.isOptional,
       defaultSelected: r.defaultSelected,
       minCount: r.minCount,
+      shootTypeId: r.shootTypeId,
+    })),
+    shootTypes: t.shootTypes.map((st) => ({
+      id: st.id,
+      label: st.label,
+      description: st.description,
+      videosDecidedLater: st.videosDecidedLater,
     })),
     // Résumé / compteur : seulement les vidéos IMPOSÉES et les optionnelles
     // pré-cochées — annoncer « 5 vidéos » alors que deux sont décochées par
     // défaut serait faux dès l'ouverture du formulaire.
+    //
+    // Quand le modèle propose des types de tournage, ce résumé ne compte que
+    // les vidéos COMMUNES : les autres dépendent d'un choix pas encore fait, et
+    // additionner tous les types annoncerait un nombre que personne ne recevra.
     videoSummary: t.recipes
-      .filter((r) => !r.isOptional || r.defaultSelected)
-      .map((r) => (r.count > 1 ? `${r.patternTemplate.label} ×${r.count}` : r.patternTemplate.label))
+      .filter((r) => (!r.isOptional || r.defaultSelected) && !r.shootTypeId)
+      .map((r) => (r.count > 1 ? `${clientFacing(r)} ×${r.count}` : clientFacing(r)))
       .join(", "),
     videoCount: t.recipes
-      .filter((r) => !r.isOptional || r.defaultSelected)
+      .filter((r) => (!r.isOptional || r.defaultSelected) && !r.shootTypeId)
       .reduce((n, r) => n + r.count, 0),
   }));
-
-  // Comptes : ceux de l'agence (externe) ou tous avec leur client (admin).
-  const accounts = await prisma.instagramAccount.findMany({
-    where: isAdmin ? { clientId: { not: null } } : { clientId: clientId ?? "__never__" },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, handle: true, clientId: true },
-  });
 
   const clients = isAdmin
     ? await prisma.client.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } })
@@ -114,7 +131,6 @@ export default async function NewOrderPage() {
     <PageShell variant="default">
       <NewOrderClient
         templates={templates}
-        accounts={accounts}
         clients={clients}
         isAdmin={isAdmin}
       />

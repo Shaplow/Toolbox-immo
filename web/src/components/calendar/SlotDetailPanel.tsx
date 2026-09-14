@@ -246,6 +246,11 @@ export function SlotDetailPanel({
   // Rattachement à un tournage après coup (cas RPOD : on pré-shoote des slots
   // sans savoir combien de vidéos sortiront du contenu tourné).
   const [attachingShoot, setAttachingShoot] = useState(false);
+  const [assigningAccount, setAssigningAccount] = useState(false);
+  const [accountChoice, setAccountChoice] = useState("");
+  const [accountOptions, setAccountOptions] = useState<
+    { id: string; name: string; handle: string }[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
 
   // ─── Effects ────────────────────────────────────────────────────────────
@@ -503,6 +508,40 @@ export function SlotDetailPanel({
     }
   }
 
+  /**
+   * Pose le compte Instagram d'une publication qui n'en a pas.
+   *
+   * Le compte n'est plus choisi à la commande : les publications naissent en
+   * banque sans compte et le reçoivent au placement. Ce sélecteur est le
+   * rattrapage — pour celles déjà posées sur le calendrier sans compte, que
+   * `mark-published` refuse de publier tant qu'elles n'en ont pas.
+   *
+   * Route dédiée comme /attach-shoot : poser le compte re-résout la recette du
+   * compte (horaires, libellé) et complète les assignés manquants.
+   */
+  async function handleAssignAccount(accountId: string) {
+    setAssigningAccount(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/publications/${slot.id}/account`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId }),
+      });
+      const d = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        slot?: PublicationSlot;
+      };
+      if (!res.ok) throw new Error(d.error ?? `Erreur ${res.status}`);
+      if (d.slot) onUpdated(d.slot);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setAssigningAccount(false);
+    }
+  }
+
   async function handleDeleteConfirmed() {
     setDeleting(true);
     setConfirmDeleteOpen(false);
@@ -567,6 +606,25 @@ export function SlotDetailPanel({
   }
 
   // ─── Tabs configuration ────────────────────────────────────────────────
+  /**
+   * Comptes chargés PARESSEUSEMENT : seulement quand cette publication n'en a
+   * pas, ce qui est l'exception. Charger la liste pour tous les slots ferait
+   * une requête inutile à chaque ouverture du panneau.
+   */
+  useEffect(() => {
+    if (slot.account || tab !== "config" || accountOptions.length > 0) return;
+    let cancelled = false;
+    void fetch("/api/admin/accounts")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: { id: string; name: string; handle: string }[]) => {
+        if (!cancelled && Array.isArray(rows)) setAccountOptions(rows);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [slot.account, tab, accountOptions.length]);
+
   // P1 — 4 tabs → 2 tabs. "Configuration" regroupe Planning + Équipe +
   // Ajustements via des CollapsibleSection internes (planning en haut car
   // action fréquente, ajustements en bas replié car action rare).
@@ -936,6 +994,43 @@ export function SlotDetailPanel({
               Équipe ouverte, Ajustements replié (action rare per-slot). */}
           {tab === "config" && !isRestricted && (
             <>
+              {/* Publication sans compte : elle ne peut pas être publiée
+                  (mark-published la refuse) et n'hérite d'aucune équipe. Le
+                  compte se pose normalement au placement depuis la banque —
+                  ceci est le rattrapage pour celles déjà sur le calendrier. */}
+              {!slot.account && (
+                <CollapsibleSection
+                  title="Compte Instagram"
+                  defaultOpen
+                  storageKey="slot-panel:account"
+                >
+                  <div className="pt-1 space-y-2">
+                    <FormField
+                      label="Compte"
+                      help="La recette et l'équipe par défaut du compte suivront."
+                    >
+                      <Combobox
+                        value={accountChoice}
+                        onChange={(v) => {
+                          setAccountChoice(v);
+                          if (v) void handleAssignAccount(v);
+                        }}
+                        options={accountOptions.map((a) => ({
+                          value: a.id,
+                          label: `${a.name} (@${a.handle})`,
+                        }))}
+                        placeholder={
+                          accountOptions.length === 0
+                            ? "Chargement…"
+                            : "Choisir un compte…"
+                        }
+                        disabled={assigningAccount || accountOptions.length === 0}
+                      />
+                    </FormField>
+                  </div>
+                </CollapsibleSection>
+              )}
+
               <CollapsibleSection
                 title="Planning"
                 defaultOpen

@@ -186,6 +186,8 @@ export function CalendarView({
   const [selectedSlot, setSelectedSlot] = useState<PublicationSlot | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [scheduleFromBank, setScheduleFromBank] = useState<PublicationSlot | null>(null);
+  /** Jour visé par un glisser-déposer dérouté vers la modale (choix du compte). */
+  const [scheduleFromBankDate, setScheduleFromBankDate] = useState<string | undefined>(undefined);
   const [addDefaultDate, setAddDefaultDate] = useState<string | undefined>(undefined);
   // Phase 2 — rail latéral banque en vue semaine (drag→jour). Slots possédés
   // ici (chargés à l'ouverture) pour pouvoir les retirer après un drop réussi.
@@ -549,6 +551,16 @@ export function CalendarView({
       const time = base ? isoToLocalInput(base).slice(11, 16) : "10:00";
       // No-op si on lâche sur le même jour (cas grille uniquement).
       if (!fromBank && base && parisDayKey(base) === dateIso) return;
+
+      // Une publication sans compte ne peut pas être posée en un glissement :
+      // le compte se choisit au placement, et le déposer sans rien demander
+      // produirait une publication datée que personne ne publiera jamais
+      // (mark-published la refuse). On dérive vers la modale, jour pré-rempli.
+      if (fromBank && !slot.account) {
+        setScheduleFromBankDate(dateIso);
+        setScheduleFromBank(slot);
+        return;
+      }
       const newIso = localInputToIso(`${dateIso}T${time || "10:00"}`);
       if (!newIso) return;
 
@@ -1043,6 +1055,8 @@ export function CalendarView({
       {scheduleFromBank && (
         <ScheduleFromBankModal
           slot={scheduleFromBank}
+          accounts={accounts}
+          initialDate={scheduleFromBankDate}
           onScheduled={(slotId) => {
             // Le slot quitte la banque — on l'enlève de la liste locale et on
             // décrémente les compteurs. Si le slot programmé était dans la
@@ -1061,7 +1075,10 @@ export function CalendarView({
             // Si la programmation venait du rail banque, retire aussi l'item.
             setBankRailSlots((prev) => prev.filter((s) => s.id !== slotId));
           }}
-          onClose={() => setScheduleFromBank(null)}
+          onClose={() => {
+            setScheduleFromBank(null);
+            setScheduleFromBankDate(undefined);
+          }}
         />
       )}
 

@@ -11,47 +11,12 @@ import {
   deleteOrderTemplate,
   getOrderTemplate,
   updateOrderTemplate,
-  type OrderTemplateInput,
+  parseOrderTemplateInput,
 } from "@/lib/services/order/orderTemplateService";
 import { mapServiceError } from "@/lib/services/_runtime/mapServiceError";
 
 type Params = { params: Promise<{ id: string }> };
 
-function parseInput(body: Record<string, unknown>): OrderTemplateInput {
-  return {
-    name: typeof body.name === "string" ? body.name : "",
-    description: typeof body.description === "string" ? body.description : null,
-    position: typeof body.position === "number" ? body.position : undefined,
-    isArchived: body.isArchived === true,
-    items: Array.isArray(body.items)
-      ? (body.items as { entityTypeId?: unknown }[]).map((i) => ({
-          entityTypeId: typeof i?.entityTypeId === "string" ? i.entityTypeId : "",
-        }))
-      : [],
-    recipes: Array.isArray(body.recipes)
-      ? (
-          body.recipes as {
-            patternTemplateId?: unknown;
-            count?: unknown;
-            isOptional?: unknown;
-            defaultSelected?: unknown;
-            minCount?: unknown;
-          }[]
-        ).map((r) => ({
-          patternTemplateId: typeof r?.patternTemplateId === "string" ? r.patternTemplateId : "",
-          count: typeof r?.count === "number" ? r.count : NaN,
-          isOptional: r?.isOptional === true,
-          // Une optionnelle est pré-cochée sauf refus explicite : c'est le
-          // comportement le moins surprenant quand l'admin vient d'en créer une.
-          defaultSelected: r?.defaultSelected !== false,
-          minCount: typeof r?.minCount === "number" ? r.minCount : 0,
-        }))
-      : [],
-    clientIds: Array.isArray(body.clientIds)
-      ? (body.clientIds as unknown[]).filter((c): c is string => typeof c === "string")
-      : [],
-  };
-}
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const auth = await requireAdmin();
@@ -78,7 +43,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   try {
-    const template = await updateOrderTemplate(id, parseInput(body));
+    const template = await updateOrderTemplate(id, parseOrderTemplateInput(body));
     return NextResponse.json(template);
   } catch (err) {
     return mapServiceError(err);

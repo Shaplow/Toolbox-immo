@@ -68,6 +68,8 @@ export default async function AdminPatternsPage() {
       initialTemplates={templates.map((t) => ({
         id: t.id,
         label: t.label,
+        clientLabel: t.clientLabel,
+        clientDescription: t.clientDescription,
         source: t.source,
         templateName: t.template?.name ?? null,
         captionPresetName: t.captionPreset?.name ?? null,

@@ -1383,10 +1383,11 @@ model OrderTemplate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  items    OrderTemplateItem[]
-  recipes  OrderTemplateRecipe[]
-  accesses OrderTemplateAccess[]
-  orders   Order[]
+  items      OrderTemplateItem[]
+  recipes    OrderTemplateRecipe[]
+  accesses   OrderTemplateAccess[]
+  shootTypes OrderTemplateShootType[]
+  orders     Order[]
 }
 
 /// « Quelles fiches à remplir » — une par type de fiche, dans l'ordre.
@@ -1403,25 +1404,63 @@ model OrderTemplateItem {
 
 /// « Quelles vidéos déclenchées » — N reels de cette recette à la validation.
 model OrderTemplateRecipe {
-  id                String          @id @default(cuid())
+  id                String                  @id @default(cuid())
   orderTemplateId   String
-  orderTemplate     OrderTemplate   @relation(fields: [orderTemplateId], references: [id], onDelete: Cascade)
+  orderTemplate     OrderTemplate           @relation(fields: [orderTemplateId], references: [id], onDelete: Cascade)
   patternTemplateId String
-  patternTemplate   PatternTemplate @relation("OrderTemplateRecipePattern", fields: [patternTemplateId], references: [id], onDelete: Restrict)
+  patternTemplate   PatternTemplate         @relation("OrderTemplateRecipePattern", fields: [patternTemplateId], references: [id], onDelete: Restrict)
   /// Quantité demandée par défaut, et plafond quand la recette est optionnelle.
-  count             Int             @default(1)
+  count             Int                     @default(1)
   /// false = imposée (toujours instanciée) ; true = le négo coche ou non.
   /// Défaut `false` : les modèles existants gardent exactement le comportement
   /// d'avant la migration, sans backfill.
-  isOptional        Boolean         @default(false)
+  isOptional        Boolean                 @default(false)
   /// Pré-cochée dans le formulaire quand la recette est optionnelle.
-  defaultSelected   Boolean         @default(true)
+  defaultSelected   Boolean                 @default(true)
   /// Plancher de la quantité ajustable par le négo, dans [minCount, count].
-  minCount          Int             @default(0)
+  minCount          Int                     @default(0)
   /// Ordre d'affichage ET de résolution : quand deux recettes désignent des
   /// assignés différents, la première l'emporte (cf. resolveDefaultAssignees).
   /// Sans ça l'arbitrage dépendrait de l'ordre d'insertion en base.
-  position          Int             @default(0)
+  position          Int                     @default(0)
+  /// Type de tournage auquel cette vidéo appartient. `null` = proposée QUEL QUE
+  /// SOIT le type choisi (vidéos communes du modèle) — c'est aussi la valeur de
+  /// toutes les lignes existantes, donc aucun backfill.
+  /// SetNull et non Cascade : si un type disparaît, ses vidéos redeviennent
+  /// communes, donc VISIBLES. Une vidéo qui s'évaporerait en silence serait
+  /// bien pire qu'une vidéo affichée en trop.
+  shootTypeId       String?
+  shootType         OrderTemplateShootType? @relation(fields: [shootTypeId], references: [id], onDelete: SetNull)
+
+  @@index([orderTemplateId])
+  @@index([shootTypeId])
+}
+
+/// Un « type de tournage » (RVA, RPOD, Interview…) proposé par un modèle de
+/// commande. Il commande quelles vidéos sont cochables au moment de commander.
+///
+/// Sur le modèle de commande et PAS sur la fiche : un champ « type de tournage »
+/// sur le Tournage ne pilotait rien (il était purement déclaratif), alors que
+/// c'est bien ce choix qui doit déterminer les vidéos proposées.
+model OrderTemplateShootType {
+  id                 String        @id @default(cuid())
+  orderTemplateId    String
+  orderTemplate      OrderTemplate @relation(fields: [orderTemplateId], references: [id], onDelete: Cascade)
+  label              String
+  /// Dit au client ce que c'est, sans le jargon interne.
+  description        String?
+  /// true = on ne sait pas encore combien de vidéos sortiront (RPOD : ça dépend
+  /// du contenu tourné). Rend LÉGITIME une commande qui n'instancie aucune
+  /// vidéo — cas que `assertOrderIsInstantiable` traite sinon en erreur de
+  /// configuration, à raison.
+  ///
+  /// Explicite plutôt que déduit de « ce type n'a aucune recette attachée » :
+  /// déduire rendrait muette une vraie erreur de configuration.
+  videosDecidedLater Boolean       @default(false)
+  position           Int           @default(0)
+
+  recipes OrderTemplateRecipe[]
+  orders  Order[]
 
   @@index([orderTemplateId])
 }
@@ -1440,16 +1479,26 @@ model OrderTemplateAccess {
 }
 
 model Order {
-  id              String            @id @default(cuid())
+  id              String                  @id @default(cuid())
   orderTemplateId String
-  orderTemplate   OrderTemplate     @relation(fields: [orderTemplateId], references: [id], onDelete: Restrict)
+  orderTemplate   OrderTemplate           @relation(fields: [orderTemplateId], references: [id], onDelete: Restrict)
   clientId        String
-  client          Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  client          Client                  @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  /// Type de tournage retenu par le demandeur. Détermine quelles vidéos ont
+  /// été proposées — et, à l'instanciation, lesquelles sont créées.
+  /// SetNull : supprimer un type ne doit pas effacer les commandes passées.
+  shootTypeId     String?
+  shootType       OrderTemplateShootType? @relation(fields: [shootTypeId], references: [id], onDelete: SetNull)
   /// Compte IG cible (∈ comptes du client), vérifié côté service.
+  ///
+  /// OPTIONNEL et plus jamais demandé au demandeur : le compte se choisit au
+  /// placement sur le calendrier (cf. assignSlotAccount) — une même vidéo peut
+  /// atterrir sur plusieurs comptes. Les commandes antérieures le portent
+  /// encore, et l'API l'accepte toujours.
   accountId       String?
-  account         InstagramAccount? @relation("OrderAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  account         InstagramAccount?       @relation("OrderAccount", fields: [accountId], references: [id], onDelete: SetNull)
   /// "SUBMITTED" | "VALIDATED" | "REJECTED" | "DONE" | "CANCELLED"
-  status          String            @default("SUBMITTED")
+  status          String                  @default("SUBMITTED")
   rejectedReason  String?
   notes           String?
 
@@ -1508,6 +1557,17 @@ model OrderRecipeSelection {
 model PatternTemplate {
   id    String @id @default(cuid())
   label String
+
+  /// Comment cette recette se présente AU CLIENT, hors de l'équipe.
+  ///
+  /// « RVA1 », « RPOD », « RTIPS » sont du jargon interne, et c'est pourtant ce
+  /// que le formulaire de commande affichait tel quel. Résolution partout :
+  /// `clientLabel ?? label` — même forme que PatternBinding.customLabel.
+  /// Porté par la recette et non par la ligne de modèle de commande : une
+  /// recette se présente pareil partout, et on ne ressaisit pas son libellé
+  /// dans chaque modèle.
+  clientLabel       String?
+  clientDescription String?
 
   /// Planning appliqué aux bindings créés AUTOMATIQUEMENT (cf.
   /// PatternTemplateAutoActivation). Sur la recette et non sur la ligne

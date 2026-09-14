@@ -12,7 +12,7 @@ import { requireUser } from "@/lib/api/requireAuth";
 import {
   createOrder,
   listOrders,
-  type CreateOrderInput,
+  parseCreateOrderInput,
 } from "@/lib/services/order/orderService";
 import { mapServiceError } from "@/lib/services/_runtime/mapServiceError";
 
@@ -69,24 +69,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
   }
 
-  const input: CreateOrderInput = {
-    orderTemplateId: typeof body.orderTemplateId === "string" ? body.orderTemplateId : "",
-    accountId: typeof body.accountId === "string" && body.accountId ? body.accountId : null,
-    notes: typeof body.notes === "string" ? body.notes : null,
-    clientId: typeof body.clientId === "string" && body.clientId ? body.clientId : null,
-    fiches: Array.isArray(body.fiches)
-      ? (body.fiches as Record<string, unknown>[]).map((f) => ({
-          entityTypeId: typeof f?.entityTypeId === "string" ? f.entityTypeId : "",
-          label: typeof f?.label === "string" ? f.label : "",
-          fields:
-            f?.fields !== undefined && typeof f.fields === "object" && f.fields !== null
-              ? (f.fields as Record<string, string>)
-              : undefined,
-          scheduledAt:
-            typeof f?.scheduledAt === "string" && f.scheduledAt ? f.scheduledAt : null,
-        }))
-      : [],
-  };
+  const input = parseCreateOrderInput(body);
 
   try {
     const order = await createOrder(input, auth.ctx);

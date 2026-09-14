@@ -10,45 +10,10 @@ import { requireAdmin } from "@/lib/api/requireAuth";
 import {
   createOrderTemplate,
   listOrderTemplates,
-  type OrderTemplateInput,
+  parseOrderTemplateInput,
 } from "@/lib/services/order/orderTemplateService";
 import { mapServiceError } from "@/lib/services/_runtime/mapServiceError";
 
-function parseInput(body: Record<string, unknown>): OrderTemplateInput {
-  return {
-    name: typeof body.name === "string" ? body.name : "",
-    description: typeof body.description === "string" ? body.description : null,
-    position: typeof body.position === "number" ? body.position : undefined,
-    isArchived: body.isArchived === true,
-    items: Array.isArray(body.items)
-      ? (body.items as { entityTypeId?: unknown }[]).map((i) => ({
-          entityTypeId: typeof i?.entityTypeId === "string" ? i.entityTypeId : "",
-        }))
-      : [],
-    recipes: Array.isArray(body.recipes)
-      ? (
-          body.recipes as {
-            patternTemplateId?: unknown;
-            count?: unknown;
-            isOptional?: unknown;
-            defaultSelected?: unknown;
-            minCount?: unknown;
-          }[]
-        ).map((r) => ({
-          patternTemplateId: typeof r?.patternTemplateId === "string" ? r.patternTemplateId : "",
-          count: typeof r?.count === "number" ? r.count : NaN,
-          isOptional: r?.isOptional === true,
-          // Une optionnelle est pré-cochée sauf refus explicite : c'est le
-          // comportement le moins surprenant quand l'admin vient d'en créer une.
-          defaultSelected: r?.defaultSelected !== false,
-          minCount: typeof r?.minCount === "number" ? r.minCount : 0,
-        }))
-      : [],
-    clientIds: Array.isArray(body.clientIds)
-      ? (body.clientIds as unknown[]).filter((c): c is string => typeof c === "string")
-      : [],
-  };
-}
 
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin();
@@ -76,7 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const template = await createOrderTemplate(parseInput(body));
+    const template = await createOrderTemplate(parseOrderTemplateInput(body));
     return NextResponse.json(template, { status: 201 });
   } catch (err) {
     return mapServiceError(err);
