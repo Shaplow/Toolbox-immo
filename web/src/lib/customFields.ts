@@ -15,6 +15,11 @@
  *
  * `CustomFieldType` n'est plus un sous-ensemble strict de `SchemaFieldType` :
  * `checkbox` s'y projette en `boolean` (cf. customFieldToSchemaField).
+ *
+ * L'ORDRE DU TABLEAU EST SIGNIFIANT : c'est l'ordre d'affichage des champs
+ * partout (fiche, formulaire de commande, tableur), et c'est ce que réordonne
+ * `CustomFieldsSchemaEditor`. Il n'y a volontairement pas de champ `position` —
+ * toute fonction qui manipule un `CustomField[]` doit préserver l'ordre reçu.
  */
 
 import type { SchemaField } from "@/types/template";
@@ -49,6 +54,13 @@ export interface CustomField {
    */
   description?: string;
   /**
+   * Exemple de saisie affiché DANS le champ vide — le « à quoi ça ressemble »,
+   * distinct de `description` qui est le « pourquoi ». Borné plus court
+   * (MAX_PLACEHOLDER) : au-delà il déborde de l'input au lieu d'aider.
+   * Sans valeur, `CustomFieldValueInput` en calcule un depuis le libellé.
+   */
+  placeholder?: string;
+  /**
    * Champ obligatoire. Sur un `checkbox`, signifie « doit être coché »
    * (comportement HTML natif et Tally) — décoché bloque l'enregistrement.
    */
@@ -79,6 +91,9 @@ const VALID_TYPES = new Set<CustomFieldType>([
 
 /** Longueur max d'un texte d'aide — au-delà, ce n'est plus de l'aide. */
 export const MAX_DESCRIPTION = 200;
+
+/** Longueur max d'un placeholder — il vit à l'intérieur d'un input d'une ligne. */
+export const MAX_PLACEHOLDER = 80;
 
 /** Libellés qui suggèrent du texte multi-ligne (accent-insensible). */
 const LONG_TEXT_LABEL = /desc|note|adresse|comment|resum|\bbio\b/i;
@@ -154,6 +169,8 @@ export function normalizeCustomFields(raw: unknown): CustomField[] {
       const field: CustomField = { key, label, type: coerceType(o.type) };
       const description = typeof o.description === "string" ? o.description.trim() : "";
       if (description) field.description = description.slice(0, MAX_DESCRIPTION);
+      const placeholder = typeof o.placeholder === "string" ? o.placeholder.trim() : "";
+      if (placeholder) field.placeholder = placeholder.slice(0, MAX_PLACEHOLDER);
       if (o.required === true) field.required = true;
       if (o.primary === true) field.primary = true;
       if (field.type === "select") {
@@ -173,7 +190,8 @@ export function normalizeCustomFields(raw: unknown): CustomField[] {
  * SchemaFieldType et s'y projette en `boolean` — d'où le switch explicite
  * plutôt qu'un passage direct du type.
  *
- * `description` était jusqu'ici jetée alors que `SchemaField` la porte déjà.
+ * `description` et `placeholder` étaient jusqu'ici jetées alors que
+ * `SchemaField` les porte déjà.
  */
 export function customFieldToSchemaField(f: CustomField): SchemaField {
   const field: SchemaField = {
@@ -183,6 +201,7 @@ export function customFieldToSchemaField(f: CustomField): SchemaField {
     required: Boolean(f.required),
   };
   if (f.description) field.description = f.description;
+  if (f.placeholder) field.placeholder = f.placeholder;
   if (f.type === "select") field.options = f.options ?? [];
   return field;
 }

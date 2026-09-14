@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Checkbox } from "@/components/ui/Checkbox";
 import {
   CUSTOM_FIELD_TYPES,
   MAX_DESCRIPTION,
+  MAX_PLACEHOLDER,
   inferDefaultFieldType,
   type CustomField,
   type CustomFieldType,
@@ -77,6 +78,23 @@ export function CustomFieldsSchemaEditor({
     onChange(fields.filter((_, i) => i !== index));
   }
 
+  /**
+   * Déplace un champ d'un cran. L'ordre du tableau EST l'ordre d'affichage
+   * partout (fiche, formulaire de commande, tableur) — il n'y a pas de colonne
+   * `position` à tenir à jour, échanger deux éléments suffit.
+   *
+   * Flèches et non glisser-déposer : la liste fait 5 à 15 lignes, elle vit dans
+   * un drawer qui scrolle, et les flèches marchent au clavier sans contexte
+   * dnd ni annonces d'accessibilité à écrire.
+   */
+  function moveField(index: number, delta: -1 | 1) {
+    const target = index + delta;
+    if (target < 0 || target >= fields.length) return;
+    const next = [...fields];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  }
+
   function addField() {
     const label = newLabel.trim();
     if (!label) return;
@@ -110,7 +128,7 @@ export function CustomFieldsSchemaEditor({
           <span className="w-32 shrink-0">Type</span>
           {allowRequired && <span className="shrink-0">Requis</span>}
           {allowPrimary && <span className="shrink-0">Table</span>}
-          {!readOnly && <span className="w-7 shrink-0" aria-hidden="true" />}
+          {!readOnly && <span className="w-[4.75rem] shrink-0" aria-hidden="true" />}
         </div>
       )}
 
@@ -172,14 +190,34 @@ export function CustomFieldsSchemaEditor({
             />
           )}
           {!readOnly && (
-            <button
-              type="button"
-              onClick={() => removeField(i)}
-              className="shrink-0 p-1 text-muted-foreground hover:text-danger-600 rounded"
-              aria-label={`Supprimer ${field.label}`}
-            >
-              <Trash2 size={14} />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => moveField(i, -1)}
+                disabled={i === 0}
+                className="shrink-0 p-1 text-muted-foreground hover:text-foreground rounded disabled:opacity-30 disabled:hover:text-muted-foreground"
+                aria-label={`Monter ${field.label || field.key}`}
+              >
+                <ArrowUp size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => moveField(i, 1)}
+                disabled={i === fields.length - 1}
+                className="shrink-0 p-1 text-muted-foreground hover:text-foreground rounded disabled:opacity-30 disabled:hover:text-muted-foreground"
+                aria-label={`Descendre ${field.label || field.key}`}
+              >
+                <ArrowDown size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => removeField(i)}
+                className="shrink-0 p-1 text-muted-foreground hover:text-danger-600 rounded"
+                aria-label={`Supprimer ${field.label}`}
+              >
+                <Trash2 size={14} />
+              </button>
+            </>
           )}
         </div>
         {/* Options : un choix fermé sans option ne se remplit pas — c'est le
@@ -198,18 +236,33 @@ export function CustomFieldsSchemaEditor({
             />
           </div>
         )}
-        {/* Texte d'aide : le « pourquoi on demande ça » que le libellé ne porte
-            pas. Sous les options, donc dans l'ordre de lecture du champ. */}
-        <div className="pl-1">
-          <Input
-            value={field.description ?? ""}
-            onChange={(v) =>
-              patchField(i, { description: v.slice(0, MAX_DESCRIPTION) || undefined })
-            }
-            placeholder="Texte d'aide affiché sous le champ (optionnel)"
-            disabled={readOnly}
-            className="text-xs"
-          />
+        {/* Exemple de saisie et texte d'aide — le « à quoi ça ressemble » et le
+            « pourquoi on demande ça ». Sur UNE ligne : empiler une troisième
+            rangée pleine largeur par champ rendrait un schéma de 10 champs
+            illisible. */}
+        <div className="flex flex-col sm:flex-row gap-2 pl-1">
+          <div className="flex-1 min-w-0">
+            <Input
+              value={field.placeholder ?? ""}
+              onChange={(v) =>
+                patchField(i, { placeholder: v.slice(0, MAX_PLACEHOLDER) || undefined })
+              }
+              placeholder="Exemple de saisie (optionnel)"
+              disabled={readOnly}
+              className="text-xs"
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <Input
+              value={field.description ?? ""}
+              onChange={(v) =>
+                patchField(i, { description: v.slice(0, MAX_DESCRIPTION) || undefined })
+              }
+              placeholder="Texte d'aide affiché sous le champ (optionnel)"
+              disabled={readOnly}
+              className="text-xs"
+            />
+          </div>
         </div>
         </div>
       ))}

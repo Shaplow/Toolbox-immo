@@ -90,8 +90,11 @@ export function CustomFieldValueInput({
     .filter(Boolean)
     .join(" ");
 
+  // Le placeholder du schéma prime ; le calcul reste le repli pour tous les
+  // champs qui n'en déclarent pas (l'immense majorité).
   const placeholder =
-    field.type === "url" ? "https://…" : `Valeur pour « ${field.label || field.key} »`;
+    field.placeholder ??
+    (field.type === "url" ? "https://…" : `Valeur pour « ${field.label || field.key} »`);
 
   function handleChange(next: string) {
     // Filtre de frappe : on refuse le caractère plutôt que d'accepter une
@@ -123,7 +126,7 @@ export function CustomFieldValueInput({
           ...(field.required ? [] : [{ value: "", label: "—" }]),
           ...(field.options ?? []).map((o) => ({ value: o, label: o })),
         ]}
-        placeholder="Choisir…"
+        placeholder={field.placeholder ?? "Choisir…"}
         disabled={disabled}
         className={className}
       />

@@ -13,6 +13,7 @@ import {
   validateFieldValuesAll,
   CHECKBOX_TRUE,
   MAX_DESCRIPTION,
+  MAX_PLACEHOLDER,
 } from "@/lib/customFields";
 
 describe("normalizeCustomFields", () => {
@@ -401,5 +402,85 @@ describe("validateFieldValuesAll", () => {
     const errors = validateFieldValuesAll(schema, { zzz: "1" }, { requireRequired: true });
     expect(errors.__unknown).toMatch(/Champ inconnu/);
     expect(validateFieldValues(schema, { zzz: "1" })).toMatch(/Champ inconnu/);
+  });
+});
+
+describe("placeholder (exemple de saisie)", () => {
+  it("est conservé, trimé, et borné plus court que l'aide", () => {
+    const [f] = normalizeCustomFields([
+      { key: "a", label: "A", type: "text", placeholder: "  12 rue des Lilas  " },
+    ]);
+    expect(f.placeholder).toBe("12 rue des Lilas");
+
+    const [long] = normalizeCustomFields([
+      { key: "b", label: "B", type: "text", placeholder: "x".repeat(500) },
+    ]);
+    // Plus court que MAX_DESCRIPTION : un placeholder vit DANS un input d'une
+    // ligne, au-delà il déborde au lieu d'aider.
+    expect(long.placeholder).toHaveLength(MAX_PLACEHOLDER);
+    expect(MAX_PLACEHOLDER).toBeLessThan(MAX_DESCRIPTION);
+  });
+
+  it("un placeholder vide n'est pas posé", () => {
+    const [f] = normalizeCustomFields([
+      { key: "a", label: "A", type: "text", placeholder: "   " },
+    ]);
+    expect(f).not.toHaveProperty("placeholder");
+  });
+
+  // SchemaField porte `placeholder` depuis toujours : il n'était pas alimenté.
+  it("est propagé vers SchemaField", () => {
+    expect(
+      customFieldToSchemaField({ key: "a", label: "A", type: "text", placeholder: "Ex : 120" }),
+    ).toEqual({ key: "a", label: "A", type: "text", required: false, placeholder: "Ex : 120" });
+  });
+
+  it("aide et exemple coexistent sans se confondre", () => {
+    const [f] = normalizeCustomFields([
+      {
+        key: "prix",
+        label: "Prix",
+        type: "number",
+        description: "Prix net vendeur, sans les frais",
+        placeholder: "250000",
+      },
+    ]);
+    expect(f.description).toBe("Prix net vendeur, sans les frais");
+    expect(f.placeholder).toBe("250000");
+  });
+});
+
+/**
+ * L'ordre du tableau EST l'ordre d'affichage des champs partout, et c'est ce
+ * que réordonne `CustomFieldsSchemaEditor` (il n'y a pas de colonne `position`).
+ * Une normalisation qui trierait ou regrouperait les champs casserait le
+ * réordonnancement sans que rien d'autre ne le signale.
+ */
+describe("normalizeCustomFields — l'ordre est un contrat", () => {
+  it("préserve l'ordre reçu, y compris contre l'ordre alphabétique", () => {
+    const input = [
+      { key: "zebre", label: "Zèbre", type: "text" },
+      { key: "alpha", label: "Alpha", type: "text" },
+      { key: "milieu", label: "Milieu", type: "text" },
+    ];
+    expect(normalizeCustomFields(input).map((f) => f.key)).toEqual([
+      "zebre",
+      "alpha",
+      "milieu",
+    ]);
+  });
+
+  it("préserve l'ordre du format legacy plat", () => {
+    expect(normalizeCustomFields(["b", "a", "c"]).map((f) => f.key)).toEqual(["b", "a", "c"]);
+  });
+
+  it("retirer un doublon ne décale pas les autres", () => {
+    const input = [
+      { key: "a", label: "A", type: "text" },
+      { key: "b", label: "B", type: "text" },
+      { key: "a", label: "A bis", type: "text" },
+      { key: "c", label: "C", type: "text" },
+    ];
+    expect(normalizeCustomFields(input).map((f) => f.key)).toEqual(["a", "b", "c"]);
   });
 });
