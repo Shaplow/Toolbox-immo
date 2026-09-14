@@ -65,6 +65,7 @@ interface PatternsCatalogClientProps {
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
   videoLibraries: { id: string; name: string }[];
+  clients: { id: string; name: string }[];
 }
 
 /** Forme brute renvoyée par POST /api/admin/patterns — PatternTemplate Prisma tel quel (pas le CatalogItem flatten que consomme cette liste : pas de noms joints, pas de _count). */
@@ -127,6 +128,7 @@ export function PatternsCatalogClient({
   captionPresets,
   descriptionPrompts,
   videoLibraries,
+  clients,
 }: PatternsCatalogClientProps) {
   const router = useRouter();
   const [items, setItems] = useState<CatalogItem[]>(initialTemplates);
@@ -431,6 +433,7 @@ export function PatternsCatalogClient({
             captionPresets={captionPresets}
             descriptionPrompts={descriptionPrompts}
             videoLibraries={videoLibraries}
+            clients={clients}
             saving={saving}
             onSave={handleCreate}
             onClose={closeDrawer}

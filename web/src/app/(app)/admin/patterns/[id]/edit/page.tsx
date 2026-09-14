@@ -44,6 +44,7 @@ export default async function PatternEditPage({ params }: PageProps) {
     include: {
       _count: { select: { bindings: true } },
       updatedBy: { select: { id: true, name: true } },
+      autoActivations: { select: { clientId: true } },
       bindings: {
         select: {
           id: true,
@@ -59,7 +60,8 @@ export default async function PatternEditPage({ params }: PageProps) {
   });
   if (!tpl) notFound();
 
-  const [builderTemplates, captionPresets, descriptionPrompts, videoLibraries] = await Promise.all([
+  const [builderTemplates, captionPresets, descriptionPrompts, videoLibraries, clients] =
+    await Promise.all([
     prisma.template.findMany({
       select: { id: true, name: true },
       orderBy: { name: "asc" },
@@ -78,6 +80,7 @@ export default async function PatternEditPage({ params }: PageProps) {
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+      prisma.client.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
   return (
@@ -106,6 +109,9 @@ export default async function PatternEditPage({ params }: PageProps) {
         notes: tpl.notes,
         bindingCount: tpl._count.bindings,
         autoSaveToLibraryId: tpl.autoSaveToLibraryId ?? null,
+        autoActivateClientIds: tpl.autoActivations.map((a) => a.clientId),
+        autoActivateDayOfWeek: tpl.autoActivateDayOfWeek,
+        autoActivatePublishTime: tpl.autoActivatePublishTime,
         bindings: tpl.bindings,
         updatedBy:
           tpl.updatedBy && tpl.updatedAt
@@ -116,6 +122,7 @@ export default async function PatternEditPage({ params }: PageProps) {
       captionPresets={captionPresets}
       descriptionPrompts={descriptionPrompts}
       videoLibraries={videoLibraries}
+      clients={clients}
     />
   );
 }

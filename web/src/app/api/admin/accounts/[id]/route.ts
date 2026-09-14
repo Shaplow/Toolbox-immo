@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { applyAutoActivations } from "@/lib/services/pattern/autoActivateForAccount";
 import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { assertAssigneeRole } from "@/lib/services/slot/slotService";
@@ -61,9 +62,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data[field] = value;
   }
 
+  // Client AVANT l'update : l'auto-activation ne se déclenche que sur une
+  // transition (aucun client → client, ou changement de client), pas à chaque
+  // renommage du compte.
+  const before =
+    "clientId" in body
+      ? await prisma.instagramAccount.findUnique({
+          where: { id },
+          select: { clientId: true },
+        })
+      : null;
+
   try {
     const account = await prisma.instagramAccount.update({ where: { id }, data });
-    return NextResponse.json(account);
+
+    // On AJOUTE les recettes du nouveau client, on ne retire pas celles de
+    // l'ancien : retirer serait destructif et invisible. L'admin voit les
+    // recettes sur la fiche compte et les désactive s'il le souhaite.
+    const autoActivated =
+      typeof data.clientId === "string" && data.clientId !== before?.clientId
+        ? await applyAutoActivations(id, auth.ctx).catch((err) => {
+            console.error("[admin/accounts/[id]] auto-activation échouée:", err);
+            return { ok: [], failed: [] };
+          })
+        : { ok: [], failed: [] };
+
+    return NextResponse.json({ ...account, autoActivated });
   } catch (err: unknown) {
     if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "P2025") {
       return NextResponse.json({ error: "Compte introuvable" }, { status: 404 });

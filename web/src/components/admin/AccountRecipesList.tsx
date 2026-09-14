@@ -20,6 +20,7 @@ import {
   Layers,
   AlertCircle,
 } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
@@ -37,6 +38,11 @@ import { DAY_LABELS } from "@/types/calendar";
 export interface RecipeItem {
   /** Clé stable React : bindingId si lié, sinon `tpl-<templateId>`. */
   id: string;
+  /**
+   * La recette est allowlistée pour le client de ce compte : elle DEVRAIT y
+   * être activée. Non liée + ce flag = un oubli à rattraper.
+   */
+  autoActivateForThisClient?: boolean;
   /** ID du PatternBinding si la recette est liée à ce compte, sinon null. */
   bindingId: string | null;
   patternTemplateId: string;
@@ -357,6 +363,53 @@ export function AccountRecipesList({
   const [peekTemplateId, setPeekTemplateId] = useState<string | null>(null);
   const [pendingToggles, setPendingToggles] = useState<Set<string>>(new Set());
 
+  const [activatingMissing, setActivatingMissing] = useState(false);
+  /**
+   * Recettes attendues pour le client de ce compte mais jamais activées ici —
+   * typiquement un compte créé avant que la recette ne soit allowlistée. Rien
+   * n'est corrigé d'office : on le montre, l'admin clique.
+   */
+  const missingAutoActivations = useMemo(
+    () => recipes.filter((r) => !r.bindingId && r.autoActivateForThisClient),
+    [recipes],
+  );
+
+  async function activateMissing() {
+    setActivatingMissing(true);
+    try {
+      const res = await fetch(`/api/admin/accounts/${accountId}/auto-activate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patternTemplateIds: missingAutoActivations.map((r) => r.patternTemplateId),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        ok?: { label: string }[];
+        failed?: { label: string; error: string }[];
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? "Échec de l'activation.");
+        return;
+      }
+      if (data.ok?.length) toast.success(`${data.ok.length} recette(s) activée(s).`);
+      // Résultats partiels : dire lesquelles ont résisté, pas seulement le succès.
+      if (data.failed?.length) {
+        toast.error(
+          `${data.failed.length} non activée(s) : ${data.failed
+            .map((f) => `${f.label} — ${f.error}`)
+            .join(" · ")}`,
+        );
+      }
+      router.refresh();
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setActivatingMissing(false);
+    }
+  }
+
   const sortedRecipes = useMemo(() => {
     // Liées d'abord (triées par heure), puis disponibles (non liées) ensuite.
     return [...recipes].sort((a, b) => {
@@ -599,6 +652,25 @@ export function AccountRecipesList({
           </Button>
         </div>
       </header>
+
+      {missingAutoActivations.length > 0 && (
+        <Alert
+          variant="warning"
+          actions={
+            <Button size="sm" onClick={() => void activateMissing()} disabled={activatingMissing}>
+              {activatingMissing
+                ? "Activation…"
+                : `Activer ${missingAutoActivations.length === 1 ? "la recette" : `les ${missingAutoActivations.length}`}`}
+            </Button>
+          }
+        >
+          {missingAutoActivations.length === 1
+            ? `« ${missingAutoActivations[0].label} » est prévue pour ce client mais n'est pas activée sur ce compte.`
+            : `${missingAutoActivations.length} recettes prévues pour ce client ne sont pas activées sur ce compte : ${missingAutoActivations
+                .map((r) => r.label)
+                .join(", ")}.`}
+        </Alert>
+      )}
 
       {sortedRecipes.length === 0 ? (
         <EmptyState

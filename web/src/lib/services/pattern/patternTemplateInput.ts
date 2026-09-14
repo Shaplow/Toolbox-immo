@@ -24,6 +24,7 @@
  */
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/prisma";
+import { PUBLISH_TIME_RE } from "@/lib/publications/patternEnums";
 import {
   VALID_SOURCES,
   VALID_CAPTIONS_MODES,
@@ -59,6 +60,17 @@ export interface PatternTemplateInputPayload {
   autoSaveToLibraryId?: string | null;
   /** PATCH /patterns/[id] uniquement — ignoré par les routes /recipes qui ne l'envoient jamais. */
   isArchived?: boolean;
+  /**
+   * Clients dont les NOUVEAUX comptes reçoivent cette recette d'office.
+   *
+   * `undefined` = ne pas toucher à l'allowlist ; `[]` = la vider. Cette
+   * distinction est vitale : le payload est partagé avec les routes /recipes
+   * de la fiche compte, qui n'envoient jamais ces clés — un `[]` accidentel
+   * viderait l'allowlist à chaque édition de recette depuis un compte.
+   */
+  autoActivateClientIds?: string[];
+  autoActivateDayOfWeek?: number[];
+  autoActivatePublishTime?: string;
 }
 
 /** Dossier épinglé : trim, chaîne vide/blanche → null (= « tous les dossiers »). */
@@ -152,7 +164,54 @@ export async function validatePatternTemplateInput(
     }
   }
 
+  // ── Auto-activation ────────────────────────────────────────────────────
+  if (body.autoActivateClientIds !== undefined) {
+    if (!Array.isArray(body.autoActivateClientIds)) {
+      return `${fieldPrefix}autoActivateClientIds : liste de clients attendue`;
+    }
+    const ids = [...new Set(body.autoActivateClientIds.filter((v) => typeof v === "string"))];
+    if (ids.length > 0) {
+      const found = await prisma.client.findMany({
+        where: { id: { in: ids } },
+        select: { id: true },
+      });
+      if (found.length !== ids.length) {
+        return `${fieldPrefix}autoActivateClientIds : un des clients n'existe pas`;
+      }
+    }
+  }
+  if (body.autoActivateDayOfWeek !== undefined) {
+    if (
+      !Array.isArray(body.autoActivateDayOfWeek) ||
+      body.autoActivateDayOfWeek.some((d) => !Number.isInteger(d) || d < 1 || d > 7)
+    ) {
+      return `${fieldPrefix}autoActivateDayOfWeek : jours attendus entre 1 (lundi) et 7 (dimanche)`;
+    }
+  }
+  if (
+    body.autoActivatePublishTime !== undefined &&
+    !PUBLISH_TIME_RE.test(body.autoActivatePublishTime)
+  ) {
+    return `${fieldPrefix}autoActivatePublishTime : format HH:MM attendu`;
+  }
+
   return null;
+}
+
+/**
+ * Écriture imbriquée de l'allowlist — remplacement intégral, comme
+ * `OrderTemplateAccess`. N'est produite que si la clé est présente : les
+ * routes /recipes ne l'envoient jamais, donc elles ne peuvent pas la vider.
+ */
+function autoActivationsWrite(clientIds: string[] | undefined) {
+  if (clientIds === undefined) return {};
+  const ids = [...new Set(clientIds.filter((v) => typeof v === "string"))];
+  return {
+    autoActivations: {
+      deleteMany: {},
+      ...(ids.length > 0 ? { create: ids.map((clientId) => ({ clientId })) } : {}),
+    },
+  };
 }
 
 /** À appeler uniquement après un `validatePatternTemplateInput` réussi (label/source non-null garantis). */
@@ -184,7 +243,10 @@ export function toPatternTemplateCreateData(
     requiresEntityTypeId: payload.requiresEntityTypeId ?? null,
     autoSaveToLibraryId: payload.autoSaveToLibraryId ?? null,
     notes: payload.notes ?? null,
+    autoActivateDayOfWeek: payload.autoActivateDayOfWeek ?? [],
+    autoActivatePublishTime: payload.autoActivatePublishTime ?? "09:00",
     updatedByUserId,
+    ...autoActivationsWrite(payload.autoActivateClientIds),
   };
 }
 
@@ -231,6 +293,13 @@ export function toPatternTemplateUpdateData(
     ...(payload.autoSaveToLibraryId !== undefined ? { autoSaveToLibraryId: payload.autoSaveToLibraryId } : {}),
     ...(payload.notes !== undefined ? { notes: payload.notes } : {}),
     ...(payload.isArchived !== undefined ? { isArchived: payload.isArchived } : {}),
+    ...(payload.autoActivateDayOfWeek !== undefined
+      ? { autoActivateDayOfWeek: payload.autoActivateDayOfWeek }
+      : {}),
+    ...(payload.autoActivatePublishTime !== undefined
+      ? { autoActivatePublishTime: payload.autoActivatePublishTime }
+      : {}),
     updatedByUserId,
+    ...autoActivationsWrite(payload.autoActivateClientIds),
   };
 }

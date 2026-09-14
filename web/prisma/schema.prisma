@@ -1348,18 +1348,19 @@ model ShootEventActivity {
 
 /// Client final (agence ou agent immobilier) regroupant un ou plusieurs comptes Instagram.
 model Client {
-  id                    String                @id @default(cuid())
-  name                  String
-  contactName           String?
-  email                 String?
-  phone                 String?
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
-  accounts              InstagramAccount[]
+  id                     String                          @id @default(cuid())
+  name                   String
+  contactName            String?
+  email                  String?
+  phone                  String?
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
+  accounts               InstagramAccount[]
   /// Comptes externes (User rôle EXTERNAL_GENERATOR) rattachés à cette agence.
-  users                 User[]                @relation("ClientUsers")
-  orders                Order[]
-  orderTemplateAccesses OrderTemplateAccess[]
+  users                  User[]                          @relation("ClientUsers")
+  orders                 Order[]
+  orderTemplateAccesses  OrderTemplateAccess[]
+  patternAutoActivations PatternTemplateAutoActivation[]
 }
 
 // ─── Bons de commande (Order) ────────────────────────────────────────────────
@@ -1508,6 +1509,15 @@ model PatternTemplate {
   id    String @id @default(cuid())
   label String
 
+  /// Planning appliqué aux bindings créés AUTOMATIQUEMENT (cf.
+  /// PatternTemplateAutoActivation). Sur la recette et non sur la ligne
+  /// d'allowlist : le planning est une propriété de la recette, un planning
+  /// par client serait de la configuration que personne ne remplirait.
+  /// Vide = binding sans jour planifié, donc inerte pour la génération hebdo —
+  /// c'est le cas nominal des recettes de reels, qui naissent en banque.
+  autoActivateDayOfWeek   Int[]  @default([])
+  autoActivatePublishTime String @default("09:00")
+
   /// "auto_template" | "manual_rushes" | "external_upload"
   source     String
   templateId String?
@@ -1596,9 +1606,10 @@ model PatternTemplate {
 
   bindings              PatternBinding[]
   /// Missions rattachées directement à cette recette globale (sans binding).
-  slots                 PublicationSlot[]      @relation("SlotPatternTemplate")
-  orderTemplateRecipes  OrderTemplateRecipe[]  @relation("OrderTemplateRecipePattern")
-  orderRecipeSelections OrderRecipeSelection[] @relation("OrderRecipeSelectionPattern")
+  slots                 PublicationSlot[]               @relation("SlotPatternTemplate")
+  orderTemplateRecipes  OrderTemplateRecipe[]           @relation("OrderTemplateRecipePattern")
+  orderRecipeSelections OrderRecipeSelection[]          @relation("OrderRecipeSelectionPattern")
+  autoActivations       PatternTemplateAutoActivation[]
 }
 
 /// PatternBinding = application d'une recette globale à un compte IG.
@@ -1606,6 +1617,26 @@ model PatternTemplate {
 /// d'éventuels overrides ponctuels (changer le preset captions pour ce compte
 /// uniquement, etc.). Au moment de générer un slot, la valeur effective est
 /// résolue via binding.X ?? template.X.
+/// Allowlist d'auto-activation — même philosophie qu'OrderTemplateAccess.
+///
+/// À la création d'un compte Instagram (ou à son rattachement à un client), les
+/// recettes dont le client figure ici reçoivent un PatternBinding sans que
+/// personne n'ait à y penser. Répond à « à chaque nouveau compte je dois penser
+/// à activer certains types de vidéos, je vais sans doute oublier ».
+///
+/// Ne rattrape RIEN sur l'existant : les comptes déjà créés sont SIGNALÉS
+/// (cf. listMissingAutoActivations) et corrigés sur clic, jamais d'office.
+model PatternTemplateAutoActivation {
+  id                String          @id @default(cuid())
+  patternTemplateId String
+  patternTemplate   PatternTemplate @relation(fields: [patternTemplateId], references: [id], onDelete: Cascade)
+  clientId          String
+  client            Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([patternTemplateId, clientId])
+  @@index([clientId])
+}
+
 model PatternBinding {
   id                String           @id @default(cuid())
   accountId         String

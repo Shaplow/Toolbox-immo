@@ -40,7 +40,8 @@ export default async function AdminPatternsPage() {
   // Données d'options pour le formulaire d'édition (créées via les routes
   // mais utiles à fournir au composant client pour éviter un fetch
   // supplémentaire).
-  const [builderTemplates, captionPresets, descriptionPrompts, videoLibraries] = await Promise.all([
+  const [builderTemplates, captionPresets, descriptionPrompts, videoLibraries, clients] =
+    await Promise.all([
     prisma.template.findMany({
       select: { id: true, name: true },
       orderBy: { name: "asc" },
@@ -59,6 +60,7 @@ export default async function AdminPatternsPage() {
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+      prisma.client.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
   return (
@@ -85,6 +87,7 @@ export default async function AdminPatternsPage() {
       captionPresets={captionPresets}
       descriptionPrompts={descriptionPrompts}
       videoLibraries={videoLibraries}
+      clients={clients}
     />
   );
 }

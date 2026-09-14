@@ -14,6 +14,11 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Sparkles, Trash2, ExternalLink, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Input } from "@/components/ui/Input";
+import { DayOfWeekPicker } from "@/components/admin/shared/DayOfWeekPicker";
+import { FormField } from "@/components/ui/FormField";
+import { TimePicker } from "@/components/ui/TimePicker";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -65,6 +70,10 @@ export interface PatternTemplateInitial {
   bindingCount?: number;
   /** Bibliothèque vidéo cible pour l'auto-save de la sortie. null = désactivé. */
   autoSaveToLibraryId?: string | null;
+  /** Clients dont les nouveaux comptes reçoivent cette recette d'office. */
+  autoActivateClientIds?: string[];
+  autoActivateDayOfWeek?: number[];
+  autoActivatePublishTime?: string;
   /** Comptes liés — fournis en SSR, pas de refetch lazy au montage. */
   bindings?: LinkedBinding[];
   updatedBy?: { name: string; at: string } | null;
@@ -80,6 +89,8 @@ interface PatternTemplateFormProps {
   descriptionPrompts: { id: string; name: string }[];
   /** Bibliothèques de type "video" disponibles pour l'auto-save de sortie. */
   videoLibraries: { id: string; name: string }[];
+  /** Clients sélectionnables pour l'activation automatique. */
+  clients: { id: string; name: string }[];
   saving: boolean;
   onSave: (values: PatternTemplateFormValues) => Promise<void> | void;
   onArchive?: () => void;
@@ -89,6 +100,13 @@ interface PatternTemplateFormProps {
 /** Champs SAFE pour l'auto-save en édition — le reste reste en save manuel + ConfirmDialog d'impact. */
 type PatternTemplatePatch = {
   label?: string;
+  /**
+   * Activation automatique — SAFE : ces champs n'affectent que les comptes
+   * créés ENSUITE. Aucune publication existante, aucun binding déjà posé.
+   */
+  autoActivateClientIds?: string[];
+  autoActivateDayOfWeek?: number[];
+  autoActivatePublishTime?: string;
   notes?: string | null;
   needsBrief?: boolean;
   requiresProperty?: boolean;
@@ -105,6 +123,7 @@ export function PatternTemplateForm({
   captionPresets,
   descriptionPrompts,
   videoLibraries,
+  clients,
   saving,
   onSave,
   onArchive,
@@ -125,6 +144,26 @@ export function PatternTemplateForm({
   // déploiement (pas de refetch lazy au montage, cf. Phase 10 V2 bug A.1
   // désormais résolu : l'initial SSR porte déjà tous les champs).
   const [linkedBindings, setLinkedBindings] = useState<LinkedBinding[]>(initial?.bindings ?? []);
+  // Activation automatique : la liste des clients dont les nouveaux comptes
+  // reçoivent cette recette sans qu'on ait à y penser.
+  const [autoClientIds, setAutoClientIds] = useState<string[]>(
+    initial?.autoActivateClientIds ?? [],
+  );
+  const [autoDays, setAutoDays] = useState<number[]>(initial?.autoActivateDayOfWeek ?? []);
+  const [autoTime, setAutoTime] = useState(initial?.autoActivatePublishTime ?? "09:00");
+  const [clientFilter, setClientFilter] = useState("");
+  const visibleClients = useMemo(() => {
+    const q = clientFilter.trim().toLowerCase();
+    return q ? clients.filter((c) => c.name.toLowerCase().includes(q)) : clients;
+  }, [clients, clientFilter]);
+
+  /** Applique un réglage d'auto-activation — SAFE, donc auto-save direct. */
+  function patchAutoActivation(patch: PatternTemplatePatch) {
+    if (patch.autoActivateClientIds !== undefined) setAutoClientIds(patch.autoActivateClientIds);
+    if (patch.autoActivateDayOfWeek !== undefined) setAutoDays(patch.autoActivateDayOfWeek);
+    if (patch.autoActivatePublishTime !== undefined) setAutoTime(patch.autoActivatePublishTime);
+    if (templateId) autoSave.enqueue(patch);
+  }
 
   // Phase 10 V2 — auto-save sur les champs SAFE en mode édition :
   //   - label, notes, workflow toggles (needsBrief, needsAdminValidation,
@@ -313,6 +352,100 @@ export function PatternTemplateForm({
           descriptionPrompts={descriptionPrompts}
           videoLibraries={videoLibraries}
         />
+
+        {/* Activation automatique — répond à « à chaque nouveau compte je dois
+            penser à activer certains types de vidéos, je vais sans doute
+            oublier ». Les comptes DÉJÀ créés ne sont jamais touchés d'office :
+            ils sont signalés sur leur fiche, avec un bouton pour corriger. */}
+        <section className="pt-4 mt-5 border-t border-border">
+          <CollapsibleSection
+            title={`Activation automatique · ${autoClientIds.length} client${autoClientIds.length > 1 ? "s" : ""}`}
+            defaultOpen={false}
+            storageKey={`pattern-template:${templateId ?? "new"}:auto-activation`}
+          >
+            <div className="pt-1 space-y-3">
+              <p className="text-[11.5px] text-muted-foreground">
+                Tout nouveau compte Instagram rattaché à l&apos;un de ces clients recevra
+                cette recette, déjà active. Les comptes existants ne sont pas modifiés —
+                leur fiche signale ce qui manque.
+              </p>
+
+              {clients.length === 0 ? (
+                <p className="text-[11.5px] text-muted-foreground italic">
+                  Aucun client enregistré.
+                </p>
+              ) : (
+                <>
+                  {clients.length > 8 && (
+                    <Input
+                      value={clientFilter}
+                      onChange={setClientFilter}
+                      placeholder="Filtrer les clients…"
+                      className="text-xs"
+                    />
+                  )}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                    {visibleClients.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={autoClientIds.includes(c.id)}
+                          onChange={(next) =>
+                            patchAutoActivation({
+                              autoActivateClientIds: next
+                                ? [...autoClientIds, c.id]
+                                : autoClientIds.filter((id) => id !== c.id),
+                            })
+                          }
+                          size="sm"
+                          label={c.name}
+                        />
+                        <span className="text-[12px] text-foreground">{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {autoClientIds.length > 0 && (
+                    <div className="pt-1">
+                      <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1">
+                        Planning des recettes activées
+                      </p>
+                      {/* Planning seul : BindingScheduleFields porte aussi
+                          l'équipe par défaut, qui n'a pas lieu d'être ici —
+                          les assignés retombent sur ceux du compte. */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <FormField label="Heure de publication">
+                          <TimePicker
+                            value={autoTime}
+                            onChange={(v) =>
+                              patchAutoActivation({ autoActivatePublishTime: v })
+                            }
+                          />
+                        </FormField>
+                        <FormField label="Jours auto-générés">
+                          <DayOfWeekPicker
+                            value={autoDays}
+                            onChange={(v) =>
+                              patchAutoActivation({ autoActivateDayOfWeek: v })
+                            }
+                          />
+                        </FormField>
+                      </div>
+                      {/* Sans jour, le binding est inerte pour la génération
+                          hebdo — ce qui est le cas nominal des recettes de
+                          reels, qui naissent en banque depuis un tournage. */}
+                      {autoDays.length === 0 && (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Sans jour de publication, la recette est activée mais ne génère
+                          rien automatiquement — les publications naissent en banque.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </CollapsibleSection>
+        </section>
 
         {/* Sprint B — Comptes utilisant cette recette (fournis en SSR). */}
         {templateId && (

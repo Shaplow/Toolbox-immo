@@ -28,6 +28,7 @@ interface PatternEditClientProps {
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
   videoLibraries: { id: string; name: string }[];
+  clients: { id: string; name: string }[];
 }
 
 export function PatternEditClient({
@@ -37,6 +38,7 @@ export function PatternEditClient({
   captionPresets,
   descriptionPrompts,
   videoLibraries,
+  clients,
 }: PatternEditClientProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -110,6 +112,7 @@ export function PatternEditClient({
           captionPresets={captionPresets}
           descriptionPrompts={descriptionPrompts}
           videoLibraries={videoLibraries}
+          clients={clients}
           saving={saving}
           onSave={handleSave}
           onArchive={handleArchive}

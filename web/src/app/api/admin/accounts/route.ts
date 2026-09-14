@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
+import { applyAutoActivations } from "@/lib/services/pattern/autoActivateForAccount";
 
 // Sentinels de curseur partagé (rotationScope="shared") — exclus des listings UI.
 
@@ -59,7 +60,18 @@ export async function POST(req: NextRequest) {
         ...(clientId ? { client: { connect: { id: clientId } } } : {}),
       },
     });
-    return NextResponse.json(account, { status: 201 });
+    // Recettes attendues pour le client : activées d'office, c'est tout
+    // l'objet de la fonctionnalité. Best-effort assumé — une activation qui
+    // échoue ne doit pas faire rater la création du compte, l'admin la
+    // rattrapera depuis la fiche compte, qui les signale.
+    const autoActivated = clientId
+      ? await applyAutoActivations(account.id, auth.ctx).catch((err) => {
+          console.error("[admin/accounts] auto-activation échouée:", err);
+          return { ok: [], failed: [] };
+        })
+      : { ok: [], failed: [] };
+
+    return NextResponse.json({ ...account, autoActivated }, { status: 201 });
   } catch (err: unknown) {
     if (err && typeof err === "object" && "code" in err && (err as { code: string }).code === "P2002") {
       return NextResponse.json({ error: "Ce handle Instagram est déjà utilisé" }, { status: 409 });

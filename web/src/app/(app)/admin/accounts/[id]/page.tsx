@@ -177,6 +177,23 @@ export default async function AccountFichePage({ params }: Props) {
   const activeRecipesCount = account.patternBindings.filter((b) => b.isActive).length;
   const totalRecipesCount = account.patternBindings.length;
 
+  /**
+   * Recettes que ce compte DEVRAIT avoir : celles dont son client figure dans
+   * l'allowlist d'auto-activation. Un compte créé avant qu'une recette n'y soit
+   * ajoutée ne l'a pas — c'est exactement l'oubli que la fonctionnalité évite,
+   * et il faut le voir ici plutôt que de le découvrir en production.
+   */
+  const expectedTemplateIds = new Set(
+    account.clientId
+      ? (
+          await prisma.patternTemplateAutoActivation.findMany({
+            where: { clientId: account.clientId, patternTemplate: { isArchived: false } },
+            select: { patternTemplateId: true },
+          })
+        ).map((a) => a.patternTemplateId)
+      : [],
+  );
+
   // G.1 — flatten binding + template en RecipeItem unique. L'UI consomme
   // une seule structure sans connaître la mécanique template/binding.
   const recipes: RecipeItem[] = account.patternBindings.map((b) => {
@@ -232,6 +249,7 @@ export default async function AccountFichePage({ params }: Props) {
       hasCoverModeOverride: !!b.coverModeOverride,
       overrideCount,
       sharedWithCount: tpl._count.bindings,
+      autoActivateForThisClient: expectedTemplateIds.has(b.patternTemplateId),
     };
   });
 
@@ -287,6 +305,7 @@ export default async function AccountFichePage({ params }: Props) {
       hasCoverModeOverride: false,
       overrideCount: 0,
       sharedWithCount: t._count.bindings,
+      autoActivateForThisClient: expectedTemplateIds.has(t.id),
     }));
   const allRecipes: RecipeItem[] = [...recipes, ...availableRecipes];
 
