@@ -9,6 +9,7 @@ import {
   RefreshCw,
   CalendarDays,
   Sparkles,
+  LayoutGrid,
   Filter,
   X,
   Inbox,
@@ -35,6 +36,7 @@ import { BulkCancelModal } from "./BulkCancelModal";
 import { BulkMarkPublishedModal } from "./BulkMarkPublishedModal";
 import { BULK_PUBLISHABLE_STATUSES } from "@/lib/publications/constants";
 import { ScheduleFromBankModal } from "./ScheduleFromBankModal";
+import { WeekFillModal } from "./WeekFillModal";
 import { CalendarFilters, type CalendarFiltersState } from "./CalendarFilters";
 import { CalendarDndContext, type SlotDropPayload } from "./dnd/CalendarDndContext";
 import { useSlotDrag } from "./dnd/useSlotDrag";
@@ -185,6 +187,7 @@ export function CalendarView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<PublicationSlot | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showWeekFill, setShowWeekFill] = useState(false);
   const [scheduleFromBank, setScheduleFromBank] = useState<PublicationSlot | null>(null);
   /** Jour visé par un glisser-déposer dérouté vers la modale (choix du compte). */
   const [scheduleFromBankDate, setScheduleFromBankDate] = useState<string | undefined>(undefined);
@@ -824,6 +827,18 @@ export function CalendarView({
                     >
                       Nouvelle publication
                     </Button>
+                    {/* Répartit les reels auto entre les comptes en espaçant
+                        les recettes — le geste qui se faisait à l'œil, une
+                        publication à la fois, en scrutant le calendrier. */}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={LayoutGrid}
+                      onClick={() => setShowWeekFill(true)}
+                      title="Répartit les reels auto sur la semaine en espaçant les recettes entre les comptes"
+                    >
+                      <span className="hidden sm:inline">Remplir la semaine</span>
+                    </Button>
                     <Button
                       variant="secondary"
                       size="sm"
@@ -1048,6 +1063,16 @@ export function CalendarView({
           defaultDate={addDefaultDate}
           onCreated={handleSlotCreated}
           onClose={() => setShowAdd(false)}
+        />
+      )}
+
+      {showWeekFill && (
+        <WeekFillModal
+          weekStart={weekStart}
+          accounts={accounts}
+          filteredAccountId={filters.accountId || undefined}
+          onCreated={() => void load()}
+          onClose={() => setShowWeekFill(false)}
         />
       )}
 
