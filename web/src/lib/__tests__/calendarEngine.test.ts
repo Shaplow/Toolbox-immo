@@ -179,7 +179,7 @@ describe("generateCalendarSlots — chaque refus est nommé", () => {
     mockSlotFindMany.mockResolvedValue([
       {
         accountId: "acc1",
-        scheduledAt: new Date("2026-09-14T18:00:00.000Z"),
+        scheduledAt: new Date("2026-09-14T16:00:00.000Z"),
         patternBindingId: "b1",
       },
     ]);
@@ -274,7 +274,7 @@ describe("aperçu du dry-run", () => {
       {
         accountId: "acc1",
         patternBindingId: "b1",
-        scheduledAt: "2026-09-14T18:00:00.000Z",
+        scheduledAt: "2026-09-14T16:00:00.000Z",
         label: "RVA1",
         patternTemplateId: "pt1",
         templateId: "tpl1",
@@ -298,12 +298,47 @@ describe("aperçu du dry-run", () => {
     mockSlotFindMany.mockResolvedValue([
       {
         accountId: "acc1",
-        scheduledAt: new Date("2026-09-14T18:00:00.000Z"),
+        scheduledAt: new Date("2026-09-14T16:00:00.000Z"),
         patternBindingId: "b1",
       },
     ]);
     const result = await generateCalendarSlots({ ...WEEK, dryRun: true });
     expect(result.created).toBe(0);
     expect(result.preview).toEqual([]);
+  });
+});
+
+/**
+ * `publishTime` est une heure de PARIS, pas UTC.
+ *
+ * `setUTCHours(publishTime)` posait « 18:00 » à 18:00 UTC, soit 20:00 affiché —
+ * toute l'app rend en Europe/Paris. La création à l'unité, elle, a toujours
+ * interprété l'heure en heure locale : deux publications déclarant la même heure
+ * atterrissaient à deux heures différentes selon le chemin qui les avait créées,
+ * et l'écart changeait avec la saison.
+ */
+describe("publishTime est une heure de Paris", () => {
+  it("en été, 18:00 Paris = 16:00 UTC", async () => {
+    mockBindingFindMany.mockResolvedValue([binding({ publishTime: "18:00" })]);
+    const result = await generateCalendarSlots({ ...WEEK, dryRun: true });
+    expect(result.preview?.[0].scheduledAt).toBe("2026-09-14T16:00:00.000Z");
+  });
+
+  /** L'écart n'est pas une constante : il suit le changement d'heure. */
+  it("en hiver, 18:00 Paris = 17:00 UTC", async () => {
+    mockBindingFindMany.mockResolvedValue([binding({ publishTime: "18:00" })]);
+    const result = await generateCalendarSlots({
+      dateFrom: new Date("2026-01-05T00:00:00.000Z"), // lundi
+      dateTo: new Date("2026-01-11T23:59:59.999Z"),
+      dryRun: true,
+    });
+    expect(result.preview?.[0].scheduledAt).toBe("2026-01-05T17:00:00.000Z");
+  });
+
+  /** « 9:00 » sans zéro initial reste accepté — il l'était déjà. */
+  it("accepte une heure sans zéro initial", async () => {
+    mockBindingFindMany.mockResolvedValue([binding({ publishTime: "9:00" })]);
+    const result = await generateCalendarSlots({ ...WEEK, dryRun: true });
+    expect(result.preview?.[0].scheduledAt).toBe("2026-09-14T07:00:00.000Z");
   });
 });

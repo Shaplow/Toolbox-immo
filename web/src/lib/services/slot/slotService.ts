@@ -10,6 +10,7 @@
  */
 
 import { PUBLISH_TIME_RE } from "@/lib/publications/patternEnums";
+import { localInputToIso, parisDayKey } from "@/lib/date/formatFr";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import type { UserContext } from "@/lib/userContext";
@@ -1023,8 +1024,8 @@ export async function bulkScheduleSlots(
     return { scheduledCount: 0, skippedCount: skipped };
   }
 
-  // Calcule la date+heure de chaque slot. Tout en UTC pour rester
-  // déterministe côté serveur (peut tourner en UTC ou non).
+  // L'étalement se fait en millisecondes — déterministe quel que soit le fuseau
+  // du serveur. L'HEURE de la recette, elle, est une heure de Paris (cf. plus bas).
   const oneDayMs = 24 * 60 * 60 * 1000;
 
   function computeScheduledAt(index: number, bindingPublishTime?: string): Date {
@@ -1034,8 +1035,23 @@ export async function bulkScheduleSlots(
         : 0;
     const day = new Date(baseStart.getTime() + dayOffset * oneDayMs);
     if (input.useBindingTime && bindingPublishTime && PUBLISH_TIME_RE.test(bindingPublishTime)) {
+      /**
+       * `publishTime` est une heure de PARIS, pas UTC.
+       *
+       * `setUTCHours` posait « 18:00 » à 18:00 UTC, soit 20:00 affiché — toute
+       * l'app rend en Europe/Paris. Même convention que `calendarEngine` et que
+       * la création à l'unité : une publication doit tomber à l'heure annoncée,
+       * quel que soit le chemin qui l'a créée et quelle que soit la saison.
+       *
+       * Passer par le jour civil PARIS règle en prime l'ajout de 24 h en
+       * millisecondes à cheval sur un changement d'heure : le jour est le bon,
+       * et l'heure est reposée telle qu'annoncée.
+       */
       const [h, m] = bindingPublishTime.split(":").map(Number);
-      day.setUTCHours(h, m, 0, 0);
+      const iso = localInputToIso(
+        `${parisDayKey(day)}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
+      );
+      if (iso) return new Date(iso);
     }
     return day;
   }

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import type { SlotStatus } from "@/types/roles";
 import type { CalendarSkipReason, GenerateCalendarSkip } from "@/lib/calendar/skips";
+import { localInputToIso } from "@/lib/date/formatFr";
 
 export type { CalendarSkipReason, GenerateCalendarSkip };
 
@@ -81,6 +82,11 @@ const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
  * Normalise une date vers le lundi 00:00:00 UTC de sa semaine.
  * dayOfWeek interne : 1=Lundi … 7=Dimanche (cohérent avec PatternBinding.dayOfWeek).
  */
+/** "9" → "09" — `publishTime` accepte « 9:00 », `localInputToIso` exige « 09:00 ». */
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
 function toMondayUTC(d: Date): Date {
   const jsDay = d.getUTCDay(); // 0=Dim, 1=Lun, …, 6=Sam
   const dayOfWeek = jsDay === 0 ? 7 : jsDay; // 1=Lun, 7=Dim
@@ -223,9 +229,36 @@ export async function generateCalendarSlots(
   for (let weekMs = startMondayMs; weekMs <= endMondayMs; weekMs += ONE_WEEK_MS) {
     for (const pattern of patterns) {
       for (const dow of pattern.dayOfWeek) {
-        const targetDate = new Date(weekMs);
-        targetDate.setUTCDate(targetDate.getUTCDate() + (dow - 1));
-        targetDate.setUTCHours(pattern.hours, pattern.minutes, 0, 0);
+        // Le JOUR se calcule en UTC (weekMs est un lundi à minuit UTC) : ses
+        // composantes UTC SONT le jour civil visé.
+        const dayBase = new Date(weekMs);
+        dayBase.setUTCDate(dayBase.getUTCDate() + (dow - 1));
+        const dayKey = dayBase.toISOString().slice(0, 10);
+
+        /**
+         * L'HEURE, elle, est une heure de PARIS — pas UTC.
+         *
+         * `setUTCHours(publishTime)` posait « 10:00 » à 10:00 UTC, soit 12:00
+         * affiché (toute l'app rend en Europe/Paris). La création à l'unité,
+         * elle, a toujours interprété l'heure en heure locale : deux
+         * publications déclarant la même heure atterrissaient à deux heures
+         * différentes selon le chemin qui les avait créées, et l'écart
+         * changeait avec la saison.
+         *
+         * `localInputToIso` fait la conversion mur → instant avec le bon
+         * décalage saisonnier, y compris les jours de changement d'heure.
+         */
+        const iso = localInputToIso(
+          `${dayKey}T${pad2(pattern.hours)}:${pad2(pattern.minutes)}`,
+        );
+        // publishTime est déjà validé plus haut : un null ici serait un jour
+        // civil impossible, pas une heure malformée. On l'écarte plutôt que de
+        // faire échouer toute la run pour tous les comptes.
+        if (!iso) {
+          outOfRange++;
+          continue;
+        }
+        const targetDate = new Date(iso);
 
         // Hors plage : bord de semaine partielle, ou jour déjà passé (la route
         // admin borne dateFrom à `now`). C'est la raison la plus fréquente d'un
