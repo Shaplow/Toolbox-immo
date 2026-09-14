@@ -1,4 +1,5 @@
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
+import { compareNatural } from "@/lib/utils/naturalSort";
 import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -72,6 +73,7 @@ export default async function AccountFichePage({ params }: Props) {
       select: {
         id: true,
         label: true,
+        family: true,
         clientLabel: true,
         clientDescription: true,
         source: true,
@@ -131,6 +133,12 @@ export default async function AccountFichePage({ params }: Props) {
       orderBy: { name: "asc" },
     }),
   ]);
+
+  // Suggestions du champ « Famille » du drawer recette — déduites du catalogue
+  // déjà chargé ci-dessus, pas d'aller-retour DB supplémentaire.
+  const knownFamilies = [
+    ...new Set(catalogTemplates.map((t) => t.family).filter((f): f is string => !!f)),
+  ].sort(compareNatural);
 
   const mediaLibrariesAccessible = await prisma.mediaLibrary.findMany({
     where: {
@@ -214,6 +222,7 @@ export default async function AccountFichePage({ params }: Props) {
       templateLabel: tpl.label,
       source: tpl.source,
       templateId: tpl.templateId,
+      family: tpl.family,
       clientLabel: tpl.clientLabel,
       clientDescription: tpl.clientDescription,
       coverMode: tpl.coverMode,
@@ -271,6 +280,7 @@ export default async function AccountFichePage({ params }: Props) {
       patternTemplateId: t.id,
       label: t.label,
       templateLabel: t.label,
+      family: t.family,
       clientLabel: t.clientLabel,
       clientDescription: t.clientDescription,
       source: t.source,
@@ -416,6 +426,7 @@ export default async function AccountFichePage({ params }: Props) {
             videastes={videasteUsers.map((u) => ({ id: u.id, name: u.name }))}
             captionPresets={captionPresets}
             descriptionPrompts={descriptionPrompts}
+            knownFamilies={knownFamilies}
           />
 
           <section>

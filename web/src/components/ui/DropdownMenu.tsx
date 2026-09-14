@@ -75,7 +75,10 @@ export function DropdownMenu({ trigger, items, align = "start", side = "bottom" 
             left: position.left,
             zIndex: POPOVER_Z_INDEX,
           }}
-          className="min-w-[180px] rounded-md bg-popover text-popover-foreground border border-border shadow-lg py-1"
+          // max-h aligné sur le `maxHeight` que le hook de positionnement
+          // suppose déjà : sans overflow, un menu de vingt items débordait de
+          // l'écran et ses derniers items devenaient inatteignables.
+          className="min-w-[180px] max-h-[320px] overflow-y-auto rounded-md bg-popover text-popover-foreground border border-border shadow-lg py-1"
         >
           {items.map((item, idx) => {
             if (item === "separator") {

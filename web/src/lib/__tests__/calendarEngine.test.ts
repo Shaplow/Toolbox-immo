@@ -277,7 +277,6 @@ describe("aperçu du dry-run", () => {
         scheduledAt: "2026-09-14T16:00:00.000Z",
         label: "RVA1",
         patternTemplateId: "pt1",
-        templateId: "tpl1",
       },
     ]);
   });

@@ -275,3 +275,39 @@ describe("mapping descriptionDataSetTag — le dossier suit toujours la biblioth
     ).toBeNull();
   });
 });
+
+/**
+ * La famille — le piège déjà vécu avec `autoActivateClientIds`.
+ *
+ * `RecipeForm` (fiche compte) et `PatternTemplateForm` (catalogue) partagent ce
+ * payload. Si un appelant n'envoie pas la clé, la colonne ne doit PAS bouger :
+ * sans ce `!== undefined`, ranger une recette dans une famille puis l'éditer
+ * depuis un compte l'aurait sortie de sa famille, en silence.
+ */
+describe("mapping family", () => {
+  it("clé absente = la colonne n'est pas touchée", () => {
+    expect("family" in toPatternTemplateUpdateData({ label: "X" }, "u1")).toBe(false);
+  });
+
+  it("chaîne vide ou blanche = null, pas \"\"", () => {
+    // La sentinelle « Sans famille » de l'écran de remplissage doit être sans
+    // ambiguïté : `null` et `""` ne doivent pas coexister en base.
+    expect(toPatternTemplateUpdateData({ family: "" }, "u1").family).toBeNull();
+    expect(toPatternTemplateUpdateData({ family: "   " }, "u1").family).toBeNull();
+    expect(toPatternTemplateCreateData({ label: "X", source: "auto_template" }, "u1").family)
+      .toBeNull();
+  });
+
+  it("valeur trimée, et bornée à une ligne", () => {
+    expect(toPatternTemplateUpdateData({ family: "  TRANSACTION " }, "u1").family).toBe(
+      "TRANSACTION",
+    );
+    expect(
+      String(toPatternTemplateUpdateData({ family: "F".repeat(200) }, "u1").family),
+    ).toHaveLength(60);
+  });
+
+  it("null explicite sort la recette de sa famille", () => {
+    expect(toPatternTemplateUpdateData({ family: null }, "u1").family).toBeNull();
+  });
+});

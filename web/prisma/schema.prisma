@@ -1558,6 +1558,17 @@ model PatternTemplate {
   id    String @id @default(cuid())
   label String
 
+  /// Famille éditoriale — « TRANSACTION », « COMMERCE »…
+  ///
+  /// Sert à remplir une semaine « en TRANSACTION » sans cocher quinze recettes.
+  /// Texte libre et non une table : même doctrine que `descriptionDataSetTag`
+  /// et `MediaAsset.setTag`, et une taxonomie de recettes ne vaut pas un CRUD.
+  ///
+  /// Volontairement PAS déduite du libellé : les recettes d'une même famille
+  /// peuvent porter deux nommages (« RTEXT 1..5 » et « RAUTO 7..14 » étaient la
+  /// même série), et une déduction par préfixe les aurait séparées.
+  family String?
+
   /// Comment cette recette se présente AU CLIENT, hors de l'équipe.
   ///
   /// « RVA1 », « RPOD », « RTIPS » sont du jargon interne, et c'est pourtant ce

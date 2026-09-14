@@ -61,7 +61,11 @@ function bindingRow(over: Record<string, unknown> = {}) {
     patternTemplateId: "pt1",
     publishTime: "09:00",
     customLabel: null,
-    patternTemplate: { label: "RAUTO 1", createdAt: new Date("2026-01-01T00:00:00Z"), templateId: "tpl-1" },
+    patternTemplate: {
+      label: "RAUTO 1",
+      family: null,
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+    },
     ...over,
   };
 }
@@ -127,8 +131,8 @@ describe("buildWeekFillContext — ce qui entre dans le pool", () => {
   });
 
   /**
-   * L'identité « quelle recette » : le binding fait foi, le template direct est
-   * le repli des missions sans compte.
+   * L'identité « quelle recette », c'est LA RECETTE. Le binding fait foi, le
+   * template direct est le repli des missions sans compte.
    */
   it("reconstitue l'usage depuis le binding, avec repli sur le template direct", async () => {
     mockSlotFindMany.mockResolvedValue([
@@ -136,24 +140,70 @@ describe("buildWeekFillContext — ce qui entre dans le pool", () => {
         accountId: "acc1",
         scheduledAt: new Date("2026-10-05T09:00:00.000Z"),
         patternTemplateId: null,
-        patternTemplate: null,
-        patternBinding: { patternTemplateId: "pt1", patternTemplate: { templateId: "tpl-1" } },
+        patternBinding: { patternTemplateId: "pt1" },
       },
       {
         accountId: "acc1",
         scheduledAt: new Date("2026-10-06T09:00:00.000Z"),
         patternTemplateId: "pt-direct",
-        patternTemplate: { templateId: null },
         patternBinding: null,
       },
     ]);
 
     const result = await buildWeekFillContext({ accountIds: ["acc1"], ...WINDOW });
 
-    // Indexé par CONTENU : le template builder quand il existe, la recette sinon.
-    expect(result.existingUse["tpl-1"].allDays).toEqual([dayIndexFromKey("2026-10-05")]);
+    expect(result.existingUse.pt1.allDays).toEqual([dayIndexFromKey("2026-10-05")]);
     expect(result.existingUse["pt-direct"].allDays).toEqual([dayIndexFromKey("2026-10-06")]);
     expect(result.occupiedByAccount.acc1).toEqual(["2026-10-05", "2026-10-06"]);
+  });
+
+  /**
+   * LE VERROU DE RÉGRESSION de cette vague.
+   *
+   * J'avais décidé que deux recettes pointant le même gabarit builder étaient
+   * « le même contenu » et partageaient leur historique. C'est une erreur de
+   * catégorie : le gabarit est une MISE EN PAGE, le contenu vient des données
+   * (`descriptionDataLibraryId` / `descriptionDataSetTag`, tirage média).
+   *
+   * Conséquence vécue : ses RAUTO 7 à 14 partagent un gabarit. Publier RAUTO 11
+   * le vendredi enterrait les sept autres — dont 12 et 13, vieilles de deux
+   * semaines — et l'outil basculait sur une autre série. Son écran l'annonçait
+   * sans que personne ne le lise : « 12 contenus distincts » pour 19 recettes.
+   *
+   * Ce test vit ICI et pas dans `dispatch` : une fois le champ retiré, le bug
+   * n'est plus exprimable dans le module pur. C'est le service qui construisait
+   * la clé, c'est lui qui doit rester verrouillé.
+   */
+  it("deux recettes sur le même gabarit ont deux historiques SÉPARÉS", async () => {
+    mockSlotFindMany.mockResolvedValue([
+      // Les deux recettes partagent le gabarit « tpl-rauto », comme ses
+      // RAUTO 7 à 14. C'est exactement ce que la requête renvoie en vrai.
+      {
+        accountId: "acc1",
+        scheduledAt: new Date("2026-09-11T09:00:00.000Z"),
+        patternTemplateId: null,
+        patternTemplate: null,
+        patternBinding: {
+          patternTemplateId: "rauto-11",
+          patternTemplate: { templateId: "tpl-rauto" },
+        },
+      },
+      {
+        accountId: "acc1",
+        scheduledAt: new Date("2026-09-02T09:00:00.000Z"),
+        patternTemplateId: null,
+        patternTemplate: null,
+        patternBinding: {
+          patternTemplateId: "rauto-12",
+          patternTemplate: { templateId: "tpl-rauto" },
+        },
+      },
+    ]);
+
+    const result = await buildWeekFillContext({ accountIds: ["acc1"], ...WINDOW });
+
+    expect(Object.keys(result.existingUse).sort()).toEqual(["rauto-11", "rauto-12"]);
+    expect(result.existingUse["rauto-12"].allDays).toEqual([dayIndexFromKey("2026-09-02")]);
   });
 
   it("le pool compte sur combien de comptes chaque recette est activée", async () => {
@@ -164,10 +214,68 @@ describe("buildWeekFillContext — ce qui entre dans le pool", () => {
         patternTemplate: { label: "RAUTO 2", createdAt: new Date("2026-01-02T00:00:00Z"), templateId: "tpl-2" } }),
     ]);
     const result = await buildWeekFillContext({ accountIds: ["acc1", "acc2"], ...WINDOW });
+    expect(result.duplicateLabels).toEqual([]);
     expect(result.pool).toEqual([
-      { patternTemplateId: "pt1", label: "RAUTO 1", accountCount: 2 },
-      { patternTemplateId: "pt2", label: "RAUTO 2", accountCount: 1 },
+      { patternTemplateId: "pt1", label: "RAUTO 1", family: null, accountCount: 2 },
+      { patternTemplateId: "pt2", label: "RAUTO 2", family: null, accountCount: 1 },
     ]);
+  });
+
+  /**
+   * La famille remonte telle quelle, `null` compris — l'écran en fait une
+   * entrée « Sans famille » de plein droit. La déduire du libellé a été
+   * explicitement écarté : RTEXT 1-5 et RAUTO 7-14 sont la MÊME famille sous
+   * deux noms, aucune règle sur le nom ne pouvait le savoir.
+   */
+  it("le pool porte la famille, et les familles couvertes par chaque compte", async () => {
+    mockAccountFindMany.mockResolvedValue([
+      { id: "acc1", name: "Meng", handle: "meng_paris" },
+      { id: "acc2", name: "Autre", handle: "autre" },
+    ]);
+    mockBindingFindMany.mockResolvedValue([
+      bindingRow({
+        id: "b1",
+        accountId: "acc1",
+        patternTemplate: {
+          label: "RAUTO 1",
+          family: "TRANSACTION",
+          createdAt: new Date("2026-01-01T00:00:00Z"),
+        },
+      }),
+      bindingRow({
+        id: "b2",
+        accountId: "acc1",
+        patternTemplateId: "pt2",
+        patternTemplate: {
+          label: "RCOM 1",
+          family: "COMMERCE",
+          createdAt: new Date("2026-01-02T00:00:00Z"),
+        },
+      }),
+      bindingRow({
+        id: "b3",
+        accountId: "acc2",
+        patternTemplateId: "pt3",
+        patternTemplate: {
+          label: "RPI",
+          family: null,
+          createdAt: new Date("2026-01-03T00:00:00Z"),
+        },
+      }),
+    ]);
+
+    const result = await buildWeekFillContext({ accountIds: ["acc1", "acc2"], ...WINDOW });
+
+    // Le pool reste trié par LIBELLÉ (naturel) : le regroupement par famille
+    // se fait dans l'écran, qui filtre avant d'afficher.
+    expect(result.pool.map((p) => [p.patternTemplateId, p.family])).toEqual([
+      ["pt1", "TRANSACTION"],
+      ["pt2", "COMMERCE"],
+      ["pt3", null],
+    ]);
+    expect(result.familiesByAccount.acc1).toEqual(["COMMERCE", "TRANSACTION"]);
+    // `null` en dernier : c'est un reste à ranger, pas une famille.
+    expect(result.familiesByAccount.acc2).toEqual([null]);
   });
 });
 
@@ -276,5 +384,36 @@ describe("dispatchWindow", () => {
     const { windowFrom, windowTo } = dispatchWindow(new Date("2026-10-05T00:00:00.000Z"));
     expect(windowFrom < new Date("2026-10-05T00:00:00.000Z")).toBe(true);
     expect(windowTo > new Date("2026-10-05T00:00:00.000Z")).toBe(true);
+  });
+});
+
+describe("les dettes ramassées au passage", () => {
+  /** « RAUTO 2 » avant « RAUTO 10 » — vingt recettes numérotées sinon illisibles. */
+  it("trie le pool en ordre naturel", async () => {
+    mockBindingFindMany.mockResolvedValue([
+      bindingRow({ id: "b1", patternTemplateId: "pt10",
+        patternTemplate: { label: "RAUTO 10", createdAt: new Date("2026-01-01Z") } }),
+      bindingRow({ id: "b2", patternTemplateId: "pt2",
+        patternTemplate: { label: "RAUTO 2", createdAt: new Date("2026-01-01Z") } }),
+    ]);
+    const result = await buildWeekFillContext({ accountIds: ["acc1"], ...WINDOW });
+    expect(result.pool.map((p) => p.label)).toEqual(["RAUTO 2", "RAUTO 10"]);
+  });
+
+  /**
+   * Deux recettes du même nom ne sont plus fusionnées en silence : c'est un
+   * défaut de configuration, on le signale.
+   */
+  it("signale les libellés en doublon", async () => {
+    mockBindingFindMany.mockResolvedValue([
+      bindingRow({ id: "b1", patternTemplateId: "ptA",
+        patternTemplate: { label: "RPI", createdAt: new Date("2026-01-01Z") } }),
+      bindingRow({ id: "b2", patternTemplateId: "ptB",
+        patternTemplate: { label: "RPI", createdAt: new Date("2026-01-02Z") } }),
+      bindingRow({ id: "b3", patternTemplateId: "ptC",
+        patternTemplate: { label: "RVA4", createdAt: new Date("2026-01-03Z") } }),
+    ]);
+    const result = await buildWeekFillContext({ accountIds: ["acc1"], ...WINDOW });
+    expect(result.duplicateLabels).toEqual(["RPI"]);
   });
 });

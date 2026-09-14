@@ -54,6 +54,7 @@ import {
 
 export interface PatternTemplateFieldValues {
   label: string;
+  family: string;
   clientLabel: string;
   clientDescription: string;
   source: string;
@@ -79,6 +80,7 @@ export interface PatternTemplateFieldValues {
 /** Forme source acceptée par `decodePatternTemplateFields` (projection PatternTemplate). */
 export interface PatternTemplateFieldsSource {
   label: string;
+  family?: string | null;
   clientLabel?: string | null;
   clientDescription?: string | null;
   source: string;
@@ -106,6 +108,7 @@ export interface PatternTemplateFieldsSource {
 /** Payload API — forme envoyée aux routes POST/PATCH (recipes + patterns). */
 export interface PatternTemplateFieldsPayload {
   label: string;
+  family: string | null;
   clientLabel: string | null;
   clientDescription: string | null;
   source: string;
@@ -159,6 +162,7 @@ export function decodePatternTemplateFields(
         : "";
   return {
     label: source?.label ?? "",
+    family: source?.family ?? "",
     clientLabel: source?.clientLabel ?? "",
     clientDescription: source?.clientDescription ?? "",
     source: source?.source ?? "manual_rushes",
@@ -198,6 +202,9 @@ export function encodePatternTemplateFieldsPayload(
 ): PatternTemplateFieldsPayload {
   return {
     label: values.label.trim(),
+    // "" → null : la sentinelle « sans famille » de l'écran de remplissage doit
+    // être sans ambiguïté.
+    family: values.family.trim() || null,
     // "" → null : vide veut dire « pas de nom client », et c'est `label` qui
     // reprend la main partout. Pas une chaîne vide affichée à la place.
     clientLabel: values.clientLabel.trim() || null,
@@ -293,6 +300,8 @@ interface PatternTemplateFieldsProps {
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
   videoLibraries: { id: string; name: string }[];
+  /** Familles déjà utilisées — proposées à la saisie, pour éviter les typos. */
+  knownFamilies?: string[];
 }
 
 export function PatternTemplateFields({
@@ -302,6 +311,7 @@ export function PatternTemplateFields({
   captionPresets,
   descriptionPrompts,
   videoLibraries,
+  knownFamilies = [],
 }: PatternTemplateFieldsProps) {
   const { entityTypes, propertyFieldKeys, relatedFieldKeys, dataLibraries } = useRecipeEntityBinding({
     requiresEntityTypeId: v.requiresEntityTypeId,
@@ -357,6 +367,22 @@ export function PatternTemplateFields({
             value={v.label}
             onChange={(val) => onChange({ label: val })}
             placeholder="Ex : Reels marché immo"
+          />
+        </FormField>
+
+        {/* Ce qui permet de remplir une semaine « en TRANSACTION » sans cocher
+            quinze recettes. Saisie libre mais assistée : « TRANSAC » et
+            « TRANSACTION » feraient deux familles. */}
+        <FormField
+          label="Famille"
+          help="Regroupe les recettes qui se remplacent entre elles. Ex : TRANSACTION, COMMERCE."
+        >
+          <Combobox
+            value={v.family}
+            onChange={(val) => onChange({ family: val })}
+            options={knownFamilies.map((f) => ({ value: f, label: f }))}
+            allowCustom
+            placeholder="Aucune famille"
           />
         </FormField>
 

@@ -37,6 +37,7 @@ import {
 } from "@/lib/publications/preFilledDescription";
 
 /** Un libellé client sur une ligne, pas une notice. */
+const MAX_FAMILY = 60;
 const MAX_CLIENT_LABEL = 60;
 /** Deux phrases pour expliquer le format à quelqu'un d'extérieur à l'équipe. */
 const MAX_CLIENT_DESCRIPTION = 300;
@@ -57,6 +58,13 @@ export interface PatternTemplateInputPayload {
    */
   clientLabel?: string | null;
   clientDescription?: string | null;
+  /**
+   * Famille éditoriale — « TRANSACTION », « COMMERCE »…
+   *
+   * Texte libre normalisé : trim, vide → `null`. La sentinelle « sans famille »
+   * de l'écran de remplissage doit être sans ambiguïté, donc jamais `""`.
+   */
+  family?: string | null;
   source?: string;
   templateId?: string | null;
   captionPresetId?: string | null;
@@ -240,6 +248,7 @@ export function toPatternTemplateCreateData(
 ): Prisma.PatternTemplateUncheckedCreateInput {
   return {
     label: payload.label!.trim(),
+    family: normalizeClientText(payload.family, MAX_FAMILY),
     clientLabel: normalizeClientText(payload.clientLabel, MAX_CLIENT_LABEL),
     clientDescription: normalizeClientText(payload.clientDescription, MAX_CLIENT_DESCRIPTION),
     source: payload.source!,
@@ -277,6 +286,12 @@ export function toPatternTemplateUpdateData(
 ): Prisma.PatternTemplateUncheckedUpdateInput {
   return {
     ...(payload.label !== undefined ? { label: payload.label.trim() } : {}),
+    // Garde vitale : `RecipeForm` (fiche compte) partage ce payload sans envoyer
+    // `family`. Sans le `!== undefined`, chaque édition depuis un compte
+    // effacerait la famille — le piège déjà documenté pour autoActivateClientIds.
+    ...(payload.family !== undefined
+      ? { family: normalizeClientText(payload.family, MAX_FAMILY) }
+      : {}),
     ...(payload.clientLabel !== undefined
       ? { clientLabel: normalizeClientText(payload.clientLabel, MAX_CLIENT_LABEL) }
       : {}),

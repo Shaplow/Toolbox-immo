@@ -49,6 +49,8 @@ export interface RecipeItem {
   label: string;
   // Template
   templateLabel: string;
+  /** Famille éditoriale — sert au filtrage de « Remplir la semaine ». */
+  family: string | null;
   /** Nom et description vus par le client sur le bon de commande. */
   clientLabel: string | null;
   clientDescription: string | null;
@@ -119,6 +121,8 @@ interface Props {
   videastes: AssigneeOption[];
   captionPresets: { id: string; name: string }[];
   descriptionPrompts: { id: string; name: string }[];
+  /** Familles déjà saisies dans le catalogue — suggestions du champ « Famille ». */
+  knownFamilies?: string[];
 }
 
 interface EditingState {
@@ -131,6 +135,9 @@ interface EditingState {
 function defaultRecipeFormInitial(): RecipeFormInitial {
   return {
     label: "",
+    family: null,
+    clientLabel: null,
+    clientDescription: null,
     source: "auto_template",
     templateId: null,
     coverMode: "none",
@@ -168,6 +175,9 @@ function defaultRecipeFormInitial(): RecipeFormInitial {
 function recipeItemToFormInitial(r: RecipeItem): RecipeFormInitial {
   return {
     label: r.templateLabel,
+    family: r.family,
+    clientLabel: r.clientLabel,
+    clientDescription: r.clientDescription,
     source: r.source,
     templateId: r.templateId,
     coverMode: r.coverMode,
@@ -228,6 +238,7 @@ interface RecipeBindingApiResponse {
   notes: string | null;
   patternTemplate: {
     label: string;
+    family?: string | null;
     clientLabel?: string | null;
     clientDescription?: string | null;
     source: string;
@@ -292,6 +303,7 @@ function bindingResponseToRecipeItem(
     patternTemplateId: b.patternTemplateId,
     label: patternLabel({ customLabel: b.customLabel, patternTemplate: { label: tpl.label } }),
     templateLabel: tpl.label,
+    family: tpl.family ?? null,
     clientLabel: tpl.clientLabel ?? null,
     clientDescription: tpl.clientDescription ?? null,
     source: tpl.source,
@@ -348,6 +360,7 @@ export function AccountRecipesList({
   videastes,
   captionPresets,
   descriptionPrompts,
+  knownFamilies,
 }: Props) {
   const router = useRouter();
   const [recipes, setRecipes] = useState<RecipeItem[]>(initialRecipes);
@@ -736,6 +749,7 @@ export function AccountRecipesList({
             videoLibraries={videoLibraries}
             captionPresets={captionPresets}
             descriptionPrompts={descriptionPrompts}
+            knownFamilies={knownFamilies}
             saving={saving}
             onSave={handleSave}
             onDelete={editing.bindingId ? handleDelete : undefined}

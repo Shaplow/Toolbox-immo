@@ -46,6 +46,7 @@ interface LinkedBinding {
 export interface PatternTemplateInitial {
   id?: string;
   label: string;
+  family?: string | null;
   clientLabel?: string | null;
   clientDescription?: string | null;
   source: string;
@@ -93,6 +94,8 @@ interface PatternTemplateFormProps {
   videoLibraries: { id: string; name: string }[];
   /** Clients sélectionnables pour l'activation automatique. */
   clients: { id: string; name: string }[];
+  /** Familles déjà saisies ailleurs — proposées à la saisie pour éviter « TRANSAC » vs « TRANSACTION ». */
+  knownFamilies?: string[];
   saving: boolean;
   onSave: (values: PatternTemplateFormValues) => Promise<void> | void;
   onArchive?: () => void;
@@ -126,6 +129,7 @@ export function PatternTemplateForm({
   descriptionPrompts,
   videoLibraries,
   clients,
+  knownFamilies = [],
   saving,
   onSave,
   onArchive,
@@ -353,6 +357,7 @@ export function PatternTemplateForm({
           captionPresets={captionPresets}
           descriptionPrompts={descriptionPrompts}
           videoLibraries={videoLibraries}
+          knownFamilies={knownFamilies}
         />
 
         {/* Activation automatique — répond à « à chaque nouveau compte je dois
@@ -508,8 +513,9 @@ export function PatternTemplateForm({
 
       {deployOpen && templateId && (
         <DeployTemplateModal
-          templateId={templateId}
-          templateLabel={templateValues.label || initial?.label || "Recette"}
+          templates={[
+            { id: templateId, label: templateValues.label || initial?.label || "Recette" },
+          ]}
           onDeployed={() => {
             setDeployOpen(false);
             // Refresh bindings local pour mettre à jour la section "Comptes liés".

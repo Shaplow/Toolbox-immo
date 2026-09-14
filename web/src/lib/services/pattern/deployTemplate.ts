@@ -43,16 +43,21 @@ export interface DeployTemplateResult {
   bindingIds: string[];
 }
 
-export async function deployTemplateToAccounts(
-  input: DeployTemplateInput,
+/**
+ * Les gardes qui ne dépendent PAS de la recette : droits, comptes, planning,
+ * rôles des assignées par défaut.
+ *
+ * Extraites pour que le déploiement multi-recettes les passe UNE fois : les
+ * rejouer par recette multiplierait les requêtes `assertAssigneeRole`, et
+ * surtout ferait échouer N fois de suite la même cause — un planning invalide
+ * n'est pas un échec « de la recette 3 ».
+ */
+async function assertCommonDeployInput(
+  input: Omit<DeployTemplateInput, "patternTemplateId">,
   ctx: UserContext,
-): Promise<DeployTemplateResult> {
+): Promise<void> {
   if (!ctx.canAdminBypass) {
     throw new ForbiddenError("Réservé aux administrateurs");
-  }
-
-  if (!input.patternTemplateId) {
-    throw new ValidationError("patternTemplateId requis");
   }
   if (!Array.isArray(input.accountIds) || input.accountIds.length === 0) {
     throw new ValidationError("accountIds requis (au moins 1)");
@@ -101,9 +106,26 @@ export async function deployTemplateToAccounts(
       "defaultAssigneeVideaste",
     );
   }
+}
 
+export async function deployTemplateToAccounts(
+  input: DeployTemplateInput,
+  ctx: UserContext,
+): Promise<DeployTemplateResult> {
+  await assertCommonDeployInput(input, ctx);
+  if (!input.patternTemplateId) {
+    throw new ValidationError("patternTemplateId requis");
+  }
+  return deployOneValidated(input.patternTemplateId, input);
+}
+
+/** Le cœur, APRÈS `assertCommonDeployInput` — une recette, N comptes. */
+async function deployOneValidated(
+  patternTemplateId: string,
+  input: Omit<DeployTemplateInput, "patternTemplateId">,
+): Promise<DeployTemplateResult> {
   const template = await prisma.patternTemplate.findUnique({
-    where: { id: input.patternTemplateId },
+    where: { id: patternTemplateId },
     select: { id: true, isArchived: true },
   });
   if (!template) {
@@ -118,7 +140,7 @@ export async function deployTemplateToAccounts(
   // Vérifie quels comptes ont déjà un binding actif sur cette recette.
   const existingBindings = await prisma.patternBinding.findMany({
     where: {
-      patternTemplateId: input.patternTemplateId,
+      patternTemplateId,
       accountId: { in: input.accountIds },
     },
     select: { accountId: true },
@@ -158,7 +180,7 @@ export async function deployTemplateToAccounts(
       const binding = await tx.patternBinding.create({
         data: {
           accountId,
-          patternTemplateId: input.patternTemplateId,
+          patternTemplateId,
           dayOfWeek: input.dayOfWeek,
           publishTime: input.publishTime,
           isActive: true,
@@ -178,4 +200,76 @@ export async function deployTemplateToAccounts(
     skippedCount: alreadyLinked.size + skippedInvalid,
     bindingIds: created,
   };
+}
+
+/** Une sélection de catalogue, pas un import en masse — même ordre de grandeur que les comptes. */
+export const DEPLOY_MAX_TEMPLATES = 50;
+
+export interface DeployTemplatesInput extends Omit<DeployTemplateInput, "patternTemplateId"> {
+  patternTemplateIds: string[];
+}
+
+export interface DeployTemplatesResult {
+  ok: { patternTemplateId: string; createdCount: number; skippedCount: number }[];
+  failed: { patternTemplateId: string; error: string }[];
+  createdCount: number;
+  skippedCount: number;
+}
+
+/**
+ * Déploie N recettes sur N comptes — « appliquer à des comptes » depuis une
+ * sélection du catalogue, au lieu de rouvrir la modale recette par recette.
+ *
+ * Résultats PARTIELS (doctrine du repo) : une recette archivée ou introuvable
+ * au milieu de la sélection ne doit pas annuler les autres. Chaque recette est
+ * sa propre transaction ; la boucle est séquentielle parce que chacune ouvre
+ * déjà une transaction Prisma (N transactions concurrentes = pool épuisé).
+ */
+export async function deployTemplatesToAccounts(
+  input: DeployTemplatesInput,
+  ctx: UserContext,
+): Promise<DeployTemplatesResult> {
+  if (!ctx.canAdminBypass) {
+    throw new ForbiddenError("Réservé aux administrateurs");
+  }
+  const ids = [...new Set((input.patternTemplateIds ?? []).filter(Boolean))];
+  if (ids.length === 0) {
+    throw new ValidationError("patternTemplateIds requis (au moins 1)");
+  }
+  if (ids.length > DEPLOY_MAX_TEMPLATES) {
+    throw new ValidationError(`${DEPLOY_MAX_TEMPLATES} recettes maximum par déploiement`);
+  }
+
+  // Les gardes communes d'abord, et une seule fois : un planning invalide doit
+  // remonter tel quel, pas se répéter N fois dans `failed`.
+  await assertCommonDeployInput(input, ctx);
+
+  const result: DeployTemplatesResult = {
+    ok: [],
+    failed: [],
+    createdCount: 0,
+    skippedCount: 0,
+  };
+
+  for (const patternTemplateId of ids) {
+    try {
+      const one = await deployOneValidated(patternTemplateId, input);
+      result.ok.push({
+        patternTemplateId,
+        createdCount: one.createdCount,
+        skippedCount: one.skippedCount,
+      });
+      result.createdCount += one.createdCount;
+      result.skippedCount += one.skippedCount;
+    } catch (err) {
+      // Ce qui reste ne concerne QUE cette recette (introuvable, archivée) :
+      // ça n'annule pas les autres, c'est tout l'objet des résultats partiels.
+      result.failed.push({
+        patternTemplateId,
+        error: err instanceof Error ? err.message : "Erreur inconnue",
+      });
+    }
+  }
+
+  return result;
 }

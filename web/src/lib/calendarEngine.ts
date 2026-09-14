@@ -59,8 +59,8 @@ export interface GenerateCalendarResult {
    * L'écran « Remplir la semaine » affiche les publications du planning à côté
    * de celles qu'il répartit, dans la même grille : il lui faut le couple
    * (compte, jour, recette), pas un compteur. Et elles doivent entrer dans
-   * l'historique du tourniquet, sans quoi une RVA4 planifiée le mardi
-   * n'empêcherait pas d'en proposer une le lundi.
+   * l'historique du tourniquet — indexé par RECETTE — sans quoi une RVA4
+   * planifiée le mardi n'empêcherait pas d'en proposer une le lundi.
    *
    * Vide hors dry-run : personne n'en a besoin après l'écriture, et le tableau
    * serait alors une allocation pour rien sur une génération multi-semaines.
@@ -71,8 +71,6 @@ export interface GenerateCalendarResult {
     scheduledAt: string;
     label: string;
     patternTemplateId: string;
-    /** Template builder de la recette — identité du CONTENU pour l'espacement. */
-    templateId: string | null;
   }[];
 }
 
@@ -347,7 +345,6 @@ export async function generateCalendarSlots(
             scheduledAt: scheduledAt.toISOString(),
             label: pattern.label,
             patternTemplateId: pattern.patternTemplateId,
-            templateId: pattern.templateId,
           })),
         }
       : {}),

@@ -19,20 +19,25 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { NumberStepper } from "@/components/ui/NumberStepper";
 import { Alert } from "@/components/ui/Alert";
 import { Chip } from "@/components/ui/Chip";
-import { Select } from "@/components/ui/Select";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
+import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { toast } from "@/components/ui/Toast";
 import { parisDayKey, weekdayDayFr } from "@/lib/date/formatFr";
+import { compareNatural } from "@/lib/utils/naturalSort";
 import { summarizeCalendarSkips, type GenerateCalendarSkip } from "@/lib/calendar/skips";
 import {
   cellKey,
   dayIndexFromKey,
   dispatchRecipes,
   minimumAchievableGap,
-  rankCandidatesForCell,
   type DispatchCandidate,
   type DispatchCell,
-  type RecipeHistory,
+  type DispatchOption,
 } from "@/lib/calendar/dispatch";
+// Type SEUL (effacé à la compilation) : la forme du contexte était redéclarée à
+// la main ici, et une divergence avec le service n'aurait rien cassé à la
+// compilation — juste affiché des champs vides.
+import type { WeekFillContext } from "@/lib/services/calendar/weekFillService";
 
 /**
  * Les cinq premiers jours de la semaine affichée — le défaut.
@@ -43,7 +48,18 @@ import {
  * Les noms de jours se dérivent donc de la DATE réelle, plus bas.
  */
 const DEFAULT_DAYS = [0, 1, 2, 3, 4];
-const STORAGE_KEY = "calendar:week-fill:v1";
+/**
+ * v2 : la v1 mémorisait des IDS de recettes. Toute recette créée ensuite était
+ * donc exclue du pool POUR TOUJOURS, sans le moindre signal. On mémorise
+ * désormais des FAMILLES (stables) et une liste d'EXCLUSIONS (une recette
+ * nouvelle est incluse par défaut) — la classe de bug disparaît avec la clé.
+ */
+const STORAGE_KEY = "calendar:week-fill:v2";
+
+/** « Sans famille » est une entrée de plein droit, pas une absence. */
+const NO_FAMILY = "__none__";
+const familyKeyOf = (family: string | null) => family ?? NO_FAMILY;
+const familyLabelOf = (family: string | null) => family ?? "Sans famille";
 
 /** Une publication que le PLANNING des recettes produirait cette semaine. */
 interface PlanningTarget {
@@ -52,15 +68,6 @@ interface PlanningTarget {
   scheduledAt: string;
   label: string;
   patternTemplateId: string;
-  templateId: string | null;
-}
-
-interface WeekFillContext {
-  accounts: { id: string; name: string; handle: string }[];
-  candidatesByAccount: Record<string, DispatchCandidate[]>;
-  pool: { patternTemplateId: string; label: string; accountCount: number }[];
-  existingUse: Record<string, RecipeHistory>;
-  occupiedByAccount: Record<string, string[]>;
 }
 
 interface WeekFillModalProps {
@@ -90,7 +97,10 @@ function dayKeyOf(weekStart: Date, offset: number): string {
 }
 
 interface RememberedPrefs {
-  poolTemplateIds?: string[];
+  /** Clés de famille retenues (`__none__` comprise). */
+  families?: string[];
+  /** Recettes explicitement écartées à l'intérieur des familles retenues. */
+  excludedTemplateIds?: string[];
   dayOffsets?: number[];
   perDay?: number;
   includePlanning?: boolean;
@@ -133,7 +143,13 @@ export function WeekFillModal({
     () => loadPrefs().dayOffsets ?? DEFAULT_DAYS,
   );
   const [perDay, setPerDay] = useState(() => loadPrefs().perDay ?? 1);
-  const [poolIds, setPoolIds] = useState<string[] | null>(() => loadPrefs().poolTemplateIds ?? null);
+  /** `null` = jamais choisi → toutes les familles, c'est-à-dire le comportement d'avant. */
+  const [selectedFamilies, setSelectedFamilies] = useState<string[] | null>(
+    () => loadPrefs().families ?? null,
+  );
+  const [excludedIds, setExcludedIds] = useState<string[]>(
+    () => loadPrefs().excludedTemplateIds ?? [],
+  );
   /** Choix manuels : `cellKey` → recette, ou `null` pour une case vidée. */
   const [pinned, setPinned] = useState<Record<string, string | null>>({});
 
@@ -233,13 +249,45 @@ export function WeekFillModal({
     };
   }, [accountKey, weekStart, includePlanning]);
 
-  // Pool effectif : la sélection mémorisée, restreinte à ce qui existe vraiment.
-  const effectivePool = useMemo(() => {
-    const available = context?.pool.map((p) => p.patternTemplateId) ?? [];
-    if (!poolIds) return available;
-    const kept = poolIds.filter((id) => available.includes(id));
+  /** Les familles présentes dans le pool, avec leur nombre de recettes. */
+  const families = useMemo(() => {
+    const map = new Map<string, { key: string; family: string | null; count: number }>();
+    for (const p of context?.pool ?? []) {
+      const key = familyKeyOf(p.family);
+      const entry = map.get(key);
+      if (entry) entry.count += 1;
+      else map.set(key, { key, family: p.family, count: 1 });
+    }
+    // « Sans famille » en dernier : c'est un reste à ranger, pas une famille.
+    return [...map.values()].sort((a, b) =>
+      a.family === null ? 1 : b.family === null ? -1 : compareNatural(a.family, b.family),
+    );
+  }, [context]);
+
+  /** Familles retenues, restreintes à ce qui existe vraiment sur ce périmètre. */
+  const effectiveFamilies = useMemo(() => {
+    const available = families.map((f) => f.key);
+    if (!selectedFamilies) return available;
+    const kept = selectedFamilies.filter((k) => available.includes(k));
     return kept.length > 0 ? kept : available;
-  }, [context, poolIds]);
+  }, [families, selectedFamilies]);
+
+  // Pool effectif : les familles retenues, moins les recettes écartées à la main.
+  const effectivePool = useMemo(
+    () =>
+      (context?.pool ?? [])
+        .filter((p) => effectiveFamilies.includes(familyKeyOf(p.family)))
+        .filter((p) => !excludedIds.includes(p.patternTemplateId))
+        .map((p) => p.patternTemplateId),
+    [context, effectiveFamilies, excludedIds],
+  );
+
+  /** Les recettes proposables au choix « affiner » — celles des familles retenues. */
+  const poolInFamilies = useMemo(
+    () =>
+      (context?.pool ?? []).filter((p) => effectiveFamilies.includes(familyKeyOf(p.family))),
+    [context, effectiveFamilies],
+  );
 
   const candidatesByAccount = useMemo(() => {
     const out: Record<string, DispatchCandidate[]> = {};
@@ -252,6 +300,21 @@ export function WeekFillModal({
   const selectedAccounts = useMemo(
     () => accounts.filter((a) => accountIds.includes(a.id)),
     [accounts, accountIds],
+  );
+
+  /**
+   * Un compte sans aucune recette des familles retenues ne peut rien recevoir.
+   * Il n'est PAS masqué pour autant : il est replié sous la grille avec les
+   * familles que ses liaisons couvrent — une liaison mal placée doit se voir,
+   * le filtre famille ne la corrige pas.
+   */
+  const servableAccounts = useMemo(
+    () => selectedAccounts.filter((a) => (candidatesByAccount[a.id] ?? []).length > 0),
+    [selectedAccounts, candidatesByAccount],
+  );
+  const unservableAccounts = useMemo(
+    () => selectedAccounts.filter((a) => (candidatesByAccount[a.id] ?? []).length === 0),
+    [selectedAccounts, candidatesByAccount],
   );
 
   // ── Les cases, et la proposition ──────────────────────────────────────────
@@ -297,9 +360,11 @@ export function WeekFillModal({
       };
     }
     for (const t of planning) {
-      const contentKey = t.templateId ?? t.patternTemplateId;
+      // La RECETTE, jamais le gabarit : cet index doit coïncider avec celui de
+      // `existingUse` construit par le service, sinon les publications du
+      // planning deviennent invisibles au tourniquet.
       const day = dayIndexFromKey(parisDayKey(t.scheduledAt));
-      const h = (merged[contentKey] ??= { allDays: [], byAccount: {} });
+      const h = (merged[t.patternTemplateId] ??= { allDays: [], byAccount: {} });
       h.allDays.push(day);
       (h.byAccount[t.accountId] ??= []).push(day);
     }
@@ -310,7 +375,7 @@ export function WeekFillModal({
     const out: DispatchCell[] = [];
     for (const offset of [...dayOffsets].sort((a, b) => a - b)) {
       const dayKey = dayKeyOf(weekStart, offset);
-      for (const account of selectedAccounts) {
+      for (const account of servableAccounts) {
         // Une journée déjà occupée sur ce compte n'est jamais réécrite.
         if (occupied.has(`${account.id}|${dayKey}`)) continue;
         for (let rank = 0; rank < perDay; rank++) {
@@ -319,7 +384,7 @@ export function WeekFillModal({
       }
     }
     return out;
-  }, [dayOffsets, weekStart, selectedAccounts, perDay, occupied]);
+  }, [dayOffsets, weekStart, servableAccounts, perDay, occupied]);
 
   const proposal = useMemo(
     () =>
@@ -328,8 +393,12 @@ export function WeekFillModal({
         candidatesByAccount,
         existingUse: existingUseWithPlanning,
         pinned,
+        // L'ordre d'affichage EST l'ordre de service : la ligne du haut reçoit
+        // la recette la plus anciennement publiée. Sans ça c'est l'identifiant
+        // technique du compte qui tranchait, donc son ordre de création.
+        accountPriority: servableAccounts.map((a) => a.id),
       }),
-    [cells, candidatesByAccount, existingUseWithPlanning, pinned],
+    [cells, candidatesByAccount, existingUseWithPlanning, pinned, servableAccounts],
   );
 
   const byCell = useMemo(
@@ -337,21 +406,43 @@ export function WeekFillModal({
     [proposal],
   );
 
-  /**
-   * La borne se calcule sur les CONTENUS distincts, pas sur les recettes : deux
-   * recettes rendues depuis le même template builder ne comptent que pour une,
-   * et annoncer 4 là où il n'y a que 3 contenus rendrait le chiffre faux —
-   * c'est-à-dire inutile.
-   */
+  /** Recettes réellement proposables sur le périmètre choisi. */
   const distinctContents = useMemo(() => {
     const keys = new Set<string>();
     for (const list of Object.values(candidatesByAccount)) {
-      for (const c of list) keys.add(c.contentKey);
+      for (const c of list) keys.add(c.patternTemplateId);
     }
     return keys.size;
   }, [candidatesByAccount]);
 
-  const minGap = minimumAchievableGap(distinctContents, selectedAccounts.length * perDay);
+  const minGap = minimumAchievableGap(distinctContents, servableAccounts.length * perDay);
+
+  /**
+   * La borne physique, PAR FAMILLE — la mélanger n'a aucun sens : 13 recettes
+   * TRANSACTION pour 13 comptes donnent 1 jour d'écart, 6 recettes COMMERCE
+   * pour 1 compte en donnent 6. Un seul chiffre global mentirait aux deux.
+   */
+  const familyStats = useMemo(
+    () =>
+      effectiveFamilies.map((key) => {
+        const entry = families.find((f) => f.key === key);
+        const recipes = (context?.pool ?? []).filter(
+          (p) => familyKeyOf(p.family) === key && effectivePool.includes(p.patternTemplateId),
+        ).length;
+        const accountsCovered = servableAccounts.filter((a) =>
+          (context?.familiesByAccount[a.id] ?? []).some((f) => familyKeyOf(f) === key),
+        ).length;
+        const perDayTotal = accountsCovered * perDay;
+        return {
+          key,
+          label: entry ? familyLabelOf(entry.family) : key,
+          recipes,
+          perDayTotal,
+          gap: minimumAchievableGap(recipes, perDayTotal),
+        };
+      }),
+    [effectiveFamilies, families, context, effectivePool, servableAccounts, perDay],
+  );
   const totalToCreate =
     proposal.assignments.length + (includePlanning ? planning.length : 0);
 
@@ -398,7 +489,13 @@ export function WeekFillModal({
         toast.success(
           `${plannedCreated} publication${plannedCreated > 1 ? "s" : ""} créée${plannedCreated > 1 ? "s" : ""} depuis le planning.`,
         );
-        savePrefs({ poolTemplateIds: effectivePool, dayOffsets, perDay, includePlanning });
+        savePrefs({
+          families: effectiveFamilies,
+          excludedTemplateIds: excludedIds,
+          dayOffsets,
+          perDay,
+          includePlanning,
+        });
         onCreated();
         onClose();
         return;
@@ -439,7 +536,13 @@ export function WeekFillModal({
           }.`,
         );
       }
-      savePrefs({ poolTemplateIds: effectivePool, dayOffsets, perDay, includePlanning });
+      savePrefs({
+          families: effectiveFamilies,
+          excludedTemplateIds: excludedIds,
+          dayOffsets,
+          perDay,
+          includePlanning,
+        });
       onCreated();
       onClose();
     } catch {
@@ -449,7 +552,8 @@ export function WeekFillModal({
     }
   }, [
     proposal,
-    effectivePool,
+    effectiveFamilies,
+    excludedIds,
     dayOffsets,
     perDay,
     includePlanning,
@@ -470,19 +574,32 @@ export function WeekFillModal({
           <h2 className="text-[16px] font-semibold text-foreground">Remplir la semaine</h2>
           <p className="mt-0.5 text-[12px] text-muted-foreground">
             Chaque case reçoit la recette servie il y a le plus longtemps, tous comptes confondus.
-            {minGap !== null && (
+            {minGap !== null && familyStats.length <= 1 && (
               <>
                 {" "}
                 <span className="text-foreground">
-                  {distinctContents} contenu{distinctContents > 1 ? "s" : ""} distinct
-                  {distinctContents > 1 ? "s" : ""} ·{" "}
-                  {selectedAccounts.length * perDay} publication
-                  {selectedAccounts.length * perDay > 1 ? "s" : ""}/jour → écart minimum
+                  {distinctContents} recette{distinctContents > 1 ? "s" : ""} ·{" "}
+                  {servableAccounts.length * perDay} publication
+                  {servableAccounts.length * perDay > 1 ? "s" : ""}/jour → écart minimum
                   atteignable : {minGap} j
                 </span>
               </>
             )}
           </p>
+          {/* Une borne par famille : mélangées, les deux chiffres seraient faux
+              pour chacune. Et à dire franchement — l'écart plafonne à ⌊N/c⌋,
+              l'algorithme n'y peut rien, seul le nombre de recettes le bouge. */}
+          {familyStats.length > 1 && (
+            <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-muted-foreground">
+              {familyStats.map((f) => (
+                <span key={f.key}>
+                  <span className="text-foreground">{f.label}</span> · {f.recipes} recette
+                  {f.recipes > 1 ? "s" : ""} / {f.perDayTotal} par jour
+                  {f.gap !== null && f.perDayTotal > 0 ? ` → ${f.gap} j` : ""}
+                </span>
+              ))}
+            </p>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -561,37 +678,75 @@ export function WeekFillModal({
 
             <section>
               <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
-                Recettes dans lesquelles piocher
+                Familles
               </h3>
-              <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
-                {(context?.pool ?? []).map((p) => (
-                  <label
-                    key={p.patternTemplateId}
-                    className="flex items-center gap-2 cursor-pointer"
+              {/* Vingt cases à cocher, c'était « chiant de tout cocher/décocher ».
+                  Une famille se choisit d'un clic et se retient d'une session à
+                  l'autre — et elle survit à la création d'une recette, ce qu'une
+                  liste d'ids ne faisait pas. */}
+              <div className="flex flex-wrap gap-1.5">
+                {families.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() =>
+                      setSelectedFamilies((prev) => toggle(prev ?? effectiveFamilies, f.key))
+                    }
+                    className={[
+                      "px-2.5 py-1 rounded-md text-[12px] border transition-colors",
+                      effectiveFamilies.includes(f.key)
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-card text-muted-foreground border-border hover:bg-accent",
+                    ].join(" ")}
                   >
-                    <Checkbox
-                      checked={effectivePool.includes(p.patternTemplateId)}
-                      onChange={() =>
-                        setPoolIds((prev) => toggle(prev ?? effectivePool, p.patternTemplateId))
-                      }
-                      size="sm"
-                      label={p.label}
-                    />
-                    <span className="text-[12px] text-foreground truncate">
-                      {p.label}
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · {p.accountCount} compte{p.accountCount > 1 ? "s" : ""}
-                      </span>
-                    </span>
-                  </label>
+                    {familyLabelOf(f.family)}
+                    <span className="opacity-70"> · {f.count}</span>
+                  </button>
                 ))}
-                {!loading && (context?.pool.length ?? 0) === 0 && (
+                {!loading && families.length === 0 && (
                   <p className="text-[12px] text-muted-foreground">
                     Aucune recette auto activée sur ces comptes.
                   </p>
                 )}
               </div>
+              {families.length > 0 && (
+                <div className="mt-2">
+                  <CollapsibleSection
+                    title={`Affiner les recettes · ${effectivePool.length}/${poolInFamilies.length}`}
+                    defaultOpen={false}
+                    storageKey="calendar:week-fill:refine"
+                  >
+                    {/* La trappe de sortie : exclure UNE recette ponctuellement,
+                        sans renoncer au filtre famille. Ce sont des exclusions,
+                        pas une liste blanche — une recette créée demain reste
+                        incluse d'office. */}
+                    <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                      {poolInFamilies.map((p) => (
+                        <label
+                          key={p.patternTemplateId}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={!excludedIds.includes(p.patternTemplateId)}
+                            onChange={() =>
+                              setExcludedIds((prev) => toggle(prev, p.patternTemplateId))
+                            }
+                            size="sm"
+                            label={p.label}
+                          />
+                          <span className="text-[12px] text-foreground truncate">
+                            {p.label}
+                            <span className="text-muted-foreground">
+                              {" "}
+                              · {p.accountCount} compte{p.accountCount > 1 ? "s" : ""}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </CollapsibleSection>
+                </div>
+              )}
             </section>
           </div>
 
@@ -602,13 +757,14 @@ export function WeekFillModal({
             <WeekFillGrid
               weekStart={weekStart}
               dayOffsets={[...dayOffsets].sort((a, b) => a - b)}
-              accounts={selectedAccounts}
+              accounts={servableAccounts}
+              unservableAccounts={unservableAccounts}
+              familiesByAccount={context?.familiesByAccount ?? {}}
               perDay={perDay}
               occupied={occupied}
               planningByCell={planningByCell}
               byCell={byCell}
-              candidatesByAccount={candidatesByAccount}
-              existingUse={existingUseWithPlanning}
+              optionsByCell={proposal.optionsByCell}
               onPin={(key, templateId) =>
                 setPinned((prev) => ({ ...prev, [key]: templateId }))
               }
@@ -616,6 +772,18 @@ export function WeekFillModal({
           )}
 
           {planningNote && <Alert variant="info">{planningNote}</Alert>}
+
+          {/* Deux recettes du même nom ne sont plus fusionnées en silence : on
+              le dit, à lui de fusionner ou d'archiver. */}
+          {(context?.duplicateLabels.length ?? 0) > 0 && (
+            <Alert variant="warning">
+              {context!.duplicateLabels.length === 1
+                ? `Deux recettes portent le nom « ${context!.duplicateLabels[0]} »`
+                : `Plusieurs recettes portent le même nom : ${context!.duplicateLabels.join(", ")}`}
+              {" "}— elles tournent séparément, et peuvent donc sortir le même jour sur deux
+              comptes. Archivez-en une s&apos;il s&apos;agit d&apos;un doublon.
+            </Alert>
+          )}
 
           {/* Les refus du planning — ce que l'ancienne modale de « Générer »
               affichait, et qui aurait disparu avec le bouton.
@@ -685,146 +853,232 @@ function WeekFillGrid({
   weekStart,
   dayOffsets,
   accounts,
+  unservableAccounts,
+  familiesByAccount,
   perDay,
   occupied,
   planningByCell,
   byCell,
-  candidatesByAccount,
-  existingUse,
+  optionsByCell,
   onPin,
 }: {
   weekStart: Date;
   dayOffsets: number[];
   accounts: { id: string; name: string; handle: string }[];
+  /** Comptes sans aucune recette des familles retenues — repliés sous la grille. */
+  unservableAccounts: { id: string; name: string; handle: string }[];
+  familiesByAccount: Record<string, (string | null)[]>;
   perDay: number;
   occupied: Set<string>;
   planningByCell: Map<string, PlanningTarget[]>;
   byCell: Map<string, ReturnType<typeof dispatchRecipes>["assignments"][number]>;
-  candidatesByAccount: Record<string, DispatchCandidate[]>;
-  existingUse: Record<string, RecipeHistory>;
+  /** Alternatives par case, telles que l'attribution les a vues (cf. dispatchRecipes). */
+  optionsByCell: Record<string, DispatchOption[]>;
   onPin: (key: string, templateId: string | null) => void;
 }) {
+  /** « TRANSACTION · COMMERCE » sous le handle — d'où vient (ou pas) sa matière. */
+  const familiesLine = (accountId: string) =>
+    (familiesByAccount[accountId] ?? []).map(familyLabelOf).join(" · ");
+
   if (accounts.length === 0 || dayOffsets.length === 0) {
     return (
-      <p className="text-[13px] text-muted-foreground">
-        Choisissez au moins un compte et un jour.
-      </p>
+      <div className="space-y-2">
+        <p className="text-[13px] text-muted-foreground">
+          {dayOffsets.length === 0
+            ? "Choisissez au moins un jour."
+            : "Aucun compte ne porte de recette dans les familles retenues."}
+        </p>
+        <UnservableAccountsNote accounts={unservableAccounts} familiesLine={familiesLine} />
+      </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[12px]">
-        <thead>
-          <tr>
-            <th className="sticky left-0 bg-card z-10 text-left font-medium text-muted-foreground p-2 w-40">
-              Compte
-            </th>
-            {dayOffsets.map((offset) => (
-              <th
-                key={offset}
-                className="text-left font-medium text-muted-foreground p-2 min-w-[11rem]"
-              >
-                {dayLabelOf(dayKeyOf(weekStart, offset))}
+    <div className="space-y-2">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[12px]">
+          <thead>
+            <tr>
+              <th className="sticky left-0 bg-card z-10 text-left font-medium text-muted-foreground p-1.5 w-36">
+                Compte
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {accounts.map((account) => (
-            <tr key={account.id} className="border-t border-border align-top">
-              <td className="sticky left-0 bg-card z-10 p-2 text-foreground truncate">
-                @{account.handle}
-              </td>
-              {dayOffsets.map((offset) => {
-                const dayKey = dayKeyOf(weekStart, offset);
-                const planned = planningByCell.get(`${account.id}|${dayKey}`);
-                if (planned?.length) {
-                  // Posée par le planning de la recette : non modifiable ici,
-                  // ça se règle sur la recette du compte.
-                  return (
-                    <td key={offset} className="p-2 space-y-1">
-                      {planned.map((t) => (
-                        <div key={t.patternBindingId} className="flex items-center gap-1.5">
-                          <span className="text-[12px] text-foreground truncate">{t.label}</span>
-                          <Chip size="sm" variant="default">
-                            planning
-                          </Chip>
-                        </div>
-                      ))}
-                    </td>
-                  );
-                }
-                if (occupied.has(`${account.id}|${dayKey}`)) {
-                  return (
-                    <td key={offset} className="p-2">
-                      <span className="text-muted-foreground/70 text-[11.5px]">
-                        déjà programmé
-                      </span>
-                    </td>
-                  );
-                }
-                return (
-                  <td key={offset} className="p-2 space-y-1.5">
-                    {Array.from({ length: perDay }, (_, rank) => {
-                      const cell = { accountId: account.id, dayKey, rank };
-                      const key = cellKey(cell);
-                      const assignment = byCell.get(key);
-                      const options = rankCandidatesForCell(
-                        cell,
-                        candidatesByAccount[account.id] ?? [],
-                        existingUse,
-                      );
-                      return (
-                        <div key={rank}>
-                          <Select
-                            value={assignment?.candidate.patternTemplateId ?? ""}
-                            onChange={(v) => onPin(key, v || null)}
-                            options={[
-                              {
-                                value: "",
-                                // Dire POURQUOI la case est vide : « aucune
-                                // recette auto activée sur ce compte » n'est
-                                // pas la même chose que « je l'ai vidée ».
-                                label:
-                                  (candidatesByAccount[account.id] ?? []).length === 0
-                                    ? "aucune recette sur ce compte"
-                                    : options.length === 0
-                                      ? "toutes déjà posées ce jour"
-                                      : "— vide —",
-                              },
-                              ...options.map((o) => ({
-                                value: o.candidate.patternTemplateId,
-                                label:
-                                  o.rawGap === null
-                                    ? `${o.candidate.label} · jamais`
-                                    : `${o.candidate.label} · ${o.rawGap} j`,
-                              })),
-                            ]}
-                            disabled={options.length === 0 && !assignment}
-                          />
-                          {assignment && (
-                            <div className="mt-1 flex items-center gap-1.5">
-                              <span className="text-[11px] text-muted-foreground">
-                                {assignment.candidate.publishTime}
-                              </span>
-                              <Chip size="sm" variant={assignment.pinned ? "sky" : "default"}>
-                                {assignment.gapDays === null
-                                  ? "jamais servie"
-                                  : `il y a ${assignment.gapDays} j`}
-                              </Chip>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </td>
-                );
-              })}
+              {dayOffsets.map((offset) => (
+                <th
+                  key={offset}
+                  className="text-left font-medium text-muted-foreground p-1.5 min-w-[9.5rem]"
+                >
+                  {dayLabelOf(dayKeyOf(weekStart, offset))}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {accounts.map((account) => (
+              <tr key={account.id} className="border-t border-border align-top">
+                <td className="sticky left-0 bg-card z-10 p-1.5 text-foreground">
+                  <span className="block truncate">@{account.handle}</span>
+                  {/* Les familles que ses liaisons couvrent : un binding mal
+                      placé se voit ici, au lieu de produire un remplissage faux. */}
+                  <span className="block truncate text-[10px] text-muted-foreground">
+                    {familiesLine(account.id)}
+                  </span>
+                </td>
+                {dayOffsets.map((offset) => {
+                  const dayKey = dayKeyOf(weekStart, offset);
+                  const planned = planningByCell.get(`${account.id}|${dayKey}`);
+                  if (planned?.length) {
+                    // Posée par le planning de la recette : non modifiable ici,
+                    // ça se règle sur la recette du compte.
+                    return (
+                      <td key={offset} className="p-1.5 space-y-1">
+                        {planned.map((t) => (
+                          <div key={t.patternBindingId} className="flex items-center gap-1.5">
+                            <span className="text-[11.5px] text-foreground truncate">
+                              {t.label}
+                            </span>
+                            <Chip size="sm">planning</Chip>
+                          </div>
+                        ))}
+                      </td>
+                    );
+                  }
+                  if (occupied.has(`${account.id}|${dayKey}`)) {
+                    return (
+                      <td key={offset} className="p-1.5">
+                        <span className="text-muted-foreground/70 text-[11px]">
+                          déjà programmé
+                        </span>
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={offset} className="p-1.5 space-y-1">
+                      {Array.from({ length: perDay }, (_, rank) => {
+                        const key = cellKey({ accountId: account.id, dayKey, rank });
+                        const assignment = byCell.get(key);
+                        const options = optionsByCell[key] ?? [];
+                        return (
+                          <CellPicker
+                            key={rank}
+                            assignment={assignment}
+                            options={options}
+                            onPin={(templateId) => onPin(key, templateId)}
+                          />
+                        );
+                      })}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <UnservableAccountsNote accounts={unservableAccounts} familiesLine={familiesLine} />
     </div>
+  );
+}
+
+/**
+ * Les comptes écartés, NOMMÉS.
+ *
+ * Les masquer serait la pire des options : un compte absent parce qu'une
+ * liaison manque ressemblerait à un compte qu'on a désélectionné.
+ */
+function UnservableAccountsNote({
+  accounts,
+  familiesLine,
+}: {
+  accounts: { id: string; handle: string }[];
+  familiesLine: (accountId: string) => string;
+}) {
+  if (accounts.length === 0) return null;
+  return (
+    <p className="text-[11.5px] text-muted-foreground">
+      {accounts.length} compte{accounts.length > 1 ? "s" : ""} sans recette dans les familles
+      retenues :{" "}
+      {accounts
+        .map((a) => {
+          const line = familiesLine(a.id);
+          return line ? `@${a.handle} (${line})` : `@${a.handle} (aucune recette auto)`;
+        })
+        .join(" · ")}
+    </p>
+  );
+}
+
+/**
+ * Une case : une pastille qui ouvre le menu des alternatives.
+ *
+ * Remplace une liste déroulante pleine largeur par case — 14 comptes × 5 jours
+ * en faisaient soixante-dix, deux écrans de défilement. Les alternatives
+ * viennent de `dispatchRecipes`, donc de l'historique RÉELLEMENT vu par cette
+ * case : le premier élément du menu est exactement ce que la pastille affiche.
+ */
+function CellPicker({
+  assignment,
+  options,
+  onPin,
+}: {
+  assignment?: ReturnType<typeof dispatchRecipes>["assignments"][number];
+  options: DispatchOption[];
+  onPin: (templateId: string | null) => void;
+}) {
+  const gapOf = (gap: number | null) => (gap === null ? "jamais" : `${gap} j`);
+  const emptyLabel =
+    options.length === 0 ? "aucune recette disponible" : "— vide —";
+
+  const items = [
+    ...options.map((o) => ({
+      label: `${o.candidate.label} · ${gapOf(o.rawGap)}`,
+      onClick: () => onPin(o.candidate.patternTemplateId),
+    })),
+    ...(assignment
+      ? [{ label: "Vider la case", destructive: true, onClick: () => onPin(null) }]
+      : []),
+  ];
+
+  if (items.length === 0) {
+    return <span className="block text-[11px] text-muted-foreground/70">{emptyLabel}</span>;
+  }
+
+  return (
+    <DropdownMenu
+      align="start"
+      trigger={
+        <button
+          type="button"
+          title={
+            assignment
+              ? `${assignment.candidate.label} · ${assignment.candidate.publishTime} · ${
+                  assignment.gapDays === null
+                    ? "jamais servie"
+                    : `servie il y a ${assignment.gapDays} j`
+                }${assignment.pinned ? " · choix manuel" : ""}`
+              : emptyLabel
+          }
+          className={[
+            "w-full inline-flex items-center gap-1 px-1.5 py-1 rounded-md border text-[11.5px] text-left transition-colors",
+            assignment
+              ? assignment.pinned
+                ? // `Chip.variant` est ignoré par le composant : le choix manuel
+                  // se marque sur la pastille elle-même, sinon il est invisible.
+                  "bg-card border-primary text-foreground"
+                : "bg-card border-border text-foreground hover:bg-accent"
+              : "bg-card border-dashed border-border text-muted-foreground hover:bg-accent",
+          ].join(" ")}
+        >
+          <span className="flex-1 truncate">
+            {assignment ? assignment.candidate.label : emptyLabel}
+          </span>
+          {assignment && (
+            <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
+              {gapOf(assignment.gapDays)}
+            </span>
+          )}
+        </button>
+      }
+      items={items}
+    />
   );
 }

@@ -29,13 +29,10 @@ const LUN = "2026-10-05";
 const MAR = "2026-10-06";
 const MER = "2026-10-07";
 
-function recipe(id: string, createdAt = 0, contentKey?: string): DispatchCandidate {
+function recipe(id: string, createdAt = 0): DispatchCandidate {
   return {
     patternTemplateId: id,
     patternBindingId: `b-${id}`,
-    // Par défaut chaque recette est son propre contenu ; `contentKey` sert à
-    // simuler deux recettes rendues depuis le même template builder.
-    contentKey: contentKey ?? id,
     publishTime: "09:00",
     label: id.toUpperCase(),
     templateCreatedAt: createdAt,
@@ -171,6 +168,42 @@ describe("l'ordre de traitement — le plus contraint d'abord", () => {
     ]);
   });
 
+  /**
+   * À nombre de candidats égal — ce qui arrive dès qu'on filtre sur une famille
+   * — c'est l'ordre d'AFFICHAGE qui tranche, pas l'identifiant technique du
+   * compte. Sinon l'ordre de création des comptes décide seul qui reçoit la
+   * recette la plus ancienne, sans que rien ne le laisse deviner.
+   */
+  it("à égalité, la ligne du haut est servie en premier", () => {
+    const pool = [recipe("vieille"), recipe("recente")];
+    const result = dispatchRecipes({
+      cells: [cell("zzz-dernier", LUN), cell("aaa-premier", LUN)],
+      candidatesByAccount: { "zzz-dernier": pool, "aaa-premier": pool },
+      existingUse: history({
+        vieille: { a9: ["2026-08-01"] },
+        recente: { a9: ["2026-10-01"] },
+      }),
+      // L'affichage met « zzz-dernier » en haut, malgré son id.
+      accountPriority: ["zzz-dernier", "aaa-premier"],
+    });
+    const byCell = asMap(result);
+    expect(byCell["zzz-dernier|2026-10-05|0"]).toBe("vieille");
+    expect(byCell["aaa-premier|2026-10-05|0"]).toBe("recente");
+  });
+
+  it("sans ordre fourni, le résultat reste déterministe", () => {
+    const pool = [recipe("r1"), recipe("r2")];
+    const run = () =>
+      asMap(
+        dispatchRecipes({
+          cells: [cell("a2", LUN), cell("a1", LUN)],
+          candidatesByAccount: { a1: pool, a2: pool },
+          existingUse: {},
+        }),
+      );
+    expect(run()).toEqual(run());
+  });
+
   it("les jours sont traités dans l'ordre", () => {
     const pool = [recipe("r1")];
     const ordered = orderCells([cell("a1", MER), cell("a1", LUN), cell("a1", MAR)], { a1: pool });
@@ -220,38 +253,73 @@ describe("ce qui n'est pas attribuable", () => {
   });
 });
 
-describe("deux recettes, un seul contenu", () => {
-  /**
-   * Cas RÉEL observé en base : deux recettes « RPI » distinctes pointent le même
-   * template builder. Elles rendent donc le même reel. Espacer par recette les
-   * laissait sortir le même jour sur deux comptes — exactement le doublon que
-   * tout ceci corrige.
-   */
-  it("ne sortent jamais le même jour sur deux comptes", () => {
-    const rpiA = recipe("rpi-a", 0, "tpl-rpi");
-    const rpiB = recipe("rpi-b", 1, "tpl-rpi");
-    const autre = recipe("rtips", 2, "tpl-rtips");
-
-    const result = dispatchRecipes({
-      cells: [cell("a1", LUN), cell("a2", LUN)],
-      candidatesByAccount: { a1: [rpiA, rpiB, autre], a2: [rpiA, rpiB, autre] },
-      existingUse: {},
-    });
-
-    const contenus = result.assignments.map((a) => a.candidate.contentKey);
-    expect(new Set(contenus).size).toBe(2); // deux contenus distincts, pas deux RPI
+/**
+ * LE cas réel qui a motivé cette correction.
+ *
+ * Ses recettes RAUTO 7 à 14 partagent un gabarit builder ; les RTEXT 1 à 5 en
+ * ont d'autres. Au lundi 14/09, les moins récemment publiées étaient RAUTO 12,
+ * 13 et 14 (deux semaines) ; les RTEXT dataient de six jours. L'outil a proposé
+ * des RTEXT — les plus RÉCENTES — parce qu'il traitait les huit RAUTO comme un
+ * seul contenu, enterré par RAUTO 11 publiée le vendredi.
+ *
+ * L'identité de rotation, c'est LA RECETTE.
+ */
+describe("une série entière sur le même gabarit", () => {
+  const TRANSACTION = [
+    recipe("rtext-1"), recipe("rtext-2"), recipe("rtext-3"),
+    recipe("rtext-4"), recipe("rtext-5"),
+    recipe("rauto-11"), recipe("rauto-12"), recipe("rauto-13"), recipe("rauto-14"),
+  ];
+  const VECU = history({
+    "rtext-1": { a9: ["2026-09-07"] },
+    "rtext-2": { a9: ["2026-09-07"] },
+    "rtext-3": { a9: ["2026-09-08"] },
+    "rtext-4": { a9: ["2026-09-08"] },
+    "rtext-5": { a9: ["2026-09-09"] },
+    "rauto-11": { a9: ["2026-09-11"] },
+    "rauto-12": { a9: ["2026-09-02"] },
+    "rauto-13": { a9: ["2026-09-01"] },
+    "rauto-14": { a9: ["2026-09-04"] },
   });
 
-  it("l'historique de l'un pénalise l'autre", () => {
-    const rpiA = recipe("rpi-a", 0, "tpl-rpi");
-    const rtips = recipe("rtips", 1, "tpl-rtips");
-    const ranked = rankCandidatesForCell(
-      cell("a1", MER),
-      [rpiA, rtips],
-      // C'est l'AUTRE recette RPI qui a été publiée — même contenu.
-      history({ "tpl-rpi": { a9: [MAR] } }),
-    );
-    expect(ranked[0].candidate.patternTemplateId).toBe("rtips");
+  it("les plus anciennes passent devant, pas leurs s\u0153urs récentes", () => {
+    const ranked = rankCandidatesForCell(cell("a1", "2026-09-14"), TRANSACTION, VECU);
+    expect(ranked.slice(0, 3).map((r) => r.candidate.patternTemplateId)).toEqual([
+      "rauto-13",
+      "rauto-12",
+      "rauto-14",
+    ]);
+  });
+
+  /**
+   * La sévérité, pas seulement l'ordre. En regroupant par gabarit, une seule
+   * RAUTO pouvait sortir par jour : le reste de la journée partait en cases
+   * vides et en bandeau orange.
+   */
+  it("neuf comptes, neuf recettes : aucune case vide", () => {
+    const accounts = Array.from({ length: 9 }, (_, i) => `a${i}`);
+    const result = dispatchRecipes({
+      cells: accounts.map((a) => cell(a, "2026-09-14")),
+      candidatesByAccount: Object.fromEntries(accounts.map((a) => [a, TRANSACTION])),
+      existingUse: VECU,
+    });
+    expect(result.unfilled).toHaveLength(0);
+    expect(new Set(result.assignments.map((a) => a.candidate.patternTemplateId)).size).toBe(9);
+  });
+
+  /**
+   * Corollaire assumé : deux recettes distinctes du même gabarit PEUVENT sortir
+   * le même jour sur deux comptes. C'est voulu — ce sont deux vidéos
+   * différentes. Écrit noir sur blanc pour que personne ne le « corrige ».
+   */
+  it("deux recettes du même gabarit ne se pénalisent plus", () => {
+    const result = dispatchRecipes({
+      cells: [cell("a1", LUN), cell("a2", LUN)],
+      candidatesByAccount: { a1: [recipe("rauto-12")], a2: [recipe("rauto-13")] },
+      existingUse: {},
+    });
+    expect(result.assignments).toHaveLength(2);
+    expect(result.unfilled).toHaveLength(0);
   });
 });
 
@@ -397,5 +465,78 @@ describe("la borne physique", () => {
     expect(minimumAchievableGap(15, 6)).toBe(2);
     expect(minimumAchievableGap(15, 4)).toBe(3);
     expect(minimumAchievableGap(15, 0)).toBeNull();
+  });
+});
+
+/**
+ * Les alternatives proposées à l'écran.
+ *
+ * L'écran rappelait `rankCandidatesForCell` contre l'historique INITIAL, alors
+ * que l'attribution classait contre un historique enrichi case après case. Deux
+ * conséquences visibles : le « · N j » du menu et la pastille de la même case
+ * pouvaient différer, et le premier élément du menu n'était pas toujours celui
+ * qui avait été choisi — ce que la promesse « SOURCE UNIQUE » exclut.
+ */
+describe("optionsByCell — ce que l'écran propose", () => {
+  it("la première alternative d'une case EST ce qui lui a été attribué", () => {
+    const candidates = [recipe("a"), recipe("b"), recipe("c")];
+    const result = dispatchRecipes({
+      cells: [cell("acc1", LUN), cell("acc2", LUN), cell("acc3", LUN)],
+      candidatesByAccount: { acc1: candidates, acc2: candidates, acc3: candidates },
+      existingUse: history({
+        a: { acc1: ["2026-10-01"] },
+        b: { acc1: ["2026-09-25"] },
+        c: { acc1: ["2026-09-20"] },
+      }),
+    });
+
+    for (const assignment of result.assignments) {
+      const options = result.optionsByCell[cellKey(assignment.cell)];
+      expect(options[0].candidate.patternTemplateId).toBe(
+        assignment.candidate.patternTemplateId,
+      );
+      // Le même nombre des deux côtés : la pastille et son menu ne peuvent plus
+      // afficher deux écarts différents pour la même recette.
+      expect(options[0].rawGap).toBe(assignment.gapDays);
+    }
+  });
+
+  it("une recette déjà servie plus tôt dans le lot disparaît des alternatives du jour", () => {
+    const candidates = [recipe("a"), recipe("b")];
+    const result = dispatchRecipes({
+      cells: [cell("acc1", LUN), cell("acc2", LUN)],
+      candidatesByAccount: { acc1: candidates, acc2: candidates },
+      existingUse: history({ a: { acc1: ["2026-09-01"] }, b: { acc1: ["2026-09-15"] } }),
+    });
+
+    const second = result.assignments[1];
+    const options = result.optionsByCell[cellKey(second.cell)];
+    const first = result.assignments[0].candidate.patternTemplateId;
+    expect(options.some((o) => o.candidate.patternTemplateId === first)).toBe(false);
+  });
+
+  it("une case sans candidat rend une liste vide, pas `undefined`", () => {
+    const result = dispatchRecipes({
+      cells: [cell("acc1", LUN)],
+      candidatesByAccount: {},
+      existingUse: {},
+    });
+    expect(result.optionsByCell[cellKey(cell("acc1", LUN))]).toEqual([]);
+  });
+
+  it("une case épinglée porte aussi ses alternatives — l'échange reste possible", () => {
+    const candidates = [recipe("a"), recipe("b")];
+    const key = cellKey(cell("acc1", LUN));
+    const result = dispatchRecipes({
+      cells: [cell("acc1", LUN)],
+      candidatesByAccount: { acc1: candidates },
+      existingUse: {},
+      pinned: { [key]: "b" },
+    });
+    expect(result.assignments[0].pinned).toBe(true);
+    expect(result.optionsByCell[key].map((o) => o.candidate.patternTemplateId).sort()).toEqual([
+      "a",
+      "b",
+    ]);
   });
 });

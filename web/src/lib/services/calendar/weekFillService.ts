@@ -17,6 +17,7 @@ import type { UserContext } from "@/lib/userContext";
 import { ForbiddenError, ValidationError } from "@/lib/services/_runtime/errors";
 import { createSlot } from "@/lib/services/slot/slotService";
 import { parisDayKey, localInputToIso } from "@/lib/date/formatFr";
+import { compareNatural } from "@/lib/utils/naturalSort";
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import {
   DISPATCH_WINDOW_DAYS,
@@ -41,8 +42,31 @@ export interface WeekFillContext {
   accounts: WeekFillAccount[];
   /** Recettes proposables, par compte. */
   candidatesByAccount: Record<string, DispatchCandidate[]>;
-  /** Le pool complet dédupliqué, pour les cases à cocher de l'écran. */
-  pool: { patternTemplateId: string; label: string; accountCount: number }[];
+  /** Le pool complet dédupliqué, pour le sélecteur de l'écran. */
+  pool: {
+    patternTemplateId: string;
+    label: string;
+    /** `null` = recette pas encore rangée — l'écran en fait une entrée « Sans famille » de plein droit. */
+    family: string | null;
+    accountCount: number;
+  }[];
+  /**
+   * Familles couvertes par les bindings ACTIFS de chaque compte (`null` inclus).
+   *
+   * Affiché sous chaque handle : un compte qui ne porte que du COMMERCE ne doit
+   * pas disparaître silencieusement d'un remplissage TRANSACTION — le filtre
+   * famille ne remplace pas une liaison mal placée, il la rend visible.
+   */
+  familiesByAccount: Record<string, (string | null)[]>;
+  /**
+   * Libellés portés par PLUSIEURS recettes du pool.
+   *
+   * Une version précédente les fusionnait silencieusement (par gabarit
+   * partagé) : deux « RPI » ne sortaient jamais le même jour, mais huit RAUTO
+   * du même gabarit s'enterraient mutuellement. On ne masque plus — on signale,
+   * et l'admin fusionne ou archive.
+   */
+  duplicateLabels: string[];
   /** Où chaque recette est déjà posée, en index de jour. */
   existingUse: Record<string, RecipeHistory>;
   /** Jours déjà occupés : `accountId` → clés de jour. Ces cases ne sont jamais écrasées. */
@@ -80,6 +104,8 @@ export async function buildWeekFillContext({
       accounts: [],
       candidatesByAccount: {},
       pool: [],
+      familiesByAccount: {},
+      duplicateLabels: [],
       existingUse: {},
       occupiedByAccount: {},
     };
@@ -113,7 +139,7 @@ export async function buildWeekFillContext({
         patternTemplateId: true,
         publishTime: true,
         customLabel: true,
-        patternTemplate: { select: { label: true, createdAt: true, templateId: true } },
+        patternTemplate: { select: { label: true, family: true, createdAt: true } },
       },
       orderBy: { publishTime: "asc" },
     }),
@@ -127,20 +153,18 @@ export async function buildWeekFillContext({
         accountId: true,
         scheduledAt: true,
         patternTemplateId: true,
-        patternTemplate: { select: { templateId: true } },
-        patternBinding: {
-          select: {
-            patternTemplateId: true,
-            patternTemplate: { select: { templateId: true } },
-          },
-        },
+        patternBinding: { select: { patternTemplateId: true } },
       },
     }),
   ]);
 
   // ── Le pool, par compte ───────────────────────────────────────────────────
   const candidatesByAccount: Record<string, DispatchCandidate[]> = {};
-  const poolByTemplate = new Map<string, { label: string; accountCount: number }>();
+  const poolByTemplate = new Map<
+    string,
+    { label: string; family: string | null; accountCount: number }
+  >();
+  const familiesByAccount: Record<string, (string | null)[]> = {};
 
   for (const b of bindings) {
     const label = patternLabel({
@@ -150,18 +174,23 @@ export async function buildWeekFillContext({
     (candidatesByAccount[b.accountId] ??= []).push({
       patternTemplateId: b.patternTemplateId,
       patternBindingId: b.id,
-      // Ce que voit l'audience : le template builder prime. Deux recettes
-      // rendues depuis le même template sont le même reel.
-      contentKey: b.patternTemplate.templateId ?? b.patternTemplateId,
       publishTime: b.publishTime,
       label,
       templateCreatedAt: b.patternTemplate.createdAt.getTime(),
     });
+    const family = b.patternTemplate.family ?? null;
+    const families = (familiesByAccount[b.accountId] ??= []);
+    if (!families.includes(family)) families.push(family);
     const entry = poolByTemplate.get(b.patternTemplateId);
     if (entry) entry.accountCount += 1;
     // Le libellé du pool est celui de la RECETTE, pas l'éventuel customLabel
     // d'un compte : deux comptes peuvent la renommer différemment.
-    else poolByTemplate.set(b.patternTemplateId, { label: b.patternTemplate.label, accountCount: 1 });
+    else
+      poolByTemplate.set(b.patternTemplateId, {
+        label: b.patternTemplate.label,
+        family,
+        accountCount: 1,
+      });
   }
 
   // ── L'historique et l'occupation ──────────────────────────────────────────
@@ -173,26 +202,46 @@ export async function buildWeekFillContext({
     const dayKey = parisDayKey(slot.scheduledAt);
     (occupiedByAccount[slot.accountId] ??= []).push(dayKey);
 
-    // L'identité du CONTENU : le template builder de la recette d'abord (deux
-    // recettes peuvent le partager, et rendent alors le même reel), la recette
-    // en repli. Le binding fait foi ; le template direct couvre les missions.
-    const recipe = slot.patternBinding?.patternTemplate ?? slot.patternTemplate;
-    const contentKey =
-      recipe?.templateId ?? slot.patternBinding?.patternTemplateId ?? slot.patternTemplateId;
-    if (!contentKey) continue;
+    // L'identité de rotation, c'est LA RECETTE — le binding fait foi, le
+    // template direct couvre les missions sans compte.
+    //
+    // Surtout PAS le gabarit builder : une version précédente regroupait les
+    // recettes qui le partagent, et enterrait huit recettes dès que l'une
+    // sortait (cf. le verrou dans les tests de ce service).
+    const templateId = slot.patternBinding?.patternTemplateId ?? slot.patternTemplateId;
+    if (!templateId) continue;
 
     const day = dayIndexFromKey(dayKey);
-    const h = (existingUse[contentKey] ??= { allDays: [], byAccount: {} });
+    const h = (existingUse[templateId] ??= { allDays: [], byAccount: {} });
     h.allDays.push(day);
     (h.byAccount[slot.accountId] ??= []).push(day);
+  }
+
+  const byLabel = new Map<string, number>();
+  for (const v of poolByTemplate.values()) {
+    byLabel.set(v.label, (byLabel.get(v.label) ?? 0) + 1);
+  }
+
+  // « Sans famille » en dernier : c'est un reste à ranger, pas une famille.
+  for (const list of Object.values(familiesByAccount)) {
+    list.sort((a, b) =>
+      a === null ? 1 : b === null ? -1 : compareNatural(a, b),
+    );
   }
 
   return {
     accounts,
     candidatesByAccount,
+    familiesByAccount,
+    duplicateLabels: [...byLabel.entries()]
+      .filter(([, n]) => n > 1)
+      .map(([label]) => label)
+      .sort(compareNatural),
     pool: [...poolByTemplate.entries()]
       .map(([patternTemplateId, v]) => ({ patternTemplateId, ...v }))
-      .sort((a, b) => a.label.localeCompare(b.label, "fr")),
+      // Tri naturel : « RAUTO 2 » avant « RAUTO 10 ». Une liste de vingt
+      // recettes numérotées est illisible autrement.
+      .sort((a, b) => compareNatural(a.label, b.label)),
     existingUse,
     occupiedByAccount,
   };

@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { listPatternFamilies } from "@/lib/services/pattern/families";
 import { PatternEditClient } from "./PatternEditClient";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +61,7 @@ export default async function PatternEditPage({ params }: PageProps) {
   });
   if (!tpl) notFound();
 
-  const [builderTemplates, captionPresets, descriptionPrompts, videoLibraries, clients] =
+  const [builderTemplates, captionPresets, descriptionPrompts, videoLibraries, clients, knownFamilies] =
     await Promise.all([
     prisma.template.findMany({
       select: { id: true, name: true },
@@ -81,6 +82,7 @@ export default async function PatternEditPage({ params }: PageProps) {
       orderBy: { name: "asc" },
     }),
       prisma.client.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+      listPatternFamilies(),
   ]);
 
   return (
@@ -89,6 +91,7 @@ export default async function PatternEditPage({ params }: PageProps) {
       initial={{
         id: tpl.id,
         label: tpl.label,
+        family: tpl.family,
         clientLabel: tpl.clientLabel,
         clientDescription: tpl.clientDescription,
         source: tpl.source,
@@ -125,6 +128,7 @@ export default async function PatternEditPage({ params }: PageProps) {
       descriptionPrompts={descriptionPrompts}
       videoLibraries={videoLibraries}
       clients={clients}
+      knownFamilies={knownFamilies}
     />
   );
 }

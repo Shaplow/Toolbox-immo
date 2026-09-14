@@ -3,13 +3,13 @@
 /**
  * DeployTemplateModal — Sprint C.
  *
- * Permet à l'admin d'appliquer une recette PatternTemplate à N comptes
- * Instagram en 1 click depuis le drawer d'édition recette.
+ * Permet à l'admin d'appliquer une ou PLUSIEURS recettes PatternTemplate à N
+ * comptes Instagram en 1 click, depuis le drawer d'édition recette (une seule)
+ * ou depuis une sélection du catalogue (plusieurs).
  *
- * Champs communs (binding) : publishTime, dayOfWeek (Lun-Ven par défaut),
- * defaultAssignees.
+ * Champs communs (binding) : publishTime, dayOfWeek, defaultAssignees.
  *
- * POST /api/admin/patterns/[id]/deploy.
+ * POST /api/admin/patterns/deploy (N recettes × N comptes, résultats partiels).
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -29,47 +29,57 @@ interface AccountOption {
   handle: string;
 }
 
+export interface DeployTarget {
+  id: string;
+  label: string;
+}
+
 interface Props {
-  templateId: string;
-  templateLabel: string;
+  /** Une ou plusieurs recettes à appliquer. */
+  templates: DeployTarget[];
   onDeployed: (createdCount: number) => void;
   onClose: () => void;
 }
 
 interface DeployData {
   accounts: AccountOption[];
+  /** Renseigné uniquement pour une recette unique — cf. eligibleAccounts. */
   alreadyLinkedAccountIds: string[];
   monteurs: AssigneeOption[];
   cms: AssigneeOption[];
   videastes: AssigneeOption[];
 }
 
-export function DeployTemplateModal({
-  templateId,
-  templateLabel,
-  onDeployed,
-  onClose,
-}: Props) {
+export function DeployTemplateModal({ templates, onDeployed, onClose }: Props) {
+  const single = templates.length === 1;
+  const templateIds = useMemo(() => templates.map((t) => t.id), [templates]);
+  const templateIdsKey = templateIds.join(",");
+
   const [data, setData] = useState<DeployData | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [schedule, setSchedule] = useState<BindingScheduleValues>({
+  const [schedule, setSchedule] = useState<BindingScheduleValues>(() => ({
     publishTime: "10:00",
-    dayOfWeek: [1, 2, 3, 4, 5],
+    // Sur une sélection multiple, imposer Lun-Ven à dix recettes fabriquerait
+    // dix publications par jour et par compte. Les reels naissent en banque :
+    // planning vide par défaut, à renseigner sciemment.
+    dayOfWeek: templates.length > 1 ? [] : [1, 2, 3, 4, 5],
     monteurId: "",
     cmId: "",
     videasteId: "",
-  });
+  }));
   function updateSchedule(patch: Partial<BindingScheduleValues>) {
     setSchedule((prev) => ({ ...prev, ...patch }));
   }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Charge la liste des comptes IG + les bindings existants pour cette
-  // recette (pour exclure ceux déjà liés) + les listes d'assignées.
+  // Charge la liste des comptes IG + les listes d'assignées. Les bindings
+  // existants ne sont chargés que pour une recette unique : sur une sélection,
+  // « déjà lié » diffère d'une recette à l'autre et le service skippe déjà
+  // chaque couple (recette, compte) qui existe.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -77,7 +87,7 @@ export function DeployTemplateModal({
         const [accountsRes, templateRes, monteursRes, cmsRes, videastesRes, adminsRes] =
           await Promise.all([
             fetch("/api/admin/accounts"),
-            fetch(`/api/admin/patterns/${templateId}`),
+            single ? fetch(`/api/admin/patterns/${templateIds[0]}`) : Promise.resolve(null),
             fetch("/api/admin/users?role=MONTEUR"),
             fetch("/api/admin/users?role=CM"),
             fetch("/api/admin/users?role=VIDEASTE"),
@@ -87,11 +97,10 @@ export function DeployTemplateModal({
         const accounts = accountsRes.ok
           ? ((await accountsRes.json()) as AccountOption[])
           : [];
-        const tpl = templateRes.ok
-          ? ((await templateRes.json()) as {
-              bindings?: { accountId: string }[];
-            })
-          : { bindings: [] };
+        const tpl =
+          templateRes && templateRes.ok
+            ? ((await templateRes.json()) as { bindings?: { accountId: string }[] })
+            : { bindings: [] };
         // Chaque réponse est DÉJÀ filtrée par rôle côté serveur (payload allégé
         // {id,name,email}, SANS champ `role`). On les utilise donc directement —
         // re-filtrer sur `u.role` renvoyait des listes vides (le bug). Les ADMIN
@@ -124,13 +133,14 @@ export function DeployTemplateModal({
     return () => {
       cancelled = true;
     };
-  }, [templateId]);
+  }, [templateIdsKey, templateIds, single]);
 
   const eligibleAccounts = useMemo(() => {
     if (!data) return [];
+    if (!single) return data.accounts;
     const linked = new Set(data.alreadyLinkedAccountIds);
     return data.accounts.filter((a) => !linked.has(a.id));
-  }, [data]);
+  }, [data, single]);
 
   function toggleAccount(id: string) {
     setSelectedAccountIds((prev) => {
@@ -158,10 +168,11 @@ export function DeployTemplateModal({
     }
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/patterns/${templateId}/deploy`, {
+      const res = await fetch(`/api/admin/patterns/deploy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          patternTemplateIds: templateIds,
           accountIds: [...selectedAccountIds],
           publishTime: schedule.publishTime,
           dayOfWeek: schedule.dayOfWeek,
@@ -177,12 +188,25 @@ export function DeployTemplateModal({
       const result = (await res.json()) as {
         createdCount: number;
         skippedCount: number;
+        failed: { patternTemplateId: string; error: string }[];
       };
-      toast.success(
-        result.skippedCount > 0
-          ? `${result.createdCount} déployées · ${result.skippedCount} déjà liées`
-          : `${result.createdCount} compte${result.createdCount > 1 ? "s" : ""} lié${result.createdCount > 1 ? "s" : ""}`,
-      );
+      const labelOf = (id: string) =>
+        templates.find((t) => t.id === id)?.label ?? "Recette";
+      if (result.failed.length > 0) {
+        // Résultat partiel : ne pas annoncer un succès franc. Le premier
+        // message porte la cause, le reste se compte.
+        toast.error(
+          `${result.failed.length} recette${result.failed.length > 1 ? "s" : ""} en échec — ` +
+            `${labelOf(result.failed[0].patternTemplateId)} : ${result.failed[0].error}`,
+        );
+      }
+      if (result.createdCount > 0 || result.failed.length === 0) {
+        toast.success(
+          result.skippedCount > 0
+            ? `${result.createdCount} liaison${result.createdCount > 1 ? "s" : ""} créée${result.createdCount > 1 ? "s" : ""} · ${result.skippedCount} déjà liée${result.skippedCount > 1 ? "s" : ""}`
+            : `${result.createdCount} liaison${result.createdCount > 1 ? "s" : ""} créée${result.createdCount > 1 ? "s" : ""}`,
+        );
+      }
       onDeployed(result.createdCount);
       onClose();
     } catch (err) {
@@ -192,6 +216,10 @@ export function DeployTemplateModal({
     }
   }
 
+  const title = single
+    ? `Appliquer « ${templates[0].label} »`
+    : `Appliquer ${templates.length} recettes`;
+
   return (
     <Modal open onClose={onClose} size="md">
       <form onSubmit={handleSubmit} className="p-5">
@@ -200,12 +228,17 @@ export function DeployTemplateModal({
             <Rocket size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[18px] font-semibold text-foreground truncate">
-              Appliquer « {templateLabel} »
-            </h2>
+            <h2 className="text-[18px] font-semibold text-foreground truncate">{title}</h2>
             <p className="mt-0.5 text-[12px] text-muted-foreground">
-              Sélectionne les comptes destinataires et le planning.
+              {single
+                ? "Sélectionne les comptes destinataires et le planning."
+                : "Chaque recette est appliquée à chaque compte ; les liaisons déjà existantes sont ignorées."}
             </p>
+            {!single && (
+              <p className="mt-1 text-[11px] text-muted-foreground truncate">
+                {templates.map((t) => t.label).join(" · ")}
+              </p>
+            )}
           </div>
         </div>
 
@@ -278,6 +311,11 @@ export function DeployTemplateModal({
             monteurs={data?.monteurs ?? []}
             cms={data?.cms ?? []}
             videastes={data?.videastes ?? []}
+            dayOfWeekHelp={
+              single
+                ? undefined
+                : "Vide = les publications naissent en banque, sans génération automatique."
+            }
           />
         </div>
 
@@ -302,7 +340,7 @@ export function DeployTemplateModal({
             loading={saving}
             disabled={selectedAccountIds.size === 0}
           >
-            Appliquer ({selectedAccountIds.size})
+            Appliquer ({selectedAccountIds.size * templates.length})
           </Button>
         </div>
       </form>

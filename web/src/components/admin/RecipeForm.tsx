@@ -47,6 +47,15 @@ import { coverModeOverrideOptions } from "@/lib/i18n/glossary";
 export interface RecipeFormInitial {
   // Template
   label: string;
+  /**
+   * Famille + libellés client : ces trois champs sont édités ailleurs (drawer
+   * catalogue, colonne « Famille » du catalogue) mais VOYAGENT dans le même
+   * payload. Sans eux ici, `encodePatternTemplateFieldsPayload` les renvoyait
+   * à `null` à chaque save depuis un compte — donc les effaçait.
+   */
+  family: string | null;
+  clientLabel: string | null;
+  clientDescription: string | null;
   source: string;
   templateId: string | null;
   coverMode: string;
@@ -117,6 +126,8 @@ interface Props {
   descriptionPrompts: { id: string; name: string }[];
   /** Bibliothèques vidéo pour l'auto-save de sortie (V2.6). */
   videoLibraries: { id: string; name: string }[];
+  /** Familles déjà saisies — proposées à la saisie pour éviter les variantes d'orthographe. */
+  knownFamilies?: string[];
   saving: boolean;
   onSave: (values: RecipeFormValues) => Promise<void> | void;
   onDelete?: () => void;
@@ -135,6 +146,7 @@ export function RecipeForm({
   captionPresets,
   descriptionPrompts,
   videoLibraries,
+  knownFamilies = [],
   saving,
   onSave,
   onDelete,
@@ -150,6 +162,9 @@ export function RecipeForm({
   const [templateValues, setTemplateValues] = useState<PatternTemplateFieldValues>(() =>
     decodePatternTemplateFields({
       label: initial.label,
+      family: initial.family,
+      clientLabel: initial.clientLabel,
+      clientDescription: initial.clientDescription,
       source: initial.source,
       templateId: initial.templateId,
       coverMode: initial.coverMode,
@@ -303,6 +318,7 @@ export function RecipeForm({
                 captionPresets={captionPresets}
                 descriptionPrompts={descriptionPrompts}
                 videoLibraries={videoLibraries}
+                knownFamilies={knownFamilies}
               />
             </div>
           ))}
