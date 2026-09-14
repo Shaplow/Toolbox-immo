@@ -8,10 +8,16 @@
  * Cellule sélectionnée : bg-primary text-primary-foreground.
  *
  * Format HH:MM (24h). Step minute configurable (5 / 15 / 30 / 60).
+ *
+ * Popover PORTALÉ vers `document.body` (cf. useAnchoredPosition) : en
+ * `absolute`, les deux colonnes étaient coupées par le premier ancêtre en
+ * overflow-hidden — Modal, Drawer, Section, Card, et le `<main>` du shell.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Clock } from "lucide-react";
+import { useAnchoredPosition, POPOVER_Z_INDEX } from "./useAnchoredPosition";
 
 interface TimePickerProps {
   value: string;
@@ -58,6 +64,12 @@ export function TimePicker({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const hoursListRef = useRef<HTMLDivElement>(null);
   const minutesListRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  // 250 = hauteur réelle (p-2 + en-tête de colonne + deux listes h-56).
+  const { position, ready } = useAnchoredPosition(open, triggerRef, {
+    maxHeight: 250,
+    popoverRef,
+  });
 
   const parsed = parseHM(value);
   const minHM = min ? parseHM(min) : null;
@@ -72,10 +84,18 @@ export function TimePicker({
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      // Le popover est portalé : sans ce test, `contains` est faux pour un
+      // clic SUR une heure, la liste se ferme au mousedown et le click ne part
+      // jamais — le picker devient silencieusement inutilisable.
+      if (popoverRef.current?.contains(target)) return;
+      if (!containerRef.current?.contains(target)) setOpen(false);
     }
     function onEsc(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        // Échap ferme le sélecteur, pas le dialogue qui le contient :
+        // useDialogStack écoute sur `window`, donc en aval de ce handler.
+        e.stopPropagation();
         setOpen(false);
         triggerRef.current?.focus();
       }
@@ -167,11 +187,19 @@ export function TimePicker({
         </span>
       </button>
 
-      {open && (
+      {ready && position &&
+        createPortal(
         <div
+          ref={popoverRef}
           role="dialog"
           aria-label="Sélecteur d'heure"
-          className="absolute top-full left-0 mt-2 z-50 rounded-md p-2 bg-popover text-popover-foreground border border-border shadow-lg"
+          style={{
+            position: "absolute",
+            top: position.top,
+            left: position.left,
+            zIndex: POPOVER_Z_INDEX,
+          }}
+          className="rounded-md p-2 bg-popover text-popover-foreground border border-border shadow-lg"
         >
           <div className="flex gap-1">
             <div className="flex flex-col">
@@ -230,8 +258,9 @@ export function TimePicker({
               </div>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

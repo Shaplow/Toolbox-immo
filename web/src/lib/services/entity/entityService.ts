@@ -29,6 +29,12 @@ import {
 } from "@/lib/permissions/entityScope";
 import { logEntityActivity, type EntityActivityType } from "@/lib/services/entity/entityActivity";
 import { assertAssigneeRole, createSlot, type CreateSlotInput } from "@/lib/services/slot/slotService";
+// Module neutre : slotService applique les mêmes règles au rattachement
+// après coup, et les deux services s'importent déjà l'un l'autre.
+import {
+  REEL_ATTACHABLE_SOURCES,
+  REEL_STATUSES_BUMPED_ON_SHOT,
+} from "@/lib/publications/constants";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { deleteR2Prefix } from "@/lib/r2";
 import { safeJSON } from "@/lib/utils/json";
@@ -137,7 +143,6 @@ export function initialValidationStatus(
  * rushs partagés. `auto_template` est exclu — il déclencherait un step « Rendu
  * vidéo » fantôme (aucun Render) et un CTA de rendu qui écraserait le montage.
  */
-const REEL_ATTACHABLE_SOURCES = ["manual_rushes", "external_upload"] as const;
 
 const MAX_KEY = 100;
 const MAX_VALUE = 5000;
@@ -754,6 +759,8 @@ const entityPatchAccessSelect = {
   videasteConfirmation: true,
   defaultAssigneeMonteurId: true,
   defaultAssigneeCmId: true,
+  // Exemption des fiches archivées au blocage des champs requis (cf. plus bas).
+  isArchived: true,
   shootSlots: {
     select: { assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   },
@@ -871,12 +878,25 @@ export async function patchEntity(id: string, patch: UpdateEntityInput, ctx: Use
     const err = validateFields(data.fields);
     if (err) throw new ValidationError(err);
     // Contre le schéma du type : choix fermés validés ; clés orphelines
-    // tolérées (schéma modifié après coup) et required non exigé en édition.
+    // tolérées (schéma modifié après coup).
+    //
+    // `requireRequired` est vrai À CHAQUE ENREGISTREMENT, pas seulement à la
+    // création : un champ marqué obligatoire qui n'empêche rien n'est qu'une
+    // décoration, et les fiches arrivaient incomplètes au montage. Le risque
+    // assumé — rendre insauvable une fiche existante dès qu'on ajoute un champ
+    // requis — est traité en amont, dans l'admin des types de fiches : compteur
+    // d'impact avant de cocher, et backfill guidé pour vider la population non
+    // conforme AU MOMENT où la contrainte naît (cf. /api/entity-types/[id]/
+    // required-impact et /backfill-field).
+    //
+    // Seule exemption : les fiches ARCHIVÉES. Elles n'ont plus vocation à être
+    // conformes, et exiger 12 champs pour corriger une faute de frappe sur une
+    // vieille fiche serait une punition sans objet.
     const schemaErr = validateFieldValues(
       normalizeCustomFields(existing.type.fieldSchema),
       data.fields as Record<string, string>,
       {
-        requireRequired: false,
+        requireRequired: !existing.isArchived,
         allowUnknownKeys: true,
         // Le formulaire renvoie l'objet `fields` COMPLET, pas un delta : sans
         // la comparaison à la base, une valeur numérique historique non
@@ -1110,7 +1130,7 @@ export async function deleteEntity(id: string, ctx: UserContext) {
       id: true,
       orderId: true,
       order: { select: { status: true } },
-      _count: { select: { slots: true, shootSlots: true } },
+      _count: { select: { slots: true, shootSlots: true, relatedOf: true } },
     },
   });
   if (!existing) throw new NotFoundError("Fiche");
@@ -1133,6 +1153,17 @@ export async function deleteEntity(id: string, ctx: UserContext) {
     );
   }
 
+  // `Entity.relatedEntityId` est en SetNull : la base laisserait supprimer un
+  // bien en déliant SILENCIEUSEMENT tous ses tournages, qui se retrouveraient
+  // sans adresse ni données. Aucune FK Restrict ne pointe vers Entity — tout
+  // repose sur cette garde applicative, donc aucune route ne doit appeler
+  // `prisma.entity.delete` directement.
+  if (existing._count.relatedOf > 0) {
+    throw new ConflictError(
+      `Cette fiche est liée à ${existing._count.relatedOf} autre(s) fiche(s) : détachez-les avant de supprimer.`,
+    );
+  }
+
   await prisma.entity.delete({ where: { id } });
   // Nettoyage best-effort des objets R2 résiduels (rushs) sous ce préfixe.
   try {
@@ -1141,6 +1172,103 @@ export async function deleteEntity(id: string, ctx: UserContext) {
     console.warn(`[deleteEntity] cleanup R2 échoué pour entities/${id}/ :`, err);
   }
   return { deleted: true };
+}
+
+/**
+ * Borne d'un lot. Au-delà, c'est un script, pas un clic : chaque fiche est
+ * traitée une par une (cf. plus bas), et 200 suffit largement au geste réel.
+ */
+export const MAX_BULK_ENTITIES = 200;
+
+export type BulkEntityAction = "archive" | "unarchive" | "delete" | "reassign";
+
+export interface BulkEntityInput {
+  ids: string[];
+  action: BulkEntityAction;
+  /** Pour `reassign` — seuls les rôles fournis sont écrits. */
+  assignees?: {
+    assigneeVideasteId?: string | null;
+    defaultAssigneeMonteurId?: string | null;
+    defaultAssigneeCmId?: string | null;
+  };
+}
+
+export interface BulkEntityResult {
+  ok: string[];
+  failed: { id: string; label: string; error: string }[];
+}
+
+/**
+ * Actions groupées sur des fiches (ADMIN).
+ *
+ * RÉSULTATS PARTIELS, pas tout-ou-rien : c'est la convention du repo
+ * (`bulkPatchSlots`, `attachMissionsToEntity`, `instantiateOrderSlots`). Sur 40
+ * fiches dont 3 portent des publications, l'admin veut que les 37 autres
+ * passent et savoir lesquelles ont résisté — pas tout perdre.
+ *
+ * Chaque fiche passe par `patchEntity` / `deleteEntity`, JAMAIS par un
+ * `updateMany` : ces fonctions portent les gardes (commande en cours,
+ * publications rattachées, fiches liées), écrivent le journal, appliquent la
+ * whitelist de rôle et remettent `videasteConfirmation` à null quand le
+ * vidéaste change. Un `updateMany` court-circuiterait tout ça. Plus lent,
+ * correct — et borné à MAX_BULK_ENTITIES.
+ */
+export async function bulkPatchEntities(
+  input: BulkEntityInput,
+  ctx: UserContext,
+): Promise<BulkEntityResult> {
+  if (!ctx.canAdminBypass) throw new ForbiddenError("Réservé aux administrateurs");
+
+  const ids = [...new Set(input.ids.filter((id) => typeof id === "string" && id))];
+  if (ids.length === 0) throw new ValidationError("Aucune fiche sélectionnée");
+  if (ids.length > MAX_BULK_ENTITIES) {
+    throw new ValidationError(`Trop de fiches sélectionnées (max ${MAX_BULK_ENTITIES})`);
+  }
+  if (input.action === "reassign") {
+    const a = input.assignees ?? {};
+    const touched = (
+      ["assigneeVideasteId", "defaultAssigneeMonteurId", "defaultAssigneeCmId"] as const
+    ).filter((k) => a[k] !== undefined);
+    if (touched.length === 0) {
+      throw new ValidationError("Aucun assigné à appliquer");
+    }
+  }
+
+  // Libellés lus en une fois : un message d'échec qui ne dit que l'id est
+  // inexploitable pour l'admin qui doit aller corriger.
+  const labels = new Map(
+    (
+      await prisma.entity.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, label: true },
+      })
+    ).map((e) => [e.id, e.label]),
+  );
+
+  const ok: string[] = [];
+  const failed: BulkEntityResult["failed"] = [];
+
+  for (const id of ids) {
+    const label = labels.get(id) ?? id;
+    try {
+      if (input.action === "delete") {
+        await deleteEntity(id, ctx);
+      } else if (input.action === "archive" || input.action === "unarchive") {
+        await patchEntity(id, { isArchived: input.action === "archive" }, ctx);
+      } else {
+        await patchEntity(id, { ...input.assignees }, ctx);
+      }
+      ok.push(id);
+    } catch (err) {
+      failed.push({
+        id,
+        label,
+        error: err instanceof Error ? err.message : "Erreur inconnue",
+      });
+    }
+  }
+
+  return { ok, failed };
 }
 
 // ─── attachSlotToEntity ───────────────────────────────────────────────────────
@@ -1368,7 +1496,6 @@ export function computeShotTransition(
 }
 
 /** Statuts de reel bumpés vers IN_EDIT quand la fiche passe SHOT. */
-export const REEL_STATUSES_BUMPED_ON_SHOT = ["PLANNED", "RUSHES_EXPECTED"] as const;
 
 /**
  * Passe une fiche PLANNED → SHOT (premier rush uploadé, ou action manuelle) :

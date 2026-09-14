@@ -2,6 +2,10 @@
  * GET /api/cron/calendar — génère les slots de la semaine suivante.
  * Protégé par Authorization: Bearer <CRON_SECRET>.
  * Configurer le cron pour appeler cet endpoint chaque vendredi ou dimanche soir.
+ *
+ * `?dryRun=1` n'écrit rien et retourne le même diagnostic (`created`, `skipped`,
+ * `skips`) : c'est la façon sûre de demander à la prod pourquoi elle ne génère
+ * rien, sans créer la semaine par accident en posant la question.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { generateCalendarSlots, nextWeekRange } from "@/lib/calendarEngine";
@@ -21,11 +25,13 @@ export async function GET(req: NextRequest) {
   }
 
   const { dateFrom, dateTo } = nextWeekRange();
+  const dryRun = new URL(req.url).searchParams.get("dryRun") === "1";
 
-  const result = await generateCalendarSlots({ dateFrom, dateTo });
+  const result = await generateCalendarSlots({ dateFrom, dateTo, dryRun });
 
   return NextResponse.json({
     ok: true,
+    dryRun,
     week: { dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString() },
     ...result,
   });

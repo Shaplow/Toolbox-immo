@@ -41,3 +41,26 @@ export const BULK_PUBLISHABLE_STATUSES: ReadonlySet<string> = new Set([
   "READY_FOR_CM",
   "SCHEDULED",
 ]);
+
+/**
+ * Sources de recette qui produisent un REEL rattachable à une fiche tournage.
+ *
+ * Une recette `auto_template` se rend toute seule depuis un template : elle n'a
+ * pas de rushs à partager, donc rien à faire sur un tournage.
+ *
+ * Vit ici et non dans l'un des deux services : `entityService` (création d'un
+ * reel) et `slotService` (rattachement après coup) doivent appliquer la MÊME
+ * règle, et ils s'importent déjà l'un l'autre — la poser dans l'un des deux
+ * fermerait le cycle.
+ */
+export const REEL_ATTACHABLE_SOURCES = ["manual_rushes", "external_upload"] as const;
+
+/**
+ * Statuts de reel bumpés vers IN_EDIT quand le tournage passe SHOT/DONE.
+ *
+ * Même liste pour `markEntityShot` (le tournage bascule) et pour
+ * `attachShootToSlot` (le reel rejoint un tournage déjà tourné) : dans les deux
+ * cas les rushs sont là, le montage peut commencer. Les autres statuts ne
+ * bougent pas — forcer un reel déjà en montage le ferait régresser.
+ */
+export const REEL_STATUSES_BUMPED_ON_SHOT = ["PLANNED", "RUSHES_EXPECTED"] as const;

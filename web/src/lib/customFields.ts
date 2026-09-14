@@ -4,22 +4,54 @@
  *   - MediaLibrary.metadataSchema, DataLibrary.fieldsSchema
  *
  * Remplace les 6 déclarations concurrentes (FieldDef / MetadataField / string[]).
- * 5 types : text / textarea / number / url / select (choix fermé via `options`).
- * Les valeurs restent stockées en string (le type pilote le rendu/l'édition,
- * pas de coercition serveur — cohérent avec tout le repo). `CustomFieldType`
- * est un sous-ensemble strict de `SchemaFieldType` (cf. customFieldToSchemaField).
+ * 6 types : text / textarea / number / url / select (choix fermé via `options`)
+ * / checkbox (case à cocher).
+ *
+ * Les valeurs restent stockées en STRING, checkbox compris (`"true"` = coché,
+ * tout le reste = décoché, cf. CHECKBOX_TRUE / isCheckedFieldValue). Introduire
+ * un booléen casserait `Entity.fields`, les métadonnées MediaAsset, DataEntry,
+ * l'interpolation `{{clé}}` et tous les `.trim()` du repo pour un seul type de
+ * champ. Le type pilote le rendu et l'édition, pas la coercition serveur.
+ *
+ * `CustomFieldType` n'est plus un sous-ensemble strict de `SchemaFieldType` :
+ * `checkbox` s'y projette en `boolean` (cf. customFieldToSchemaField).
  */
 
 import type { SchemaField } from "@/types/template";
 import { validateSchemaFieldKey } from "@/lib/schemaFields";
 
-export type CustomFieldType = "text" | "textarea" | "number" | "url" | "select";
+export type CustomFieldType =
+  | "text"
+  | "textarea"
+  | "number"
+  | "url"
+  | "select"
+  | "checkbox";
+
+/**
+ * Valeur d'un `checkbox` coché. Tout le reste (`""`, absent) vaut décoché.
+ * Exporté pour que personne ne réinvente la comparaison au fil des surfaces.
+ */
+export const CHECKBOX_TRUE = "true";
+
+export function isCheckedFieldValue(value: string | undefined | null): boolean {
+  return value === CHECKBOX_TRUE;
+}
 
 export interface CustomField {
   key: string;
   label: string;
   type: CustomFieldType;
-  /** Champ obligatoire (utilisé par Data/formulaires ; optionnel ailleurs). */
+  /**
+   * Texte d'aide affiché sous le champ — le « pourquoi on demande ça » que le
+   * libellé seul ne porte pas. Borné à MAX_DESCRIPTION : c'est une aide, pas
+   * une notice.
+   */
+  description?: string;
+  /**
+   * Champ obligatoire. Sur un `checkbox`, signifie « doit être coché »
+   * (comportement HTML natif et Tally) — décoché bloque l'enregistrement.
+   */
   required?: boolean;
   /** Data spreadsheet : visible dans la vue table compacte. Extension optionnelle. */
   primary?: boolean;
@@ -33,9 +65,20 @@ export const CUSTOM_FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
   { value: "number", label: "Nombre" },
   { value: "url", label: "Lien URL" },
   { value: "select", label: "Choix fermé" },
+  { value: "checkbox", label: "Case à cocher" },
 ];
 
-const VALID_TYPES = new Set<CustomFieldType>(["text", "textarea", "number", "url", "select"]);
+const VALID_TYPES = new Set<CustomFieldType>([
+  "text",
+  "textarea",
+  "number",
+  "url",
+  "select",
+  "checkbox",
+]);
+
+/** Longueur max d'un texte d'aide — au-delà, ce n'est plus de l'aide. */
+export const MAX_DESCRIPTION = 200;
 
 /** Libellés qui suggèrent du texte multi-ligne (accent-insensible). */
 const LONG_TEXT_LABEL = /desc|note|adresse|comment|resum|\bbio\b/i;
@@ -109,6 +152,8 @@ export function normalizeCustomFields(raw: unknown): CustomField[] {
       const label =
         typeof o.label === "string" && o.label.trim() ? o.label.trim() : key;
       const field: CustomField = { key, label, type: coerceType(o.type) };
+      const description = typeof o.description === "string" ? o.description.trim() : "";
+      if (description) field.description = description.slice(0, MAX_DESCRIPTION);
       if (o.required === true) field.required = true;
       if (o.primary === true) field.primary = true;
       if (field.type === "select") {
@@ -120,15 +165,24 @@ export function normalizeCustomFields(raw: unknown): CustomField[] {
   return out;
 }
 
-/** Convertit un champ perso en `SchemaField` pour la fusion dans le formulaire
- *  de génération. Les CustomFieldType sont tous des `SchemaFieldType` valides. */
+/**
+ * Convertit un champ perso en `SchemaField` pour la fusion dans le formulaire
+ * de génération.
+ *
+ * Le mapping est l'identité PARTOUT SAUF pour `checkbox`, qui n'existe pas côté
+ * SchemaFieldType et s'y projette en `boolean` — d'où le switch explicite
+ * plutôt qu'un passage direct du type.
+ *
+ * `description` était jusqu'ici jetée alors que `SchemaField` la porte déjà.
+ */
 export function customFieldToSchemaField(f: CustomField): SchemaField {
   const field: SchemaField = {
     key: f.key,
     label: f.label || f.key,
-    type: f.type,
+    type: f.type === "checkbox" ? "boolean" : f.type,
     required: Boolean(f.required),
   };
+  if (f.description) field.description = f.description;
   if (f.type === "select") field.options = f.options ?? [];
   return field;
 }
@@ -205,42 +259,95 @@ export function isPartialNumericInput(value: string): boolean {
   return PARTIAL_NUMERIC.test(value);
 }
 
-export function validateFieldValues(
+export interface ValidateFieldValuesOptions {
+  requireRequired?: boolean;
+  allowUnknownKeys?: boolean;
+  previousValues?: Record<string, string>;
+}
+
+/**
+ * Valide les valeurs et retourne UNE erreur par clé fautive.
+ *
+ * Nécessaire à l'UI : un formulaire doit pouvoir signaler ses champs vides
+ * TOUS EN MÊME TEMPS et dès l'ouverture, pas les découvrir un par un à chaque
+ * tentative d'enregistrement. `validateFieldValues` (message unique) en est
+ * dérivée, pour que la règle ne puisse pas diverger entre les deux.
+ *
+ * La clé spéciale `__unknown` porte l'erreur de clé hors schéma.
+ */
+export function validateFieldValuesAll(
   schema: CustomField[],
   values: Record<string, string>,
-  opts: {
-    requireRequired?: boolean;
-    allowUnknownKeys?: boolean;
-    previousValues?: Record<string, string>;
-  } = {}
-): string | null {
+  opts: ValidateFieldValuesOptions = {}
+): Record<string, string> {
+  const errors: Record<string, string> = {};
   const byKey = new Map(schema.map((f) => [f.key, f]));
 
   if (!opts.allowUnknownKeys && schema.length > 0) {
     for (const key of Object.keys(values)) {
-      if (!byKey.has(key)) return `Champ inconnu : « ${key} »`;
+      if (!byKey.has(key)) {
+        errors.__unknown = `Champ inconnu : « ${key} »`;
+        break;
+      }
     }
   }
 
   for (const field of schema) {
     const raw = values[field.key];
     const value = typeof raw === "string" ? raw.trim() : "";
-    if (opts.requireRequired && field.required && !value) {
-      return `Le champ « ${field.label || field.key} » est requis`;
+    const name = field.label || field.key;
+
+    if (opts.requireRequired && field.required && !isFieldFilled(field, value)) {
+      // Un checkbox requis n'est pas « vide », il est décoché — et dire
+      // « requis » sur une case laisse l'utilisateur chercher quoi remplir.
+      errors[field.key] =
+        field.type === "checkbox"
+          ? `La case « ${name} » doit être cochée`
+          : `Le champ « ${name} » est requis`;
+      continue;
     }
     if (field.type === "select" && value) {
       const options = field.options ?? [];
       if (!options.includes(value)) {
-        return `Valeur « ${value} » invalide pour « ${field.label || field.key} » (choix fermé)`;
+        errors[field.key] = `Valeur « ${value} » invalide pour « ${name} » (choix fermé)`;
+        continue;
       }
+    }
+    if (field.type === "checkbox" && value && value !== CHECKBOX_TRUE) {
+      errors[field.key] = `Valeur « ${value} » invalide pour la case « ${name} »`;
+      continue;
     }
     if (field.type === "number" && value) {
       const previous = opts.previousValues?.[field.key];
       const unchanged = typeof previous === "string" && value === previous.trim();
       if (!unchanged && !isNumericFieldValue(value)) {
-        return `Le champ « ${field.label || field.key} » attend un nombre (reçu « ${value} »)`;
+        errors[field.key] = `Le champ « ${name} » attend un nombre (reçu « ${value} »)`;
       }
     }
+  }
+  return errors;
+}
+
+/**
+ * Un champ est-il « rempli » au sens de `required` ? Pour un checkbox, rempli
+ * signifie coché : une case décochée vaut `""`, exactement comme un texte vide.
+ */
+export function isFieldFilled(field: CustomField, value: string): boolean {
+  return field.type === "checkbox" ? isCheckedFieldValue(value) : value.length > 0;
+}
+
+export function validateFieldValues(
+  schema: CustomField[],
+  values: Record<string, string>,
+  opts: ValidateFieldValuesOptions = {}
+): string | null {
+  const errors = validateFieldValuesAll(schema, values, opts);
+  // Clé inconnue d'abord (whitelist stricte), puis l'ordre du schéma — pour
+  // que le message d'un formulaire désigne toujours le premier champ fautif
+  // tel qu'il est affiché, pas un ordre de clés d'objet.
+  if (errors.__unknown) return errors.__unknown;
+  for (const field of schema) {
+    if (errors[field.key]) return errors[field.key];
   }
   return null;
 }

@@ -54,7 +54,14 @@ export default async function NewOrderPage() {
         },
       },
       recipes: {
-        select: { count: true, patternTemplate: { select: { label: true } } },
+        select: {
+          patternTemplateId: true,
+          count: true,
+          isOptional: true,
+          defaultSelected: true,
+          minCount: true,
+          patternTemplate: { select: { label: true } },
+        },
         orderBy: { position: "asc" },
       },
     },
@@ -72,10 +79,24 @@ export default async function NewOrderPage() {
       fieldSchema: normalizeCustomFields(i.entityType.fieldSchema),
       labelTemplate: i.entityType.labelTemplate,
     })),
+    recipes: t.recipes.map((r) => ({
+      patternTemplateId: r.patternTemplateId,
+      label: r.patternTemplate.label,
+      count: r.count,
+      isOptional: r.isOptional,
+      defaultSelected: r.defaultSelected,
+      minCount: r.minCount,
+    })),
+    // Résumé / compteur : seulement les vidéos IMPOSÉES et les optionnelles
+    // pré-cochées — annoncer « 5 vidéos » alors que deux sont décochées par
+    // défaut serait faux dès l'ouverture du formulaire.
     videoSummary: t.recipes
+      .filter((r) => !r.isOptional || r.defaultSelected)
       .map((r) => (r.count > 1 ? `${r.patternTemplate.label} ×${r.count}` : r.patternTemplate.label))
       .join(", "),
-    videoCount: t.recipes.reduce((n, r) => n + r.count, 0),
+    videoCount: t.recipes
+      .filter((r) => !r.isOptional || r.defaultSelected)
+      .reduce((n, r) => n + r.count, 0),
   }));
 
   // Comptes : ceux de l'agence (externe) ou tous avec leur client (admin).

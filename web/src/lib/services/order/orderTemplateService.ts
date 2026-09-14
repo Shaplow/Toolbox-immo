@@ -34,8 +34,18 @@ export interface OrderTemplateInput {
   isArchived?: boolean;
   /** Types de fiches à remplir, dans l'ordre du formulaire client. */
   items: { entityTypeId: string }[];
-  /** Recettes instanciées à la validation (count reels chacune). */
-  recipes: { patternTemplateId: string; count: number }[];
+  /**
+   * Recettes instanciées à la validation (count reels chacune).
+   * `isOptional` laisse le négo cocher la vidéo et ajuster sa quantité
+   * dans [minCount, count] ; sinon elle est imposée.
+   */
+  recipes: {
+    patternTemplateId: string;
+    count: number;
+    isOptional?: boolean;
+    defaultSelected?: boolean;
+    minCount?: number;
+  }[];
   /** Allowlist clients. */
   clientIds: string[];
 }
@@ -62,6 +72,9 @@ const orderTemplateSelect = {
       id: true,
       patternTemplateId: true,
       count: true,
+      isOptional: true,
+      defaultSelected: true,
+      minCount: true,
       patternTemplate: { select: { id: true, label: true, source: true, isArchived: true } },
     },
     orderBy: { position: "asc" as const },
@@ -120,6 +133,12 @@ async function validateInput(input: OrderTemplateInput) {
   for (const r of recipes) {
     if (!Number.isInteger(r.count) || r.count < 1 || r.count > MAX_COUNT) {
       throw new ValidationError(`Nombre de vidéos invalide (1 à ${MAX_COUNT})`);
+    }
+    // `minCount` borne le bas de la fourchette laissée au négo. Au-dessus de
+    // `count` elle serait vide, et le formulaire deviendrait insatisfiable.
+    const minCount = r.minCount ?? 0;
+    if (!Number.isInteger(minCount) || minCount < 0 || minCount > r.count) {
+      throw new ValidationError(`Quantité minimale invalide (0 à ${r.count})`);
     }
   }
   const recipeIds = recipes.map((r) => r.patternTemplateId);
@@ -212,6 +231,9 @@ export async function createOrderTemplate(input: OrderTemplateInput) {
           orderTemplateId: created.id,
           patternTemplateId: r.patternTemplateId,
           count: r.count,
+          isOptional: r.isOptional ?? false,
+          defaultSelected: r.defaultSelected ?? true,
+          minCount: r.minCount ?? 0,
           position: i,
         })),
       });
@@ -267,6 +289,9 @@ export async function updateOrderTemplate(id: string, input: OrderTemplateInput)
           orderTemplateId: id,
           patternTemplateId: r.patternTemplateId,
           count: r.count,
+          isOptional: r.isOptional ?? false,
+          defaultSelected: r.defaultSelected ?? true,
+          minCount: r.minCount ?? 0,
           position: i,
         })),
       });

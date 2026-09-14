@@ -1407,7 +1407,16 @@ model OrderTemplateRecipe {
   orderTemplate     OrderTemplate   @relation(fields: [orderTemplateId], references: [id], onDelete: Cascade)
   patternTemplateId String
   patternTemplate   PatternTemplate @relation("OrderTemplateRecipePattern", fields: [patternTemplateId], references: [id], onDelete: Restrict)
+  /// Quantité demandée par défaut, et plafond quand la recette est optionnelle.
   count             Int             @default(1)
+  /// false = imposée (toujours instanciée) ; true = le négo coche ou non.
+  /// Défaut `false` : les modèles existants gardent exactement le comportement
+  /// d'avant la migration, sans backfill.
+  isOptional        Boolean         @default(false)
+  /// Pré-cochée dans le formulaire quand la recette est optionnelle.
+  defaultSelected   Boolean         @default(true)
+  /// Plancher de la quantité ajustable par le négo, dans [minCount, count].
+  minCount          Int             @default(0)
   /// Ordre d'affichage ET de résolution : quand deux recettes désignent des
   /// assignés différents, la première l'emporte (cf. resolveDefaultAssignees).
   /// Sans ça l'arbitrage dépendrait de l'ordre d'insertion en base.
@@ -1451,11 +1460,34 @@ model Order {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  entities Entity[]
-  slots    PublicationSlot[]
+  entities         Entity[]
+  slots            PublicationSlot[]
+  recipeSelections OrderRecipeSelection[]
 
   @@index([clientId, status])
   @@index([orderTemplateId])
+}
+
+/// Ce que le négo a réellement coché pour UNE commande.
+///
+/// Clé = `patternTemplateId` et NON `orderTemplateRecipeId` : éditer un modèle
+/// de commande remplace ses recettes en wholesale (cf. orderTemplateService),
+/// donc les ids des lignes sont détruits et recréés. Une FK vers eux serait soit
+/// bloquante (`Restrict` empêcherait d'éditer un modèle utilisé), soit orpheline.
+///
+/// Absence de ligne = commande antérieure à cette migration : `instantiateOrderSlots`
+/// retombe alors sur `OrderTemplateRecipe.count`, comportement inchangé.
+model OrderRecipeSelection {
+  id                String          @id @default(cuid())
+  orderId           String
+  order             Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  patternTemplateId String
+  patternTemplate   PatternTemplate @relation("OrderRecipeSelectionPattern", fields: [patternTemplateId], references: [id], onDelete: Restrict)
+  /// Quantité retenue. 0 = recette optionnelle explicitement décochée.
+  count             Int
+
+  @@unique([orderId, patternTemplateId])
+  @@index([orderId])
 }
 
 // ─── Pattern Templates (P2 — recettes globales réutilisables) ─────────────
@@ -1562,10 +1594,11 @@ model PatternTemplate {
   updatedByUserId String?
   updatedBy       User?   @relation("PatternTemplateUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
-  bindings             PatternBinding[]
+  bindings              PatternBinding[]
   /// Missions rattachées directement à cette recette globale (sans binding).
-  slots                PublicationSlot[]     @relation("SlotPatternTemplate")
-  orderTemplateRecipes OrderTemplateRecipe[] @relation("OrderTemplateRecipePattern")
+  slots                 PublicationSlot[]      @relation("SlotPatternTemplate")
+  orderTemplateRecipes  OrderTemplateRecipe[]  @relation("OrderTemplateRecipePattern")
+  orderRecipeSelections OrderRecipeSelection[] @relation("OrderRecipeSelectionPattern")
 }
 
 /// PatternBinding = application d'une recette globale à un compte IG.

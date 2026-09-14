@@ -9,11 +9,21 @@
  * Aujourd'hui : dot primary.
  *
  * Format ISO YYYY-MM-DD pour la value (cohérent avec inputs natifs).
+ *
+ * Le calendrier est PORTALÉ vers `document.body` (cf. useAnchoredPosition) :
+ * en `absolute`, il était coupé par le premier ancêtre en overflow-hidden —
+ * autant dire partout (Modal, Drawer, Section, Card, et le `<main>` du shell).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 import { parisToday } from "@/lib/date/formatFr";
+import {
+  useAnchoredPosition,
+  POPOVER_Z_INDEX,
+  type AnchoredPosition,
+} from "./useAnchoredPosition";
 
 interface DatePickerProps {
   value: string;
@@ -78,6 +88,14 @@ export function DatePicker({
   const [viewDate, setViewDate] = useState<Date>(() => parseISO(value) ?? new Date());
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  // 340 = hauteur réelle du panneau (padding + en-tête + 6 rangées + pied).
+  // Le défaut du hook (288) déclencherait le retournement trop tard et
+  // laisserait le calendrier déborder sous le pli.
+  const { position, ready } = useAnchoredPosition(open, triggerRef, {
+    maxHeight: 340,
+    popoverRef,
+  });
 
   const parsed = parseISO(value);
   const minDate = min ? parseISO(min) : null;
@@ -92,10 +110,18 @@ export function DatePicker({
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      // Le calendrier vit dans un portail : sans ce test, `contains` est faux
+      // pour un clic SUR un jour, le popover se ferme au mousedown et le click
+      // ne part jamais — le picker devient silencieusement inutilisable.
+      if (popoverRef.current?.contains(target)) return;
+      if (!containerRef.current?.contains(target)) setOpen(false);
     }
     function onEsc(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        // Échap ferme le calendrier, pas le dialogue qui le contient :
+        // useDialogStack écoute sur `window`, donc en aval de ce handler.
+        e.stopPropagation();
         setOpen(false);
         triggerRef.current?.focus();
       }
@@ -165,22 +191,27 @@ export function DatePicker({
           <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
         </span>
       </button>
-      {open && (
-        <CalendarPopover
-          viewDate={viewDate}
-          onViewDateChange={setViewDate}
-          selectedDate={parsed}
-          minDate={minDate}
-          maxDate={maxDate}
-          onSelect={selectDate}
-          onClose={() => setOpen(false)}
-        />
-      )}
+      {ready && position &&
+        createPortal(
+          <CalendarPopover
+            ref={popoverRef}
+            position={position}
+            viewDate={viewDate}
+            onViewDateChange={setViewDate}
+            selectedDate={parsed}
+            minDate={minDate}
+            maxDate={maxDate}
+            onSelect={selectDate}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
 
 function CalendarPopover({
+  ref,
+  position,
   viewDate,
   onViewDateChange,
   selectedDate,
@@ -188,13 +219,14 @@ function CalendarPopover({
   maxDate,
   onSelect,
 }: {
+  ref: React.Ref<HTMLDivElement>;
+  position: AnchoredPosition;
   viewDate: Date;
   onViewDateChange: (d: Date) => void;
   selectedDate: Date | null;
   minDate: Date | null;
   maxDate: Date | null;
   onSelect: (d: Date) => void;
-  onClose: () => void;
 }) {
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -215,9 +247,16 @@ function CalendarPopover({
 
   return (
     <div
+      ref={ref}
       role="dialog"
       aria-label="Calendrier"
-      className="absolute top-full left-0 mt-2 z-50 w-72 rounded-md p-3 bg-popover text-popover-foreground border border-border shadow-lg"
+      style={{
+        position: "absolute",
+        top: position.top,
+        left: position.left,
+        zIndex: POPOVER_Z_INDEX,
+      }}
+      className="w-72 rounded-md p-3 bg-popover text-popover-foreground border border-border shadow-lg"
     >
       <div className="flex items-center justify-between mb-3 px-1">
         <button

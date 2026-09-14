@@ -7,11 +7,14 @@
  * 3. compte Instagram cible + notes, puis soumission → /commandes/[id].
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { NumberStepper } from "@/components/ui/NumberStepper";
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -35,6 +38,15 @@ export interface OrderTemplateOption {
     fieldSchema: CustomField[];
     /** Modèle de libellé du type — non vide = plus de saisie de libellé. */
     labelTemplate: string | null;
+  }[];
+  /** Lignes de vidéos du modèle — imposées ou au choix du demandeur. */
+  recipes: {
+    patternTemplateId: string;
+    label: string;
+    count: number;
+    isOptional: boolean;
+    defaultSelected: boolean;
+    minCount: number;
   }[];
   videoSummary: string;
   videoCount: number;
@@ -66,6 +78,28 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const template = templates.find((t) => t.id === templateId) ?? null;
+
+  /**
+   * Vidéos optionnelles retenues : `patternTemplateId → quantité`.
+   *
+   * Initialisé depuis `defaultSelected` / `count` du modèle à chaque changement
+   * de modèle de commande — sinon une sélection faite sur un modèle resterait
+   * collée au suivant.
+   */
+  const [recipeCounts, setRecipeCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    setRecipeCounts(
+      Object.fromEntries(
+        (template?.recipes ?? [])
+          .filter((r) => r.isOptional)
+          .map((r) => [r.patternTemplateId, r.defaultSelected ? r.count : 0]),
+      ),
+    );
+  }, [template]);
+
+  const optionalRecipes = (template?.recipes ?? []).filter((r) => r.isOptional);
+  const requiredRecipes = (template?.recipes ?? []).filter((r) => !r.isOptional);
 
   const visibleAccounts = useMemo(
     () => (isAdmin ? accounts.filter((a) => a.clientId === clientId) : accounts),
@@ -184,6 +218,12 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderTemplateId: template.id,
+          // Seulement les optionnelles : les imposées sont instanciées quoi
+          // qu'il arrive, et le serveur refuse qu'on les lui envoie.
+          recipes: optionalRecipes.map((r) => ({
+            patternTemplateId: r.patternTemplateId,
+            count: recipeCounts[r.patternTemplateId] ?? 0,
+          })),
           accountId: effectiveAccountId || null,
           notes: notes.trim() || null,
           clientId: isAdmin ? clientId : undefined,
@@ -413,7 +453,81 @@ export function NewOrderClient({ templates, accounts, clients, isAdmin }: NewOrd
                 );
               })}
 
-              {/* 3. Compte + notes */}
+              {/* 3. Vidéos commandées — visible seulement si le modèle laisse
+                     un choix, sinon c'est une section qui ne fait rien. */}
+              {optionalRecipes.length > 0 && (
+                <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                  <div>
+                    <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
+                      Vidéos commandées
+                    </h3>
+                    <p className="text-[11.5px] text-muted-foreground">
+                      Décochez ce dont vous n&apos;avez pas besoin. L&apos;équipe peut en
+                      retirer ensuite si les rushs manquent.
+                    </p>
+                  </div>
+
+                  {requiredRecipes.map((r) => (
+                    <div
+                      key={r.patternTemplateId}
+                      className="flex items-center gap-2 text-[13px] text-foreground"
+                    >
+                      <Badge variant="default" size="sm">
+                        Incluse
+                      </Badge>
+                      <span className="flex-1 min-w-0 truncate">{r.label}</span>
+                      <span className="text-[12px] tabular-nums text-muted-foreground">
+                        ×{r.count}
+                      </span>
+                    </div>
+                  ))}
+
+                  {optionalRecipes.map((r) => {
+                    const value = recipeCounts[r.patternTemplateId] ?? 0;
+                    const checked = value > 0;
+                    return (
+                      <div key={r.patternTemplateId} className="flex items-center gap-2">
+                        <Checkbox
+                          checked={checked}
+                          onChange={(next) =>
+                            setRecipeCounts((prev) => ({
+                              ...prev,
+                              // Recocher repart du plancher s'il existe, sinon
+                              // d'une vidéo : jamais de 0 « coché ».
+                              [r.patternTemplateId]: next ? Math.max(1, r.minCount) : 0,
+                            }))
+                          }
+                          size="sm"
+                          label={r.label}
+                        />
+                        <span className="flex-1 min-w-0 truncate text-[13px] text-foreground">
+                          {r.label}
+                        </span>
+                        {checked && r.count > 1 && (
+                          <div className="w-24 shrink-0">
+                            <NumberStepper
+                              value={value}
+                              onChange={(v) =>
+                                setRecipeCounts((prev) => ({
+                                  ...prev,
+                                  [r.patternTemplateId]: Math.max(
+                                    Math.max(1, r.minCount),
+                                    Math.min(r.count, Math.round(v)),
+                                  ),
+                                }))
+                              }
+                              min={Math.max(1, r.minCount)}
+                              max={r.count}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 4. Compte + notes */}
               {(needsAccount || visibleAccounts.length > 0) && (
                 <FormField
                   label="Compte Instagram"

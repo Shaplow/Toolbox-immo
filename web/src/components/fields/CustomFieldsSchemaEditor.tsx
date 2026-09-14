@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/Select";
 import { Checkbox } from "@/components/ui/Checkbox";
 import {
   CUSTOM_FIELD_TYPES,
+  MAX_DESCRIPTION,
   inferDefaultFieldType,
   type CustomField,
   type CustomFieldType,
@@ -181,6 +182,8 @@ export function CustomFieldsSchemaEditor({
             </button>
           )}
         </div>
+        {/* Options : un choix fermé sans option ne se remplit pas — c'est le
+            seul type qui en a, d'où l'affichage conditionnel. */}
         {field.type === "select" && (
           <div className="pl-1">
             <Input
@@ -195,6 +198,19 @@ export function CustomFieldsSchemaEditor({
             />
           </div>
         )}
+        {/* Texte d'aide : le « pourquoi on demande ça » que le libellé ne porte
+            pas. Sous les options, donc dans l'ordre de lecture du champ. */}
+        <div className="pl-1">
+          <Input
+            value={field.description ?? ""}
+            onChange={(v) =>
+              patchField(i, { description: v.slice(0, MAX_DESCRIPTION) || undefined })
+            }
+            placeholder="Texte d'aide affiché sous le champ (optionnel)"
+            disabled={readOnly}
+            className="text-xs"
+          />
+        </div>
         </div>
       ))}
 

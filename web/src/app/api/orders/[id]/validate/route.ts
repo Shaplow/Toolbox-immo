@@ -2,9 +2,10 @@
  * POST /api/orders/[id]/validate — validation admin d'une commande.
  * Approuve les fiches en attente, passe la commande VALIDATED, puis instancie
  * les slots (banque, sans date). Retourne
- * { order, createdSlotIds, failed, unassignedShoots } — l'UI DOIT afficher
- * `failed` (échecs isolés par recette) et `unassignedShoots` (tournages sans
- * vidéaste, donc invisibles pour l'équipe).
+ * { order, createdSlotIds, failed, requested, unassignedShoots } — l'UI DOIT
+ * afficher `failed` (échecs isolés par recette) et `unassignedShoots`
+ * (tournages sans vidéaste, donc invisibles pour l'équipe), et distinguer via
+ * `requested` une instanciation vide légitime d'un modèle sans recette.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api/requireAuth";

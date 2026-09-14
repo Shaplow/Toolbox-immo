@@ -26,9 +26,22 @@ function parseInput(body: Record<string, unknown>): OrderTemplateInput {
         }))
       : [],
     recipes: Array.isArray(body.recipes)
-      ? (body.recipes as { patternTemplateId?: unknown; count?: unknown }[]).map((r) => ({
+      ? (
+          body.recipes as {
+            patternTemplateId?: unknown;
+            count?: unknown;
+            isOptional?: unknown;
+            defaultSelected?: unknown;
+            minCount?: unknown;
+          }[]
+        ).map((r) => ({
           patternTemplateId: typeof r?.patternTemplateId === "string" ? r.patternTemplateId : "",
           count: typeof r?.count === "number" ? r.count : NaN,
+          isOptional: r?.isOptional === true,
+          // Une optionnelle est pré-cochée sauf refus explicite : c'est le
+          // comportement le moins surprenant quand l'admin vient d'en créer une.
+          defaultSelected: r?.defaultSelected !== false,
+          minCount: typeof r?.minCount === "number" ? r.minCount : 0,
         }))
       : [],
     clientIds: Array.isArray(body.clientIds)

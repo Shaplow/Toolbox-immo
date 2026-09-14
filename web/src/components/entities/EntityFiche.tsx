@@ -8,12 +8,14 @@
  */
 
 import { entityTypeIcon } from "@/components/entities/entityTypeIcons";
+import { Alert } from "@/components/ui/Alert";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { DateTimeField } from "@/components/ui/molecules/DateTimeField";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Ban,
   Film,
   Trash2,
   Plus,
@@ -35,6 +37,10 @@ import { FormField } from "@/components/ui/FormField";
 import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Section } from "@/components/ui/molecules/Section";
+import { Textarea } from "@/components/ui/Textarea";
+import { ButtonIcon } from "@/components/ui/ButtonIcon";
+import { TERMINAL_STATUSES } from "@/types/roles";
+import { validateFieldValuesAll } from "@/lib/customFields";
 import { toast } from "@/components/ui/Toast";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
 import { MAX_DECLINE_REASON, needsVideasteAnswer } from "@/lib/entityAvailability";
@@ -112,6 +118,8 @@ export interface EntityFicheData {
   defaultAssigneeMonteurId: string | null;
   defaultAssigneeCmId: string | null;
   notes: string | null;
+  /** Brief de tournage — consignes de prise de vue, lues par le vidéaste. */
+  brief: string | null;
   relatedEntityId: string | null;
   relatedLabel: string | null;
   /** Commande d'origine, si la fiche est née d'un bon de commande. */
@@ -130,7 +138,11 @@ export interface EntityFicheProps {
   canMarkShot: boolean;
   canUploadRushes: boolean;
   canManageRushes: boolean;
+  /** ADMIN ou vidéaste : le brief est lu par tous, écrit par ces deux-là. */
+  canEditBrief: boolean;
   canAttachSlot: boolean;
+  /** Retirer un reel sans rushs — ADMIN, MONTEUR, VIDEASTE (cf. canCancelSlot). */
+  canCancelSlot: boolean;
   attachMode: "missions" | "reel";
   recipes: AttachRecipeOption[];
   accounts: AttachAccountOption[];
@@ -167,7 +179,9 @@ export function EntityFiche({
   canMarkShot,
   canUploadRushes,
   canManageRushes,
+  canEditBrief,
   canAttachSlot,
+  canCancelSlot,
   attachMode,
   recipes,
   accounts,
@@ -218,6 +232,37 @@ export function EntityFiche({
   const [fields, setFields] = useState<Record<string, string>>(entity.fields);
   const [fieldsDirty, setFieldsDirty] = useState(false);
   const [savingFields, setSavingFields] = useState(false);
+  /**
+   * Erreurs de champs, recalculées à chaque frappe.
+   *
+   * Pré-affichées : depuis que `required` bloque à l'enregistrement, découvrir
+   * un champ manquant au clic sur « Enregistrer » — un seul à la fois, dans
+   * l'ordre du schéma — transformerait la correction en partie de devinettes.
+   * Même source que le serveur (`validateFieldValuesAll`), mêmes `previousValues`,
+   * pour que le rouge côté client ne mente jamais sur ce que la garde acceptera.
+   */
+  const fieldErrors = useMemo(
+    () =>
+      validateFieldValuesAll(entity.fieldSchema, fields, {
+        requireRequired: !entity.isArchived,
+        allowUnknownKeys: true,
+        previousValues: entity.fields,
+      }),
+    [entity.fieldSchema, entity.isArchived, entity.fields, fields],
+  );
+  const missingRequired = entity.fieldSchema.filter(
+    (f) => f.required && fieldErrors[f.key],
+  ).length;
+
+  // Retrait d'un reel depuis la fiche : le monteur voit ses vidéos ici, il doit
+  // pouvoir en retirer une sans passer par le calendrier.
+  const [cancelTarget, setCancelTarget] = useState<EntitySlotRef | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+
+  const [brief, setBrief] = useState(entity.brief ?? "");
+  const [savingBrief, setSavingBrief] = useState(false);
+  const briefDirty = brief !== (entity.brief ?? "");
 
   function setFieldValue(key: string, value: string) {
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -246,6 +291,55 @@ export function EntityFiche({
       toast.error("Erreur réseau.");
     } finally {
       setSavingFields(false);
+    }
+  }
+
+  async function confirmCancelSlot() {
+    if (!cancelTarget) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/publications/${cancelTarget.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: cancelReason }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? "Échec du retrait.");
+        return;
+      }
+      toast.success("Vidéo retirée.");
+      setCancelTarget(null);
+      setCancelReason("");
+      router.refresh();
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  async function saveBrief() {
+    setSavingBrief(true);
+    try {
+      const res = await fetch(`/api/entities/${entity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // Chaîne vide → null : un brief effacé doit disparaître de la fiche,
+        // pas y rester comme un bloc vide.
+        body: JSON.stringify({ brief: brief.trim() || null }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error ?? "Échec de l'enregistrement.");
+        return;
+      }
+      toast.success("Brief enregistré.");
+      router.refresh();
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setSavingBrief(false);
     }
   }
 
@@ -819,6 +913,41 @@ export function EntityFiche({
         </div>
       )}
 
+      {/* Brief de tournage — la colonne existait en base depuis la migration
+          métaobjet mais n'avait jamais eu d'interface : le champ était écrit
+          par l'API et lu par personne. */}
+      {entity.hasRushes && (canEditBrief || entity.brief) && (
+        <Section title="Brief de tournage" icon={ClipboardList}>
+          {canEditBrief ? (
+            <div className="space-y-3">
+              <Textarea
+                value={brief}
+                onChange={setBrief}
+                rows={5}
+                placeholder="Consignes de tournage : plans attendus, angles, ambiance, contraintes sur place…"
+              />
+              {briefDirty && (
+                <div className="flex justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setBrief(entity.brief ?? "")}
+                    disabled={savingBrief}
+                  >
+                    Annuler
+                  </Button>
+                  <Button size="sm" onClick={() => void saveBrief()} disabled={savingBrief}>
+                    {savingBrief ? "Enregistrement…" : "Enregistrer"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-[13px] text-foreground whitespace-pre-wrap">{entity.brief}</p>
+          )}
+        </Section>
+      )}
+
       {/* Champs custom */}
       <Section title="Champs" icon={FileText}>
         {entity.fieldSchema.length === 0 ? (
@@ -835,6 +964,13 @@ export function EntityFiche({
           </p>
         ) : (
           <div className="space-y-3">
+            {isAdmin && missingRequired > 0 && (
+              <Alert variant="warning">
+                {missingRequired === 1
+                  ? "Un champ obligatoire est vide — la fiche ne peut pas être enregistrée."
+                  : `${missingRequired} champs obligatoires sont vides — la fiche ne peut pas être enregistrée.`}
+              </Alert>
+            )}
             {entity.fieldSchema.map((field) => (
               <CustomFieldValueInput
                 key={field.key}
@@ -844,12 +980,18 @@ export function EntityFiche({
                 showLabel
                 validateNumberFormat
                 previousValue={entity.fields[field.key] ?? ""}
+                error={isAdmin ? fieldErrors[field.key] : undefined}
                 disabled={!isAdmin}
               />
             ))}
             {isAdmin && fieldsDirty && (
               <div className="flex justify-end">
-                <Button size="sm" onClick={() => void saveFields()} disabled={savingFields}>
+                <Button
+                  size="sm"
+                  onClick={() => void saveFields()}
+                  // Inutile d'envoyer une requête dont on connaît déjà le refus.
+                  disabled={savingFields || Object.keys(fieldErrors).length > 0}
+                >
                   {savingFields ? "Enregistrement…" : "Enregistrer"}
                 </Button>
               </div>
@@ -1018,28 +1160,51 @@ export function EntityFiche({
             />
           ) : (
             <ul className="divide-y divide-border">
-              {attachedSlots.map((slot) => (
-                <li key={slot.id}>
-                  <Link
-                    href={`/publications/${slot.id}`}
-                    className="flex items-center justify-between gap-3 px-2 py-2.5 rounded-md hover:bg-muted transition-colors focus-ring"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-medium text-foreground truncate">
-                        {slot.title ?? "Reel"}
-                      </p>
-                      {slot.scheduledAt && (
-                        <p className="text-[11px] text-muted-foreground">
-                          {shortDateTimeFr(slot.scheduledAt)}
+              {attachedSlots.map((slot) => {
+                const removed = slot.status === "CANCELLED";
+                return (
+                  <li key={slot.id} className="flex items-center gap-1">
+                    <Link
+                      href={`/publications/${slot.id}`}
+                      className="flex flex-1 min-w-0 items-center justify-between gap-3 px-2 py-2.5 rounded-md hover:bg-muted transition-colors focus-ring"
+                    >
+                      <div className="min-w-0">
+                        {/* Une vidéo retirée reste listée — c'est ce qui explique
+                            « pourquoi 4 et pas 5 » — mais elle ne doit pas se
+                            lire comme une vidéo encore à produire. */}
+                        <p
+                          className={[
+                            "text-[13px] font-medium truncate",
+                            removed ? "text-muted-foreground line-through" : "text-foreground",
+                          ].join(" ")}
+                        >
+                          {slot.title ?? "Reel"}
                         </p>
-                      )}
-                    </div>
-                    <span className="shrink-0 text-[11px] text-muted-foreground rounded-md bg-muted px-1.5 py-0.5 border border-border">
-                      {slotBadgeLabel(slot.status as SlotStatus, slot.scheduledAt)}
-                    </span>
-                  </Link>
-                </li>
-              ))}
+                        {slot.scheduledAt && (
+                          <p className="text-[11px] text-muted-foreground">
+                            {shortDateTimeFr(slot.scheduledAt)}
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-[11px] text-muted-foreground rounded-md bg-muted px-1.5 py-0.5 border border-border">
+                        {slotBadgeLabel(slot.status as SlotStatus, slot.scheduledAt)}
+                      </span>
+                    </Link>
+                    {canCancelSlot && !removed && !(TERMINAL_STATUSES as readonly string[]).includes(slot.status) && (
+                      <ButtonIcon
+                        icon={Ban}
+                        label="Retirer cette vidéo"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setCancelTarget(slot);
+                          setCancelReason("");
+                        }}
+                      />
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -1065,6 +1230,29 @@ export function EntityFiche({
           </ul>
         </section>
       )}
+
+      <ConfirmDialog
+        open={cancelTarget !== null}
+        title="Retirer cette vidéo ?"
+        description={`« ${cancelTarget?.title ?? "Reel"} » passera au statut « Annulée » et sortira des worklists. Rien n'est supprimé, et la commande ne la recréera pas.`}
+        confirmLabel="Retirer la vidéo"
+        variant="danger"
+        loading={cancelling || !cancelReason.trim()}
+        onConfirm={() => {
+          void confirmCancelSlot();
+        }}
+        onCancel={() => {
+          setCancelTarget(null);
+          setCancelReason("");
+        }}
+      >
+        <Textarea
+          value={cancelReason}
+          onChange={setCancelReason}
+          rows={2}
+          placeholder="Motif (ex : pas de rushs pour cette vidéo)"
+        />
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={rejectOpen}

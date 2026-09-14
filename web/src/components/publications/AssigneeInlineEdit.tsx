@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useAnchoredPosition, POPOVER_Z_INDEX } from "@/components/ui/useAnchoredPosition";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Loader2, Check } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
@@ -41,12 +43,22 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const { position, ready } = useAnchoredPosition(open, triggerRef, {
+    maxHeight: 240,
+    popoverRef: menuRef,
+  });
 
   // Click outside fermer
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // La liste est portalée : sans ce test, `contains` est faux pour un clic
+      // SUR un assigné et la réassignation ne part jamais.
+      if (menuRef.current?.contains(target)) return;
+      if (!containerRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -58,7 +70,11 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      // Échap referme la liste, pas le dialogue qui la contient.
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOpen(false);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -109,6 +125,7 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
   return (
     <div ref={containerRef} className="relative inline-block">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted transition-colors cursor-pointer text-left"
@@ -121,8 +138,18 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
         <ChevronDown size={10} className="text-muted-foreground" />
       </button>
 
-      {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 w-56 bg-white rounded-lg border border-border shadow-lg py-1 max-h-60 overflow-y-auto">
+      {ready && position &&
+        createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: "absolute",
+            top: position.top,
+            left: position.left,
+            zIndex: POPOVER_Z_INDEX,
+          }}
+          className="w-56 bg-white rounded-lg border border-border shadow-lg py-1 max-h-60 overflow-y-auto"
+        >
           {loading ? (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
               <Loader2 size={12} className="animate-spin" /> Chargement…
@@ -174,8 +201,9 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
               )}
             </>
           )}
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

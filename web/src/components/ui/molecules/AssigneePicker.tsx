@@ -10,13 +10,19 @@
  * - Popover : bg-popover border-border shadow-lg.
  * - Items : Avatar + nom + email muted + chip role.
  * - Groupés par rôle (default true).
+ *
+ * Popover PORTALÉ vers `document.body` (cf. useAnchoredPosition) : en
+ * `absolute`, la liste était coupée par le premier ancêtre en overflow-hidden
+ * — typiquement le corps scrollable d'un Drawer, là où l'on réassigne.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Command } from "cmdk";
 import { Check, ChevronDown, Search, UserX } from "lucide-react";
 import { Avatar } from "../Avatar";
 import { Chip } from "../Chip";
+import { useAnchoredPosition, POPOVER_Z_INDEX } from "../useAnchoredPosition";
 
 type UserRole = "ADMIN" | "VIDEASTE" | "MONTEUR" | "CM" | "EXTERNAL_GENERATOR" | "USER" | string;
 
@@ -71,6 +77,12 @@ export function AssigneePicker({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  // 360 = champ de recherche + liste max-h-80.
+  const { position, ready } = useAnchoredPosition(open, triggerRef, {
+    maxHeight: 360,
+    popoverRef,
+  });
 
   const filteredUsers = allowedRoles
     ? users.filter((u) => allowedRoles.includes(u.role))
@@ -81,10 +93,16 @@ export function AssigneePicker({
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      // La liste vit dans un portail : sans ce test, `contains` est faux pour
+      // un clic SUR un utilisateur et la sélection ne part jamais.
+      if (popoverRef.current?.contains(target)) return;
+      if (!containerRef.current?.contains(target)) setOpen(false);
     }
     function onEsc(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        // Échap ferme la liste, pas le Drawer qui la contient.
+        e.stopPropagation();
         setOpen(false);
         triggerRef.current?.focus();
       }
@@ -148,8 +166,19 @@ export function AssigneePicker({
         <ChevronDown size={14} className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {open && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 z-50 rounded-md overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg">
+      {ready && position &&
+        createPortal(
+        <div
+          ref={popoverRef}
+          style={{
+            position: "absolute",
+            top: position.top,
+            left: position.left,
+            width: position.width,
+            zIndex: POPOVER_Z_INDEX,
+          }}
+          className="rounded-md overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg"
+        >
           <Command shouldFilter={true}>
             <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
               <Search size={14} className="shrink-0 text-muted-foreground" />
@@ -218,8 +247,9 @@ export function AssigneePicker({
               ))}
             </Command.List>
           </Command>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

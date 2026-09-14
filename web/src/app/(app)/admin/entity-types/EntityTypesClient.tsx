@@ -1,8 +1,9 @@
 "use client";
 
 import { ENTITY_TYPE_ICON_KEYS } from "@/components/entities/entityTypeIcons";
+import { Alert } from "@/components/ui/Alert";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileStack, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -115,6 +116,83 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
     };
   }, [draft.name, draft.labelTemplate, draft.fieldSchema]);
   const [saving, setSaving] = useState(false);
+  /**
+   * Impact des champs qu'on vient de passer en « requis ».
+   *
+   * Depuis que `required` bloque à chaque enregistrement, cocher la case peut
+   * rendre insauvables des fiches déjà en base. L'admin doit le voir ici, au
+   * moment du choix — pas le découvrir plus tard sur une fiche qu'il essaie
+   * d'éditer sans comprendre pourquoi elle refuse.
+   */
+  const [impacts, setImpacts] = useState<
+    { key: string; label: string; type: string; missing: number }[]
+  >([]);
+  const [backfilling, setBackfilling] = useState<string | null>(null);
+  const [backfillValues, setBackfillValues] = useState<Record<string, string>>({});
+
+  /**
+   * Champs passés à `required` DANS CE BROUILLON — pas ceux qui l'étaient déjà.
+   * Un champ requis de longue date a déjà été absorbé par les fiches
+   * existantes ; réafficher son impact à chaque ouverture du drawer serait du
+   * bruit.
+   */
+  const newlyRequiredKeys = useMemo(() => {
+    if (!editing) return [];
+    const before = new Set(
+      editing.fieldSchema.filter((f) => f.required).map((f) => f.key),
+    );
+    return draft.fieldSchema
+      .filter((f) => f.required && !before.has(f.key))
+      .map((f) => f.key);
+  }, [editing, draft.fieldSchema]);
+
+  useEffect(() => {
+    if (!editing || newlyRequiredKeys.length === 0) {
+      setImpacts([]);
+      return;
+    }
+    let cancelled = false;
+    const keys = newlyRequiredKeys.join(",");
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/entity-types/${editing.id}/required-impact?keys=${encodeURIComponent(keys)}`,
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as { impacts?: typeof impacts };
+        if (!cancelled) setImpacts((data.impacts ?? []).filter((i) => i.missing > 0));
+      } catch {
+        // Silencieux : c'est un avertissement de confort, son absence ne doit
+        // pas empêcher d'enregistrer le type.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editing, newlyRequiredKeys]);
+
+  async function runBackfill(key: string) {
+    if (!editing) return;
+    setBackfilling(key);
+    try {
+      const res = await fetch(`/api/entity-types/${editing.id}/backfill-field`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value: backfillValues[key] ?? "" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; updated?: number };
+      if (!res.ok) {
+        toast.error(data.error ?? "Échec du remplissage.");
+        return;
+      }
+      toast.success(`${data.updated ?? 0} fiche(s) remplie(s).`);
+      setImpacts((prev) => prev.filter((i) => i.key !== key));
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setBackfilling(null);
+    }
+  }
   const [confirmDelete, setConfirmDelete] = useState<EntityTypeRow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -459,6 +537,52 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
               onChange={(fields) => setDraft((d) => ({ ...d, fieldSchema: fields }))}
               allowRequired
             />
+            {impacts.length > 0 && (
+              <Alert variant="warning" className="mt-3">
+                <div className="space-y-2.5">
+                  <p className="text-[12px] text-foreground">
+                    Un champ obligatoire bloque l&apos;enregistrement tant qu&apos;il est
+                    vide — y compris sur les fiches déjà créées.
+                  </p>
+                  {impacts.map((impact) => (
+                    <div key={impact.key} className="space-y-1">
+                      <p className="text-[12px] text-foreground">
+                        <span className="font-medium">{impact.missing}</span> fiche
+                        {impact.missing > 1 ? "s" : ""} ne renseigne
+                        {impact.missing > 1 ? "nt" : ""} pas «&nbsp;{impact.label}&nbsp;».
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {impact.type !== "checkbox" && (
+                          <Input
+                            value={backfillValues[impact.key] ?? ""}
+                            onChange={(v) =>
+                              setBackfillValues((prev) => ({ ...prev, [impact.key]: v }))
+                            }
+                            placeholder="Valeur à appliquer…"
+                            className="text-xs"
+                          />
+                        )}
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void runBackfill(impact.key)}
+                          disabled={
+                            backfilling !== null ||
+                            (impact.type !== "checkbox" && !(backfillValues[impact.key] ?? "").trim())
+                          }
+                        >
+                          {backfilling === impact.key
+                            ? "Remplissage…"
+                            : impact.type === "checkbox"
+                              ? "Tout cocher"
+                              : "Remplir"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Alert>
+            )}
           </FormField>
 
         </Drawer.Body>

@@ -15,6 +15,9 @@ import { Tabs } from "@/components/ui/Tabs";
 import { toast } from "@/components/ui/Toast";
 import { dateFr, shortDateTimeFr } from "@/lib/date/formatFr";
 import { CreateEntityModal } from "@/components/entities/CreateEntityModal";
+import { EntitiesBulkActionBar } from "@/components/entities/EntitiesBulkActionBar";
+import { BulkReassignEntitiesModal } from "@/components/entities/BulkReassignEntitiesModal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EntityCalendar } from "@/components/entities/EntityCalendar";
 import {
   ENTITY_STATUS_BADGE,
@@ -61,6 +64,12 @@ export function FichesListClient({
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  // Sélection multiple — `Table` sait déjà le faire (selectable/selectedKeys),
+  // personne ne s'en servait dans le repo.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const load = useCallback(
     async (typeId: string, includeArchived: boolean) => {
@@ -85,6 +94,52 @@ export function FichesListClient({
   useEffect(() => {
     if (view === "list" && activeType) void load(activeType.id, showArchived);
   }, [activeType, view, load, showArchived]);
+
+  /**
+   * Applique une action au lot. Le serveur renvoie des résultats PARTIELS :
+   * afficher uniquement le succès masquerait les fiches qui ont résisté —
+   * typiquement celles qui portent encore des publications.
+   */
+  async function runBulk(
+    action: "archive" | "unarchive" | "delete" | "reassign",
+    assignees?: Record<string, string | null>,
+  ) {
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/entities/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selectedIds], action, assignees }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        ok?: string[];
+        failed?: { id: string; label: string; error: string }[];
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? "Échec de l'action groupée.");
+        return;
+      }
+      const okCount = data.ok?.length ?? 0;
+      if (okCount > 0) toast.success(`${okCount} fiche(s) mise(s) à jour.`);
+      if (data.failed?.length) {
+        toast.error(
+          `${data.failed.length} fiche(s) non traitée(s) : ${data.failed
+            .slice(0, 3)
+            .map((f) => `${f.label} — ${f.error}`)
+            .join(" · ")}${data.failed.length > 3 ? " …" : ""}`,
+        );
+      }
+      setSelectedIds(new Set());
+      setReassignOpen(false);
+      setConfirmDelete(false);
+      if (activeType) void load(activeType.id, showArchived);
+    } catch {
+      toast.error("Erreur réseau.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   function selectType(typeId: string) {
     setActiveTypeId(typeId);
@@ -192,6 +247,17 @@ export function FichesListClient({
         Object.values(e.fields).some((v) => v.toLowerCase().includes(q)),
     );
   }, [entities, search]);
+
+  /** Aperçu des fiches visées — cinq suffisent à reconnaître une erreur de tri. */
+  const selectedLabels = useMemo(() => {
+    const labels = filteredEntities
+      .filter((e) => selectedIds.has(e.id))
+      .slice(0, 5)
+      .map((e) => e.label);
+    if (labels.length === 0) return "";
+    const extra = selectedIds.size - labels.length;
+    return `${labels.join(", ")}${extra > 0 ? ` et ${extra} autre(s)` : ""}.`;
+  }, [filteredEntities, selectedIds]);
 
   return (
     <>
@@ -312,6 +378,9 @@ export function FichesListClient({
                   rows={filteredEntities}
                   rowKey={(r) => r.id}
                   onRowClick={(row) => router.push(`/fiches/${row.id}`)}
+                  selectable={isAdmin}
+                  selectedKeys={selectedIds}
+                  onSelectionChange={setSelectedIds}
                 />
               )}
             </>
@@ -333,6 +402,51 @@ export function FichesListClient({
           cms={cms}
         />
       )}
+
+      {isAdmin && view === "list" && (
+        <EntitiesBulkActionBar
+          selectedCount={selectedIds.size}
+          visibleCount={filteredEntities.length}
+          allVisibleSelected={
+            filteredEntities.length > 0 &&
+            filteredEntities.every((e) => selectedIds.has(e.id))
+          }
+          // « Tout sélectionner » porte sur les lignes VISIBLES : sélectionner
+          // en aveugle des fiches masquées par la recherche serait un piège.
+          onToggleAll={(checked) =>
+            setSelectedIds(checked ? new Set(filteredEntities.map((e) => e.id)) : new Set())
+          }
+          onArchive={() => void runBulk("archive")}
+          onUnarchive={() => void runBulk("unarchive")}
+          onReassign={() => setReassignOpen(true)}
+          onDelete={() => setConfirmDelete(true)}
+          onClear={() => setSelectedIds(new Set())}
+          busy={bulkBusy}
+        />
+      )}
+
+      {reassignOpen && (
+        <BulkReassignEntitiesModal
+          count={selectedIds.size}
+          videastes={videastes}
+          monteurs={monteurs}
+          cms={cms}
+          busy={bulkBusy}
+          onApply={(assignees) => void runBulk("reassign", assignees)}
+          onClose={() => setReassignOpen(false)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Supprimer ${selectedIds.size} fiche${selectedIds.size > 1 ? "s" : ""} ?`}
+        description={`Action irréversible. Les fiches encore rattachées à des publications, à une commande en cours ou à d'autres fiches seront refusées et vous seront listées. ${selectedLabels}`}
+        confirmLabel="Supprimer"
+        variant="danger"
+        loading={bulkBusy}
+        onConfirm={() => void runBulk("delete")}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </>
   );
 }

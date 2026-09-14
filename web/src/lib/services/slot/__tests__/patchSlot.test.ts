@@ -518,6 +518,33 @@ describe("patchSlot — ASSIGNEE_CHANGED log inclut le vidéaste", () => {
 
 // ─── Invariant 6 : non-admin sans accès → NotFoundError (anti-énumération) ──
 
+/**
+ * `shootEntityId` reste HORS de la whitelist PATCH, y compris pour l'ADMIN.
+ *
+ * Le rattachement à un tournage n'est pas une écriture de champ : il revalide
+ * en cascade le compte, la fiche liée, les assignés et needsRushesOverride. Il
+ * a sa propre route (POST /api/publications/[id]/attach-shoot, cf.
+ * attachShootToSlot). Ce test empêche qu'on « simplifie » un jour en ajoutant
+ * le champ à ALLOWED_PATCH_FIELDS_BY_ROLE, ce qui contournerait toutes ces
+ * gardes.
+ */
+describe("patchSlot — shootEntityId n'est pas patchable", () => {
+  it("un PATCH admin qui l'envoie l'ignore silencieusement", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(makeSlot({}));
+
+    await patchSlot(
+      "slot-1",
+      { notes: "ok", shootEntityId: "shoot-9" } as Parameters<typeof patchSlot>[1],
+      makeUserCtx("ADMIN", "user-admin"),
+    );
+
+    const data = mockSlotUpdate.mock.calls.at(-1)![0].data as Record<string, unknown>;
+    expect(data.notes).toBe("ok");
+    expect(data).not.toHaveProperty("shootEntityId");
+    expect(data).not.toHaveProperty("eventId");
+  });
+});
+
 describe("patchSlot — scoping", () => {
   it("MONTEUR non assigné à ce slot reçoit NotFoundError, pas Forbidden", async () => {
     mockSlotFindUnique.mockResolvedValueOnce(

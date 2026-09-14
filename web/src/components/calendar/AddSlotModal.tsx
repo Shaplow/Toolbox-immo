@@ -27,6 +27,7 @@ import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TimePicker } from "@/components/ui/TimePicker";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
@@ -105,6 +106,17 @@ export function AddSlotModal({
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [date, setDate] = useState(today);
   const [time, setTime] = useState("19:00");
+  /**
+   * Créer le slot SANS date (banque).
+   *
+   * La base et `createSlot` acceptent `scheduledAt: null` depuis toujours — seul
+   * ce formulaire l'imposait. C'est ce qui manquait au cas RPOD : pré-shooter
+   * des slots sur un tournage sans savoir quand (ni même si) ils seront publiés.
+   *
+   * La date reste pré-remplie par défaut : l'admin en pose une dans la grande
+   * majorité des cas, et vider le champ par défaut ferait régresser ce geste-là.
+   */
+  const [inBank, setInBank] = useState(false);
   const [title, setTitle] = useState("");
 
   const [patterns, setPatterns] = useState<PatternOption[]>([]);
@@ -353,7 +365,7 @@ export function AddSlotModal({
     setSaving(true);
     setError(null);
     try {
-      const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
+      const scheduledAt = inBank ? null : new Date(`${date}T${time}:00`).toISOString();
       const payload: Record<string, unknown> = {
         accountId,
         scheduledAt,
@@ -640,13 +652,25 @@ export function AddSlotModal({
           )}
 
           {/* Date + Heure — en mode pattern l'heure est lockée sur
-              pattern.publishTime ; un clic "Modifier" déverrouille le picker. */}
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Date" required>
-              <DatePicker value={date} onChange={setDate} />
+              pattern.publishTime ; un clic "Modifier" déverrouille le picker.
+              La case « banque » les neutralise : le slot naît sans date et se
+              place plus tard depuis la banque ou par glisser-déposer. */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Checkbox checked={inBank} onChange={setInBank} size="sm" label="Mettre en banque" />
+            <span className="text-[12px] text-foreground">
+              Mettre en banque (sans date)
+            </span>
+          </label>
+          <div className={`grid grid-cols-2 gap-3 ${inBank ? "opacity-50" : ""}`}>
+            <FormField label="Date" required={!inBank}>
+              <DatePicker value={date} onChange={setDate} disabled={inBank} />
             </FormField>
-            <FormField label="Heure" required>
-              {isPatternMode && selectedPattern?.publishTime && !timeUnlocked ? (
+            <FormField label="Heure" required={!inBank}>
+              {inBank ? (
+                <div className="flex items-center h-9 rounded-md px-3 bg-muted border border-border text-[12px] text-muted-foreground">
+                  À programmer plus tard
+                </div>
+              ) : isPatternMode && selectedPattern?.publishTime && !timeUnlocked ? (
                 <div className="flex items-center gap-2 h-9 rounded-md px-3 bg-card border border-border ">
                   <Lock size={11} className="text-muted-foreground" />
                   <span className="text-[13px] font-mono tabular-nums text-gray-800">
@@ -671,7 +695,8 @@ export function AddSlotModal({
               valeur off-pattern : la clé d'idempotence de generateCalendarSlots
               inclut scheduledAt, donc un slot one-off à une heure différente
               coexistera avec celui auto-généré. */}
-          {isPatternMode &&
+          {!inBank &&
+            isPatternMode &&
             timeUnlocked &&
             selectedPattern?.publishTime &&
             time !== selectedPattern.publishTime && (

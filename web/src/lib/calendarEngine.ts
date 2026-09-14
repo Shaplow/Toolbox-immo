@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import type { SlotStatus } from "@/types/roles";
+import type { CalendarSkipReason, GenerateCalendarSkip } from "@/lib/calendar/skips";
+
+export type { CalendarSkipReason, GenerateCalendarSkip };
 
 /**
  * Détermine le statut initial d'un slot fraîchement créé selon le mode de
@@ -42,7 +45,13 @@ export interface GenerateCalendarResult {
   created: number;
   /** Slots déjà existants, ignorés */
   skipped: number;
-  note?: string;
+  /**
+   * Détail des refus. Le moteur rendait `{ created: 0, skipped: 0 }` par trois
+   * sorties muettes différentes et n'écrivait ses raisons qu'en `console.warn`,
+   * invisibles depuis l'app : « 0 créé » était indiscernable d'une panne.
+   * L'appelant DOIT afficher ce tableau quand `created === 0`.
+   */
+  skips: GenerateCalendarSkip[];
 }
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -76,6 +85,7 @@ export async function generateCalendarSlots(
   options: GenerateCalendarOptions & { dryRun?: boolean }
 ): Promise<GenerateCalendarResult> {
   const { accountIds, dateFrom, dateTo, dryRun = false } = options;
+  const skips: GenerateCalendarSkip[] = [];
 
   // 1. Récupérer toutes les liaisons actives (PatternBinding). Chaque binding
   //    expose le planning du compte + référence la recette globale
@@ -88,47 +98,92 @@ export async function generateCalendarSlots(
     },
     include: {
       patternTemplate: true,
+      // Le handle rend le refus actionnable : « RVA1 sur @agence-nord »
+      // plutôt qu'un id de binding que personne ne sait retrouver.
+      account: { select: { handle: true } },
     },
   });
 
   if (bindings.length === 0) {
-    return { created: 0, skipped: 0 };
+    skips.push({ reason: "no_active_bindings", count: 0 });
+    return { created: 0, skipped: 0, skips };
   }
 
-  // Adapte la shape des bindings sur l'ancien contrat utilisé plus bas.
-  // Les valeurs sont déjà résolues (binding override > template). On laisse
-  // les champs avec les mêmes noms que l'ancien modèle pour ne pas casser la
-  // suite — le bloc "targets" reste agnostique du nouveau modèle.
-  const patterns = bindings
-    .filter((b) => {
-      // Une recette qui EXIGE une fiche (requiresEntityTypeId, ex-
-      // requiresProperty) ne peut pas être auto-matérialisée en masse : un
-      // slot généré n'a aucune fiche rattachable. On l'exclut de l'auto-gen
-      // hebdo (cohérent avec le guard de createSlot) ; ces recettes passent
-      // par la création unitaire (mission / AddSlotModal).
-      if (b.patternTemplate.requiresEntityTypeId || b.patternTemplate.requiresProperty) {
-        console.warn(
-          `[calendarEngine] binding ${b.id} → recette « ${b.patternTemplate.label} » exige une fiche — skip auto-gen (non rattachable en lot)`,
-        );
-        return false;
-      }
-      return true;
-    })
-    .map((b) => ({
+  // 2. Valider chaque binding UNE fois, avant la boucle des semaines. Les trois
+  //    gardes vivaient à l'intérieur de cette boucle : un binding invalide
+  //    produisait un warn par semaine générée, et rien du tout côté appelant.
+  //    Les valeurs sont déjà résolues (binding override > template).
+  const patterns: {
+    id: string;
+    accountId: string;
+    label: string;
+    source: string;
+    dayOfWeek: number[];
+    hours: number;
+    minutes: number;
+    templateId: string | null;
+    defaultAssigneeMonteurId: string | null;
+    defaultAssigneeCmId: string | null;
+    defaultAssigneeVideasteId: string | null;
+  }[] = [];
+
+  for (const b of bindings) {
+    const label = patternLabel(b);
+    const accountHandle = b.account?.handle ?? undefined;
+    const skip = (reason: CalendarSkipReason) => {
+      skips.push({ reason, bindingId: b.id, accountHandle, label, count: 1 });
+    };
+
+    // Une recette qui EXIGE une fiche (requiresEntityTypeId, ex-
+    // requiresProperty) ne peut pas être auto-matérialisée en masse : un
+    // slot généré n'a aucune fiche rattachable. On l'exclut de l'auto-gen
+    // hebdo (cohérent avec le guard de createSlot) ; ces recettes passent
+    // par la création unitaire (mission / AddSlotModal).
+    if (b.patternTemplate.requiresEntityTypeId || b.patternTemplate.requiresProperty) {
+      skip("requires_entity");
+      continue;
+    }
+
+    // dayOfWeek vide = recette manuelle (template uniquement, pas d'auto-gen).
+    // Surface un paramétrage admin incomplet : recette active mais sans jour.
+    if (b.dayOfWeek.length === 0) {
+      skip("empty_day_of_week");
+      continue;
+    }
+
+    // Guard publishTime malformé : sans ce filtre, un pattern avec
+    // publishTime="" / "abc" / "18h30" produirait un NaN qui passe dans
+    // setUTCHours et donne un Invalid Date — Prisma.createMany crash alors
+    // et FAIT ÉCHOUER toute la run pour TOUS les comptes. À noter : "9:00"
+    // (sans zéro initial) est VALIDE ici, Number("9") vaut 9.
+    const [hours, minutes] = (b.publishTime ?? "").split(":").map(Number);
+    if (
+      !Number.isFinite(hours) ||
+      !Number.isFinite(minutes) ||
+      hours < 0 || hours > 23 ||
+      minutes < 0 || minutes > 59
+    ) {
+      skip("invalid_publish_time");
+      continue;
+    }
+
+    patterns.push({
       id: b.id,
       accountId: b.accountId,
-      label: patternLabel(b),
+      label,
       source: b.patternTemplate.source,
       dayOfWeek: b.dayOfWeek,
-      publishTime: b.publishTime,
+      hours,
+      minutes,
       templateId: b.patternTemplate.templateId,
       defaultAssigneeMonteurId: b.defaultAssigneeMonteurId,
       defaultAssigneeCmId: b.defaultAssigneeCmId,
       defaultAssigneeVideasteId: b.defaultAssigneeVideasteId,
-    }));
+    });
+  }
 
   if (patterns.length === 0) {
-    return { created: 0, skipped: 0 };
+    return { created: 0, skipped: 0, skips };
   }
 
   // 2. Calculer toutes les dates cibles sur l'ensemble des semaines de la plage
@@ -140,50 +195,32 @@ export async function generateCalendarSlots(
 
   const startMondayMs = toMondayUTC(dateFrom).getTime();
   const endMondayMs = toMondayUTC(dateTo).getTime();
+  let outOfRange = 0;
 
   for (let weekMs = startMondayMs; weekMs <= endMondayMs; weekMs += ONE_WEEK_MS) {
     for (const pattern of patterns) {
-      // dayOfWeek vide = pattern manuel (template uniquement, pas d'auto-gen).
-      // On log au warn pour surfacer un éventuel mauvais paramétrage admin
-      // (pattern actif mais sans jour planifié = silencieusement ignoré).
-      if (pattern.dayOfWeek.length === 0) {
-        console.warn(
-          `[calendarEngine] pattern ${pattern.id} has empty dayOfWeek — skipping (no auto-generated slots)`,
-        );
-        continue;
-      }
-      // Guard publishTime malformé : sans ce filtre, un pattern avec
-      // publishTime="" / "9:00" / "abc" produirait `[NaN, NaN]` qui passe
-      // dans setUTCHours et donne un Invalid Date — Prisma.createMany
-      // crash alors et FAIT ÉCHOUER toute la run pour TOUS les comptes.
-      // Mieux : skip ce pattern avec un warn, continue les autres.
-      const [hours, minutes] = (pattern.publishTime ?? "").split(":").map(Number);
-      if (
-        !Number.isFinite(hours) ||
-        !Number.isFinite(minutes) ||
-        hours < 0 || hours > 23 ||
-        minutes < 0 || minutes > 59
-      ) {
-        console.warn(
-          `[calendarEngine] pattern ${pattern.id} has invalid publishTime "${pattern.publishTime}" — skipping`,
-        );
-        continue;
-      }
       for (const dow of pattern.dayOfWeek) {
         const targetDate = new Date(weekMs);
         targetDate.setUTCDate(targetDate.getUTCDate() + (dow - 1));
-        targetDate.setUTCHours(hours, minutes, 0, 0);
+        targetDate.setUTCHours(pattern.hours, pattern.minutes, 0, 0);
 
-        // Skip si en dehors de la plage demandée (utile aux bords semaine partielle)
-        if (targetDate < dateFrom || targetDate > dateTo) continue;
+        // Hors plage : bord de semaine partielle, ou jour déjà passé (la route
+        // admin borne dateFrom à `now`). C'est la raison la plus fréquente d'un
+        // « 0 créé » sur la semaine courante générée en fin de semaine.
+        if (targetDate < dateFrom || targetDate > dateTo) {
+          outOfRange++;
+          continue;
+        }
 
         targets.push({ pattern, scheduledAt: targetDate });
       }
     }
   }
 
+  if (outOfRange > 0) skips.push({ reason: "out_of_range", count: outOfRange });
+
   if (targets.length === 0) {
-    return { created: 0, skipped: 0 };
+    return { created: 0, skipped: 0, skips };
   }
 
   // 3. Bulk fetch des slots existants pour ces bindings sur la plage.
@@ -237,9 +274,13 @@ export async function generateCalendarSlots(
     });
   }
 
+  const alreadyExists = targets.length - toCreate.length;
+  if (alreadyExists > 0) skips.push({ reason: "already_exists", count: alreadyExists });
+
   return {
     created: toCreate.length,
-    skipped: targets.length - toCreate.length,
+    skipped: alreadyExists,
+    skips,
   };
 }
 

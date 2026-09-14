@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useAnchoredPosition, POPOVER_Z_INDEX } from "@/components/ui/useAnchoredPosition";
 import type { BuilderFontEntry } from "@/lib/builderFonts";
 import { useBuilderFontStatus } from "@/components/builder/BuilderFontStatusContext";
 import { sourceLabel } from "./utils";
@@ -17,6 +19,11 @@ export function FontFamilyPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value ?? "");
   const rootRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const { position, ready } = useAnchoredPosition(open, rootRef, {
+    maxHeight: 320,
+    popoverRef: listRef,
+  });
   const { failedFamilies } = useBuilderFontStatus();
 
   useEffect(() => {
@@ -26,7 +33,11 @@ export function FontFamilyPicker({
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      // La liste est portalée : sans ce test, `contains` est faux pour un clic
+      // SUR une police et le choix ne part jamais.
+      if (listRef.current?.contains(target)) return;
+      if (!rootRef.current?.contains(target)) {
         setOpen(false);
         setQuery(value ?? "");
       }
@@ -82,8 +93,19 @@ export function FontFamilyPicker({
         ) : null}
       </div>
 
-      {open ? (
-        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+      {ready && position &&
+        createPortal(
+        <div
+          ref={listRef}
+          style={{
+            position: "absolute",
+            top: position.top,
+            left: position.left,
+            width: position.width,
+            zIndex: POPOVER_Z_INDEX,
+          }}
+          className="overflow-hidden rounded-xl border border-border bg-white shadow-xl"
+        >
           <div className="border-b border-border p-2">
             <input
               type="text"
@@ -152,8 +174,9 @@ export function FontFamilyPicker({
               </div>
             )}
           </div>
-        </div>
-      ) : null}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

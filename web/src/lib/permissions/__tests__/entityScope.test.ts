@@ -269,12 +269,19 @@ describe("capacités par rôle", () => {
     // vit dans patchEntity, pas ici.
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("videasteConfirmation");
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("videasteDeclineReason");
+    // Égalité stricte volontaire : c'est ce qui rend visible tout élargissement
+    // des droits du vidéaste. `brief` y est entré sciemment — il est sur le
+    // tournage, il sait ce qui a réellement été filmé.
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.VIDEASTE).toEqual([
       "status",
       "notes",
+      "brief",
       "videasteConfirmation",
       "videasteDeclineReason",
     ]);
+    // Les rôles aval ne voient le brief qu'en lecture.
+    expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.MONTEUR).not.toContain("brief");
+    expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.CM).not.toContain("brief");
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.MONTEUR).toEqual(["notes"]);
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.CM).toEqual(["notes"]);
     expect(ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE.EXTERNAL_GENERATOR).toEqual([]);

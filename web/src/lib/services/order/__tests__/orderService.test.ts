@@ -327,7 +327,23 @@ describe("createOrder — résolution client + allowlist", () => {
 });
 
 describe("validateOrder — instanciation", () => {
-  function setupValidate(recipes: unknown[], entities: unknown[]) {
+  /**
+   * `recipes` accepte des lignes SANS `isOptional`/`defaultSelected` : on les
+   * complète ici avec les défauts de la migration (imposée, pré-cochée). Les
+   * fixtures existantes décrivent donc des commandes ANTÉRIEURES à la
+   * sélection de vidéos, et doivent continuer à se comporter à l'identique.
+   */
+  function setupValidate(
+    recipes: unknown[],
+    entities: unknown[],
+    recipeSelections: { patternTemplateId: string; count: number }[] = [],
+  ) {
+    recipes = (recipes as Record<string, unknown>[]).map((r) => ({
+      isOptional: false,
+      defaultSelected: true,
+      minCount: 0,
+      ...r,
+    }));
     // loadOrderForTransition
     mockOrderFindUnique.mockImplementation(async (args: { select?: Record<string, unknown> }) => {
       // le select du détail contient orderTemplate → renvoyer le détail complet
@@ -339,7 +355,8 @@ describe("validateOrder — instanciation", () => {
       id: "o1",
       accountId: "acc1",
       account: { handle: "compte" },
-      orderTemplate: { recipes },
+      orderTemplate: { name: "Bien + tournage", recipes },
+      recipeSelections,
       // `backfillOrderAssignees` lit les fiches avec leur type et leurs
       // assignés ; les fixtures d'instanciation n'en portent pas.
       entities: (entities as { id?: string }[]).map((e) => ({
@@ -382,6 +399,54 @@ describe("validateOrder — instanciation", () => {
     await expect(
       validateOrder("o1", ctx("EXTERNAL_GENERATOR", { clientId: "c1" })),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  /**
+   * Le seul chemin de validation totalement muet : sans recette, la boucle
+   * d'instanciation fait zéro tour et rend createdSlotIds ET failed vides.
+   * La commande passait VALIDATED sans la moindre publication, sans erreur, et
+   * sans même le bouton « Réessayer » (0 < 0 est faux). On refuse en amont.
+   */
+  it("refuse un modèle sans recette — et ne valide pas la commande", async () => {
+    setupValidate([], [bienEntity, shootEntity]);
+
+    await expect(validateOrder("o1", ctx("ADMIN"))).rejects.toBeInstanceOf(ValidationError);
+    await expect(validateOrder("o1", ctx("ADMIN"))).rejects.toThrow(
+      /ne déclenche aucune vidéo/,
+    );
+    // La garde est en amont de la transaction : rien n'a bougé en base.
+    expect(mockOrderUpdateMany).not.toHaveBeenCalled();
+    expect(mockAttachSlotToEntity).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `requested` distingue « 0 créée parce que tout existait déjà » de « 0 créée
+   * parce que rien n'était demandé » — les deux rendaient le même couple vide.
+   */
+  it("remonte le nombre de vidéos demandées (requested)", async () => {
+    setupValidate(
+      [
+        {
+          count: 3,
+          patternTemplate: {
+            id: "pt1",
+            label: "Reel visite",
+            source: "manual_rushes",
+            requiresProperty: false,
+            requiresEntityTypeId: null,
+          },
+        },
+      ],
+      [bienEntity, shootEntity],
+    );
+    // Les 3 slots existent déjà : instanciation légitimement vide.
+    mockSlotCount.mockResolvedValue(3);
+
+    const result = await validateOrder("o1", ctx("ADMIN"));
+    expect(result.requested).toBe(3);
+    expect(result.createdSlotIds).toEqual([]);
+    expect(result.failed).toEqual([]);
+    expect(mockAttachSlotToEntity).not.toHaveBeenCalled();
   });
 
   it("recette manual_rushes ×2 + tournage → 2 attaches reel sur le tournage", async () => {
@@ -512,7 +577,8 @@ describe("validateOrder — instanciation", () => {
       id: "o1",
       accountId: null,
       account: null,
-      orderTemplate: { recipes: [RECIPE_PT1] },
+      orderTemplate: { name: "Bien + tournage", recipes: [RECIPE_PT1] },
+      recipeSelections: [],
       entities: [],
     });
     mockEntityFindMany.mockResolvedValue([]);
@@ -533,7 +599,8 @@ describe("validateOrder — instanciation", () => {
       id: "o1",
       accountId: "acc1",
       account: { handle: "compte" },
-      orderTemplate: { recipes: [RECIPE_PT1] },
+      orderTemplate: { name: "Bien + tournage", recipes: [RECIPE_PT1] },
+      recipeSelections: [],
       entities: [
         {
           id: "e-tournage",
@@ -684,5 +751,178 @@ describe("rejectOrder / cancelOrder", () => {
   it("cancel admin : 409 si publications actives", async () => {
     mockSlotCount.mockResolvedValue(2);
     await expect(cancelOrder("o1", ctx("ADMIN"))).rejects.toBeInstanceOf(ConflictError);
+  });
+});
+
+/**
+ * Vidéos au choix du demandeur (OrderRecipeSelection).
+ *
+ * Le test qui compte le plus est celui de non-régression : une commande
+ * antérieure à la migration n'a AUCUNE sélection, et doit instancier
+ * exactement ce qu'elle instanciait avant. C'est ce qui rend la migration
+ * purement additive et dispense de tout backfill.
+ */
+describe("validateOrder — vidéos au choix du demandeur", () => {
+  const shootFiche = {
+    id: "e-tournage",
+    typeId: "etype_tournage",
+    label: "Tournage",
+    validationStatus: "APPROVED",
+    type: { hasPlanning: true, hasRushes: true },
+  };
+
+  function recipe(over: Record<string, unknown> = {}) {
+    return {
+      count: 3,
+      isOptional: false,
+      defaultSelected: true,
+      minCount: 0,
+      patternTemplate: {
+        id: "pt1",
+        label: "RVA1",
+        source: "manual_rushes",
+        requiresProperty: false,
+        requiresEntityTypeId: null,
+      },
+      ...over,
+    };
+  }
+
+  function setup(
+    recipes: unknown[],
+    recipeSelections: { patternTemplateId: string; count: number }[] = [],
+  ) {
+    mockOrderFindUnique.mockImplementation(async (args: { select?: Record<string, unknown> }) => {
+      if (args?.select && "orderTemplate" in args.select) return orderDetail;
+      return { id: "o1", clientId: "c1", status: "SUBMITTED", accountId: "acc1" };
+    });
+    mockEntityFindMany.mockResolvedValue([shootFiche]);
+    mockOrderFindUniqueOrThrow.mockResolvedValue({
+      id: "o1",
+      accountId: "acc1",
+      account: { handle: "compte" },
+      orderTemplate: { name: "Modèle", recipes },
+      recipeSelections,
+      entities: [
+        {
+          ...shootFiche,
+          assigneeVideasteId: "vid-1",
+          defaultAssigneeMonteurId: null,
+          defaultAssigneeCmId: null,
+          type: { hasPlanning: true, hasRushes: true, hasAssignees: true },
+        },
+      ],
+    });
+    mockBindingFindMany.mockResolvedValue(
+      (recipes as { patternTemplate: { id: string } }[]).map((r) => ({
+        patternTemplateId: r.patternTemplate.id,
+        defaultAssigneeVideasteId: null,
+        defaultAssigneeMonteurId: null,
+        defaultAssigneeCmId: null,
+      })),
+    );
+    mockAttachSlotToEntity.mockResolvedValue({ mode: "reel", slot: { id: "s1" } });
+  }
+
+  // NON-RÉGRESSION : aucune sélection = comportement d'avant la migration.
+  it("commande sans sélection → instancie count, comme avant", async () => {
+    setup([recipe()]);
+    const result = await validateOrder("o1", ctx("ADMIN"));
+    expect(result.requested).toBe(3);
+    expect(mockAttachSlotToEntity).toHaveBeenCalledTimes(3);
+  });
+
+  it("recette imposée → count, quelle que soit la sélection reçue", async () => {
+    setup([recipe({ isOptional: false })], [{ patternTemplateId: "pt1", count: 1 }]);
+    const result = await validateOrder("o1", ctx("ADMIN"));
+    expect(result.requested).toBe(3);
+    expect(mockAttachSlotToEntity).toHaveBeenCalledTimes(3);
+  });
+
+  it("recette optionnelle cochée → la quantité choisie", async () => {
+    setup([recipe({ isOptional: true })], [{ patternTemplateId: "pt1", count: 2 }]);
+    const result = await validateOrder("o1", ctx("ADMIN"));
+    expect(result.requested).toBe(2);
+    expect(mockAttachSlotToEntity).toHaveBeenCalledTimes(2);
+  });
+
+  it("recette optionnelle décochée (count 0) → aucune vidéo", async () => {
+    setup([recipe({ isOptional: true })], [{ patternTemplateId: "pt1", count: 0 }]);
+    const result = await validateOrder("o1", ctx("ADMIN"));
+    expect(result.requested).toBe(0);
+    expect(mockAttachSlotToEntity).not.toHaveBeenCalled();
+  });
+
+  // Sans sélection enregistrée, une optionnelle suit son défaut : c'est ce qui
+  // permet à l'admin de créer la commande sans passer par le formulaire négo.
+  it("optionnelle sans sélection → suit defaultSelected", async () => {
+    setup([recipe({ isOptional: true, defaultSelected: false })]);
+    expect((await validateOrder("o1", ctx("ADMIN"))).requested).toBe(0);
+
+    vi.clearAllMocks();
+    mockOrderUpdateMany.mockResolvedValue({ count: 1 });
+    mockSlotCount.mockResolvedValue(0);
+    setup([recipe({ isOptional: true, defaultSelected: true })]);
+    expect((await validateOrder("o1", ctx("ADMIN"))).requested).toBe(3);
+  });
+
+  // Garde-fou : une sélection au-dessus du plafond du modèle ne doit pas
+  // permettre de commander plus que ce que l'admin a autorisé.
+  it("une sélection au-dessus du plafond est ramenée à count", async () => {
+    setup([recipe({ isOptional: true, count: 2 })], [{ patternTemplateId: "pt1", count: 99 }]);
+    const result = await validateOrder("o1", ctx("ADMIN"));
+    expect(result.requested).toBe(2);
+    expect(mockAttachSlotToEntity).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("createOrder — sélection de vidéos", () => {
+  function templateWith(recipes: Record<string, unknown>[]) {
+    return mockTemplate({
+      recipes: recipes.map((r) => ({
+        patternTemplateId: "pt1",
+        count: 3,
+        isOptional: false,
+        defaultSelected: true,
+        minCount: 0,
+        ...r,
+      })),
+    });
+  }
+
+  it("refuse une recette hors du modèle", async () => {
+    mockOrderTemplateFindUnique.mockResolvedValue(templateWith([{ isOptional: true }]));
+    await expect(
+      createOrder(
+        baseInput({ recipes: [{ patternTemplateId: "pt-inconnu", count: 1 }], clientId: "c1" }),
+        ctx("ADMIN"),
+      ),
+    ).rejects.toThrow(/hors du modèle/);
+  });
+
+  // Ne jamais croire le client sur une recette imposée : il pourrait s'en
+  // servir pour retirer une vidéo que l'admin a rendue obligatoire.
+  it("refuse de choisir une recette imposée", async () => {
+    mockOrderTemplateFindUnique.mockResolvedValue(templateWith([{ isOptional: false }]));
+    await expect(
+      createOrder(
+        baseInput({ recipes: [{ patternTemplateId: "pt1", count: 1 }], clientId: "c1" }),
+        ctx("ADMIN"),
+      ),
+    ).rejects.toThrow(/imposée/);
+  });
+
+  it("refuse une quantité hors des bornes du modèle", async () => {
+    mockOrderTemplateFindUnique.mockResolvedValue(
+      templateWith([{ isOptional: true, count: 2, minCount: 1 }]),
+    );
+    for (const count of [0, 3]) {
+      await expect(
+        createOrder(
+          baseInput({ recipes: [{ patternTemplateId: "pt1", count }], clientId: "c1" }),
+          ctx("ADMIN"),
+        ),
+      ).rejects.toThrow(/Quantité invalide/);
+    }
   });
 });

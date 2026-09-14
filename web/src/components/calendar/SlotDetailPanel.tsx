@@ -52,6 +52,9 @@ import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { FormField } from "@/components/ui/FormField";
 import { SlotEntitySelect } from "@/components/publications/SlotEntitySelect";
 import { Textarea } from "@/components/ui/Textarea";
+import { EntityPicker } from "@/components/entities/EntityPicker";
+import { SYSTEM_ENTITY_TYPE_IDS } from "@/lib/entityTypes";
+import { REEL_ATTACHABLE_SOURCES } from "@/lib/publications/constants";
 import { Combobox } from "@/components/ui/Combobox";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TimePicker } from "@/components/ui/TimePicker";
@@ -128,6 +131,17 @@ export function SlotDetailPanel({
   hasNext,
 }: SlotDetailPanelProps) {
   const isRestricted = mode !== "admin";
+  /**
+   * Retrait d'une vidéo — ouvert au monteur et au vidéaste (le mode « monteur »
+   * couvre les deux, cf. ROLE_DETAIL_MODE). Pas au CM : il publie, il ne décide
+   * pas du nombre de vidéos. Miroir exact de `canCancelSlot` côté serveur.
+   */
+  const canCancel = mode === "admin" || mode === "monteur";
+  // Même garde que le serveur : seules les recettes à rushs / envoi externe
+  // produisent un reel rattachable à un tournage.
+  const isReelSource = (REEL_ATTACHABLE_SOURCES as readonly string[]).includes(
+    slot.pattern?.source ?? "",
+  );
   const router = useRouter();
 
   // V8 Phase 5 — Auto-save sur le textarea Notes (cas le plus fréquent).
@@ -228,6 +242,10 @@ export function SlotDetailPanel({
   const [duplicating, setDuplicating] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  // Rattachement à un tournage après coup (cas RPOD : on pré-shoote des slots
+  // sans savoir combien de vidéos sortiront du contenu tourné).
+  const [attachingShoot, setAttachingShoot] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ─── Effects ────────────────────────────────────────────────────────────
@@ -429,28 +447,59 @@ export function SlotDetailPanel({
     onUpdated,
   ]);
 
+  /**
+   * Route dédiée et non un PATCH `status` : CANCELLED est un statut terminal
+   * réservé à l'ADMIN via PATCH. La route /cancel porte sa propre permission
+   * (monteur et vidéaste inclus) et exige un motif, qui part dans le journal.
+   */
   async function handleCancelConfirmed() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/calendar/slots/${slot.id}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/publications/${slot.id}/cancel`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "CANCELLED" }),
+        body: JSON.stringify({ reason: cancelReason }),
       });
-      if (!res.ok) {
-        const d = (await res.json().catch(() => ({ error: `Erreur ${res.status}` }))) as {
-          error?: string;
-        };
-        throw new Error(d.error ?? `Erreur ${res.status}`);
-      }
-      const updated = (await res.json()) as PublicationSlot;
-      onUpdated(updated);
+      const d = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        slot?: PublicationSlot;
+      };
+      if (!res.ok) throw new Error(d.error ?? `Erreur ${res.status}`);
+      if (d.slot) onUpdated(d.slot);
       setConfirmCancel(false);
+      setCancelReason("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Rattache ou détache le tournage. Route dédiée : le rattachement hérite le
+   * compte, la fiche liée et les assignés MANQUANTS, pose needsRushesOverride
+   * et peut démarrer le montage — trop de conséquences pour un PATCH de champ.
+   */
+  async function handleAttachShoot(shootEntityId: string | null) {
+    setAttachingShoot(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/publications/${slot.id}/attach-shoot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shootEntityId }),
+      });
+      const d = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        slot?: PublicationSlot;
+      };
+      if (!res.ok) throw new Error(d.error ?? `Erreur ${res.status}`);
+      if (d.slot) onUpdated(d.slot);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setAttachingShoot(false);
     }
   }
 
@@ -554,16 +603,28 @@ export function SlotDetailPanel({
     <>
       <ConfirmDialog
         open={confirmCancel}
-        title="Annuler cette mission ?"
-        description="La publication passera au statut « Annulée ». Aucune donnée n'est supprimée — l'historique reste consultable."
-        confirmLabel="Annuler la mission"
+        title="Retirer cette vidéo ?"
+        description="Elle passera au statut « Annulée » et sortira des worklists. Rien n'est supprimé, et la commande ne la recréera pas."
+        confirmLabel="Retirer la vidéo"
         variant="danger"
-        loading={saving}
+        loading={saving || !cancelReason.trim()}
         onConfirm={() => {
           void handleCancelConfirmed();
         }}
-        onCancel={() => setConfirmCancel(false)}
-      />
+        onCancel={() => {
+          setConfirmCancel(false);
+          setCancelReason("");
+        }}
+      >
+        {/* Motif obligatoire : sans lui, « pourquoi cette vidéo a disparu ? »
+            n'a aucune réponse trois semaines plus tard. */}
+        <Textarea
+          value={cancelReason}
+          onChange={setCancelReason}
+          rows={2}
+          placeholder="Motif (ex : pas de rushs pour cette vidéo)"
+        />
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={confirmDeleteOpen}
@@ -675,7 +736,10 @@ export function SlotDetailPanel({
               {/* Phase 3 — actions destructives déplacées du footer vers
                   ce menu pour ne plus risquer de cliquer "Annuler la mission"
                   alors qu'on voulait juste fermer le drawer. */}
-              {!isRestricted && (
+              {/* Le menu s'ouvre aussi au monteur et au vidéaste, qui doivent
+                  pouvoir retirer une vidéo sans rushs. Dupliquer et supprimer
+                  restent admin. */}
+              {(!isRestricted || canCancel) && (
                 <DropdownMenu
                   align="end"
                   trigger={
@@ -689,7 +753,7 @@ export function SlotDetailPanel({
                     </Button>
                   }
                   items={[
-                    ...(slot.scheduledAt
+                    ...(!isRestricted && slot.scheduledAt
                       ? ([
                           {
                             label: duplicating
@@ -703,12 +767,13 @@ export function SlotDetailPanel({
                           "separator",
                         ] as const)
                       : []),
-                    ...(slot.status !== "CANCELLED" &&
+                    ...(canCancel &&
+                    slot.status !== "CANCELLED" &&
                     slot.status !== "ARCHIVED" &&
                     slot.status !== "PUBLISHED"
                       ? ([
                           {
-                            label: "Annuler la mission",
+                            label: "Retirer cette vidéo",
                             icon: Ban,
                             onClick: () => setConfirmCancel(true),
                             destructive: true,
@@ -716,12 +781,16 @@ export function SlotDetailPanel({
                           "separator",
                         ] as const)
                       : []),
-                    {
-                      label: "Supprimer le slot",
-                      icon: Trash2,
-                      onClick: () => setConfirmDeleteOpen(true),
-                      destructive: true,
-                    },
+                    ...(!isRestricted
+                      ? ([
+                          {
+                            label: "Supprimer le slot",
+                            icon: Trash2,
+                            onClick: () => setConfirmDeleteOpen(true),
+                            destructive: true,
+                          },
+                        ] as const)
+                      : []),
                   ]}
                 />
               )}
@@ -794,6 +863,24 @@ export function SlotDetailPanel({
                   requiredEntityTypeId={requiredEntityTypeId(slot.pattern)}
                 />
               </FormField>
+
+              {/* Rattachement au tournage — réservé admin, et seulement pour les
+                  recettes à rushs : une recette auto se rend seule, elle n'a
+                  rien à partager avec un tournage. */}
+              {!isRestricted && isReelSource && (
+                <FormField
+                  label="Fiche tournage"
+                  help="Rattacher ce reel à un tournage : rushs partagés, compte et assignés manquants hérités. Le montage démarre si le tournage est déjà réalisé."
+                >
+                  <EntityPicker
+                    typeId={SYSTEM_ENTITY_TYPE_IDS.tournage}
+                    value={slot.shootEntityId ?? ""}
+                    onChange={(v) => void handleAttachShoot(v || null)}
+                    emptyLabel="Aucun tournage"
+                    disabled={attachingShoot}
+                  />
+                </FormField>
+              )}
 
               <FormField label="Notes internes" help="Visible uniquement par l'équipe interne. Auto-sauvegardé.">
                 <Textarea

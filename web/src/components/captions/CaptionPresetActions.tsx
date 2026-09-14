@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useAnchoredPosition, POPOVER_Z_INDEX } from "@/components/ui/useAnchoredPosition";
 import { MoreHorizontal, Download, Copy, Trash2 } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 
@@ -14,11 +16,22 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState<"export" | "duplicate" | "delete" | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const { position, ready } = useAnchoredPosition(open, triggerRef, {
+    maxHeight: 160,
+    align: "end",
+    popoverRef: menuRef,
+  });
 
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Le menu est portalé : sans ce test, `contains` est faux pour un clic
+      // SUR une action et celle-ci ne se déclenche jamais.
+      if (menuRef.current?.contains(target)) return;
+      if (ref.current && !ref.current.contains(target)) {
         setOpen(false);
         setConfirming(false);
       }
@@ -91,6 +104,7 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
   return (
     <div ref={ref} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => { setOpen((v) => !v); setConfirming(false); }}
         className="flex items-center justify-center w-8 h-7 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-border hover:bg-muted transition-colors"
@@ -99,8 +113,18 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
         <MoreHorizontal size={14} />
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-border rounded-xl shadow-lg z-20 py-1 text-sm">
+      {ready && position &&
+        createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: "absolute",
+            top: position.top,
+            left: position.left,
+            zIndex: POPOVER_Z_INDEX,
+          }}
+          className="w-44 bg-white border border-border rounded-xl shadow-lg py-1 text-sm"
+        >
           <button
             type="button"
             onClick={() => void handleExport()}
@@ -152,8 +176,9 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
               </div>
             </div>
           )}
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

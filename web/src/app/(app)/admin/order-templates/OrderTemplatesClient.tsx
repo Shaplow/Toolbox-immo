@@ -8,6 +8,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList, Plus, Trash2, ArrowDown, ArrowUp } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -18,6 +20,7 @@ import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { NumberStepper } from "@/components/ui/NumberStepper";
 import { Select } from "@/components/ui/Select";
+import { Switch } from "@/components/ui/Switch";
 import { Table, type TableColumn } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/Textarea";
 import { toast } from "@/components/ui/Toast";
@@ -30,7 +33,14 @@ export interface OrderTemplateRow {
   isArchived: boolean;
   position: number;
   items: { entityTypeId: string; entityTypeName: string }[];
-  recipes: { patternTemplateId: string; label: string; count: number }[];
+  recipes: {
+    patternTemplateId: string;
+    label: string;
+    count: number;
+    isOptional: boolean;
+    defaultSelected: boolean;
+    minCount: number;
+  }[];
   clientIds: string[];
   clientNames: string[];
   orderCount: number;
@@ -48,7 +58,13 @@ interface Draft {
   description: string;
   isArchived: boolean;
   itemTypeIds: string[];
-  recipes: { patternTemplateId: string; count: number }[];
+  recipes: {
+    patternTemplateId: string;
+    count: number;
+    isOptional: boolean;
+    defaultSelected: boolean;
+    minCount: number;
+  }[];
   clientIds: string[];
 }
 
@@ -61,7 +77,14 @@ function toDraft(t: OrderTemplateRow | null): Draft {
     description: t?.description ?? "",
     isArchived: t?.isArchived ?? false,
     itemTypeIds: t?.items.map((i) => i.entityTypeId) ?? [],
-    recipes: t?.recipes.map((r) => ({ patternTemplateId: r.patternTemplateId, count: r.count })) ?? [],
+    recipes:
+      t?.recipes.map((r) => ({
+        patternTemplateId: r.patternTemplateId,
+        count: r.count,
+        isOptional: r.isOptional,
+        defaultSelected: r.defaultSelected,
+        minCount: r.minCount,
+      })) ?? [],
     clientIds: t?.clientIds ?? [],
   };
 }
@@ -116,7 +139,14 @@ export function OrderTemplatesClient({
           isArchived: boolean;
           position: number;
           items: { entityTypeId: string; entityType: { name: string } }[];
-          recipes: { patternTemplateId: string; count: number; patternTemplate: { label: string } }[];
+          recipes: {
+            patternTemplateId: string;
+            count: number;
+            isOptional: boolean;
+            defaultSelected: boolean;
+            minCount: number;
+            patternTemplate: { label: string };
+          }[];
           accesses: { clientId: string; client: { name: string } }[];
           _count: { orders: number };
         }[];
@@ -136,6 +166,9 @@ export function OrderTemplatesClient({
             patternTemplateId: r.patternTemplateId,
             label: r.patternTemplate.label,
             count: r.count,
+            isOptional: r.isOptional,
+            defaultSelected: r.defaultSelected,
+            minCount: r.minCount,
           })),
           clientIds: t.accesses.map((a) => a.clientId),
           clientNames: t.accesses.map((a) => a.client.name),
@@ -243,13 +276,24 @@ export function OrderTemplatesClient({
     {
       id: "recipes",
       label: "Vidéos",
-      cell: (row) => (
-        <span className="text-[11px] text-muted-foreground">
-          {row.recipes.length === 0
-            ? "—"
-            : row.recipes.map((r) => (r.count > 1 ? `${r.label} ×${r.count}` : r.label)).join(", ")}
-        </span>
-      ),
+      cell: (row) =>
+        // Un « — » discret laissait passer le seul défaut de config qui rend la
+        // validation muette : sans recette, la commande est validée et aucune
+        // publication n'est créée. Le badge le rend impossible à manquer.
+        row.recipes.length === 0 ? (
+          <Badge variant="warning" size="sm">
+            0 vidéo
+          </Badge>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">
+            {row.recipes
+              .map((r) => {
+                const qty = r.count > 1 ? `${r.label} ×${r.count}` : r.label;
+                return r.isOptional ? `${qty} (au choix)` : qty;
+              })
+              .join(", ")}
+          </span>
+        ),
     },
     {
       id: "clients",
@@ -400,8 +444,15 @@ export function OrderTemplatesClient({
             help="Recettes instanciées à la validation de la commande — les publications naissent en banque, à placer sur le calendrier."
           >
             <div className="space-y-2">
+              {draft.recipes.length === 0 && (
+                <Alert variant="warning">
+                  Sans recette, la validation d&apos;une commande bâtie sur ce modèle ne créera
+                  aucune publication.
+                </Alert>
+              )}
               {draft.recipes.map((r) => (
-                <div key={r.patternTemplateId} className="flex items-center gap-2">
+                <div key={r.patternTemplateId} className="space-y-1.5">
+                <div className="flex items-center gap-2">
                   <span className="flex-1 min-w-0 truncate text-[13px] text-foreground rounded-md border border-border bg-muted/50 px-3 py-1.5">
                     {recipeLabel(r.patternTemplateId)}
                     <span className="ml-2 text-[11px] text-muted-foreground">
@@ -444,6 +495,77 @@ export function OrderTemplatesClient({
                     <Trash2 size={13} />
                   </button>
                 </div>
+                {/* Réglages « au choix » — sous la ligne, pour ne pas alourdir
+                    le cas nominal (vidéo imposée). */}
+                <div className="flex flex-wrap items-center gap-3 pl-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Switch
+                      checked={r.isOptional}
+                      onChange={(v) =>
+                        setDraft((d) => ({
+                          ...d,
+                          recipes: d.recipes.map((x) =>
+                            x.patternTemplateId === r.patternTemplateId
+                              ? { ...x, isOptional: v }
+                              : x,
+                          ),
+                        }))
+                      }
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      Au choix du demandeur
+                    </span>
+                  </label>
+                  {r.isOptional && (
+                    <>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={r.defaultSelected}
+                          onChange={(v) =>
+                            setDraft((d) => ({
+                              ...d,
+                              recipes: d.recipes.map((x) =>
+                                x.patternTemplateId === r.patternTemplateId
+                                  ? { ...x, defaultSelected: v }
+                                  : x,
+                              ),
+                            }))
+                          }
+                          size="sm"
+                          label="Pré-cochée"
+                        />
+                        <span className="text-[11px] text-muted-foreground">Pré-cochée</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">Minimum</span>
+                        <div className="w-24">
+                          <NumberStepper
+                            value={r.minCount}
+                            onChange={(v) =>
+                              setDraft((d) => ({
+                                ...d,
+                                recipes: d.recipes.map((x) =>
+                                  x.patternTemplateId === r.patternTemplateId
+                                    ? {
+                                        ...x,
+                                        // Borné par `count` : au-dessus, la
+                                        // fourchette serait vide et le
+                                        // formulaire insatisfiable.
+                                        minCount: Math.max(0, Math.min(x.count, Math.round(v))),
+                                      }
+                                    : x,
+                                ),
+                              }))
+                            }
+                            min={0}
+                            max={r.count}
+                          />
+                        </div>
+                      </label>
+                    </>
+                  )}
+                </div>
+                </div>
               ))}
               {availableRecipes.length > 0 && (
                 <Select
@@ -452,7 +574,19 @@ export function OrderTemplatesClient({
                     v &&
                     setDraft((d) => ({
                       ...d,
-                      recipes: [...d.recipes, { patternTemplateId: v, count: 1 }],
+                      recipes: [
+                        ...d.recipes,
+                        // Imposée par défaut : c'était le seul comportement
+                        // possible jusqu'ici, on ne change pas l'existant sous
+                        // les pieds de l'admin qui ajoute une ligne.
+                        {
+                          patternTemplateId: v,
+                          count: 1,
+                          isOptional: false,
+                          defaultSelected: true,
+                          minCount: 0,
+                        },
+                      ],
                     }))
                   }
                   options={availableRecipes.map((t) => ({

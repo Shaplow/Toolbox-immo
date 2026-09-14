@@ -54,6 +54,10 @@ import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
 import { Alert } from "@/components/ui/Alert";
+import {
+  summarizeCalendarSkips,
+  type GenerateCalendarSkip,
+} from "@/lib/calendar/skips";
 import { Tabs } from "@/components/ui/Tabs";
 
 interface Account {
@@ -201,7 +205,11 @@ export function CalendarView({
   const [generating, setGenerating] = useState(false);
   const [confirmGenOpen, setConfirmGenOpen] = useState(false);
   // W4.9 : preview dry-run avant confirmation (created/skipped sans insert DB).
-  const [genPreview, setGenPreview] = useState<{ created: number; skipped: number } | null>(null);
+  const [genPreview, setGenPreview] = useState<{
+    created: number;
+    skipped: number;
+    skips: GenerateCalendarSkip[];
+  } | null>(null);
   const [genPreviewLoading, setGenPreviewLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<CalendarFiltersState>({
@@ -454,9 +462,26 @@ export function CalendarView({
           dateTo: dateToEnd.toISOString(),
         }),
       });
-      if (!res.ok) throw new Error("Erreur lors de la génération");
-      const result = (await res.json()) as { created: number; skipped: number };
-      toast.success(`${result.created} slot(s) créé(s), ${result.skipped} ignoré(s).`);
+      const result = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        created?: number;
+        skipped?: number;
+        skips?: GenerateCalendarSkip[];
+      };
+      // Remonter le message du serveur : « Erreur lors de la génération »
+      // écrasait « Plage entièrement passée », la seule info utile.
+      if (!res.ok) throw new Error(result.error ?? "Erreur lors de la génération");
+      const created = result.created ?? 0;
+      if (created > 0) {
+        toast.success(`${created} publication(s) créée(s), ${result.skipped ?? 0} ignorée(s).`);
+      } else {
+        // 0 créé n'est pas un succès : dire pourquoi, sinon l'admin ne sait
+        // pas distinguer « tout est déjà là » de « rien n'est paramétré ».
+        const [first] = summarizeCalendarSkips(result.skips ?? []);
+        toast.info(
+          first ? `Aucune publication créée — ${first.text}` : "Aucune publication à créer.",
+        );
+      }
       void load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur inconnue");
@@ -807,10 +832,25 @@ export function CalendarView({
                                 dateTo: dateToEnd.toISOString(),
                               }),
                             });
-                            if (res.ok) {
-                              const d = (await res.json()) as { created: number; skipped: number };
-                              setGenPreview({ created: d.created, skipped: d.skipped });
+                            const d = (await res.json().catch(() => ({}))) as {
+                              error?: string;
+                              created?: number;
+                              skipped?: number;
+                              skips?: GenerateCalendarSkip[];
+                            };
+                            // Un !res.ok laissait genPreview à null, donc la
+                            // modale affichait son texte générique : un 403 ou
+                            // un 500 passait pour « rien à générer ».
+                            if (!res.ok) {
+                              toast.error(d.error ?? "Analyse impossible.");
+                              setConfirmGenOpen(false);
+                              return;
                             }
+                            setGenPreview({
+                              created: d.created ?? 0,
+                              skipped: d.skipped ?? 0,
+                              skips: d.skips ?? [],
+                            });
                           } finally {
                             setGenPreviewLoading(false);
                           }
@@ -1155,7 +1195,27 @@ export function CalendarView({
           setConfirmGenOpen(false);
           setGenPreview(null);
         }}
-      />
+      >
+        {/* Les raisons de non-génération n'existaient qu'en console.warn côté
+            serveur. Les montrer AVANT de confirmer évite de générer dans le
+            vide puis de chercher pourquoi. */}
+        {genPreview && genPreview.skips.length > 0 && (
+          <Alert variant={genPreview.created === 0 ? "warning" : "info"}>
+            <ul className="space-y-1.5">
+              {summarizeCalendarSkips(genPreview.skips).map((line) => (
+                <li key={line.reason}>
+                  <span className="text-[12px] text-foreground">{line.text}</span>
+                  {line.details.length > 0 && (
+                    <span className="block text-[11px] text-muted-foreground">
+                      {line.details.join(" · ")}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

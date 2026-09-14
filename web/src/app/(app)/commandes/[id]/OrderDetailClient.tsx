@@ -82,12 +82,15 @@ export function OrderDetailClient({
    * n'apparaît dans la worklist de personne — l'admin doit le savoir tout de
    * suite, et le bandeau au-dessus le lui rappellera ensuite.
    */
-  async function runValidate() {
+  async function runValidate(opts: { retry?: boolean } = {}) {
+    const done = opts.retry ? "Instanciation relancée" : "Commande validée";
     setBusy(true);
     try {
       const res = await fetch(`/api/orders/${order.id}/validate`, { method: "POST" });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
+        createdSlotIds?: string[];
+        requested?: number;
         failed?: { label: string; error: string }[];
         unassignedShoots?: { id: string; label: string }[];
       };
@@ -102,14 +105,26 @@ export function OrderDetailClient({
       }
       if (data.unassignedShoots?.length) {
         toast.error(
-          `Commande validée, mais aucun vidéaste sur ${data.unassignedShoots
+          `${done}, mais aucun vidéaste sur ${data.unassignedShoots
             .map((e) => `« ${e.label} »`)
             .join(", ")} — assignez-le depuis la fiche.`,
         );
-      } else {
-        toast.success(
-          "Commande validée — publications créées, à placer depuis l'onglet Missions du calendrier.",
-        );
+      } else if (!data.failed?.length) {
+        // Annoncer « publications créées » quand il n'y en a aucune est le
+        // silence qu'on corrige : l'admin repartait en croyant sa commande
+        // instanciée. Les trois cas se disent maintenant à voix haute.
+        const created = data.createdSlotIds?.length ?? 0;
+        if (created > 0) {
+          toast.success(
+            `${done} — ${created} publication${created > 1 ? "s" : ""} créée${created > 1 ? "s" : ""}, à placer depuis l'onglet Missions du calendrier.`,
+          );
+        } else if (data.requested === 0) {
+          toast.error(
+            `${done}, mais son modèle ne déclenche aucune vidéo — ajoutez une recette au modèle, puis réessayez l'instanciation.`,
+          );
+        } else {
+          toast.info(`${done} — les publications existaient déjà.`);
+        }
       }
       router.refresh();
     } catch {
@@ -323,14 +338,19 @@ export function OrderDetailClient({
             {isAdmin && order.status === "VALIDATED" && (
               <>
                 {/* Instanciation partielle (failed[]) : /validate est idempotent,
-                    seuls les slots manquants sont recréés. */}
+                    seuls les slots manquants sont recréés. Passe par runValidate
+                    et non runAction : le retry a besoin du même diagnostic que
+                    la validation (0 créée ≠ succès). */}
+                {/* `effectiveCount` et non `count` : une vidéo optionnelle
+                    décochée par le demandeur n'a jamais été demandée, sinon le
+                    bouton resterait allumé en permanence. Une vidéo ANNULÉE
+                    reste comptée dans order.slots — c'est ce qui empêche de la
+                    recréer (cf. cancelSlot). */}
                 {order.slots.length <
-                  order.template.recipes.reduce((sum, r) => sum + r.count, 0) && (
+                  order.template.recipes.reduce((sum, r) => sum + r.effectiveCount, 0) && (
                   <Button
                     size="sm"
-                    onClick={() =>
-                      void runAction("/validate", undefined, "Instanciation relancée.")
-                    }
+                    onClick={() => void runValidate({ retry: true })}
                     disabled={busy}
                   >
                     Réessayer l&apos;instanciation
@@ -541,6 +561,28 @@ export function OrderDetailClient({
         <h2 className="text-[13px] font-semibold text-foreground uppercase tracking-wide">
           Publications
         </h2>
+        {/* Demandées vs créées, par recette. Sans ce récap, « 4 publications »
+            ne dit pas si l'une manque ou si le demandeur en avait décoché une —
+            et c'est précisément la question qu'on se pose trois semaines plus
+            tard. Une vidéo annulée reste comptée comme créée : elle l'a été. */}
+        {isAdmin && order.template.recipes.some((r) => r.effectiveCount > 0) && (
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
+            {order.template.recipes.map((r) => {
+              const created = order.slots.filter((slot) =>
+                (slot.label ?? "").startsWith(r.label),
+              ).length;
+              return (
+                <li key={r.patternTemplateId} className="tabular-nums">
+                  <span className="text-foreground">{r.label}</span> · {created}/
+                  {r.effectiveCount} créée{r.effectiveCount > 1 ? "s" : ""}
+                  {r.isOptional && r.effectiveCount < r.count && (
+                    <span className="text-muted-foreground"> (choix du demandeur)</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
         {order.slots.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">
             {order.status === "SUBMITTED"

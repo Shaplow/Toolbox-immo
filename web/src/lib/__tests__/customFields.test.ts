@@ -8,6 +8,11 @@ import {
   type CustomField,
   isNumericFieldValue,
   isPartialNumericInput,
+  isCheckedFieldValue,
+  isFieldFilled,
+  validateFieldValuesAll,
+  CHECKBOX_TRUE,
+  MAX_DESCRIPTION,
 } from "@/lib/customFields";
 
 describe("normalizeCustomFields", () => {
@@ -281,5 +286,120 @@ describe("validateFieldValues — champs number", () => {
         { previousValues: { type_bien: "Chalet" } },
       ),
     ).toMatch(/Chalet/);
+  });
+});
+
+describe("checkbox — un booléen qui reste une string", () => {
+  it("normalise le type checkbox", () => {
+    expect(normalizeCustomFields([{ key: "ok", label: "OK", type: "checkbox" }])).toEqual([
+      { key: "ok", label: "OK", type: "checkbox" },
+    ]);
+  });
+
+  // Le mapping vers SchemaField est l'identité PARTOUT SAUF ici : `checkbox`
+  // n'existe pas côté SchemaFieldType.
+  it("customFieldToSchemaField : checkbox → boolean", () => {
+    expect(customFieldToSchemaField({ key: "ok", label: "OK", type: "checkbox" })).toEqual({
+      key: "ok",
+      label: "OK",
+      type: "boolean",
+      required: false,
+    });
+  });
+
+  it("seules \"\" et \"true\" sont des valeurs acceptables", () => {
+    const schema: CustomField[] = [{ key: "ok", label: "OK", type: "checkbox" }];
+    expect(validateFieldValues(schema, { ok: CHECKBOX_TRUE })).toBeNull();
+    expect(validateFieldValues(schema, { ok: "" })).toBeNull();
+    expect(validateFieldValues(schema, { ok: "oui" })).toMatch(/invalide pour la case/);
+  });
+
+  it("isCheckedFieldValue ne reconnaît que \"true\"", () => {
+    expect(isCheckedFieldValue(CHECKBOX_TRUE)).toBe(true);
+    for (const v of ["", "false", "1", "TRUE", null, undefined]) {
+      expect(isCheckedFieldValue(v)).toBe(false);
+    }
+  });
+
+  // `required` sur une case signifie « doit être cochée » (HTML natif, Tally) —
+  // pas « doit avoir une valeur », sinon décocher suffirait à la satisfaire.
+  it("un checkbox requis mais décoché bloque", () => {
+    const schema: CustomField[] = [
+      { key: "ok", label: "J'accepte", type: "checkbox", required: true },
+    ];
+    expect(validateFieldValues(schema, { ok: "" }, { requireRequired: true })).toMatch(
+      /doit être cochée/,
+    );
+    expect(
+      validateFieldValues(schema, { ok: CHECKBOX_TRUE }, { requireRequired: true }),
+    ).toBeNull();
+  });
+
+  it("isFieldFilled : coché pour un checkbox, non vide pour le reste", () => {
+    expect(isFieldFilled({ key: "a", label: "A", type: "checkbox" }, CHECKBOX_TRUE)).toBe(true);
+    expect(isFieldFilled({ key: "a", label: "A", type: "checkbox" }, "")).toBe(false);
+    expect(isFieldFilled({ key: "a", label: "A", type: "text" }, "x")).toBe(true);
+    expect(isFieldFilled({ key: "a", label: "A", type: "text" }, "")).toBe(false);
+  });
+});
+
+describe("description (texte d'aide)", () => {
+  it("est conservée, trimée, et bornée", () => {
+    const [f] = normalizeCustomFields([
+      { key: "a", label: "A", type: "text", description: "  Aide  " },
+    ]);
+    expect(f.description).toBe("Aide");
+
+    const [long] = normalizeCustomFields([
+      { key: "b", label: "B", type: "text", description: "x".repeat(500) },
+    ]);
+    expect(long.description).toHaveLength(MAX_DESCRIPTION);
+  });
+
+  it("une description vide n'est pas posée", () => {
+    const [f] = normalizeCustomFields([{ key: "a", label: "A", type: "text", description: "   " }]);
+    expect(f).not.toHaveProperty("description");
+  });
+
+  // SchemaField porte déjà `description` : elle était jetée à la conversion.
+  it("est propagée vers SchemaField", () => {
+    expect(
+      customFieldToSchemaField({ key: "a", label: "A", type: "text", description: "Aide" }),
+    ).toEqual({ key: "a", label: "A", type: "text", required: false, description: "Aide" });
+  });
+});
+
+describe("validateFieldValuesAll", () => {
+  const schema: CustomField[] = [
+    { key: "a", label: "A", type: "text", required: true },
+    { key: "b", label: "B", type: "number", required: true },
+    { key: "c", label: "C", type: "select", options: ["X"] },
+  ];
+
+  // La raison d'être de la fonction : un formulaire doit pouvoir montrer TOUS
+  // ses champs fautifs d'un coup, pas les découvrir un par un.
+  it("remonte une erreur par clé, pas seulement la première", () => {
+    const errors = validateFieldValuesAll(schema, { a: "", b: "", c: "Z" }, { requireRequired: true });
+    expect(Object.keys(errors).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("aucune erreur sur des valeurs valides", () => {
+    expect(
+      validateFieldValuesAll(schema, { a: "x", b: "12", c: "X" }, { requireRequired: true }),
+    ).toEqual({});
+  });
+
+  // validateFieldValues en dérive : les deux ne peuvent pas diverger, et le
+  // message rendu suit l'ordre DU SCHÉMA, pas celui des clés de l'objet.
+  it("validateFieldValues rend la première erreur dans l'ordre du schéma", () => {
+    expect(validateFieldValues(schema, { c: "Z", a: "", b: "" }, { requireRequired: true })).toMatch(
+      /« A » est requis/,
+    );
+  });
+
+  it("une clé hors schéma l'emporte sur le reste", () => {
+    const errors = validateFieldValuesAll(schema, { zzz: "1" }, { requireRequired: true });
+    expect(errors.__unknown).toMatch(/Champ inconnu/);
+    expect(validateFieldValues(schema, { zzz: "1" })).toMatch(/Champ inconnu/);
   });
 });

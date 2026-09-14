@@ -72,11 +72,42 @@ export interface CreateOrderInput {
     fields?: Record<string, string>;
     scheduledAt?: string | null;
   }[];
+  /**
+   * Vidéos retenues parmi les recettes OPTIONNELLES du modèle. Les recettes
+   * imposées sont instanciées quoi qu'il arrive — ne jamais croire le client
+   * sur ce point. Omettre le tableau = comportement d'avant (les optionnelles
+   * suivent leur `defaultSelected`).
+   */
+  recipes?: { patternTemplateId: string; count: number }[];
   /** ADMIN uniquement : créer au nom d'un client explicite. */
   clientId?: string | null;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Combien de vidéos une ligne de recette déclenche RÉELLEMENT pour une commande.
+ *
+ * Trois cas, dans cet ordre :
+ *  - recette imposée → `count`, quoi qu'ait envoyé le client ;
+ *  - recette optionnelle avec une sélection → la quantité cochée (0 = refusée) ;
+ *  - recette optionnelle SANS sélection → repli sur `defaultSelected`.
+ *
+ * Ce dernier cas couvre les commandes antérieures à la migration : elles n'ont
+ * aucune `OrderRecipeSelection` et doivent se comporter exactement comme avant.
+ * C'est la raison pour laquelle `isOptional` vaut `false` par défaut — aucun
+ * backfill n'est nécessaire.
+ */
+export function effectiveRecipeCount(
+  recipe: { count: number; isOptional: boolean; defaultSelected: boolean },
+  selectionByPattern: Map<string, number>,
+  patternTemplateId?: string,
+): number {
+  if (!recipe.isOptional) return recipe.count;
+  const selected = patternTemplateId ? selectionByPattern.get(patternTemplateId) : undefined;
+  if (selected !== undefined) return Math.min(selected, recipe.count);
+  return recipe.defaultSelected ? recipe.count : 0;
+}
 
 /** Type « tournage-like » : planning + rushs (mode reel des fiches). */
 function isShootType(t: { hasPlanning: boolean; hasRushes: boolean }): boolean {
@@ -124,12 +155,16 @@ const orderDetailSelect = {
         select: {
           patternTemplateId: true,
           count: true,
+          isOptional: true,
+          defaultSelected: true,
+          minCount: true,
           patternTemplate: { select: { label: true, source: true } },
         },
         orderBy: { position: "asc" },
       },
     },
   },
+  recipeSelections: { select: { patternTemplateId: true, count: true } },
   entities: {
     orderBy: { createdAt: "asc" as const },
     select: {
@@ -215,6 +250,16 @@ function serializeOrder(order: OrderDetailRaw, opts: { forExternal: boolean }) {
         label: r.patternTemplate.label,
         source: r.patternTemplate.source,
         count: r.count,
+        isOptional: r.isOptional,
+        defaultSelected: r.defaultSelected,
+        minCount: r.minCount,
+        // Ce qui sera réellement instancié : le bouton « Réessayer » et le
+        // récap doivent compter ça, pas la somme brute des `count`.
+        effectiveCount: effectiveRecipeCount(
+          r,
+          new Map(order.recipeSelections.map((sel) => [sel.patternTemplateId, sel.count])),
+          r.patternTemplateId,
+        ),
       })),
     },
     entities: order.entities.map((e) => ({
@@ -297,8 +342,18 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
         },
       },
       accesses: { select: { clientId: true } },
-      // Recettes du modèle : source des assignés par défaut des fiches.
-      recipes: { select: { patternTemplateId: true }, orderBy: { position: "asc" } },
+      // Recettes du modèle : source des assignés par défaut des fiches, et
+      // référentiel de validation de la sélection du négo.
+      recipes: {
+        select: {
+          patternTemplateId: true,
+          count: true,
+          isOptional: true,
+          defaultSelected: true,
+          minCount: true,
+        },
+        orderBy: { position: "asc" },
+      },
     },
   });
   // 404 uniforme : un modèle inexistant, archivé ou hors allowlist est
@@ -398,6 +453,42 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
     prepared.push({ data, isShoot: isShootType(item.entityType) });
   }
 
+  /**
+   * Sélection de vidéos — validée AVANT la transaction.
+   *
+   * Le client ne décide que des recettes marquées optionnelles : envoyer une
+   * recette imposée (ou inconnue) est une erreur, pas une préférence. Et la
+   * quantité reste bornée par ce que l'admin a paramétré.
+   */
+  const recipeSelections: { patternTemplateId: string; count: number }[] = [];
+  if (input.recipes?.length) {
+    const byId = new Map(template.recipes.map((r) => [r.patternTemplateId, r]));
+    for (const wanted of input.recipes) {
+      const recipe = byId.get(wanted.patternTemplateId);
+      if (!recipe) {
+        throw new ValidationError("Vidéo demandée hors du modèle de commande");
+      }
+      if (!recipe.isOptional) {
+        throw new ValidationError("Cette vidéo est imposée par le modèle et ne se choisit pas");
+      }
+      const count = Number(wanted.count);
+      if (!Number.isInteger(count) || count < recipe.minCount || count > recipe.count) {
+        throw new ValidationError(
+          `Quantité invalide (attendu entre ${recipe.minCount} et ${recipe.count})`,
+        );
+      }
+      recipeSelections.push({ patternTemplateId: recipe.patternTemplateId, count });
+    }
+    // Une optionnelle absente du payload est un refus EXPLICITE : sans cette
+    // ligne à 0, elle retomberait sur `defaultSelected` et serait instanciée
+    // alors que le négo l'a décochée.
+    for (const recipe of template.recipes) {
+      if (!recipe.isOptional) continue;
+      if (recipeSelections.some((s) => s.patternTemplateId === recipe.patternTemplateId)) continue;
+      recipeSelections.push({ patternTemplateId: recipe.patternTemplateId, count: 0 });
+    }
+  }
+
   const created = await prisma.$transaction(async (tx) => {
     const order = await tx.order.create({
       data: {
@@ -436,6 +527,14 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
         actorId: ctx.actualUser.id,
         type: "CREATED",
         payload: { typeId: entity.typeId, orderId: order.id },
+      });
+    }
+
+    // Même transaction que les fiches : une commande à moitié écrite (fiches
+    // sans sélection) instancierait les mauvaises vidéos à la validation.
+    if (recipeSelections.length > 0) {
+      await tx.orderRecipeSelection.createMany({
+        data: recipeSelections.map((sel) => ({ ...sel, orderId: order.id })),
       });
     }
 
@@ -647,7 +746,7 @@ async function loadOrderForTransition(id: string, ctx: UserContext) {
  * Une commande sans compte (aucun type de fiche n'en exige) sort par le haut :
  * ses recettes sont alors globales et n'ont pas de binding par construction.
  */
-async function assertRecipesActiveOnAccount(orderId: string): Promise<void> {
+async function assertOrderIsInstantiable(orderId: string): Promise<void> {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
     select: {
@@ -655,6 +754,7 @@ async function assertRecipesActiveOnAccount(orderId: string): Promise<void> {
       account: { select: { handle: true } },
       orderTemplate: {
         select: {
+          name: true,
           recipes: {
             select: { patternTemplate: { select: { id: true, label: true } } },
             orderBy: { position: "asc" },
@@ -663,10 +763,22 @@ async function assertRecipesActiveOnAccount(orderId: string): Promise<void> {
       },
     },
   });
+
+  // Modèle sans recette = zéro vidéo déclenchée. instantiateOrderSlots ferait
+  // zéro tour de boucle et retournerait { createdSlotIds: [], failed: [] } :
+  // aucun toast, aucun échec, une commande VALIDATED sans la moindre
+  // publication et un bouton « Réessayer » qui ne s'affiche même pas
+  // (0 < 0 est faux). C'est le SEUL chemin totalement muet de la validation —
+  // refuser ici plutôt que produire cet état mort.
+  if (order.orderTemplate.recipes.length === 0) {
+    throw new ValidationError(
+      `Le modèle « ${order.orderTemplate.name} » ne déclenche aucune vidéo — ajoutez au moins une recette dans Configuration → Modèles de commande avant de valider.`,
+    );
+  }
+
   if (!order.accountId) return;
 
   const recipes = order.orderTemplate.recipes.map((r) => r.patternTemplate);
-  if (recipes.length === 0) return;
 
   const active = await prisma.patternBinding.findMany({
     where: {
@@ -760,6 +872,13 @@ async function backfillOrderAssignees(
  * puis instancie les slots (hors tx, échecs isolés remontés — même contrat
  * que attachMissionsToEntity : l'appelant DOIT afficher `failed`).
  *
+ * `requested` = nombre de vidéos demandées par le modèle. L'appelant en a
+ * besoin pour ne pas confondre les deux façons de rendre `createdSlotIds: []`
+ * ET `failed: []` : « tout existait déjà » (requested > 0, cas nominal d'un
+ * retry) et « rien n'était demandé » (requested === 0). Le second est refusé
+ * en amont par assertOrderIsInstantiable, mais une commande validée AVANT ce
+ * garde-fou peut encore le produire.
+ *
  * Idempotent sur une commande déjà VALIDATED : la transition est sautée et
  * seule l'instanciation des slots MANQUANTS est relancée (retry naturel après
  * un échec partiel — bouton « Réessayer l'instanciation »).
@@ -775,11 +894,12 @@ export async function validateOrder(id: string, ctx: UserContext) {
     throw new ValidationError("Seule une commande soumise (ou refusée) peut être validée");
   }
 
-  // Toutes les recettes du modèle doivent être actives sur le compte cible.
-  // Sans binding, une publication naît sans horaire de publication ni assignés
-  // et personne ne la voit : mieux vaut refuser la validation et renvoyer
-  // l'admin activer la recette que produire des publications orphelines.
-  await assertRecipesActiveOnAccount(id);
+  // Le modèle doit déclencher au moins une vidéo, et toutes ses recettes
+  // doivent être actives sur le compte cible. Sans binding, une publication
+  // naît sans horaire de publication ni assignés et personne ne la voit :
+  // mieux vaut refuser la validation et renvoyer l'admin activer la recette
+  // que produire des publications orphelines — ou aucune, en silence.
+  await assertOrderIsInstantiable(id);
 
   // Le compte de la commande a pu être supprimé entre soumission et validation
   // (Order.accountId SetNull) — re-vérifier l'exigence réelle portée par les
@@ -835,8 +955,8 @@ export async function validateOrder(id: string, ctx: UserContext) {
   }
 
   const unassignedShoots = await backfillOrderAssignees(id);
-  const { createdSlotIds, failed } = await instantiateOrderSlots(id, ctx);
-  return { order: await getOrder(id, ctx), createdSlotIds, failed, unassignedShoots };
+  const { createdSlotIds, failed, requested } = await instantiateOrderSlots(id, ctx);
+  return { order: await getOrder(id, ctx), createdSlotIds, failed, requested, unassignedShoots };
 }
 
 /**
@@ -859,6 +979,8 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
           recipes: {
             select: {
               count: true,
+              isOptional: true,
+              defaultSelected: true,
               patternTemplate: {
                 select: {
                   id: true,
@@ -873,6 +995,9 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
           },
         },
       },
+      // Ce que le négo a coché. Vide sur les commandes antérieures à la
+      // migration : on retombe alors sur recipe.count (comportement d'avant).
+      recipeSelections: { select: { patternTemplateId: true, count: true } },
       entities: {
         orderBy: { createdAt: "asc" },
         select: {
@@ -886,9 +1011,20 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
 
   const shootFiche = order.entities.find((e) => isShootType(e.type)) ?? null;
   const dataFiches = order.entities.filter((e) => !isShootType(e.type));
+  const selectionByPattern = new Map(
+    order.recipeSelections.map((s) => [s.patternTemplateId, s.count]),
+  );
 
   const createdSlotIds: string[] = [];
   const failed: { patternTemplateId: string; label: string; error: string }[] = [];
+  /// Nombre de vidéos que la commande DEMANDE, tous statuts confondus. Permet à
+  /// l'appelant de distinguer « 0 créée parce que tout existait déjà » de
+  /// « 0 créée parce que rien n'était demandé » — les deux rendaient un
+  /// createdSlotIds vide et un failed vide, donc le même silence.
+  const requested = order.orderTemplate.recipes.reduce(
+    (sum, r) => sum + effectiveRecipeCount(r, selectionByPattern, r.patternTemplate.id),
+    0,
+  );
 
   for (const recipe of order.orderTemplate.recipes) {
     const pt = recipe.patternTemplate;
@@ -913,7 +1049,8 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
       },
     });
 
-    for (let n = existingCount; n < recipe.count; n++) {
+    const wanted = effectiveRecipeCount(recipe, selectionByPattern, pt.id);
+    for (let n = existingCount; n < wanted; n++) {
       try {
         const isReelSource = pt.source === "manual_rushes" || pt.source === "external_upload";
         if (isReelSource && shootFiche) {
@@ -963,7 +1100,7 @@ async function instantiateOrderSlots(orderId: string, ctx: UserContext) {
     }
   }
 
-  return { createdSlotIds, failed };
+  return { createdSlotIds, failed, requested };
 }
 
 /** Refus admin — motif obligatoire, fiches PENDING_ADMIN → REJECTED. */

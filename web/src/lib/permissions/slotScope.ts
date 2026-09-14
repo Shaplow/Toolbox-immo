@@ -147,6 +147,29 @@ export function canUserAccessSlot(
  * Note : `description` est le champ dédié à la description de publication (R14).
  * Il est distinct de `notes` qui reste pour les annotations internes libres.
  */
+/**
+ * Qui peut RETIRER une publication du pipeline (statut CANCELLED).
+ *
+ * Besoin métier : on commande 5 vidéos, on n'a les rushs que pour 4 — le
+ * monteur doit pouvoir en retirer une sans attendre l'admin. Le vidéaste aussi,
+ * puisqu'il est le premier à savoir ce qui n'a pas été tourné.
+ *
+ * Le CM en est exclu : il publie, il ne décide pas du nombre de vidéos.
+ *
+ * Pourquoi une permission dédiée plutôt qu'un élargissement de
+ * `ALLOWED_PATCH_FIELDS_BY_ROLE` : CANCELLED fait partie des statuts terminaux
+ * réservés à l'ADMIN via PATCH (cf. RESERVED_TERMINAL_STATUSES). Les ouvrir
+ * ouvrirait du même coup ARCHIVED et PUBLISHED. Le retrait passe donc par sa
+ * propre route, avec son motif obligatoire et sa trace — même logique que
+ * /mark-published.
+ *
+ * L'accès au slot reste filtré par `canUserAccessSlot` : un monteur ne retire
+ * que SES publications.
+ */
+export function canCancelSlot(role: UserRole): boolean {
+  return role === "ADMIN" || role === "MONTEUR" || role === "VIDEASTE";
+}
+
 export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
   {
     ADMIN: [

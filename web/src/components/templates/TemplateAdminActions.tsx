@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useAnchoredPosition, POPOVER_Z_INDEX } from "@/components/ui/useAnchoredPosition";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal, Download, Copy, Trash2 } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
@@ -11,11 +13,22 @@ export function TemplateAdminActions({ id }: { id: string }) {
   const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState<"export" | "duplicate" | "delete" | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const { position, ready } = useAnchoredPosition(open, triggerRef, {
+    maxHeight: 160,
+    align: "end",
+    popoverRef: menuRef,
+  });
 
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Le menu est portalé : sans ce test, `contains` est faux pour un clic
+      // SUR une action et celle-ci ne se déclenche jamais.
+      if (menuRef.current?.contains(target)) return;
+      if (ref.current && !ref.current.contains(target)) {
         setOpen(false);
         setConfirming(false);
       }
@@ -78,8 +91,18 @@ export function TemplateAdminActions({ id }: { id: string }) {
         <MoreHorizontal size={14} />
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1 text-sm">
+      {ready && position &&
+        createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: "absolute",
+            top: position.top,
+            left: position.left,
+            zIndex: POPOVER_Z_INDEX,
+          }}
+          className="w-44 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm"
+        >
           <button
             type="button"
             onClick={() => void handleExport()}
@@ -131,8 +154,9 @@ export function TemplateAdminActions({ id }: { id: string }) {
               </div>
             </div>
           )}
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

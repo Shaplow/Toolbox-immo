@@ -25,8 +25,10 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { create } from "zustand";
+import { Z } from "@/lib/ui/zIndex";
 
-const Z_BASE = 50;
+/** Étage de base des dialogues empilés — cf. lib/ui/zIndex. */
+const Z_BASE = Z.dialog;
 
 interface DialogStackEntry {
   id: string;

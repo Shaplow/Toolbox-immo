@@ -275,9 +275,11 @@ export const ALLOWED_ENTITY_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly stri
     "videasteDeclineReason",
   ],
   // Le vidéaste peut annuler/mettre à jour le statut (ex : shoot reporté),
-  // écrire des notes de terrain, et répondre sur sa disponibilité — les gardes
-  // de valeur et d'état (fiche validée, vidéaste assigné) sont dans patchEntity.
-  VIDEASTE: ["status", "notes", "videasteConfirmation", "videasteDeclineReason"],
+  // écrire des notes de terrain, amender le brief de tournage (c'est lui qui
+  // est sur place et qui sait ce qui a réellement été tourné), et répondre sur
+  // sa disponibilité — les gardes de valeur et d'état (fiche validée, vidéaste
+  // assigné) sont dans patchEntity.
+  VIDEASTE: ["status", "notes", "brief", "videasteConfirmation", "videasteDeclineReason"],
   MONTEUR: ["notes"],
   CM: ["notes"],
   EXTERNAL_GENERATOR: [],

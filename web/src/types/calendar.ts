@@ -60,6 +60,12 @@ export interface PublicationSlot {
   patternTemplateId?: string | null;
   /** Bon de commande d'origine (badge « Commande » en banque). */
   orderId?: string | null;
+  /**
+   * Fiche tournage rattachée (colonne `shootEntityId`). Modifiable après coup
+   * via POST /api/publications/[id]/attach-shoot — jamais par PATCH, le
+   * rattachement revalidant compte, fiche liée, assignés et rushs.
+   */
+  shootEntityId?: string | null;
   currentVersionId?: string | null;
   pattern?: {
     label: string;

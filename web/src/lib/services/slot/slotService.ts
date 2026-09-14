@@ -14,13 +14,16 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import type { UserContext } from "@/lib/userContext";
 import {
+  ConflictError,
   ForbiddenError,
   NotFoundError,
   ServiceError,
   ValidationError,
 } from "@/lib/services/_runtime/errors";
+import { TERMINAL_STATUSES, type SlotStatus } from "@/types/roles";
 import {
   ALLOWED_PATCH_FIELDS_BY_ROLE,
+  canCancelSlot,
   canUserAccessSlot,
   isValidSlotStatus,
   whereClauseForUser,
@@ -31,7 +34,12 @@ import {
   canTransition,
   syncSlotsPipelineStatuses,
 } from "@/lib/services/slot/transitions";
-import { BULK_PUBLISHABLE_STATUSES } from "@/lib/publications/constants";
+// REEL_* : mêmes règles que la création d'un reel et que markEntityShot.
+import {
+  BULK_PUBLISHABLE_STATUSES,
+  REEL_ATTACHABLE_SOURCES,
+  REEL_STATUSES_BUMPED_ON_SHOT,
+} from "@/lib/publications/constants";
 import {
   resolveSlotEffectivePattern,
   slotEffectivePatternSelect,
@@ -1955,6 +1963,240 @@ async function cancelPendingJobsForSlot(slotId: string): Promise<void> {
  * (et leurs objets R2 hors préfixe slot, ex. `renders/…`) survivent — dette
  * assumée car ces jobs peuvent être ré-utilisés.
  */
+/**
+ * Rattache (ou détache) une publication à une fiche tournage APRÈS sa création.
+ *
+ * `shootEntityId` était write-once : absent de toutes les listes de
+ * `ALLOWED_PATCH_FIELDS_BY_ROLE`, ADMIN compris, et jamais lu par `patchSlot`.
+ * Conséquence : un slot créé sur le calendrier ne pouvait plus jamais être relié
+ * à un tournage — exactement le scénario RPOD, où l'on pré-shoote des slots sans
+ * savoir combien de vidéos sortiront du contenu tourné.
+ *
+ * Route dédiée plutôt qu'un champ patchable : ce n'est pas une écriture de
+ * champ, c'est une revalidation en cascade qui touche quatre autres colonnes
+ * (compte, fiche liée, assignés, needsRushesOverride). L'insérer dans
+ * `patchSlot` obligerait à rejouer ces règles au milieu de 200 lignes de
+ * validations croisées.
+ *
+ * Ce qui est rejoué de `createSlot`, et ce qui ne l'est pas :
+ *  - compte : REFUSÉ s'il diffère, jamais écrasé (écraser déplacerait un slot
+ *    déjà planifié vers un autre calendrier) ;
+ *  - fiche liée / assignés : hérités SEULEMENT s'ils sont vides — un monteur
+ *    déjà assigné garde sa place ;
+ *  - statut : PAS de réinitialisation. Un seul bump, celui de `markEntityShot` :
+ *    PLANNED/RUSHES_EXPECTED + tournage SHOT/DONE → IN_EDIT. Forcer PLANNED
+ *    ferait régresser un reel déjà en montage ;
+ *  - needsRushesOverride = false : c'est la raison d'être du rattachement (le
+ *    reel puise dans les rushs partagés du tournage).
+ *
+ * Détachement (`shootEntityId: null`) : `needsRushesOverride` N'EST PAS remis à
+ * true — ça relancerait une demande de rushs sur un reel déjà monté.
+ */
+export async function attachShootToSlot(
+  slotId: string,
+  shootEntityId: string | null,
+  ctx: UserContext,
+) {
+  if (!ctx.canAdminBypass) {
+    throw new ForbiddenError("Réservé aux administrateurs");
+  }
+
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id: slotId },
+    select: {
+      id: true,
+      status: true,
+      accountId: true,
+      entityId: true,
+      shootEntityId: true,
+      assigneeMonteurId: true,
+      assigneeCmId: true,
+      assigneeVideasteId: true,
+      needsRushesOverride: true,
+      ...slotEffectivePatternSelect,
+    },
+  });
+  if (!slot) throw new NotFoundError("Slot");
+
+  if (shootEntityId === null) {
+    if (!slot.shootEntityId) {
+      throw new ConflictError("Cette publication n'est rattachée à aucun tournage");
+    }
+    return prisma.publicationSlot.update({
+      where: { id: slotId },
+      data: { shootEntityId: null },
+    });
+  }
+
+  // Même garde qu'à la création et que dans AddSlotModal : une recette « auto »
+  // ne produit pas un reel, elle se rend toute seule depuis un template.
+  const pattern = resolveSlotEffectivePattern(slot);
+  if (pattern && !(REEL_ATTACHABLE_SOURCES as readonly string[]).includes(pattern.source)) {
+    throw new ValidationError(
+      "Seules les recettes à rushs ou à envoi externe peuvent être rattachées à un tournage",
+    );
+  }
+
+  const shoot = await prisma.entity.findUnique({
+    where: { id: shootEntityId },
+    select: {
+      id: true,
+      isArchived: true,
+      accountId: true,
+      relatedEntityId: true,
+      status: true,
+      validationStatus: true,
+      assigneeVideasteId: true,
+      defaultAssigneeMonteurId: true,
+      defaultAssigneeCmId: true,
+      type: { select: { hasPlanning: true, hasRushes: true } },
+    },
+  });
+  if (!shoot) throw new NotFoundError("Tournage");
+  if (!shoot.type.hasPlanning || !shoot.type.hasRushes) {
+    throw new ValidationError("Cette fiche n'est pas un tournage");
+  }
+  if (shoot.isArchived) throw new ValidationError("Ce tournage est archivé");
+  assertEntityValidated(shoot.validationStatus, "Cette fiche tournage");
+
+  // Refuser plutôt qu'écraser : déplacer silencieusement un slot d'un compte à
+  // l'autre le ferait disparaître du calendrier où l'admin le regardait.
+  if (slot.accountId && shoot.accountId && slot.accountId !== shoot.accountId) {
+    throw new ConflictError(
+      "Cette publication et ce tournage ne sont pas sur le même compte Instagram",
+    );
+  }
+
+  const bumpsToEdit =
+    (shoot.status === "SHOT" || shoot.status === "DONE") &&
+    (REEL_STATUSES_BUMPED_ON_SHOT as readonly string[]).includes(slot.status);
+
+  const updated = await prisma.publicationSlot.update({
+    where: { id: slotId },
+    data: {
+      shootEntityId,
+      // Les héritages ne comblent que les trous.
+      ...(slot.accountId ? {} : shoot.accountId ? { accountId: shoot.accountId } : {}),
+      ...(slot.entityId ? {} : shoot.relatedEntityId ? { entityId: shoot.relatedEntityId } : {}),
+      ...(slot.assigneeMonteurId
+        ? {}
+        : shoot.defaultAssigneeMonteurId
+          ? { assigneeMonteurId: shoot.defaultAssigneeMonteurId }
+          : {}),
+      ...(slot.assigneeCmId
+        ? {}
+        : shoot.defaultAssigneeCmId
+          ? { assigneeCmId: shoot.defaultAssigneeCmId }
+          : {}),
+      ...(slot.assigneeVideasteId
+        ? {}
+        : shoot.assigneeVideasteId
+          ? { assigneeVideasteId: shoot.assigneeVideasteId }
+          : {}),
+      // Sauf override explicite déjà posé : le rattachement veut dire « les
+      // rushs vivent sur le tournage », pas « on oublie ce que l'admin a réglé ».
+      ...(slot.needsRushesOverride === null ? { needsRushesOverride: false } : {}),
+      ...(bumpsToEdit ? { status: "IN_EDIT" } : {}),
+    },
+  });
+
+  await logActivity(prisma, {
+    slotId,
+    actorId: ctx.actualUser.id,
+    type: "STATUS_CHANGED",
+    payload: {
+      from: slot.status,
+      to: updated.status,
+      shootEntityId,
+      reason: "attach-shoot",
+    },
+  });
+
+  return updated;
+}
+
+/** Motif de retrait — obligatoire, et borné comme tout texte libre non-admin. */
+const MAX_CANCEL_REASON = 500;
+
+/**
+ * Retire une publication du pipeline (statut CANCELLED), avec motif et trace.
+ *
+ * Répond au cas métier : 5 vidéos commandées, des rushs pour 4 seulement — le
+ * monteur en retire une. Jusqu'ici il ne pouvait ni supprimer (ADMIN strict) ni
+ * annuler (CANCELLED réservé à l'ADMIN via PATCH) ; il ne lui restait que
+ * BLOCKED, qui veut dire « bloqué », pas « pas de rushs pour celle-ci ».
+ *
+ * ANNULER, PAS SUPPRIMER — et c'est structurant : un slot CANCELLED reste en
+ * base, donc il continue d'être compté par l'idempotence de
+ * `instantiateOrderSlots`. Le bouton « Réessayer l'instanciation » de la
+ * commande ne le recrée donc pas. Une suppression, elle, faisait réapparaître
+ * la vidéo au clic suivant. Ne pas « optimiser » ce comptage avec un
+ * `status: { notIn: TERMINAL_STATUSES }` : ce serait rouvrir le bug.
+ *
+ * `deleteSlot` reste la porte ADMIN pour une suppression définitive.
+ */
+export async function cancelSlot(id: string, reason: string, ctx: UserContext) {
+  const role = toUserRole(ctx.effectiveUser.role);
+  const userId = ctx.effectiveUser.id;
+
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    throw new ValidationError("Un motif est requis pour retirer une publication");
+  }
+  if (trimmedReason.length > MAX_CANCEL_REASON) {
+    throw new ValidationError(`Motif trop long (max ${MAX_CANCEL_REASON} caractères)`);
+  }
+
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      status: true,
+      title: true,
+      notes: true,
+      assigneeMonteurId: true,
+      assigneeCmId: true,
+      assigneeVideasteId: true,
+    },
+  });
+  // 404 et non 403 sur l'accès : anti-énumération, comme partout ailleurs.
+  if (!slot || !canUserAccessSlot(slot, role, userId)) {
+    throw new NotFoundError("Slot");
+  }
+  if (!canCancelSlot(role)) {
+    throw new ForbiddenError("Vous ne pouvez pas retirer cette publication");
+  }
+
+  if ((TERMINAL_STATUSES as readonly string[]).includes(slot.status)) {
+    throw new ConflictError(
+      slot.status === "CANCELLED"
+        ? "Cette publication est déjà retirée"
+        : "Cette publication est terminée — seul un admin peut revenir dessus",
+    );
+  }
+  // La matrice reste la source de vérité des transitions permises ; l'ADMIN la
+  // bypasse, comme partout.
+  if (!canTransition(slot.status as SlotStatus, "CANCELLED", role)) {
+    throw new ConflictError(`Impossible de retirer une publication au statut ${slot.status}`);
+  }
+
+  const updated = await prisma.publicationSlot.update({
+    where: { id },
+    data: { status: "CANCELLED" },
+  });
+
+  await logActivity(prisma, {
+    slotId: id,
+    // `actualUser` et non `effectiveUser` : sous impersonation, l'audit doit
+    // désigner l'admin réel, pas la personne dont il emprunte l'identité.
+    actorId: ctx.actualUser.id,
+    type: "STATUS_CHANGED",
+    payload: { from: slot.status, to: "CANCELLED", reason: trimmedReason },
+  });
+
+  return updated;
+}
+
 export async function deleteSlot(id: string, ctx: UserContext) {
   const role = toUserRole(ctx.effectiveUser.role);
 

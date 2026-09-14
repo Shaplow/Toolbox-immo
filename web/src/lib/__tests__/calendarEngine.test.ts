@@ -1,524 +1,255 @@
+/**
+ * Tests calendarEngine — fige les raisons de non-génération.
+ *
+ * Le moteur rendait `{ created: 0, skipped: 0 }` par trois sorties muettes
+ * différentes, ses refus n'existant qu'en `console.warn` côté serveur. Ces
+ * tests verrouillent le fait que chaque refus est désormais NOMMÉ dans
+ * `skips[]`, et qu'un binding invalide ne produit qu'UNE entrée même sur une
+ * génération multi-semaines (les gardes vivaient dans la boucle des semaines).
+ */
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ── Mock Prisma ───────────────────────────────────────────────────────────────
-// On mock le module entier pour éviter toute connexion DB.
-// Les tests injectent leurs propres données via les mocks ci-dessous.
-
 const mockBindingFindMany = vi.fn();
-const mockSlotFindMany = vi.fn();
-const mockCreateMany = vi.fn();
+const mockSlotFindMany = vi.fn(async () => [] as unknown[]);
+const mockSlotCreateMany = vi.fn(async () => ({ count: 0 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    // P2 — calendarEngine itère maintenant les PatternBinding (avec
-    // patternTemplate inclus) au lieu des AccountPattern.
-    patternBinding: {
-      findMany: (...args: unknown[]) => mockBindingFindMany(...args),
-    },
+    patternBinding: { findMany: (...a: unknown[]) => mockBindingFindMany(...a) },
     publicationSlot: {
-      findMany: (...args: unknown[]) => mockSlotFindMany(...args),
-      createMany: (...args: unknown[]) => mockCreateMany(...args),
+      findMany: (...a: unknown[]) => mockSlotFindMany(...a),
+      createMany: (...a: unknown[]) => mockSlotCreateMany(...a),
     },
   },
 }));
 
-// Import APRÈS le mock
-import { generateCalendarSlots, nextWeekRange, mapSourceToInitialStatus } from "@/lib/calendarEngine";
+import { generateCalendarSlots } from "@/lib/calendarEngine";
+import { summarizeCalendarSkips } from "@/lib/calendar/skips";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+/** Lundi 14/09/2026 → dimanche 20/09/2026 (une semaine pleine, UTC). */
+const WEEK = {
+  dateFrom: new Date("2026-09-14T00:00:00.000Z"),
+  dateTo: new Date("2026-09-20T23:59:59.999Z"),
+};
+/** Deux semaines, pour vérifier la déduplication des refus par recette. */
+const TWO_WEEKS = {
+  dateFrom: WEEK.dateFrom,
+  dateTo: new Date("2026-09-27T23:59:59.999Z"),
+};
 
-/** Retourne le lundi de la semaine en cours à 00:00 UTC */
-function thisMonday(): Date {
-  const now = new Date();
-  const jsDay = now.getUTCDay(); // 0=Dim
-  const daysSinceMonday = jsDay === 0 ? 6 : jsDay - 1;
-  const d = new Date(now);
-  d.setUTCDate(d.getUTCDate() - daysSinceMonday);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
-}
-
-/** Retourne le dimanche de la même semaine que monday à 23:59:59 UTC */
-function thisSunday(monday: Date): Date {
-  const d = new Date(monday);
-  d.setUTCDate(d.getUTCDate() + 6);
-  d.setUTCHours(23, 59, 59, 999);
-  return d;
-}
-
-/** Calcule la date cible attendue pour un pattern donné dans la semaine de monday */
-function expectedSlotDate(monday: Date, dayOfWeek: number, publishTime: string): Date {
-  const d = new Date(monday);
-  d.setUTCDate(d.getUTCDate() + (dayOfWeek - 1));
-  const [h, m] = publishTime.split(":").map(Number);
-  d.setUTCHours(h, m, 0, 0);
-  return d;
-}
-
-/**
- * Pattern minimal sous forme de PatternBinding (modèle P2) avec patternTemplate
- * inclus. Le helper continue d'accepter les overrides historiques (source,
- * templateId, etc.) qui sont automatiquement projetés dans le bon sous-objet.
- */
-function makePattern(overrides: Partial<{
-  id: string;
-  accountId: string;
-  label: string;
-  source: string;
-  dayOfWeek: number[];
-  publishTime: string;
-  templateId: string | null;
-  defaultAssigneeMonteurId: string | null;
-  defaultAssigneeCmId: string | null;
-  defaultAssigneeVideasteId: string | null;
-  isActive: boolean;
-}> = {}) {
-  const id = overrides.id ?? "binding-1";
-  const accountId = overrides.accountId ?? "account-1";
-  const label = overrides.label ?? "Test Pattern";
-  const source = overrides.source ?? "auto_template";
+function binding(over: Record<string, unknown> = {}) {
   return {
-    id,
-    accountId,
-    patternTemplateId: `tpl-of-${id}`,
-    customLabel: overrides.label ? label : null,
-    dayOfWeek: overrides.dayOfWeek ?? [1],
-    publishTime: overrides.publishTime ?? "09:00",
-    isActive: overrides.isActive ?? true,
-    defaultAssigneeMonteurId: overrides.defaultAssigneeMonteurId ?? null,
-    defaultAssigneeCmId: overrides.defaultAssigneeCmId ?? null,
-    defaultAssigneeVideasteId: overrides.defaultAssigneeVideasteId ?? null,
-    templateIdOverride: null,
-    captionPresetIdOverride: null,
-    descriptionPromptIdOverride: null,
-    coverModeOverride: null,
-    notes: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    id: "b1",
+    accountId: "acc1",
+    customLabel: null,
+    dayOfWeek: [1],
+    publishTime: "18:00",
+    isActive: true,
+    defaultAssigneeMonteurId: null,
+    defaultAssigneeCmId: null,
+    defaultAssigneeVideasteId: null,
+    account: { handle: "agence-nord" },
     patternTemplate: {
-      id: `tpl-of-${id}`,
-      label,
-      source,
-      templateId: overrides.templateId ?? null,
-      coverMode: "none",
-      coverConfig: null,
-      needsDescription: "none",
-      needsCaptions: false,
-      needsCaptionsMode: "none",
-      needsAdminValidation: false,
-      needsClientValidation: false,
-      allowsClientRevision: false,
-      needsBrief: false,
-      captionPresetId: null,
-      descriptionPromptId: null,
-      isArchived: false,
-      notes: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      id: "pt1",
+      label: "RVA1",
+      source: "auto_template",
+      templateId: "tpl1",
+      requiresProperty: false,
+      requiresEntityTypeId: null,
     },
+    ...over,
   };
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockSlotFindMany.mockResolvedValue([]);
+  mockSlotCreateMany.mockResolvedValue({ count: 0 });
+});
 
-describe("generateCalendarSlots", () => {
-  const monday = thisMonday();
-  const sunday = thisSunday(monday);
+describe("generateCalendarSlots — cas nominal", () => {
+  it("crée un slot par jour planifié et n'invente aucun refus", async () => {
+    mockBindingFindMany.mockResolvedValue([binding({ dayOfWeek: [1, 3] })]);
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Par défaut : pas de slot existant
-    mockSlotFindMany.mockResolvedValue([]);
-    mockCreateMany.mockResolvedValue({ count: 0 });
-  });
-
-  // ── Cas 0 pattern actif ───────────────────────────────────────────────────
-
-  it("0 pattern actif → 0 slot créé, 0 skipped", async () => {
-    mockBindingFindMany.mockResolvedValue([]);
-
-    const result = await generateCalendarSlots({
-      dateFrom: monday,
-      dateTo: sunday,
-    });
-
-    expect(result.created).toBe(0);
-    expect(result.skipped).toBe(0);
-    expect(mockCreateMany).not.toHaveBeenCalled();
-  });
-
-  // ── Cas 1 pattern actif ───────────────────────────────────────────────────
-
-  it("1 pattern actif lundi 09:00 → 1 slot créé pour la semaine", async () => {
-    mockBindingFindMany.mockResolvedValue([makePattern()]);
-
-    const result = await generateCalendarSlots({
-      dateFrom: monday,
-      dateTo: sunday,
-    });
-
-    expect(result.created).toBe(1);
-    expect(result.skipped).toBe(0);
-    expect(mockCreateMany).toHaveBeenCalledOnce();
-
-    const dataArr = mockCreateMany.mock.calls[0][0].data;
-    expect(dataArr).toHaveLength(1);
-    const slot = dataArr[0];
-    expect(slot.accountId).toBe("account-1");
-    // P2 — calendarEngine stocke patternBindingId (binding-1 par défaut du helper).
-    expect(slot.patternBindingId).toBe("binding-1");
-    // Default makePattern() uses source="auto_template" → PLANNED
-    expect(slot.status).toBe("PLANNED");
-    expect(slot.isAuto).toBe(true);
-
-    // Vérifier la date : lundi 09:00 UTC
-    expect(slot.scheduledAt.getUTCHours()).toBe(9);
-    expect(slot.scheduledAt.getUTCMinutes()).toBe(0);
-    expect(slot.scheduledAt.getUTCDate()).toBe(monday.getUTCDate());
-  });
-
-  // ── 2 patterns sur même compte, jours différents ──────────────────────────
-
-  it("2 patterns sur le même compte jours différents → 2 slots créés", async () => {
-    mockBindingFindMany.mockResolvedValue([
-      makePattern({ id: "p1", dayOfWeek: [1], publishTime: "09:00" }),
-      makePattern({ id: "p2", dayOfWeek: [3], publishTime: "18:00" }), // Mercredi
-    ]);
-
-    const result = await generateCalendarSlots({
-      dateFrom: monday,
-      dateTo: sunday,
-    });
+    const result = await generateCalendarSlots(WEEK);
 
     expect(result.created).toBe(2);
     expect(result.skipped).toBe(0);
-    expect(mockCreateMany).toHaveBeenCalledOnce();
-
-    const dataArr = mockCreateMany.mock.calls[0][0].data;
-    expect(dataArr).toHaveLength(2);
-
-    const first = dataArr[0];
-    expect(first.scheduledAt.getUTCHours()).toBe(9);
-    expect(first.scheduledAt.getUTCDate()).toBe(monday.getUTCDate());
-
-    const second = dataArr[1];
-    expect(second.scheduledAt.getUTCHours()).toBe(18);
-    expect(second.scheduledAt.getUTCDate()).toBe(monday.getUTCDate() + 2);
+    expect(result.skips).toEqual([]);
+    expect(mockSlotCreateMany).toHaveBeenCalledTimes(1);
   });
 
-  // ── Multi-jour : 1 pattern dayOfWeek=[1,3,5] → 3 slots par semaine ───────
+  it("dryRun n'écrit rien mais compte pareil", async () => {
+    mockBindingFindMany.mockResolvedValue([binding()]);
 
-  it("1 pattern dayOfWeek=[1,3,5] → 3 slots créés dans la semaine (Lun, Mer, Ven)", async () => {
+    const result = await generateCalendarSlots({ ...WEEK, dryRun: true });
+
+    expect(result.created).toBe(1);
+    expect(mockSlotCreateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("generateCalendarSlots — chaque refus est nommé", () => {
+  it("aucune recette active → no_active_bindings", async () => {
+    mockBindingFindMany.mockResolvedValue([]);
+
+    const result = await generateCalendarSlots(WEEK);
+
+    expect(result.created).toBe(0);
+    expect(result.skips).toEqual([{ reason: "no_active_bindings", count: 0 }]);
+  });
+
+  it("recette exigeant une fiche → requires_entity, avec la recette nommée", async () => {
     mockBindingFindMany.mockResolvedValue([
-      makePattern({ id: "p-multi", dayOfWeek: [1, 3, 5], publishTime: "10:00" }),
+      binding({ patternTemplate: { ...binding().patternTemplate, requiresEntityTypeId: "etype_bien" } }),
     ]);
 
-    const result = await generateCalendarSlots({
-      dateFrom: monday,
-      dateTo: sunday,
-    });
+    const result = await generateCalendarSlots(WEEK);
 
-    expect(result.created).toBe(3);
-    expect(result.skipped).toBe(0);
-    expect(mockCreateMany).toHaveBeenCalledOnce();
-
-    const dataArr = mockCreateMany.mock.calls[0][0].data;
-    expect(dataArr).toHaveLength(3);
-
-    // Lundi (dow=1) → offset 0
-    expect(dataArr[0].scheduledAt.getUTCDate()).toBe(monday.getUTCDate());
-    // Mercredi (dow=3) → offset 2
-    expect(dataArr[1].scheduledAt.getUTCDate()).toBe(monday.getUTCDate() + 2);
-    // Vendredi (dow=5) → offset 4
-    expect(dataArr[2].scheduledAt.getUTCDate()).toBe(monday.getUTCDate() + 4);
-
-    // Tous à 10:00 UTC
-    for (const slot of dataArr) {
-      expect(slot.scheduledAt.getUTCHours()).toBe(10);
-      expect(slot.scheduledAt.getUTCMinutes()).toBe(0);
-    }
+    expect(result.created).toBe(0);
+    expect(result.skips).toEqual([
+      { reason: "requires_entity", bindingId: "b1", accountHandle: "agence-nord", label: "RVA1", count: 1 },
+    ]);
   });
 
-  // ── Pattern dayOfWeek vide → warning + skip ───────────────────────────────
+  it("requiresProperty legacy → requires_entity aussi", async () => {
+    mockBindingFindMany.mockResolvedValue([
+      binding({ patternTemplate: { ...binding().patternTemplate, requiresProperty: true } }),
+    ]);
 
-  it("pattern dayOfWeek=[] (array vide) → 0 slot créé (warning console)", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    mockBindingFindMany.mockResolvedValue([makePattern({ dayOfWeek: [] })]);
+    const result = await generateCalendarSlots(WEEK);
+    expect(result.skips.map((s) => s.reason)).toEqual(["requires_entity"]);
+  });
 
+  it("aucun jour planifié → empty_day_of_week", async () => {
+    mockBindingFindMany.mockResolvedValue([binding({ dayOfWeek: [] })]);
+
+    const result = await generateCalendarSlots(WEEK);
+
+    expect(result.created).toBe(0);
+    expect(result.skips.map((s) => s.reason)).toEqual(["empty_day_of_week"]);
+  });
+
+  it.each(["", "abc", "25:00", "12:99", "18h30"])(
+    "publishTime « %s » → invalid_publish_time",
+    async (publishTime) => {
+      mockBindingFindMany.mockResolvedValue([binding({ publishTime })]);
+
+      const result = await generateCalendarSlots(WEEK);
+
+      expect(result.created).toBe(0);
+      expect(result.skips.map((s) => s.reason)).toEqual(["invalid_publish_time"]);
+    },
+  );
+
+  /**
+   * Contre-exemples délibérés : le garde est plus laxiste que son commentaire
+   * ne le laissait croire. « 9:00 » passe (Number("9") === 9) et « 18: » aussi
+   * (Number("") === 0, donc 18h00). Aucun des deux ne produit d'Invalid Date,
+   * c'est-à-dire aucun des deux ne peut faire échouer la run — la tolérance est
+   * sans danger. Ces cas sont figés ici pour que personne ne « corrige » le
+   * garde d'après le commentaire et n'exclue des recettes qui tournent en prod.
+   */
+  it.each(["9:00", "09:00", "18:"])("publishTime « %s » est accepté", async (publishTime) => {
+    mockBindingFindMany.mockResolvedValue([binding({ publishTime })]);
+
+    const result = await generateCalendarSlots(WEEK);
+
+    expect(result.created).toBe(1);
+    expect(result.skips).toEqual([]);
+  });
+
+  it("date cible déjà passée → out_of_range", async () => {
+    mockBindingFindMany.mockResolvedValue([binding({ dayOfWeek: [1] })]);
+
+    // Génération lancée le mercredi : le lundi de la semaine est derrière nous.
     const result = await generateCalendarSlots({
-      dateFrom: monday,
-      dateTo: sunday,
+      dateFrom: new Date("2026-09-16T10:00:00.000Z"),
+      dateTo: WEEK.dateTo,
     });
 
     expect(result.created).toBe(0);
-    expect(result.skipped).toBe(0);
-    expect(mockCreateMany).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("empty dayOfWeek"));
-    warnSpy.mockRestore();
+    expect(result.skips).toEqual([{ reason: "out_of_range", count: 1 }]);
   });
 
-  // ── Idempotence ───────────────────────────────────────────────────────────
-
-  it("idempotence : slot déjà existant → skipped, pas de doublon", async () => {
-    const pattern = makePattern();
-    mockBindingFindMany.mockResolvedValue([pattern]);
-    // Simuler que le slot existe déjà (dayOfWeek[0] = lundi)
+  it("slot déjà présent → already_exists et skipped", async () => {
+    mockBindingFindMany.mockResolvedValue([binding()]);
     mockSlotFindMany.mockResolvedValue([
       {
-        accountId: pattern.accountId,
-        scheduledAt: expectedSlotDate(monday, pattern.dayOfWeek[0], pattern.publishTime),
-        patternBindingId: pattern.id,
+        accountId: "acc1",
+        scheduledAt: new Date("2026-09-14T18:00:00.000Z"),
+        patternBindingId: "b1",
       },
     ]);
 
-    const result = await generateCalendarSlots({
-      dateFrom: monday,
-      dateTo: sunday,
-    });
+    const result = await generateCalendarSlots(WEEK);
 
     expect(result.created).toBe(0);
     expect(result.skipped).toBe(1);
-    expect(mockCreateMany).not.toHaveBeenCalled();
+    expect(result.skips).toEqual([{ reason: "already_exists", count: 1 }]);
+    expect(mockSlotCreateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("generateCalendarSlots — les refus ne se répètent pas par semaine", () => {
+  it("une recette sans jour planifié compte une fois, pas une par semaine", async () => {
+    mockBindingFindMany.mockResolvedValue([binding({ dayOfWeek: [] })]);
+
+    const result = await generateCalendarSlots(TWO_WEEKS);
+
+    expect(result.skips).toHaveLength(1);
+    expect(summarizeCalendarSkips(result.skips)[0].text).toMatch(/^1 recette active sans jour/);
   });
 
-  it("idempotence : 2 appels consécutifs → 1 créé au total (2e appel = 0 créé)", async () => {
-    const pattern = makePattern();
-    mockBindingFindMany.mockResolvedValue([pattern]);
+  it("une recette valide génère toujours sur toutes les semaines", async () => {
+    mockBindingFindMany.mockResolvedValue([binding({ dayOfWeek: [1] })]);
 
-    // 1er appel : pas de slot existant → 1 created
-    mockSlotFindMany.mockResolvedValueOnce([]);
-    const r1 = await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
-    expect(r1.created).toBe(1);
-
-    // 2e appel : le slot précédent est maintenant en base → 0 created, 1 skipped
-    mockSlotFindMany.mockResolvedValueOnce([
-      {
-        accountId: pattern.accountId,
-        scheduledAt: expectedSlotDate(monday, pattern.dayOfWeek[0], pattern.publishTime),
-        patternBindingId: pattern.id,
-      },
-    ]);
-    const r2 = await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
-    expect(r2.created).toBe(0);
-    expect(r2.skipped).toBe(1);
-
-    // createMany n'a été appelé qu'une seule fois (sur le 1er appel)
-    expect(mockCreateMany).toHaveBeenCalledOnce();
-  });
-
-  // ── Pattern inactif → skip ────────────────────────────────────────────────
-
-  it("pattern inactif (isActive=false) → ignoré par la query (0 slot créé)", async () => {
-    // La query Prisma filtre déjà isActive=true — on simule en retournant []
-    mockBindingFindMany.mockResolvedValue([]);
-
-    const result = await generateCalendarSlots({
-      dateFrom: monday,
-      dateTo: sunday,
-    });
-
-    expect(result.created).toBe(0);
-    expect(result.skipped).toBe(0);
-
-    expect(mockBindingFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ isActive: true }),
-      })
-    );
-  });
-
-  // ── Filtrage par accountIds ───────────────────────────────────────────────
-
-  it("filtrage par accountIds : query Prisma inclut accountId dans le where", async () => {
-    mockBindingFindMany.mockResolvedValue([]);
-
-    await generateCalendarSlots({
-      dateFrom: monday,
-      dateTo: sunday,
-      accountIds: ["account-1", "account-2"],
-    });
-
-    expect(mockBindingFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          accountId: { in: ["account-1", "account-2"] },
-        }),
-      })
-    );
-  });
-
-  it("accountIds vide [] → pas de filtre sur accountId (tous les comptes)", async () => {
-    mockBindingFindMany.mockResolvedValue([]);
-
-    await generateCalendarSlots({
-      dateFrom: monday,
-      dateTo: sunday,
-      accountIds: [],
-    });
-
-    const whereArg = mockBindingFindMany.mock.calls[0][0].where;
-    expect(whereArg).not.toHaveProperty("accountId");
-  });
-
-  // ── Pattern hors plage → skip ─────────────────────────────────────────────
-
-  it("pattern dont la date calculée est hors plage → 0 créé", async () => {
-    const mondayOnly = new Date(monday);
-    const mondayEnd = new Date(monday);
-    mondayEnd.setUTCHours(23, 59, 59, 999);
-
-    // dayOfWeek=[7] → targetDate = lundi + 6 = dimanche → > mondayEnd → hors plage
-    mockBindingFindMany.mockResolvedValue([makePattern({ dayOfWeek: [7] })]);
-
-    const result = await generateCalendarSlots({
-      dateFrom: mondayOnly,
-      dateTo: mondayEnd,
-    });
-
-    expect(result.created).toBe(0);
-    expect(result.skipped).toBe(0);
-    expect(mockCreateMany).not.toHaveBeenCalled();
-  });
-
-  // ── Assignations par défaut propagées ────────────────────────────────────
-
-  it("les assignées par défaut du pattern sont propagées dans le slot créé", async () => {
-    mockBindingFindMany.mockResolvedValue([
-      makePattern({
-        defaultAssigneeMonteurId: "monteur-1",
-        defaultAssigneeCmId: "cm-1",
-      }),
-    ]);
-
-    await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
-
-    const slot = mockCreateMany.mock.calls[0][0].data[0];
-    expect(slot.assigneeMonteurId).toBe("monteur-1");
-    expect(slot.assigneeCmId).toBe("cm-1");
-  });
-
-  // ── Multi-semaine (régression du BLOCKER code review) ──────────────────────
-
-  it("plage 2 semaines + 1 pattern → 2 slots créés (1 par semaine)", async () => {
-    const pattern = makePattern({ dayOfWeek: [1], publishTime: "09:00" });
-    mockBindingFindMany.mockResolvedValue([pattern]);
-
-    const dateFrom = new Date(monday);
-    const dateTo = new Date(monday);
-    dateTo.setUTCDate(dateTo.getUTCDate() + 13); // +13 jours = 2 semaines complètes
-    dateTo.setUTCHours(23, 59, 59, 999);
-
-    const result = await generateCalendarSlots({ dateFrom, dateTo });
+    const result = await generateCalendarSlots(TWO_WEEKS);
 
     expect(result.created).toBe(2);
-    expect(mockCreateMany).toHaveBeenCalledOnce();
-
-    const dataArr = mockCreateMany.mock.calls[0][0].data;
-    expect(dataArr).toHaveLength(2);
-
-    const first: Date = dataArr[0].scheduledAt;
-    const second: Date = dataArr[1].scheduledAt;
-    const diffMs = second.getTime() - first.getTime();
-    expect(diffMs).toBe(7 * 24 * 60 * 60 * 1000); // exactement 7 jours
-  });
-
-  // ── Bulk performance : 1 seul appel findMany + 1 seul appel createMany ────
-
-  it("performance : N patterns → 1 findMany existing + 1 createMany (pas de N+1)", async () => {
-    const patterns = [
-      makePattern({ id: "p1", dayOfWeek: [1], publishTime: "09:00" }),
-      makePattern({ id: "p2", dayOfWeek: [2], publishTime: "10:00" }),
-      makePattern({ id: "p3", dayOfWeek: [3], publishTime: "11:00" }),
-      makePattern({ id: "p4", dayOfWeek: [4], publishTime: "12:00" }),
-    ];
-    mockBindingFindMany.mockResolvedValue(patterns);
-
-    await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
-
-    // 1 findMany pour les patterns + 1 findMany pour les slots existants + 1 createMany
-    expect(mockBindingFindMany).toHaveBeenCalledOnce();
-    expect(mockSlotFindMany).toHaveBeenCalledOnce();
-    expect(mockCreateMany).toHaveBeenCalledOnce();
-
-    // createMany reçoit toutes les insertions en un seul array
-    expect(mockCreateMany.mock.calls[0][0].data).toHaveLength(4);
-  });
-
-  // ── Statut initial dérivé de pattern.source ─────────────────────────────
-
-  it("source=auto_template → slot créé en PLANNED (auto-transitions prend le relais)", async () => {
-    mockBindingFindMany.mockResolvedValue([makePattern({ source: "auto_template" })]);
-    await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
-    expect(mockCreateMany.mock.calls[0][0].data[0].status).toBe("PLANNED");
-  });
-
-  it("source=manual_rushes → slot créé en RUSHES_EXPECTED (visible monteur immédiatement)", async () => {
-    mockBindingFindMany.mockResolvedValue([makePattern({ source: "manual_rushes" })]);
-    await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
-    expect(mockCreateMany.mock.calls[0][0].data[0].status).toBe("RUSHES_EXPECTED");
-  });
-
-  it("source=external_upload → slot créé en READY_FOR_CM (pas de montage attendu)", async () => {
-    mockBindingFindMany.mockResolvedValue([makePattern({ source: "external_upload" })]);
-    await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
-    expect(mockCreateMany.mock.calls[0][0].data[0].status).toBe("READY_FOR_CM");
   });
 });
 
-// ── mapSourceToInitialStatus (helper pur) ────────────────────────────────────
+describe("generateCalendarSlots — un refus n'empêche pas les autres recettes", () => {
+  it("mélange valide + invalides : seule la valide produit un slot", async () => {
+    mockBindingFindMany.mockResolvedValue([
+      binding({ id: "b-ok", dayOfWeek: [2] }),
+      binding({ id: "b-noday", dayOfWeek: [], customLabel: "Sans jour" }),
+      binding({ id: "b-badtime", publishTime: "abc", customLabel: "Heure cassée" }),
+    ]);
 
-describe("mapSourceToInitialStatus", () => {
-  it("auto_template → PLANNED", () => {
-    expect(mapSourceToInitialStatus("auto_template")).toBe("PLANNED");
-  });
+    const result = await generateCalendarSlots(WEEK);
 
-  it("manual_rushes → RUSHES_EXPECTED", () => {
-    expect(mapSourceToInitialStatus("manual_rushes")).toBe("RUSHES_EXPECTED");
-  });
-
-  it("external_upload → READY_FOR_CM", () => {
-    expect(mapSourceToInitialStatus("external_upload")).toBe("READY_FOR_CM");
-  });
-
-  it("source inconnue → fallback PLANNED + warn console", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    expect(mapSourceToInitialStatus("ufo_source")).toBe("PLANNED");
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("ufo_source"),
-    );
-    warnSpy.mockRestore();
+    expect(result.created).toBe(1);
+    expect(result.skips.map((s) => s.reason).sort()).toEqual([
+      "empty_day_of_week",
+      "invalid_publish_time",
+    ]);
+    // Le libellé personnalisé prime sur celui de la recette globale : c'est
+    // sous ce nom que l'admin voit la ligne sur la fiche du compte.
+    expect(result.skips.map((s) => s.label).sort()).toEqual(["Heure cassée", "Sans jour"]);
   });
 });
 
-// ── nextWeekRange ─────────────────────────────────────────────────────────────
+describe("summarizeCalendarSkips", () => {
+  it("met les causes actionnables avant l'idempotence", async () => {
+    const lines = summarizeCalendarSkips([
+      { reason: "already_exists", count: 4 },
+      { reason: "empty_day_of_week", bindingId: "b1", label: "RVA1", count: 1 },
+    ]);
 
-describe("nextWeekRange", () => {
-  it("retourne un lundi (UTC) à 00:00:00 comme dateFrom", () => {
-    const { dateFrom } = nextWeekRange();
-    expect(dateFrom.getUTCHours()).toBe(0);
-    expect(dateFrom.getUTCMinutes()).toBe(0);
-    // getUTCDay() === 1 signifie lundi
-    expect(dateFrom.getUTCDay()).toBe(1);
+    expect(lines.map((l) => l.reason)).toEqual(["empty_day_of_week", "already_exists"]);
   });
 
-  it("retourne un dimanche (UTC) à 23:59:59 comme dateTo", () => {
-    const { dateTo } = nextWeekRange();
-    expect(dateTo.getUTCHours()).toBe(23);
-    expect(dateTo.getUTCMinutes()).toBe(59);
-    expect(dateTo.getUTCDay()).toBe(0); // 0 = Dimanche en UTC
-  });
+  it("agrège plusieurs recettes sous une même raison", async () => {
+    const lines = summarizeCalendarSkips([
+      { reason: "empty_day_of_week", bindingId: "b1", label: "RVA1", accountHandle: "nord", count: 1 },
+      { reason: "empty_day_of_week", bindingId: "b2", label: "RPI", count: 1 },
+    ]);
 
-  it("dateTo est 6 jours complets après dateFrom (lundi → dimanche inclus)", () => {
-    const { dateFrom, dateTo } = nextWeekRange();
-    const diffMs = dateTo.getTime() - dateFrom.getTime();
-    const sixDaysMs = 6 * 24 * 60 * 60 * 1000;
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-    expect(diffMs).toBeGreaterThanOrEqual(sixDaysMs);
-    expect(diffMs).toBeLessThan(sevenDaysMs);
-  });
-
-  it("dateFrom est dans le futur (semaine prochaine)", () => {
-    const { dateFrom } = nextWeekRange();
-    expect(dateFrom.getTime()).toBeGreaterThan(Date.now());
+    expect(lines).toHaveLength(1);
+    expect(lines[0].text).toMatch(/^2 recettes actives sans jour/);
+    expect(lines[0].details).toEqual(["RVA1 (@nord)", "RPI"]);
   });
 });

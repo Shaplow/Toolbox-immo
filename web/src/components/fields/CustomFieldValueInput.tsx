@@ -2,8 +2,14 @@
 
 import { useState, type KeyboardEvent } from "react";
 import type { CustomField } from "@/lib/customFields";
-import { isNumericFieldValue, isPartialNumericInput } from "@/lib/customFields";
+import {
+  CHECKBOX_TRUE,
+  isCheckedFieldValue,
+  isNumericFieldValue,
+  isPartialNumericInput,
+} from "@/lib/customFields";
 import { Select } from "@/components/ui/Select";
+import { Checkbox } from "@/components/ui/Checkbox";
 
 interface CustomFieldValueInputProps {
   field: CustomField;
@@ -45,10 +51,11 @@ const CONTROL_OK = "border-input focus:ring-ring/40";
 const CONTROL_ERR = "border-danger-600 focus:ring-danger-600/30";
 
 /**
- * Saisie d'une VALEUR de champ personnalisé, rendue selon son type (les 5 types
- * canoniques : text / textarea / number / url / select). Composant partagé
- * unique — remplace les ~6 mappings type→input dupliqués (Bien, mission,
- * médiathèque, data). Valeur toujours string (cohérent avec le stockage).
+ * Saisie d'une VALEUR de champ personnalisé, rendue selon son type (les 6 types
+ * canoniques : text / textarea / number / url / select / checkbox). Composant
+ * partagé unique — remplace les ~6 mappings type→input dupliqués (Bien,
+ * mission, médiathèque, data). Valeur toujours string, `"true"` pour une case
+ * cochée (cohérent avec le stockage, cf. lib/customFields).
  */
 export function CustomFieldValueInput({
   field,
@@ -99,7 +106,15 @@ export function CustomFieldValueInput({
   }
 
   const input =
-    field.type === "select" ? (
+    field.type === "checkbox" ? (
+      <Checkbox
+        checked={isCheckedFieldValue(value)}
+        onChange={(next) => onChange(next ? CHECKBOX_TRUE : "")}
+        disabled={disabled}
+        label={field.label || field.key}
+        size="sm"
+      />
+    ) : field.type === "select" ? (
       <Select
         value={value}
         onChange={onChange}
@@ -148,13 +163,47 @@ export function CustomFieldValueInput({
   // L'erreur doit être lisible AUSSI en mode cellule nue : un `return input`
   // anticipé rendait la prop `error` inopérante hors formulaire.
   if (!showLabel) {
+    // En cellule nue il n'y a pas la place d'un texte d'aide : il passe en
+    // `title` plutôt que d'être perdu.
+    const bare =
+      field.description && field.type !== "checkbox" ? (
+        <span title={field.description} className="block">
+          {input}
+        </span>
+      ) : (
+        input
+      );
     return shownError ? (
       <div className="flex flex-col gap-1">
-        {input}
+        {bare}
         <span className="text-[11px] text-danger-600">{shownError}</span>
       </div>
     ) : (
-      input
+      bare
+    );
+  }
+
+  const help = field.description ? (
+    <span className="text-[11px] text-muted-foreground">{field.description}</span>
+  ) : null;
+
+  // Une case à cocher se lit « case puis libellé », pas « libellé au-dessus » :
+  // la structure verticale des autres types la rendrait orpheline de son sens.
+  if (field.type === "checkbox") {
+    return (
+      <div className="flex flex-col gap-1">
+        <label className="flex items-start gap-2 cursor-pointer">
+          {input}
+          <span className="flex flex-col gap-0.5 -mt-0.5">
+            <span className="text-[13px] text-foreground">
+              {field.label || field.key}
+              {field.required && <span className="text-danger-600"> •</span>}
+            </span>
+            {help}
+          </span>
+        </label>
+        {shownError && <span className="text-[11px] text-danger-600">{shownError}</span>}
+      </div>
     );
   }
 
@@ -164,6 +213,7 @@ export function CustomFieldValueInput({
         {field.label || field.key}
         {field.required && <span className="text-danger-600"> •</span>}
       </span>
+      {help}
       {input}
       {shownError && <span className="text-[11px] text-danger-600">{shownError}</span>}
     </label>

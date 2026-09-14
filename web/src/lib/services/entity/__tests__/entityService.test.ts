@@ -739,3 +739,107 @@ describe("patchEntity — libellé automatique", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 });
+
+/**
+ * `required` bloque désormais À CHAQUE ENREGISTREMENT, pas seulement à la
+ * création. Un champ obligatoire qui n'empêchait rien n'était qu'une
+ * décoration, et les fiches arrivaient incomplètes au montage.
+ *
+ * La contrepartie — rendre insauvable une fiche existante dès qu'on ajoute un
+ * champ requis — est traitée en amont (compteur d'impact + backfill dans
+ * l'admin des types), sauf pour les fiches archivées, exemptées ici.
+ */
+describe("patchEntity — champs obligatoires bloquants", () => {
+  const TYPE_REQUIS = {
+    visibility: "admin",
+    hasPlanning: false,
+    fieldSchema: JSON.stringify([
+      { key: "adresse", label: "Adresse", type: "text", required: true },
+      { key: "note", label: "Note", type: "text" },
+    ]),
+    name: "Bien",
+    labelTemplate: null,
+  };
+  const BASE = {
+    id: "ent-1",
+    typeId: "etype_bien",
+    type: TYPE_REQUIS,
+    label: "Fiche",
+    labelIsCustom: true,
+    fields: JSON.stringify({ adresse: "12 rue des Lilas" }),
+    orderId: null,
+    order: null,
+    status: null,
+    scheduledAt: null,
+    endAt: null,
+    validationStatus: "APPROVED",
+    assigneeVideasteId: null,
+    videasteConfirmation: null,
+    defaultAssigneeMonteurId: null,
+    defaultAssigneeCmId: null,
+    isArchived: false,
+    shootSlots: [],
+  };
+
+  beforeEach(() => {
+    mockEntityUpdate.mockClear();
+    mockEntityFindUnique.mockResolvedValue(BASE);
+    mockEntityUpdate.mockResolvedValue({ id: "ent-1", fields: "{}", type: { fieldSchema: "[]" } });
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        entity: {
+          update: (...a: unknown[]) => mockEntityUpdate(...a),
+          findUnique: () => ({ id: "ent-1", fields: "{}", type: { fieldSchema: "[]" } }),
+        },
+        entityActivity: { create: mockEntityActivityCreate },
+      }),
+    );
+  });
+
+  it("vider un champ requis est refusé", async () => {
+    await expect(
+      patchEntity("ent-1", { fields: { adresse: "", note: "x" } }, adminCtx()),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(mockEntityUpdate).not.toHaveBeenCalled();
+  });
+
+  it("un champ requis renseigné passe", async () => {
+    await expect(
+      patchEntity("ent-1", { fields: { adresse: "8 avenue Foch" } }, adminCtx()),
+    ).resolves.toBeDefined();
+  });
+
+  // Le formulaire renvoie l'objet `fields` COMPLET : omettre la clé revient à
+  // l'effacer, et ça doit être refusé comme un effacement explicite.
+  it("omettre la clé requise équivaut à la vider", async () => {
+    await expect(
+      patchEntity("ent-1", { fields: { note: "x" } }, adminCtx()),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("une fiche ARCHIVÉE est exemptée — sinon corriger une vieille fiche devient impossible", async () => {
+    mockEntityFindUnique.mockResolvedValue({ ...BASE, isArchived: true });
+    await expect(
+      patchEntity("ent-1", { fields: { adresse: "", note: "corrigée" } }, adminCtx()),
+    ).resolves.toBeDefined();
+  });
+
+  it("un checkbox requis doit être coché, pas seulement présent", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...BASE,
+      type: {
+        ...TYPE_REQUIS,
+        fieldSchema: JSON.stringify([
+          { key: "accord", label: "Accord du mandant", type: "checkbox", required: true },
+        ]),
+      },
+      fields: JSON.stringify({ accord: "true" }),
+    });
+    await expect(
+      patchEntity("ent-1", { fields: { accord: "" } }, adminCtx()),
+    ).rejects.toThrow(/doit être cochée/);
+    await expect(
+      patchEntity("ent-1", { fields: { accord: "true" } }, adminCtx()),
+    ).resolves.toBeDefined();
+  });
+});
