@@ -13,19 +13,23 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { RotateCcw } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { NumberStepper } from "@/components/ui/NumberStepper";
 import { Alert } from "@/components/ui/Alert";
+import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { toast } from "@/components/ui/Toast";
-import { parisDayKey, weekdayDayFr } from "@/lib/date/formatFr";
+import { parisDayKey, weekdayDayFr, weekdayInitialFr } from "@/lib/date/formatFr";
 import { compareNatural } from "@/lib/utils/naturalSort";
 import { summarizeCalendarSkips, type GenerateCalendarSkip } from "@/lib/calendar/skips";
+import { isDayActive, publicationsByDay, type DayMask } from "@/lib/calendar/dayMask";
 import {
+  busiestDayCapacity,
   cellKey,
   dayIndexFromKey,
   dispatchRecipes,
@@ -48,6 +52,8 @@ import type { WeekFillContext } from "@/lib/services/calendar/weekFillService";
  * Les noms de jours se dérivent donc de la DATE réelle, plus bas.
  */
 const DEFAULT_DAYS = [0, 1, 2, 3, 4];
+/** Les sept positions de la matrice comptes × jours — fixes, pour comparer en colonne. */
+const WEEK_OFFSETS = [0, 1, 2, 3, 4, 5, 6];
 /**
  * v2 : la v1 mémorisait des IDS de recettes. Toute recette créée ensuite était
  * donc exclue du pool POUR TOUJOURS, sans le moindre signal. On mémorise
@@ -86,6 +92,11 @@ interface WeekFillModalProps {
  */
 function dayLabelOf(dayKey: string): string {
   return weekdayDayFr(new Date(`${dayKey}T12:00:00Z`));
+}
+
+/** « L », « M »… pour la matrice comptes × jours. */
+function dayInitialOf(dayKey: string): string {
+  return weekdayInitialFr(new Date(`${dayKey}T12:00:00Z`));
 }
 
 /** "YYYY-MM-DD" du n-ième jour de la semaine, en heure locale (= Paris ici). */
@@ -152,6 +163,29 @@ export function WeekFillModal({
   );
   /** Choix manuels : `cellKey` → recette, ou `null` pour une case vidée. */
   const [pinned, setPinned] = useState<Record<string, string | null>>({});
+
+  /**
+   * Jours éteints, par compte : `accountId` → offsets relatifs à `weekStart`.
+   *
+   * « Parfois j'ai des comptes qui n'ont pas de contenu certains jours » : le
+   * périmètre n'est pas un produit cartésien comptes × jours, il a des trous.
+   *
+   * Volontairement NON mémorisé (absent de `RememberedPrefs`) : « alban n'a pas
+   * de contenu mardi » est vrai CETTE semaine-là, pas en général. Un masque
+   * persistant se ferait oublier et retirerait des publications sans que rien ne
+   * l'explique. La modale étant démontée à la fermeture, la semaine se rouvre
+   * entière.
+   */
+  const [offDaysByAccount, setOffDaysByAccount] = useState<DayMask>({});
+  const isDayOn = useCallback(
+    (accountId: string, offset: number) => isDayActive(offDaysByAccount, accountId, offset),
+    [offDaysByAccount],
+  );
+  /** Total éteint, affiché en titre de section : sinon le masque s'oublie au scroll. */
+  const offCount = useMemo(
+    () => Object.values(offDaysByAccount).reduce((n, d) => n + d.length, 0),
+    [offDaysByAccount],
+  );
 
   /**
    * Le planning des recettes — ce que produisait le bouton « Générer ».
@@ -376,6 +410,8 @@ export function WeekFillModal({
     for (const offset of [...dayOffsets].sort((a, b) => a - b)) {
       const dayKey = dayKeyOf(weekStart, offset);
       for (const account of servableAccounts) {
+        // Éteint à la main pour ce compte : pas de contenu ce jour-là.
+        if (!isDayOn(account.id, offset)) continue;
         // Une journée déjà occupée sur ce compte n'est jamais réécrite.
         if (occupied.has(`${account.id}|${dayKey}`)) continue;
         for (let rank = 0; rank < perDay; rank++) {
@@ -384,7 +420,7 @@ export function WeekFillModal({
       }
     }
     return out;
-  }, [dayOffsets, weekStart, servableAccounts, perDay, occupied]);
+  }, [dayOffsets, weekStart, servableAccounts, perDay, occupied, isDayOn]);
 
   const proposal = useMemo(
     () =>
@@ -406,6 +442,18 @@ export function WeekFillModal({
     [proposal],
   );
 
+  /** Couples (compte, jour) éteints — la grille doit le DIRE, pas afficher un vide. */
+  const offCells = useMemo(() => {
+    const set = new Set<string>();
+    for (const offset of dayOffsets) {
+      const dayKey = dayKeyOf(weekStart, offset);
+      for (const account of selectedAccounts) {
+        if (!isDayOn(account.id, offset)) set.add(`${account.id}|${dayKey}`);
+      }
+    }
+    return set;
+  }, [dayOffsets, weekStart, selectedAccounts, isDayOn]);
+
   /** Recettes réellement proposables sur le périmètre choisi. */
   const distinctContents = useMemo(() => {
     const keys = new Set<string>();
@@ -415,7 +463,24 @@ export function WeekFillModal({
     return keys.size;
   }, [candidatesByAccount]);
 
-  const minGap = minimumAchievableGap(distinctContents, servableAccounts.length * perDay);
+  /**
+   * La charge de chaque jour retenu — plus un simple « nombre de comptes ×
+   * perDay » dès qu'un compte est éteint un jour donné.
+   */
+  const loadByDay = useMemo(
+    () =>
+      publicationsByDay(
+        dayOffsets,
+        servableAccounts.map((a) => a.id),
+        offDaysByAccount,
+        perDay,
+      ),
+    [dayOffsets, servableAccounts, offDaysByAccount, perDay],
+  );
+  const busiestLoad = busiestDayCapacity(loadByDay);
+  /** Les jours ne portent pas tous la même charge : le dire, sinon le chiffre ment. */
+  const unevenLoad = loadByDay.length > 0 && Math.min(...loadByDay) !== busiestLoad;
+  const minGap = minimumAchievableGap(distinctContents, busiestLoad);
 
   /**
    * La borne physique, PAR FAMILLE — la mélanger n'a aucun sens : 13 recettes
@@ -429,10 +494,19 @@ export function WeekFillModal({
         const recipes = (context?.pool ?? []).filter(
           (p) => familyKeyOf(p.family) === key && effectivePool.includes(p.patternTemplateId),
         ).length;
-        const accountsCovered = servableAccounts.filter((a) =>
+        // Même correction que la borne globale : on compte par JOUR, puis on
+        // retient le plus chargé — un compte éteint mardi ne consomme rien mardi.
+        const covering = servableAccounts.filter((a) =>
           (context?.familiesByAccount[a.id] ?? []).some((f) => familyKeyOf(f) === key),
-        ).length;
-        const perDayTotal = accountsCovered * perDay;
+        );
+        const perDayTotal = busiestDayCapacity(
+          publicationsByDay(
+            dayOffsets,
+            covering.map((a) => a.id),
+            offDaysByAccount,
+            perDay,
+          ),
+        );
         return {
           key,
           label: entry ? familyLabelOf(entry.family) : key,
@@ -441,7 +515,16 @@ export function WeekFillModal({
           gap: minimumAchievableGap(recipes, perDayTotal),
         };
       }),
-    [effectiveFamilies, families, context, effectivePool, servableAccounts, perDay],
+    [
+      effectiveFamilies,
+      families,
+      context,
+      effectivePool,
+      servableAccounts,
+      perDay,
+      dayOffsets,
+      offDaysByAccount,
+    ],
   );
   const totalToCreate =
     proposal.assignments.length + (includePlanning ? planning.length : 0);
@@ -566,6 +649,10 @@ export function WeekFillModal({
 
   const toggle = (list: string[], id: string) =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+  const toggleNumber = (list: number[], value: number) =>
+    list.includes(value)
+      ? list.filter((x) => x !== value)
+      : [...list, value].sort((a, b) => a - b);
 
   return (
     <Modal open onClose={onClose} size="full">
@@ -579,8 +666,8 @@ export function WeekFillModal({
                 {" "}
                 <span className="text-foreground">
                   {distinctContents} recette{distinctContents > 1 ? "s" : ""} ·{" "}
-                  {servableAccounts.length * perDay} publication
-                  {servableAccounts.length * perDay > 1 ? "s" : ""}/jour → écart minimum
+                  {busiestLoad} publication{busiestLoad > 1 ? "s" : ""}
+                  {unevenLoad ? " le jour le plus chargé" : "/jour"} → écart minimum
                   atteignable : {minGap} j
                 </span>
               </>
@@ -595,6 +682,7 @@ export function WeekFillModal({
                 <span key={f.key}>
                   <span className="text-foreground">{f.label}</span> · {f.recipes} recette
                   {f.recipes > 1 ? "s" : ""} / {f.perDayTotal} par jour
+                  {unevenLoad ? " au plus" : ""}
                   {f.gap !== null && f.perDayTotal > 0 ? ` → ${f.gap} j` : ""}
                 </span>
               ))}
@@ -608,21 +696,131 @@ export function WeekFillModal({
             <section>
               <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
                 Comptes
+                {offCount > 0 && (
+                  <span className="normal-case tracking-normal">
+                    {" "}
+                    · {offCount} jour{offCount > 1 ? "s" : ""} éteint
+                    {offCount > 1 ? "s" : ""}
+                  </span>
+                )}
               </h3>
+              {/* Une matrice comptes × jours : « je laisse activé cyrille, alban…
+                  mais je désactive alban le mardi, jeudi et vendredi ». Sept
+                  positions FIXES pour que l'œil compare les comptes en colonne. */}
               <div className="space-y-1">
-                {accounts.map((a) => (
-                  // `Checkbox.label` est sr-only : le texte visible se met à
-                  // côté, comme partout ailleurs dans le repo.
-                  <label key={a.id} className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={accountIds.includes(a.id)}
-                      onChange={() => setAccountIds((prev) => toggle(prev, a.id))}
-                      size="sm"
-                      label={`${a.name} (@${a.handle})`}
-                    />
-                    <span className="text-[12px] text-foreground truncate">@{a.handle}</span>
-                  </label>
-                ))}
+                {accounts.map((a) => {
+                  const kept = accountIds.includes(a.id);
+                  const offDays = offDaysByAccount[a.id] ?? [];
+                  return (
+                    <div key={a.id} className="flex items-center gap-2">
+                      {/* `Checkbox.label` est sr-only : le texte visible se met à
+                          côté, comme partout ailleurs dans le repo. */}
+                      <label className="flex items-center gap-2 cursor-pointer min-w-0 flex-1">
+                        <Checkbox
+                          checked={kept}
+                          onChange={() => setAccountIds((prev) => toggle(prev, a.id))}
+                          size="sm"
+                          label={`${a.name} (@${a.handle})`}
+                        />
+                        <span
+                          className={`text-[12px] truncate ${
+                            kept && offDays.length >= dayOffsets.length
+                              ? "text-muted-foreground"
+                              : "text-foreground"
+                          }`}
+                        >
+                          @{a.handle}
+                        </span>
+                      </label>
+                      {/* Rendu même quand le compte est décoché : les sept
+                          positions doivent rester alignées d'une ligne à l'autre,
+                          c'est tout l'intérêt d'une matrice. */}
+                      <div
+                        role="group"
+                        aria-label={`Jours de publication de @${a.handle}`}
+                        className={[
+                          "flex items-center gap-px shrink-0",
+                          kept ? "" : "opacity-40 pointer-events-none",
+                        ].join(" ")}
+                      >
+                        {WEEK_OFFSETS.map((offset) => {
+                          const dayKey = dayKeyOf(weekStart, offset);
+                          if (!dayOffsets.includes(offset)) {
+                            // Jour écarté pour TOUT LE MONDE au-dessus : la
+                            // position reste, mais il n'y a rien à décider ici.
+                            // `aria-hidden` : sept points lus à voix haute sur
+                            // chaque ligne n'apprennent rien à personne.
+                            return (
+                              <span
+                                key={offset}
+                                aria-hidden="true"
+                                title={`${dayLabelOf(dayKey)} n'est pas retenu cette semaine`}
+                                className="h-5 w-5 inline-flex items-center justify-center text-[10px] text-muted-foreground/30"
+                              >
+                                ·
+                              </span>
+                            );
+                          }
+                          const on = isDayOn(a.id, offset);
+                          return (
+                            <button
+                              key={offset}
+                              type="button"
+                              aria-pressed={on}
+                              // Le contenu est « M » : sans ça, un lecteur d'écran
+                              // annonce deux « M » identiques dans la semaine.
+                              aria-label={dayLabelOf(dayKey)}
+                              title={
+                                on
+                                  ? `@${a.handle} publie ${dayLabelOf(dayKey)} — cliquer pour éteindre`
+                                  : `@${a.handle} ne publie pas ${dayLabelOf(dayKey)} — cliquer pour rallumer`
+                              }
+                              onClick={() =>
+                                setOffDaysByAccount((prev) => ({
+                                  ...prev,
+                                  [a.id]: toggleNumber(prev[a.id] ?? [], offset),
+                                }))
+                              }
+                              // Gris PLEIN = éteint, ici comme dans la grille : un
+                              // même sens, un même vocabulaire. Une barre sur une
+                              // capitale de 10px ne se lit pas, et l'état par
+                              // défaut (tout allumé) reste une ligne calme.
+                              className={[
+                                "h-5 w-5 rounded-sm text-[10px] leading-none transition-colors hover:bg-accent",
+                                on
+                                  ? "text-foreground"
+                                  : "bg-muted text-muted-foreground/70",
+                              ].join(" ")}
+                            >
+                              {dayInitialOf(dayKey)}
+                            </button>
+                          );
+                        })}
+                        {/* Fente FIXE : sans elle, la ligne qui porte le bouton
+                            décale ses sept lettres et la colonne ne s'aligne plus
+                            — sur la seule ligne qui compte, justement. */}
+                        <span className="w-5 shrink-0 inline-flex justify-center">
+                          {offDays.length > 0 && (
+                            <ButtonIcon
+                              icon={RotateCcw}
+                              label={`Rallumer tous les jours de @${a.handle}`}
+                              variant="ghost"
+                              size="xs"
+                              onClick={() =>
+                                setOffDaysByAccount((prev) => {
+                                  const next = { ...prev };
+                                  // Pas d'entrée vide : `{}` doit rester « aucun masque ».
+                                  delete next[a.id];
+                                  return next;
+                                })
+                              }
+                            />
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
@@ -762,6 +960,7 @@ export function WeekFillModal({
               familiesByAccount={context?.familiesByAccount ?? {}}
               perDay={perDay}
               occupied={occupied}
+              offCells={offCells}
               planningByCell={planningByCell}
               byCell={byCell}
               optionsByCell={proposal.optionsByCell}
@@ -857,6 +1056,7 @@ function WeekFillGrid({
   familiesByAccount,
   perDay,
   occupied,
+  offCells,
   planningByCell,
   byCell,
   optionsByCell,
@@ -870,6 +1070,8 @@ function WeekFillGrid({
   familiesByAccount: Record<string, (string | null)[]>;
   perDay: number;
   occupied: Set<string>;
+  /** Couples « accountId|dayKey » éteints à la main dans la liste des comptes. */
+  offCells: Set<string>;
   planningByCell: Map<string, PlanningTarget[]>;
   byCell: Map<string, ReturnType<typeof dispatchRecipes>["assignments"][number]>;
   /** Alternatives par case, telles que l'attribution les a vues (cf. dispatchRecipes). */
@@ -947,6 +1149,27 @@ function WeekFillGrid({
                       <td key={offset} className="p-1.5">
                         <span className="text-muted-foreground/70 text-[11px]">
                           déjà programmé
+                        </span>
+                      </td>
+                    );
+                  }
+                  // Éteint APRÈS le planning et l'occupation : une publication qui
+                  // va réellement naître doit rester visible, même un jour éteint.
+                  // Et surtout pas le « aucune recette disponible » du CellPicker :
+                  // l'un est un choix, l'autre un manque de liaison.
+                  if (offCells.has(`${account.id}|${dayKey}`)) {
+                    return (
+                      <td key={offset} className="p-1.5">
+                        {/* Un bloc PLEIN, et pas un troisième gris de 11px :
+                            « déjà programmé » et « aucune recette disponible » en
+                            sont déjà deux, et un trou qu'on a creusé ne doit pas
+                            ressembler à une liaison manquante. Le titre dit OÙ ça
+                            se règle — sinon on le cherche dans la grille. */}
+                        <span
+                          title={`@${account.handle} ne publie pas ${dayLabelOf(dayKey)} — éteint dans « Comptes »`}
+                          className="block rounded-md bg-muted/60 py-1 text-center text-[11px] text-muted-foreground/70"
+                        >
+                          —
                         </span>
                       </td>
                     );

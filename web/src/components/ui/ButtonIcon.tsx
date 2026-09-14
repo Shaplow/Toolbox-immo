@@ -16,7 +16,7 @@ import { Loader2 } from "lucide-react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "glass";
 type ResolvedVariant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "sm" | "md";
+type Size = "xs" | "sm" | "md";
 
 interface ButtonIconProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size" | "aria-label"> {
   icon: LucideIcon;
@@ -57,13 +57,15 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
   const resolved = resolveVariant(variant);
   const base =
     "inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
-  const sizeClasses = size === "sm" ? "h-7 w-7" : "h-8 w-8";
+  // `xs` = la taille d'une ligne dense (matrice de jours, listes compactes) :
+  // un `sm` de 28px dans une rangée de 20px déforme la ligne.
+  const sizeClasses = size === "xs" ? "h-5 w-5" : size === "sm" ? "h-7 w-7" : "h-8 w-8";
 
   const floatingCls = floating
     ? "rounded-full bg-card text-foreground border border-border shadow-lg hover:bg-muted"
     : VARIANT_CLS[resolved];
 
-  const iconSize = size === "sm" ? 13 : 15;
+  const iconSize = size === "xs" ? 11 : size === "sm" ? 13 : 15;
 
   return (
     <button

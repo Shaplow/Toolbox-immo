@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  busiestDayCapacity,
   cellKey,
   dayIndexFromKey,
   dispatchRecipes,
@@ -538,5 +539,36 @@ describe("optionsByCell — ce que l'écran propose", () => {
       "a",
       "b",
     ]);
+  });
+});
+
+/**
+ * La charge par jour, quand tous les comptes ne publient pas tous les jours.
+ *
+ * « Parfois j'ai des comptes qui n'ont pas de contenu certains jours » : l'écran
+ * permet d'éteindre un jour sur un compte. La borne ⌊N/c⌋ affichée doit alors se
+ * lire sur la journée la plus chargée — c'est là que les recettes se consomment
+ * le plus vite. La moyenne annoncerait un écart que la semaine ne tient pas.
+ */
+describe("la charge du jour le plus chargé", () => {
+  it("sans jour éteint, c'est la charge commune — l'affichage ne bouge pas", () => {
+    expect(busiestDayCapacity([6, 6, 6, 6, 6])).toBe(6);
+    expect(minimumAchievableGap(15, busiestDayCapacity([6, 6, 6, 6, 6]))).toBe(2);
+  });
+
+  it("avec des jours éteints, c'est le maximum, pas la moyenne", () => {
+    // Moyenne = 4 (→ 3 j annoncés), maximum = 6 (→ 2 j réellement tenables).
+    const load = [6, 2, 6, 2, 4];
+    expect(busiestDayCapacity(load)).toBe(6);
+    expect(minimumAchievableGap(15, busiestDayCapacity(load))).toBe(2);
+  });
+
+  it("aucun jour retenu : charge nulle, et la borne reste indéfinie", () => {
+    expect(busiestDayCapacity([])).toBe(0);
+    expect(minimumAchievableGap(15, busiestDayCapacity([]))).toBeNull();
+  });
+
+  it("une seule journée active dans la semaine borne à elle seule", () => {
+    expect(busiestDayCapacity([0, 0, 3, 0, 0])).toBe(3);
   });
 });

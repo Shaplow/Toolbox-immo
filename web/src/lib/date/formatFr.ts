@@ -260,6 +260,19 @@ export function weekdayDayFr(v: Date | string | null | undefined): string {
   });
 }
 
+/**
+ * « L », « M », « J »… — l'initiale du jour, pour une matrice compacte.
+ *
+ * Même règle que `weekdayDayFr` : dérivée de la DATE, jamais d'un index. Une
+ * matrice qui suppose « position 0 = lundi » affiche « L » sur un dimanche dès
+ * que la semaine est décalée d'un jour, et le décalage devient invisible.
+ */
+export function weekdayInitialFr(v: Date | string | null | undefined): string {
+  const d = toValidDate(v);
+  if (!d) return INVALID_DATE_FALLBACK;
+  return d.toLocaleDateString("fr-FR", { weekday: "narrow", timeZone: TZ });
+}
+
 /** « 18/08/2026 » — format numérique par défaut Intl fr-FR (jj/mm/aaaa). */
 export function numericDateFr(v: Date | string | null | undefined): string {
   const d = toValidDate(v);

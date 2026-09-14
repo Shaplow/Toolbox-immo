@@ -16,6 +16,7 @@ import {
   numericDateFr,
   isoToLocalInput,
   localInputToIso,
+  weekdayInitialFr,
 } from "../formatFr";
 
 const REF = "2026-07-21T12:00:00.000Z"; // mardi 21 juillet 2026, midi UTC (14h Paris, pas de bascule de jour)
@@ -153,5 +154,33 @@ describe("isoToLocalInput / localInputToIso", () => {
     expect(localInputToIso("")).toBeNull();
     expect(localInputToIso("21/07/2026")).toBeNull();
     expect(isoToLocalInput("invalid")).toBe("");
+  });
+});
+
+/**
+ * L'initiale du jour, pour la matrice comptes × jours de « Remplir la semaine ».
+ *
+ * Deux risques, tous deux silencieux : un runtime dont les données de locale
+ * sont réduites rendrait « Mon » au lieu de « L » et ferait exploser la largeur
+ * de la ligne ; et une initiale dérivée d'un index au lieu de la date afficherait
+ * « L » sur un dimanche dès que la semaine du calendrier est décalée.
+ */
+describe("weekdayInitialFr", () => {
+  it("rend une seule lettre par jour, dans l'ordre de la semaine", () => {
+    // Lundi 14 → dimanche 20 septembre 2026, à midi UTC (jour civil Paris sûr).
+    const week = ["14", "15", "16", "17", "18", "19", "20"].map(
+      (d) => new Date(`2026-09-${d}T12:00:00Z`),
+    );
+    expect(week.map(weekdayInitialFr)).toEqual(["L", "M", "M", "J", "V", "S", "D"]);
+  });
+
+  it("l'initiale suit le jour civil PARIS, pas UTC", () => {
+    // Dimanche 23:00 UTC = lundi 01:00 à Paris.
+    expect(weekdayInitialFr("2026-09-13T23:00:00.000Z")).toBe("L");
+  });
+
+  it("une date illisible ne casse pas la ligne", () => {
+    expect(weekdayInitialFr(null)).toBe("—");
+    expect(weekdayInitialFr("pas-une-date")).toBe("—");
   });
 });

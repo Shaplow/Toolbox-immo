@@ -148,6 +148,20 @@ export function minimumAchievableGap(
   return Math.floor(poolSize / publicationsPerDay);
 }
 
+/**
+ * La charge du jour LE PLUS CHARGÉ — c'est lui qui borne l'écart, pas la moyenne.
+ *
+ * `minimumAchievableGap` prend un nombre de publications par jour ; tant que tous
+ * les comptes publient tous les jours, ce nombre est le même partout. Dès qu'on
+ * éteint un jour sur un compte, il varie d'un jour à l'autre, et c'est la journée
+ * la plus chargée qui dicte la contrainte : c'est là que les recettes se
+ * consomment le plus vite. Prendre la moyenne annoncerait un écart que la
+ * semaine ne tient pas.
+ */
+export function busiestDayCapacity(publicationsByDay: number[]): number {
+  return publicationsByDay.reduce((max, n) => (n > max ? n : max), 0);
+}
+
 /** Une alternative classée pour une case — ce que l'écran propose au clic. */
 export interface DispatchOption {
   candidate: DispatchCandidate;
