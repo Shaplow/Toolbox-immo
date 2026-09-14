@@ -8,7 +8,6 @@ import {
   Plus,
   RefreshCw,
   CalendarDays,
-  Sparkles,
   LayoutGrid,
   Filter,
   X,
@@ -43,7 +42,6 @@ import { useSlotDrag } from "./dnd/useSlotDrag";
 import { useDayDrop } from "./dnd/useDayDrop";
 import { toast } from "@/components/ui/Toast";
 import {
-  numericDateFr,
   dayMonthLongFr,
   PARIS_TZ,
   parisDayKey,
@@ -51,15 +49,10 @@ import {
   isoToLocalInput,
   localInputToIso,
 } from "@/lib/date/formatFr";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
 import { Alert } from "@/components/ui/Alert";
-import {
-  summarizeCalendarSkips,
-  type GenerateCalendarSkip,
-} from "@/lib/calendar/skips";
 import { Tabs } from "@/components/ui/Tabs";
 
 interface Account {
@@ -207,15 +200,7 @@ export function CalendarView({
   const [bulkAction, setBulkAction] = useState<
     "reassign" | "shift" | "cancel" | "publish" | null
   >(null);
-  const [generating, setGenerating] = useState(false);
-  const [confirmGenOpen, setConfirmGenOpen] = useState(false);
   // W4.9 : preview dry-run avant confirmation (created/skipped sans insert DB).
-  const [genPreview, setGenPreview] = useState<{
-    created: number;
-    skipped: number;
-    skips: GenerateCalendarSkip[];
-  } | null>(null);
-  const [genPreviewLoading, setGenPreviewLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<CalendarFiltersState>({
     accountId: initialAccountId,
@@ -366,7 +351,7 @@ export function CalendarView({
       if (isInTextField(e.target)) return;
       // Ne pas intercepter quand une modal est ouverte (Drawer / AddSlot / Confirm)
       // — sinon ← / → cassent la navigation dans les pickers du drawer.
-      if (selectedSlot || showAdd || confirmGenOpen) return;
+      if (selectedSlot || showAdd || showWeekFill) return;
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         if (!isAdmin) return;
@@ -386,7 +371,7 @@ export function CalendarView({
     }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isAdmin, prevWeek, nextWeek, goToday, selectedSlot, showAdd, confirmGenOpen]);
+  }, [isAdmin, prevWeek, nextWeek, goToday, selectedSlot, showAdd, showWeekFill]);
 
   function isSlotMine(slot: PublicationSlot): boolean {
     const owner = resolveSlotOwner(slot);
@@ -453,47 +438,6 @@ export function CalendarView({
       });
   }
 
-  async function handleGenerateConfirmed() {
-    setConfirmGenOpen(false);
-    setGenerating(true);
-    try {
-      const dateToEnd = addDays(weekStart, 6);
-      dateToEnd.setHours(23, 59, 59, 999);
-      const res = await fetch("/api/calendar/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dateFrom: dateFrom.toISOString(),
-          dateTo: dateToEnd.toISOString(),
-        }),
-      });
-      const result = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        created?: number;
-        skipped?: number;
-        skips?: GenerateCalendarSkip[];
-      };
-      // Remonter le message du serveur : « Erreur lors de la génération »
-      // écrasait « Plage entièrement passée », la seule info utile.
-      if (!res.ok) throw new Error(result.error ?? "Erreur lors de la génération");
-      const created = result.created ?? 0;
-      if (created > 0) {
-        toast.success(`${created} publication(s) créée(s), ${result.skipped ?? 0} ignorée(s).`);
-      } else {
-        // 0 créé n'est pas un succès : dire pourquoi, sinon l'admin ne sait
-        // pas distinguer « tout est déjà là » de « rien n'est paramétré ».
-        const [first] = summarizeCalendarSkips(result.skips ?? []);
-        toast.info(
-          first ? `Aucune publication créée — ${first.text}` : "Aucune publication à créer.",
-        );
-      }
-      void load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur inconnue");
-    } finally {
-      setGenerating(false);
-    }
-  }
 
   function handleSlotUpdated(updated: PublicationSlot) {
     setSlots((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
@@ -839,55 +783,6 @@ export function CalendarView({
                     >
                       <span className="hidden sm:inline">Remplir la semaine</span>
                     </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={Sparkles}
-                      onClick={() => {
-                        setConfirmGenOpen(true);
-                        setGenPreview(null);
-                        setGenPreviewLoading(true);
-                        void (async () => {
-                          try {
-                            const dateToEnd = addDays(weekStart, 6);
-                            dateToEnd.setHours(23, 59, 59, 999);
-                            const res = await fetch("/api/calendar/generate?dry=true", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                dateFrom: dateFrom.toISOString(),
-                                dateTo: dateToEnd.toISOString(),
-                              }),
-                            });
-                            const d = (await res.json().catch(() => ({}))) as {
-                              error?: string;
-                              created?: number;
-                              skipped?: number;
-                              skips?: GenerateCalendarSkip[];
-                            };
-                            // Un !res.ok laissait genPreview à null, donc la
-                            // modale affichait son texte générique : un 403 ou
-                            // un 500 passait pour « rien à générer ».
-                            if (!res.ok) {
-                              toast.error(d.error ?? "Analyse impossible.");
-                              setConfirmGenOpen(false);
-                              return;
-                            }
-                            setGenPreview({
-                              created: d.created ?? 0,
-                              skipped: d.skipped ?? 0,
-                              skips: d.skips ?? [],
-                            });
-                          } finally {
-                            setGenPreviewLoading(false);
-                          }
-                        })();
-                      }}
-                      loading={generating}
-                      title="Génère les publications automatiques basées sur le planning des recettes liées"
-                    >
-                      <span className="hidden sm:inline">Générer</span>
-                    </Button>
                   </>
                 )}
             </>
@@ -1218,46 +1113,6 @@ export function CalendarView({
         />
       )}
 
-      <ConfirmDialog
-        open={confirmGenOpen}
-        title="Générer les publications de la semaine ?"
-        description={
-          genPreviewLoading
-            ? `Analyse de la semaine du ${numericDateFr(weekStart)}…`
-            : genPreview
-              ? `Semaine du ${numericDateFr(weekStart)} — ${genPreview.created} slot${genPreview.created !== 1 ? "s" : ""} à créer, ${genPreview.skipped} déjà présent${genPreview.skipped !== 1 ? "s" : ""} (ignoré${genPreview.skipped !== 1 ? "s" : ""}).`
-              : `Générer les slots auto pour la semaine du ${numericDateFr(weekStart)} ? Les slots existants ne seront pas écrasés.`
-        }
-        confirmLabel={genPreview && genPreview.created > 0 ? `Créer ${genPreview.created} slot${genPreview.created !== 1 ? "s" : ""}` : "Générer"}
-        loading={generating}
-        onConfirm={() => {
-          void handleGenerateConfirmed();
-        }}
-        onCancel={() => {
-          setConfirmGenOpen(false);
-          setGenPreview(null);
-        }}
-      >
-        {/* Les raisons de non-génération n'existaient qu'en console.warn côté
-            serveur. Les montrer AVANT de confirmer évite de générer dans le
-            vide puis de chercher pourquoi. */}
-        {genPreview && genPreview.skips.length > 0 && (
-          <Alert variant={genPreview.created === 0 ? "warning" : "info"}>
-            <ul className="space-y-1.5">
-              {summarizeCalendarSkips(genPreview.skips).map((line) => (
-                <li key={line.reason}>
-                  <span className="text-[12px] text-foreground">{line.text}</span>
-                  {line.details.length > 0 && (
-                    <span className="block text-[11px] text-muted-foreground">
-                      {line.details.join(" · ")}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </Alert>
-        )}
-      </ConfirmDialog>
     </div>
   );
 }

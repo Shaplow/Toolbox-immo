@@ -52,6 +52,27 @@ export interface GenerateCalendarResult {
    * L'appelant DOIT afficher ce tableau quand `created === 0`.
    */
   skips: GenerateCalendarSkip[];
+  /**
+   * CE QUI serait créé, pas seulement combien — peuplé en dry-run uniquement.
+   *
+   * L'écran « Remplir la semaine » affiche les publications du planning à côté
+   * de celles qu'il répartit, dans la même grille : il lui faut le couple
+   * (compte, jour, recette), pas un compteur. Et elles doivent entrer dans
+   * l'historique du tourniquet, sans quoi une RVA4 planifiée le mardi
+   * n'empêcherait pas d'en proposer une le lundi.
+   *
+   * Vide hors dry-run : personne n'en a besoin après l'écriture, et le tableau
+   * serait alors une allocation pour rien sur une génération multi-semaines.
+   */
+  preview?: {
+    accountId: string;
+    patternBindingId: string;
+    scheduledAt: string;
+    label: string;
+    patternTemplateId: string;
+    /** Template builder de la recette — identité du CONTENU pour l'espacement. */
+    templateId: string | null;
+  }[];
 }
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -122,6 +143,7 @@ export async function generateCalendarSlots(
     hours: number;
     minutes: number;
     templateId: string | null;
+    patternTemplateId: string;
     defaultAssigneeMonteurId: string | null;
     defaultAssigneeCmId: string | null;
     defaultAssigneeVideasteId: string | null;
@@ -176,6 +198,7 @@ export async function generateCalendarSlots(
       hours,
       minutes,
       templateId: b.patternTemplate.templateId,
+      patternTemplateId: b.patternTemplateId,
       defaultAssigneeMonteurId: b.defaultAssigneeMonteurId,
       defaultAssigneeCmId: b.defaultAssigneeCmId,
       defaultAssigneeVideasteId: b.defaultAssigneeVideasteId,
@@ -281,6 +304,20 @@ export async function generateCalendarSlots(
     created: toCreate.length,
     skipped: alreadyExists,
     skips,
+    // Construit depuis `toCreate`, donc DÉJÀ filtré par l'idempotence : l'écran
+    // n'affiche que ce qui naîtrait réellement, pas ce que le planning décrit.
+    ...(dryRun
+      ? {
+          preview: toCreate.map(({ pattern, scheduledAt }) => ({
+            accountId: pattern.accountId,
+            patternBindingId: pattern.id,
+            scheduledAt: scheduledAt.toISOString(),
+            label: pattern.label,
+            patternTemplateId: pattern.patternTemplateId,
+            templateId: pattern.templateId,
+          })),
+        }
+      : {}),
   };
 }
 

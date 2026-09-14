@@ -42,6 +42,7 @@ function binding(over: Record<string, unknown> = {}) {
   return {
     id: "b1",
     accountId: "acc1",
+    patternTemplateId: "pt1",
     customLabel: null,
     dayOfWeek: [1],
     publishTime: "18:00",
@@ -251,5 +252,58 @@ describe("summarizeCalendarSkips", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0].text).toMatch(/^2 recettes actives sans jour/);
     expect(lines[0].details).toEqual(["RVA1 (@nord)", "RPI"]);
+  });
+});
+
+/**
+ * L'aperçu détaillé du dry-run — ce que l'écran « Remplir la semaine » affiche
+ * à côté des publications qu'il répartit.
+ *
+ * Un compteur ne suffit pas : il faut le couple (compte, jour, recette) pour
+ * dessiner la grille, ET l'identité du contenu pour que l'espacement en tienne
+ * compte — une RVA4 planifiée le mardi doit interdire d'en proposer une le
+ * lundi.
+ */
+describe("aperçu du dry-run", () => {
+  it("dit CE QUI serait créé, pas seulement combien", async () => {
+    mockBindingFindMany.mockResolvedValue([binding()]);
+    const result = await generateCalendarSlots({ ...WEEK, dryRun: true });
+
+    expect(result.created).toBe(1);
+    expect(result.preview).toEqual([
+      {
+        accountId: "acc1",
+        patternBindingId: "b1",
+        scheduledAt: "2026-09-14T18:00:00.000Z",
+        label: "RVA1",
+        patternTemplateId: "pt1",
+        templateId: "tpl1",
+      },
+    ]);
+  });
+
+  /** Hors dry-run, personne n'en a besoin : ce serait une allocation pour rien. */
+  it("est absent quand on écrit vraiment", async () => {
+    mockBindingFindMany.mockResolvedValue([binding()]);
+    const result = await generateCalendarSlots(WEEK);
+    expect(result.preview).toBeUndefined();
+  });
+
+  /**
+   * Construit depuis `toCreate`, donc déjà filtré par l'idempotence : l'écran
+   * n'affiche que ce qui naîtrait réellement.
+   */
+  it("exclut ce qui existe déjà", async () => {
+    mockBindingFindMany.mockResolvedValue([binding()]);
+    mockSlotFindMany.mockResolvedValue([
+      {
+        accountId: "acc1",
+        scheduledAt: new Date("2026-09-14T18:00:00.000Z"),
+        patternBindingId: "b1",
+      },
+    ]);
+    const result = await generateCalendarSlots({ ...WEEK, dryRun: true });
+    expect(result.created).toBe(0);
+    expect(result.preview).toEqual([]);
   });
 });

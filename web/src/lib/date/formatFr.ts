@@ -243,6 +243,23 @@ export function dayMonthLongFr(v: Date | string | null | undefined): string {
   });
 }
 
+/**
+ * « lun. 21 » — jour de la semaine + quantième, pour les en-têtes de grille.
+ *
+ * Dérivé de la DATE et non d'un index : une grille qui suppose « colonne 0 =
+ * lundi » affiche « Lun » sur un dimanche dès que sa semaine est décalée d'un
+ * jour, et le décalage devient invisible.
+ */
+export function weekdayDayFr(v: Date | string | null | undefined): string {
+  const d = toValidDate(v);
+  if (!d) return INVALID_DATE_FALLBACK;
+  return d.toLocaleDateString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    timeZone: TZ,
+  });
+}
+
 /** « 18/08/2026 » — format numérique par défaut Intl fr-FR (jj/mm/aaaa). */
 export function numericDateFr(v: Date | string | null | undefined): string {
   const d = toValidDate(v);
