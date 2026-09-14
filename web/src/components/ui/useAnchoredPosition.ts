@@ -13,22 +13,28 @@
  * `transform`/`filter`/`backdrop-filter` crée un containing block qui casse
  * `position: fixed`, ce qui reproduirait le bug ailleurs.
  *
- * Extrait de Combobox, qui résolvait déjà le problème dans son coin ; Select et
- * DropdownMenu partagent désormais la même implémentation.
+ * Ce module ne fait plus que le câblage React : mesurer, écouter, rejouer. Le
+ * calcul lui-même vit dans `lib/ui/anchoredPosition` — pur, donc testable sans
+ * navigateur, ce qui manquait quand il portait le bug du popover qui flotte
+ * au-dessus de son champ.
  */
 
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Z } from "@/lib/ui/zIndex";
+import {
+  computeAnchoredPosition,
+  type AnchorAlign,
+  type AnchoredGeometry,
+} from "@/lib/ui/anchoredPosition";
 
-export interface AnchoredPosition {
-  top: number;
-  left: number;
-  /** Largeur du déclencheur — pour les popovers qui s'y calent (Select). */
-  width: number;
-}
+export type AnchoredPosition = AnchoredGeometry;
 
 interface Options {
-  /** Hauteur max estimée du popover — sert à décider du retournement. */
+  /**
+   * Hauteur estimée du popover. Sert de REPLI tant que le portail n'est pas
+   * monté — dès que la hauteur réelle est mesurable, c'est elle qui décide du
+   * retournement et du placement.
+   */
   maxHeight?: number;
   /** Espace entre le déclencheur et le popover. */
   gap?: number;
@@ -38,17 +44,16 @@ interface Options {
    * `end` aligne le bord droit du popover sur celui du déclencheur,
    * `center` centre les deux (tooltips, badges d'aide).
    */
-  align?: "start" | "end" | "center";
+  align?: AnchorAlign;
   /**
-   * Popover monté, pour mesurer sa largeur réelle et le maintenir dans le
-   * viewport. Sans lui, un menu aligné à droite près du bord gauche de l'écran
-   * déborde hors champ.
+   * Popover monté, pour mesurer sa taille réelle.
+   *
+   * **À passer systématiquement.** Sans lui, le popover reste positionné sur
+   * l'estimation `maxHeight` : aligné à gauche même en `align: "end"`, non
+   * borné dans le viewport, et surtout posé trop haut quand il bascule.
    */
   popoverRef?: RefObject<HTMLElement | null>;
 }
-
-/** Marge minimale entre le popover et le bord de la fenêtre. */
-const VIEWPORT_MARGIN = 8;
 
 /**
  * Étage d'empilement des popovers portalés.
@@ -79,42 +84,38 @@ export function useAnchoredPosition(
       const trigger = triggerRef.current;
       if (!trigger) return;
       const rect = trigger.getBoundingClientRect();
-      const viewportWidth = document.documentElement.clientWidth;
+      const el = popoverRef?.current;
 
-      // Vertical : retourne vers le haut quand le bas manque de place et que
-      // le haut en a plus — ou d'emblée si l'appelant le préfère.
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const flipUp = preferTop
-        ? rect.top > maxHeight || rect.top > spaceBelow
-        : spaceBelow < maxHeight && rect.top > spaceBelow;
-      const top = (flipUp ? rect.top - gap - maxHeight : rect.bottom + gap) + window.scrollY;
+      const next = computeAnchoredPosition({
+        trigger: {
+          top: rect.top,
+          bottom: rect.bottom,
+          left: rect.left,
+          right: rect.right,
+          width: rect.width,
+        },
+        // `null` tant que le portail n'est pas monté : le calcul retombe alors
+        // sur `maxHeight`, et la re-mesure ci-dessous corrige avant peinture.
+        popover: el ? { width: el.offsetWidth, height: el.offsetHeight } : null,
+        viewport: {
+          width: document.documentElement.clientWidth,
+          height: window.innerHeight,
+        },
+        scroll: { x: window.scrollX, y: window.scrollY },
+        maxHeight,
+        gap,
+        preferTop,
+        align,
+      });
 
-      // Horizontal : aligné sur le déclencheur, puis ramené dans le viewport
-      // dès que la largeur réelle du popover est mesurable (second passage).
-      // `end` et `center` ont besoin de la largeur réelle du popover : au
-      // premier passage elle vaut 0 et on retombe sur un alignement `start`,
-      // corrigé au rAF suivant. Sans ce repli, un popover non mesuré partirait
-      // à gauche de son déclencheur.
-      const popoverWidth = popoverRef?.current?.offsetWidth ?? 0;
-      let left = rect.left;
-      if (popoverWidth) {
-        if (align === "end") left = rect.right - popoverWidth;
-        else if (align === "center") left = rect.left + rect.width / 2 - popoverWidth / 2;
-      }
-      if (popoverWidth) {
-        const maxLeft = Math.max(viewportWidth - popoverWidth - VIEWPORT_MARGIN, VIEWPORT_MARGIN);
-        left = Math.min(Math.max(left, VIEWPORT_MARGIN), maxLeft);
-      }
-
-      const nextLeft = left + window.scrollX;
       // Ne remplacer l'objet que si la position change réellement : sans ce
       // test, chaque tick de scroll et chaque notification du ResizeObserver
       // ci-dessous déclencherait un rendu pour rien — et le second pourrait
       // se rappeler lui-même.
       setPosition((prev) =>
-        prev && prev.top === top && prev.left === nextLeft && prev.width === rect.width
+        prev && prev.top === next.top && prev.left === next.left && prev.width === next.width
           ? prev
-          : { top, left: nextLeft, width: rect.width },
+          : next,
       );
     };
 
@@ -135,15 +136,15 @@ export function useAnchoredPosition(
   /**
    * Re-mesure une fois le popover RÉELLEMENT monté.
    *
-   * Le premier passage ne peut pas connaître la largeur du popover : il la
-   * calcule avant que React n'ait monté le portail. `align: "end"` et
-   * `align: "center"` retombaient donc sur un alignement `start`, et le
-   * recadrage viewport ne s'appliquait pas. Un `requestAnimationFrame` ne
-   * suffit pas : React peut committer le portail APRÈS lui, et on relisait
-   * alors une largeur nulle.
+   * Le premier passage ne peut connaître ni sa largeur ni sa hauteur : il
+   * calcule avant que React n'ait monté le portail. Un `requestAnimationFrame`
+   * ne suffit pas — React peut committer le portail APRÈS lui, et on relisait
+   * alors une taille nulle. Cet effet de layout, lui, est vidé synchronement
+   * avant peinture : la correction ne se voit pas.
    *
    * Le ResizeObserver couvre en prime les popovers dont le contenu change
-   * pendant qu'ils sont ouverts (liste filtrée à la frappe).
+   * pendant qu'ils sont ouverts (liste filtrée à la frappe) — le cas où la
+   * hauteur bouge sous les pieds d'un popover déjà retourné.
    */
   useLayoutEffect(() => {
     const el = popoverRef?.current;

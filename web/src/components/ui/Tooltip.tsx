@@ -13,8 +13,9 @@ import { useAnchoredPosition, POPOVER_Z_INDEX } from "./useAnchoredPosition";
  * là où elle sert.
  *
  * `preferTop` reproduit le comportement historique (bulle au-dessus) ; le
- * retournement et le recadrage horizontal sont désormais gérés par le hook,
- * qui mesure réellement la bulle au lieu d'un seuil fixe de 40px.
+ * retournement et le recadrage sont gérés par le hook, qui mesure la bulle
+ * réellement montée — ce qui compte ici, une bulle multi-lignes faisant bien
+ * plus que la hauteur déclarée.
  *
  * Délai d'ouverture : 200ms (évite les flashes au passage rapide).
  */
@@ -26,7 +27,12 @@ interface TooltipProps {
   className?: string;
 }
 
-/** Hauteur d'une bulle une ligne — pilote le retournement. */
+/**
+ * Hauteur d'une bulle une ligne. Simple REPLI : le hook s'en sert le temps
+ * que la bulle soit montée, puis mesure la vraie hauteur. Une bulle
+ * multi-lignes recouvrait son propre déclencheur tant que cette constante
+ * faisait autorité.
+ */
 const TOOLTIP_HEIGHT = 26;
 
 export function Tooltip({ content, side = "top", delay = 200, children, className }: TooltipProps) {

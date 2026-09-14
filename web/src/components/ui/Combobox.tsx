@@ -70,6 +70,7 @@ export function Combobox({
   // absolues) — cf. useAnchoredPosition, extrait de ce composant.
   const { position: popoverPos, ready } = useAnchoredPosition(open, triggerRef, {
     maxHeight: 280,
+    popoverRef,
   });
 
   // Close on outside click / ESC. Le popover étant portalé, il faut aussi
