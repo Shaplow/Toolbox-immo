@@ -136,7 +136,7 @@ export function OrderDetailClient({
           const n = `${created} publication${created > 1 ? "s" : ""} créée${created > 1 ? "s" : ""}`;
           toast.success(
             order.account
-              ? `${done} — ${n}, à placer depuis l'onglet Missions du calendrier.`
+              ? `${done} — ${n}, à placer depuis la banque du calendrier.`
               : `${done} — ${n} en banque, sans compte. Choisissez-le en les plaçant sur le calendrier : la recette et l'équipe suivront.`,
           );
         } else if (data.requested === 0) {
@@ -484,6 +484,28 @@ export function OrderDetailClient({
               <Link href={`/fiches/${e.id}`} className="underline font-medium">
                 Assigner un vidéaste
               </Link>
+            </p>
+          ))}
+        {/* Tournage refusé par le vidéaste. Visible aussi par le demandeur :
+            sa commande restait « Validée » pendant que son tournage était
+            décliné, et le refus ne vivait que dans l'inbox admin. */}
+        {order.entities
+          .filter((e) => e.videasteDeclined)
+          .map((e) => (
+            <p
+              key={`declined-${e.id}`}
+              className="mt-3 text-[13px] text-danger-700 bg-danger-50 border border-danger-200 rounded-md px-3 py-2"
+            >
+              Le vidéaste s&apos;est déclaré indisponible pour « {e.label} ».{" "}
+              {isAdmin ? (
+                <Link href={`/fiches/${e.id}`} className="underline font-medium">
+                  Réassigner ou relancer
+                </Link>
+              ) : (
+                <span className="text-danger-700/80">
+                  L&apos;équipe replanifie le tournage.
+                </span>
+              )}
             </p>
           ))}
         {order.notes && (

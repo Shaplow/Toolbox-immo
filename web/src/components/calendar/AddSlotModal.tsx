@@ -142,7 +142,6 @@ export function AddSlotModal({
   // P0 — toggle "Rushes attendus" retiré de l'UI (dérivé de source). On garde
   // le state à null pour ne jamais envoyer needsRushesOverride côté API.
   const [oneOffNeedsRushes] = useState<boolean | null>(null);
-  const [oneOffNeedsBrief, setOneOffNeedsBrief] = useState<boolean | null>(null);
   const [oneOffCoverMode, setOneOffCoverMode] = useState<string>("");
   const [oneOffCaptionPresetId, setOneOffCaptionPresetId] = useState<string>("");
   const [oneOffNeedsDescription, setOneOffNeedsDescription] = useState<string>("");
@@ -401,7 +400,6 @@ export function AddSlotModal({
       if (!isPatternMode) {
         if (oneOffCaptionsMode !== null) payload.needsCaptionsModeOverride = oneOffCaptionsMode;
         if (oneOffNeedsRushes !== null) payload.needsRushesOverride = oneOffNeedsRushes;
-        if (oneOffNeedsBrief !== null) payload.needsBriefOverride = oneOffNeedsBrief;
         if (oneOffCoverMode) payload.coverModeOverride = oneOffCoverMode;
         if (oneOffCaptionPresetId) payload.captionPresetIdOverride = oneOffCaptionPresetId;
         if (oneOffNeedsDescription) payload.needsDescriptionOverride = oneOffNeedsDescription;
@@ -830,11 +828,9 @@ export function AddSlotModal({
                 {/* P0 — "Rushes attendus" retiré : la valeur est dérivée
                     de la source du pattern (manual_rushes → true). Pour un
                     slot one-off sans pattern, par défaut pas de rushs. */}
-                <OneOffToggle
-                  label="Brief éditorial"
-                  value={oneOffNeedsBrief}
-                  onChange={setOneOffNeedsBrief}
-                />
+                {/* « Brief éditorial » retiré : le brief est désormais toujours
+                    disponible sur la publication, il n'y a plus rien à forcer
+                    à la création. */}
               </div>
 
               {oneOffCoverMode === "autoPack" && coverPresets.length === 0 && (
@@ -907,55 +903,3 @@ export function AddSlotModal({
   );
 }
 
-// ─── OneOffToggle (segmented tri-état) ────────────────────────────────────
-//
-// Tri-état lisible : Défaut / Oui / Non rendu en boutons segmentés au lieu
-// d'un Combobox 3 options. Le sens "hérité du pattern" (null) reste explicite
-// via le label "Défaut" — choisir Oui ou Non force la valeur sur ce slot.
-
-function OneOffToggle({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: boolean | null;
-  onChange: (v: boolean | null) => void;
-}) {
-  const options: { key: "default" | "true" | "false"; label: string; v: boolean | null }[] = [
-    { key: "default", label: "Défaut", v: null },
-    { key: "true", label: "Oui", v: true },
-    { key: "false", label: "Non", v: false },
-  ];
-  const current = value === null ? "default" : value ? "true" : "false";
-  return (
-    <FormField label={label}>
-      <div
-        role="radiogroup"
-        aria-label={label}
-        className="inline-flex items-center rounded-lg p-0.5 bg-card border border-border "
-      >
-        {options.map((opt) => {
-          const active = current === opt.key;
-          return (
-            <button
-              key={opt.key}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => onChange(opt.v)}
-              className={[
-                "px-3 h-7 text-[12px] font-medium rounded-md transition-all",
-                active
-                  ? "bg-gray-900 text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)]"
-                  : "text-muted-foreground hover:text-gray-900 hover:bg-white/80",
-              ].join(" ")}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-    </FormField>
-  );
-}

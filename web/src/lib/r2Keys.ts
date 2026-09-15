@@ -111,3 +111,15 @@ export function briefAttachmentKey(slotId: string, filename: string): string {
   const { ext } = sanitizeFilename(filename);
   return `publications/${slotId}/brief/${timestamp()}-${randomToken()}.${ext}`;
 }
+
+/**
+ * Clé R2 pour une pièce jointe du brief d'une FICHE (tournage).
+ *
+ * Même préfixe que les rushs de la fiche (`entities/{id}/…`) : tout ce qui
+ * appartient à une fiche vit sous elle, et une purge de fiche reste un seul
+ * préfixe à balayer.
+ */
+export function entityBriefAttachmentKey(entityId: string, filename: string): string {
+  const { ext } = sanitizeFilename(filename);
+  return `entities/${entityId}/brief/${timestamp()}-${randomToken()}.${ext}`;
+}

@@ -30,6 +30,7 @@ import { OneOffTriggerButtons } from "@/components/publications/sections/OneOffT
 import { PublishSection } from "@/components/publications/sections/PublishSection";
 import { RushesSection } from "@/components/publications/sections/RushesSection";
 import { BriefSection } from "@/components/publications/sections/BriefSection";
+import { ShootBriefRecap } from "@/components/publications/sections/ShootBriefRecap";
 import { VersionsSection } from "@/components/publications/sections/VersionsSection";
 import type { VersionItem } from "@/components/publications/sections/VersionsSection";
 import { CommentsSection } from "@/components/publications/CommentsSection";
@@ -260,7 +261,13 @@ export interface PublicationFicheProps {
   // Rushs partagés de l'événement de tournage lié (lecture seule sur la fiche
   // du reel). Vide si le reel n'est pas rattaché à un event.
   eventRushes: RushItem[];
-  shootEvent: { id: string; title: string } | null;
+  shootEvent: {
+    id: string;
+    title: string;
+    /** Le mot du vidéaste, écrit sur la fiche — lu ici en lecture seule. */
+    brief: string | null;
+    briefAttachments: { id: string; fileName: string; mimeType: string; sizeBytes: number | null }[];
+  } | null;
   // Phase B3 — Brief
   brief: BriefItem | null;
   briefAttachments: BriefAttachmentItem[];
@@ -402,6 +409,13 @@ export function PublicationFiche({
     ? (versions.find((v) => v.id === currentVersionId && v.deletedAt === null) ?? null)
     : null;
 
+  /**
+   * Le brief s'affiche s'il y a quelque chose à lire, ou quelqu'un pour
+   * l'écrire. Avant, il dépendait d'une case sur la recette : décochée, la
+   * section n'existait pour personne et rien ne disait qu'elle pouvait exister.
+   */
+  const briefVisible = Boolean(brief?.body?.trim()) || briefAttachments.length > 0 || canEditBrief;
+
   // Set des sections rendues dans le DOM — passé au NextActionBanner pour
   // masquer le lien "Aller à la section" si la cible n'existe pas (sinon
   // scroll mort sur slot CM en READY_FOR_CM + needsDescription="none").
@@ -412,7 +426,7 @@ export function PublicationFiche({
     }
   };
   trackVisible("entityFields", entitySummaries.length > 0);
-  trackVisible("brief", !!pattern?.needsBrief);
+  trackVisible("brief", briefVisible);
   trackVisible(
     "rushes",
     !!pattern?.needsRushes ||
@@ -424,7 +438,6 @@ export function PublicationFiche({
     "versions",
     pattern?.source === "manual_rushes" ||
       !!pattern?.needsRushes ||
-      !!pattern?.needsBrief ||
       slot.status === "RUSHES_EXPECTED" ||
       slot.status === "RUSHES_RECEIVED" ||
       slot.status === "IN_EDIT" ||
@@ -547,8 +560,11 @@ export function PublicationFiche({
             {entitySummaries.length > 0 &&
               wrap("entityFields", <EntityFieldsSection summaries={entitySummaries} />)}
 
-            {/* Brief éditorial — Phase B3, conditionné par pattern.needsBrief */}
-            {pattern?.needsBrief &&
+            {/* Brief éditorial. N'est plus conditionné à un drapeau de recette :
+                une section qui n'existe nulle part passe pour supprimée — c'est
+                exactement ce qui s'est produit. Elle apparaît dès qu'il y a
+                quelque chose à lire, ou quelqu'un pour l'écrire. */}
+            {briefVisible &&
               wrap(
                 "brief",
                 <BriefSection
@@ -590,6 +606,18 @@ export function PublicationFiche({
                 monteur assigné les voit). */}
             {shootEvent && shouldRenderForRole("rushes", currentUserRole) && (
               <div className="space-y-1.5">
+                {/* Le brief du TOURNAGE, au-dessus de ses rushs : les deux
+                    viennent de la même fiche et du même geste du vidéaste.
+                    Titré par son origine, pas par sa nature — une publication
+                    peut aussi porter son propre brief éditorial, et les
+                    confondre serait pire que de n'en avoir aucun. */}
+                {(shootEvent.brief || shootEvent.briefAttachments.length > 0) && (
+                  <ShootBriefRecap
+                    entityId={shootEvent.id}
+                    brief={shootEvent.brief}
+                    attachments={shootEvent.briefAttachments}
+                  />
+                )}
                 <RushesSection
                   slotId={slot.id}
                   apiBasePath={`/api/entities/${shootEvent.id}/rushes`}
@@ -613,12 +641,12 @@ export function PublicationFiche({
             )}
 
             {/* Versions livrées — visible si le pattern implique un montage
-                humain (manual_rushes, needsRushes ou needsBrief), ou si une
-                phase de montage est atteinte côté statut, ou si une version
-                existe déjà. Aligné sur editVisible de computePublicationSteps. */}
+                humain (manual_rushes, needsRushes), ou si une phase de montage
+                est atteinte côté statut, ou si une version existe déjà. Aligné
+                sur editVisible de computePublicationSteps — `needsBrief` en est
+                parti avec le drapeau de recette. */}
             {(pattern?.source === "manual_rushes" ||
               pattern?.needsRushes ||
-              pattern?.needsBrief ||
               slot.status === "RUSHES_EXPECTED" ||
               slot.status === "RUSHES_RECEIVED" ||
               slot.status === "IN_EDIT" ||

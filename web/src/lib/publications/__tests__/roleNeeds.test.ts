@@ -22,9 +22,8 @@ describe("needsVideaste", () => {
     expect(needsVideaste({})).toBe(false);
   });
 
-  it("ni le brief ni la cover monteur ne font apparaître un besoin de vidéaste", () => {
-    // Ce sont des travaux de montage : personne ne se déplace pour autant.
-    expect(needsVideaste({ source: "auto_template", needsBrief: true })).toBe(false);
+  it("la cover monteur ne fait pas apparaître un besoin de vidéaste", () => {
+    // C'est du travail de montage : personne ne se déplace pour autant.
     expect(needsVideaste({ source: "auto_template", coverMode: "monteurUpload" })).toBe(false);
   });
 });
@@ -35,20 +34,19 @@ describe("needsMonteur", () => {
   });
 
   it("une recette auto ordinaire n'a pas de monteur", () => {
-    expect(needsMonteur({ source: "auto_template", needsBrief: false, coverMode: "none" })).toBe(
-      false,
-    );
+    expect(needsMonteur({ source: "auto_template", coverMode: "none" })).toBe(false);
     expect(needsMonteur({ source: "external_upload" })).toBe(false);
   });
 
   /**
-   * Les deux échappatoires, et elles ne sont pas théoriques : `steps.ts` donne
-   * l'étape « Cover (monteur) » au MONTEUR dès `coverMode === "monteurUpload"`,
-   * et rend l'étape Montage visible dès qu'il y a un brief. Masquer le champ
-   * dans ces deux cas laisserait une étape sans personne pour la faire.
+   * L'échappatoire, et elle n'est pas théorique : `steps.ts` donne l'étape
+   * « Cover (monteur) » au MONTEUR dès `coverMode === "monteurUpload"`. Masquer
+   * le champ laisserait une étape sans personne pour la faire.
+   *
+   * (`needsBrief` couvrait un second cas ; il est parti avec le drapeau de
+   * recette — le brief ne dit plus qui monte.)
    */
-  it("un brief ou une cover à uploader ramènent le monteur, même sur une recette auto", () => {
-    expect(needsMonteur({ source: "auto_template", needsBrief: true })).toBe(true);
+  it("une cover à uploader ramène le monteur, même sur une recette auto", () => {
     expect(needsMonteur({ source: "auto_template", coverMode: "monteurUpload" })).toBe(true);
   });
 

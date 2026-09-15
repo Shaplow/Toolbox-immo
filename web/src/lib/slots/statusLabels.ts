@@ -127,7 +127,10 @@ export const SLOT_STATUS_META: Record<SlotStatus, SlotStatusMeta> = {
   // EDIT_REVIEW est sa propre phase (« À valider », owner ADMIN) : sans ça,
   // le badge « En production » masquait l'attente d'une action admin.
   EDIT_REVIEW: {
-    label: "À valider",
+    // « À valider » tout court entrait en collision avec deux autres
+    // validations (la commande côté admin, la vidéo côté client) : trois sens
+    // pour un mot, sur trois écrans qui se croisent. On nomme l'objet.
+    label: "Montage à valider",
     colors: NEUTRAL,
     dot: "bg-warning-600",
     owner: "ADMIN",
@@ -137,7 +140,7 @@ export const SLOT_STATUS_META: Record<SlotStatus, SlotStatusMeta> = {
     macroStep: "validation",
   },
   EDIT_APPROVED: {
-    label: "Validée",
+    label: "Montage validé",
     colors: NEUTRAL,
     dot: "bg-info-600",
     owner: "MONTEUR",

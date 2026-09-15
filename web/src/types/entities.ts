@@ -100,7 +100,10 @@ export const ENTITY_STATUS_BADGE: Record<EntityStatus, string> = {
 export const ENTITY_VALIDATION_LABELS: Record<EntityValidationStatus, string> = {
   PENDING_ADMIN: "À valider (admin)",
   PENDING_CLIENT: "À valider (client)",
-  APPROVED: "Validée",
+  // « Validée » tout court voisinait, sur l'écran de commande, avec le badge
+  // « Validée » de la COMMANDE et le statut « Validée » du MONTAGE : trois
+  // objets, un mot. Les trois portent désormais le leur.
+  APPROVED: "Fiche validée",
   REJECTED: "Refusée",
   REJECTED_CLIENT: "Refusée (client)",
 };

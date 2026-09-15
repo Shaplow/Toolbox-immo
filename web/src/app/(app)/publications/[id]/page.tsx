@@ -90,6 +90,15 @@ export default async function PublicationPage({ params }: PageProps) {
           id: true,
           label: true,
           fields: true,
+          // Le mot du vidéaste au monteur : écrit sur la FICHE (c'est là qu'il
+          // travaille), lu ICI (c'est là que le monteur travaille). Sans ça, le
+          // brief de tournage n'était repris nulle part et le monteur devait
+          // savoir qu'il existait pour aller le chercher.
+          brief: true,
+          briefAttachments: {
+            select: { id: true, fileName: true, mimeType: true, sizeBytes: true },
+            orderBy: { createdAt: "asc" as const },
+          },
           type: { select: { name: true, fieldSchema: true } },
         },
       },
@@ -331,7 +340,12 @@ export default async function PublicationPage({ params }: PageProps) {
   // MÊME autorité que les routes rushes de la fiche — et non le seul
   // canUserAccessSlot : un vidéaste réassigné sur ce slot mais qui n'est pas le
   // vidéaste du tournage ne doit voir ni ces rushs ni leurs métadonnées.
-  let shootEvent: { id: string; title: string } | null = null;
+  let shootEvent: {
+    id: string;
+    title: string;
+    brief: string | null;
+    briefAttachments: { id: string; fileName: string; mimeType: string; sizeBytes: number | null }[];
+  } | null = null;
   let eventRushes: ReturnType<typeof mapRush>[] = [];
   // Accès à la fiche tournage — calculé une seule fois, réutilisé ci-dessous
   // pour `canOpen` du résumé de champs (évite un 2e loadEntityForAccess).
@@ -340,7 +354,12 @@ export default async function PublicationPage({ params }: PageProps) {
     const accessEntity = await loadEntityForAccess(slot.shootEntityId);
     shootEntityCanOpen = !!accessEntity && canUserAccessEntity(accessEntity, role, userId);
     if (shootEntityCanOpen) {
-      shootEvent = { id: slot.shootEntity.id, title: slot.shootEntity.label };
+      shootEvent = {
+        id: slot.shootEntity.id,
+        title: slot.shootEntity.label,
+        brief: slot.shootEntity.brief,
+        briefAttachments: slot.shootEntity.briefAttachments,
+      };
       eventRushes = (
         await prisma.publicationRush.findMany({
           where: { entityId: slot.shootEntityId, deletedAt: null },

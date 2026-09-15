@@ -21,7 +21,6 @@
 /** Ce qu'il faut savoir d'une recette pour en déduire les rôles. */
 export interface RoleNeedsPattern {
   source?: string | null;
-  needsBrief?: boolean | null;
   coverMode?: string | null;
 }
 
@@ -38,20 +37,17 @@ export function needsVideaste(pattern: RoleNeedsPattern | null | undefined): boo
 /**
  * Un monteur, c'est plus large que « il y a des rushs ».
  *
- * Deux échappatoires, et elles ne sont pas théoriques — les ignorer masquerait
- * un champ dont l'étape, elle, resterait affichée à l'écran :
- *  - `coverMode === "monteurUpload"` : l'étape « Cover (monteur) » est à lui
- *    (`publications/steps.ts`), même sur une recette auto ;
- *  - `needsBrief` : un brief rend l'étape Montage visible (idem), donc quelqu'un
- *    monte.
+ * Une échappatoire, et elle n'est pas théorique : `coverMode === "monteurUpload"`
+ * donne l'étape « Cover (monteur) » au MONTEUR (`publications/steps.ts`), même
+ * sur une recette auto. L'ignorer masquerait un champ dont l'étape, elle,
+ * resterait affichée à l'écran.
+ *
+ * `needsBrief` a été retiré de ce test en même temps que le drapeau de recette :
+ * le brief est désormais toujours disponible, il ne dit plus rien de qui monte.
  */
 export function needsMonteur(pattern: RoleNeedsPattern | null | undefined): boolean {
   if (!pattern) return false;
-  return (
-    pattern.source === "manual_rushes" ||
-    pattern.needsBrief === true ||
-    pattern.coverMode === "monteurUpload"
-  );
+  return pattern.source === "manual_rushes" || pattern.coverMode === "monteurUpload";
 }
 
 /**

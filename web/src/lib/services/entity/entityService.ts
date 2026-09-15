@@ -286,6 +286,12 @@ const entityDetailSelect = {
   defaultAssigneeCm: { select: { id: true, name: true } },
   notes: true,
   brief: true,
+  // Pièces jointes du brief (vocal, doc, photo de repérage) — le r2Key reste
+  // côté serveur : le téléchargement passe par une URL signée à la demande.
+  briefAttachments: {
+    select: { id: true, fileName: true, mimeType: true, sizeBytes: true, createdAt: true },
+    orderBy: { createdAt: "asc" as const },
+  },
   relatedEntityId: true,
   related: { select: { id: true, label: true, typeId: true } },
   relatedOf: { select: { id: true, label: true, typeId: true } },
@@ -1357,7 +1363,9 @@ async function attachMissionsToEntity(
 ): Promise<AttachSlotToEntityResult> {
   const authorized = ctx.canAdminBypass || (await hasTool(ctx.effectiveUser.id, TOOLS.MISSION));
   if (!authorized) {
-    throw new ForbiddenError("Vous n'avez pas accès à l'outil Missions");
+    throw new ForbiddenError(
+      "Vous n'avez pas le droit de lancer des publications depuis une fiche",
+    );
   }
 
   const recipeIds = Array.isArray(input.recipeIds)

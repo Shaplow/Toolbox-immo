@@ -267,7 +267,9 @@ export function computePublicationSteps(input: {
   const editVisible =
     pattern?.source === "manual_rushes" ||
     pattern?.needsRushes === true ||
-    pattern?.needsBrief === true ||
+    // `needsBrief` retiré du test : le brief n'est plus un drapeau de recette
+    // (il est toujours disponible), il ne peut donc plus signifier « il y a un
+    // montage ». Un montage se prouve par la source, les rushs ou une version.
     versionsCount > 0 ||
     slot.status === "IN_EDIT" ||
     slot.status === "EDIT_REVIEW" ||

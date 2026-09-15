@@ -174,6 +174,13 @@ export default async function EntityDetailPage({ params }: Params) {
     defaultAssigneeCmId: entity.defaultAssigneeCmId,
     notes: entity.notes,
     brief: entity.brief,
+    briefAttachments: entity.briefAttachments.map((a) => ({
+      id: a.id,
+      fileName: a.fileName,
+      mimeType: a.mimeType,
+      sizeBytes: a.sizeBytes,
+      createdAt: a.createdAt.toISOString(),
+    })),
     relatedEntityId: entity.relatedEntityId,
     relatedLabel: entity.related?.label ?? null,
     orderId: entity.orderId,

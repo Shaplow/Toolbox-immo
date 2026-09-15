@@ -25,7 +25,9 @@ export type EntityActivityType =
   | "VIDEASTE_CONFIRMED"
   | "VIDEASTE_DECLINED"
   /** Admin : demande de disponibilité relancée (réponse effacée, assigné conservé). */
-  | "VIDEASTE_RESET";
+  | "VIDEASTE_RESET"
+  /** Brief de tournage : texte modifié, ou pièce jointe ajoutée/retirée. */
+  | "BRIEF_UPDATED";
 
 export interface LogEntityActivityInput {
   entityId: string;

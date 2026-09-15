@@ -209,6 +209,18 @@ export function itemsForShootType<T extends { shootTypeIds?: string[] }>(
   );
 }
 
+/**
+ * Libellés d'avancement qui priment sur la macro-étape, côté commande.
+ *
+ * La macro-étape range `AWAITING_CLIENT` et `CLIENT_REVISION` dans
+ * « Programmée » — vrai du point de vue du pipeline (la date est posée), faux du
+ * point de vue de celui qui lit : on attend une réponse, la sienne.
+ */
+const STEP_LABEL_OVERRIDES: Record<string, string> = {
+  AWAITING_CLIENT: "En attente de votre validation",
+  CLIENT_REVISION: "Modifications demandées",
+};
+
 /** Type « tournage-like » : planning + rushs (mode reel des fiches). */
 function isShootType(t: { hasPlanning: boolean; hasRushes: boolean }): boolean {
   return t.hasPlanning && t.hasRushes;
@@ -281,6 +293,10 @@ const orderDetailSelect = {
       validationStatus: true,
       relatedEntityId: true,
       assigneeVideasteId: true,
+      // Le vidéaste peut DÉCLINER un tournage. Sans ce champ ici, le refus
+      // n'apparaissait que dans l'inbox admin : la commande restait « Validée »
+      // et son tournage semblait aller de soi.
+      videasteConfirmation: true,
       type: {
         select: {
           id: true,
@@ -396,13 +412,21 @@ function serializeOrder(order: OrderDetailRaw, opts: { forExternal: boolean }) {
       missingVideaste: opts.forExternal
         ? false
         : isShootType(e.type) && e.type.hasAssignees && !e.assigneeVideasteId,
+      // Visible aussi pour le demandeur : son tournage a été refusé, c'est son
+      // information avant d'être la nôtre.
+      videasteDeclined:
+        isShootType(e.type) && e.videasteConfirmation === "DECLINED",
     })),
     slots: order.slots.map((s) => {
       const step = getMacroStep(s.status as SlotStatus);
       const base = {
         label: slotLabel(s),
         step,
-        stepLabel: MACRO_STEPS[step].label,
+        // Deux statuts où c'est LE CLIENT qu'on attend tombaient dans la macro
+        // étape « Programmée » : sa commande lui disait que tout suivait son
+        // cours pendant qu'elle attendait sa réponse, et il ne reçoit aucune
+        // notification par ailleurs. On nomme l'attente au lieu de la masquer.
+        stepLabel: STEP_LABEL_OVERRIDES[s.status] ?? MACRO_STEPS[step].label,
         scheduledAt: s.scheduledAt?.toISOString() ?? null,
         defaultTime: s.patternBinding?.publishTime ?? null,
       };

@@ -37,6 +37,8 @@ interface FichesListClientProps {
   types: EntityTypeSummary[];
   initialSelectedTypeId: string;
   isAdmin: boolean;
+  /** Pour distinguer « les miennes » : un admin voit tout, sans savoir ce qui le concerne. */
+  currentUserId: string;
   accounts: { id: string; name: string; handle: string }[];
   videastes: Option[];
   monteurs: Option[];
@@ -47,6 +49,7 @@ export function FichesListClient({
   types,
   initialSelectedTypeId,
   isAdmin,
+  currentUserId,
   accounts,
   videastes,
   monteurs,
@@ -63,6 +66,7 @@ export function FichesListClient({
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [onlyMine, setOnlyMine] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   // Sélection multiple — `Table` sait déjà le faire (selectable/selectedKeys),
   // personne ne s'en servait dans le repo.
@@ -238,15 +242,32 @@ export function FichesListClient({
 
   const typeNamePlural = activeType?.namePlural ?? activeType?.name ?? "Fiches";
 
+  /**
+   * « À moi » : assigné comme vidéaste, ou équipe par défaut de la fiche.
+   *
+   * Un admin voit toutes les fiches sans distinction — ses propres tournages y
+   * sont noyés. Le calendrier sait déjà le dire pour les publications
+   * (« X pour toi ») ; c'est le même geste, transposé aux fiches.
+   */
+  const isMine = useCallback(
+    (e: EntitySummary) =>
+      e.assigneeVideasteId === currentUserId ||
+      e.defaultAssigneeMonteurId === currentUserId ||
+      e.defaultAssigneeCmId === currentUserId,
+    [currentUserId],
+  );
+  const mineCount = useMemo(() => entities.filter(isMine).length, [entities, isMine]);
+
   const filteredEntities = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return entities;
-    return entities.filter(
+    const base = onlyMine ? entities.filter(isMine) : entities;
+    if (!q) return base;
+    return base.filter(
       (e) =>
         e.label.toLowerCase().includes(q) ||
         Object.values(e.fields).some((v) => v.toLowerCase().includes(q)),
     );
-  }, [entities, search]);
+  }, [entities, search, onlyMine, isMine]);
 
   /** Aperçu des fiches visées — cinq suffisent à reconnaître une erreur de tri. */
   const selectedLabels = useMemo(() => {
@@ -333,6 +354,22 @@ export function FichesListClient({
                       aria-label="Rechercher une fiche"
                     />
                   </div>
+                  {/* Rendu seulement s'il y a quelque chose à isoler : une puce
+                      « Les miennes · 0 » ne ferait que poser une question. */}
+                  {mineCount > 0 && (
+                    <button
+                      type="button"
+                      aria-pressed={onlyMine}
+                      onClick={() => setOnlyMine((v) => !v)}
+                      className={`shrink-0 px-2.5 h-8 rounded-md text-[12px] border transition-colors ${
+                        onlyMine
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-card text-muted-foreground border-border hover:bg-accent"
+                      }`}
+                    >
+                      Les miennes <span className="tabular-nums opacity-80">· {mineCount}</span>
+                    </button>
+                  )}
                   <Switch
                     checked={showArchived}
                     onChange={setShowArchived}

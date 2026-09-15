@@ -201,9 +201,10 @@ export function SlotDetailPanel({
   const [needsRushesOverride] = useState<boolean | null>(
     slot.needsRushesOverride ?? null,
   );
-  const [needsBriefOverride, setNeedsBriefOverride] = useState<boolean | null>(
-    slot.needsBriefOverride ?? null,
-  );
+  // Plus d'état : l'override « brief » n'a plus de surface de réglage (le brief
+  // est toujours disponible). On renvoie la valeur existante telle quelle pour
+  // ne pas l'effacer au premier enregistrement du panneau.
+  const needsBriefOverride = slot.needsBriefOverride ?? null;
   const [coverModeOverride, setCoverModeOverride] = useState<string | null>(
     slot.coverModeOverride ?? null,
   );
@@ -792,9 +793,10 @@ export function SlotDetailPanel({
               >
                 <span className="hidden sm:inline">Fiche complète</span>
               </Button>
-              {/* Phase 3 — actions destructives déplacées du footer vers
-                  ce menu pour ne plus risquer de cliquer "Annuler la mission"
-                  alors qu'on voulait juste fermer le drawer. */}
+              {/* Phase 3 — actions destructives déplacées du footer vers ce
+                  menu pour ne plus risquer de cliquer l'action destructive
+                  (alors nommée "Annuler la mission", aujourd'hui "Retirer
+                  cette vidéo") alors qu'on voulait juste fermer le drawer. */}
               {/* Le menu s'ouvre aussi au monteur et au vidéaste, qui doivent
                   pouvoir retirer une vidéo sans rushs. Dupliquer et supprimer
                   restent admin. */}
@@ -1247,23 +1249,8 @@ export function SlotDetailPanel({
                   true, sinon false). Le champ Prisma reste pour rétrocompat
                   et l'override exceptionnel via API. */}
 
-              <OverrideControl
-                label="Brief éditorial"
-                inheritedValue={slot.pattern?.needsBrief ? "Oui" : "Non"}
-                isOverriden={needsBriefOverride !== null}
-                onToggleOverride={(v) =>
-                  setNeedsBriefOverride(v ? !slot.pattern?.needsBrief : null)
-                }
-              >
-                <Combobox
-                  value={String(needsBriefOverride ?? false)}
-                  onChange={(v) => setNeedsBriefOverride(v === "true")}
-                  options={[
-                    { value: "true", label: "Forcer : Oui" },
-                    { value: "false", label: "Forcer : Non" },
-                  ]}
-                />
-              </OverrideControl>
+              {/* Override « Brief éditorial » retiré avec le drapeau : le brief
+                  est désormais toujours disponible, il n'y a plus rien à forcer. */}
               </CollapsibleSection>
             </>
           )}
@@ -1278,9 +1265,9 @@ export function SlotDetailPanel({
           )}
         </div>
 
-        {/* Footer — navigation pure : pas d'actions destructives ici. Annuler
-            mission + Supprimer ont migré dans le DropdownMenu du header pour
-            éviter la confusion "Annuler la mission" ≠ "Annuler la modal". */}
+        {/* Footer — navigation pure : pas d'actions destructives ici. Retirer
+            + Supprimer ont migré dans le DropdownMenu du header pour éviter la
+            confusion entre annuler la publication et fermer la modale. */}
         <footer className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 bg-card border-t border-border">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Fermer

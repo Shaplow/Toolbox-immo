@@ -231,6 +231,19 @@ export function canAttachSlotToEntity(role: UserRole): boolean {
   return role === "ADMIN" || role === "MONTEUR" || role === "VIDEASTE";
 }
 
+/**
+ * Écrire le brief d'une fiche — texte ET pièces jointes (vocal, doc, photo).
+ *
+ * Volontairement aligné sur la whitelist de PATCH (`brief` est ouvert à ADMIN et
+ * VIDEASTE), et donc SANS condition d'assignation : le texte et le vocal vivent
+ * dans le même bloc à l'écran, ils ne peuvent pas obéir à deux règles
+ * différentes. Un vidéaste qui n'a pas accès à la fiche est déjà arrêté en
+ * amont par `canUserAccessEntity`.
+ */
+export function canEditEntityBrief(role: UserRole): boolean {
+  return role === "ADMIN" || role === "VIDEASTE";
+}
+
 /** Uploader/supprimer des rushs sur une fiche : ADMIN ou le vidéaste assigné. */
 export function canUploadEntityRushes(
   entity: { assigneeVideasteId: string | null },

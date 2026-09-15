@@ -685,7 +685,7 @@ export function PatternTemplateFields({
 
         <FormField
           label="Exige une fiche"
-          help="Une fiche de ce type doit être rattachée pour créer un slot ou une mission depuis cette recette."
+          help="Une fiche de ce type doit être rattachée pour créer une publication depuis cette recette."
         >
           <Combobox
             value={v.requiresEntityTypeId}
@@ -714,12 +714,11 @@ export function PatternTemplateFields({
         <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground mb-1">
           Workflow
         </h3>
-        <WorkflowToggle
-          label="Brief éditorial"
-          description="Champ Brief à remplir avant production."
-          checked={v.needsBrief}
-          onChange={(val) => onChange({ needsBrief: val })}
-        />
+        {/* « Brief éditorial » retiré : le brief ne se déclare plus recette par
+            recette. Il s'affiche partout où il y a quelque chose à lire ou
+            quelqu'un pour l'écrire — une case décochée faisait passer la
+            fonction pour supprimée. La colonne `needsBrief` reste en base
+            jusqu'au drop N+1, plus personne ne la lit. */}
         <WorkflowToggle
           label="Validation admin du montage"
           description="Le montage passe par « À valider » avant publication."

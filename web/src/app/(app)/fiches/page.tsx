@@ -97,6 +97,7 @@ export default async function FichesPage({ searchParams }: PageProps) {
         types={types}
         initialSelectedTypeId={selectedTypeId}
         isAdmin={isAdmin}
+        currentUserId={userContext.effectiveUser.id}
         accounts={accounts}
         videastes={videastes.map((u) => ({ id: u.id, name: u.name }))}
         monteurs={monteurs.map((u) => ({ id: u.id, name: u.name }))}
