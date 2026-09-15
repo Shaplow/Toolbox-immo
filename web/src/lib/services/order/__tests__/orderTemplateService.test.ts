@@ -43,8 +43,12 @@ function baseInput(over: Partial<OrderTemplateInput> = {}): OrderTemplateInput {
   };
 }
 
+/** Hors du mock de transaction : les tests inspectent la jonction écrite. */
+const mockItemCreate = vi.fn().mockResolvedValue({ id: "oti1" });
+
 beforeEach(() => {
   vi.clearAllMocks();
+  mockItemCreate.mockResolvedValue({ id: "oti1" });
   mockEntityTypeFindMany.mockResolvedValue([{ id: "etype_bien" }, { id: "etype_tournage" }]);
   mockPatternTemplateFindMany.mockResolvedValue([
     { id: "pt1", isArchived: false, label: "Reel visite" },
@@ -57,7 +61,9 @@ beforeEach(() => {
         update: vi.fn(),
         findUniqueOrThrow: vi.fn().mockResolvedValue({ id: "ot1" }),
       },
-      orderTemplateItem: { createMany: vi.fn(), deleteMany: vi.fn() },
+      // `create` et non `createMany` : la jonction item ↔ type de tournage a
+      // besoin de l'id de l'item, que `createMany` ne rend pas.
+      orderTemplateItem: { create: mockItemCreate, deleteMany: vi.fn() },
       orderTemplateRecipe: { createMany: vi.fn(), deleteMany: vi.fn() },
       orderTemplateAccess: { createMany: vi.fn(), deleteMany: vi.fn() },
       orderTemplateShootType: {
@@ -202,5 +208,107 @@ describe("types de tournage", () => {
         }),
       ),
     ).rejects.toThrow(/Trop de types/);
+  });
+});
+
+/**
+ * « Il se peut qu'on ait besoin ou pas de certaines fiches en fonction du type
+ * — si c'est un RPOD, pas besoin de la fiche bien. »
+ */
+describe("fiches conditionnées au type de tournage", () => {
+  const twoTypes = [
+    { key: "k-rva", label: "RVA" },
+    { key: "k-rpod", label: "RPOD" },
+  ];
+
+  /** Les `shootTypeId` écrits pour une fiche donnée, via la jonction imbriquée. */
+  function writtenShootTypeIds(entityTypeId: string): string[] {
+    const call = mockItemCreate.mock.calls.find(
+      ([args]) => (args as { data: { entityTypeId: string } }).data.entityTypeId === entityTypeId,
+    );
+    const data = (call?.[0] as { data: { shootTypes?: { create: { shootTypeId: string }[] } } })
+      ?.data;
+    return (data?.shootTypes?.create ?? []).map((r) => r.shootTypeId);
+  }
+
+  it("refuse une fiche qui référence un type inconnu", async () => {
+    await expect(
+      createOrderTemplate(
+        baseInput({
+          recipes: [],
+          clientIds: [],
+          shootTypes: twoTypes,
+          items: [
+            { entityTypeId: "etype_bien", shootTypeKeys: ["k-inconnue"] },
+            { entityTypeId: "etype_tournage" },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/type de tournage inconnu/);
+  });
+
+  /**
+   * Un type qui ne demande aucune fiche produirait une commande sans la moindre
+   * entité : rien à quoi rattacher les publications. C'est une erreur de
+   * configuration, elle doit parler au moment de l'enregistrement.
+   */
+  it("refuse un type de tournage que plus aucune fiche ne demande", async () => {
+    await expect(
+      createOrderTemplate(
+        baseInput({
+          recipes: [],
+          clientIds: [],
+          shootTypes: twoTypes,
+          items: [
+            { entityTypeId: "etype_bien", shootTypeKeys: ["k-rva"] },
+            { entityTypeId: "etype_tournage", shootTypeKeys: ["k-rva"] },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/« RPOD » ne demande aucune fiche/);
+  });
+
+  it("accepte une fiche restreinte à un seul type", async () => {
+    await expect(
+      createOrderTemplate(
+        baseInput({
+          recipes: [],
+          clientIds: [],
+          shootTypes: twoTypes,
+          items: [
+            { entityTypeId: "etype_bien", shootTypeKeys: ["k-rva"] },
+            { entityTypeId: "etype_tournage" },
+          ],
+        }),
+      ),
+    ).resolves.toBeTruthy();
+    // Le Bien est rattaché au seul RVA ; le Tournage n'a aucune ligne, donc il
+    // est demandé par tous.
+    expect(writtenShootTypeIds("etype_bien")).toHaveLength(1);
+    expect(writtenShootTypeIds("etype_tournage")).toEqual([]);
+  });
+
+  /**
+   * « Tous les types cochés » et « aucune restriction » disent la même chose.
+   * En garder deux encodages ferait diverger le modèle au premier type ajouté :
+   * la fiche serait silencieusement exclue du nouveau type alors que l'admin
+   * croit l'avoir mise partout.
+   */
+  it("une fiche cochée sur TOUS les types est normalisée en « aucune restriction »", async () => {
+    await expect(
+      createOrderTemplate(
+        baseInput({
+          recipes: [],
+          clientIds: [],
+          shootTypes: twoTypes,
+          items: [
+            { entityTypeId: "etype_bien", shootTypeKeys: ["k-rva", "k-rpod"] },
+            { entityTypeId: "etype_tournage" },
+          ],
+        }),
+      ),
+    ).resolves.toBeTruthy();
+    // AUCUNE ligne de jonction : c'est ça, la normalisation.
+    expect(writtenShootTypeIds("etype_bien")).toEqual([]);
   });
 });

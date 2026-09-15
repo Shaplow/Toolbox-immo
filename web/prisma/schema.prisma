@@ -1399,7 +1399,36 @@ model OrderTemplateItem {
   entityType      EntityType    @relation(fields: [entityTypeId], references: [id], onDelete: Restrict)
   position        Int           @default(0)
 
+  /// Types de tournage qui demandent cette fiche. AUCUNE ligne = tous les types
+  /// la demandent — cf. OrderTemplateItemShootType.
+  shootTypes OrderTemplateItemShootType[]
+
   @@index([orderTemplateId])
+}
+
+/// « Ce type de tournage a-t-il besoin de cette fiche ? » — « si c'est un RPOD,
+/// pas besoin de la fiche bien ».
+///
+/// Table de jonction et non une colonne `shootTypeId` sur l'item : une fiche
+/// peut concerner PLUSIEURS types sans les concerner tous (« Bien » pour RVA et
+/// Interview, pas pour RPOD), ce qu'une colonne simple ne sait pas dire.
+///
+/// AUCUNE ligne pour un item = il est demandé par TOUS les types. Deux
+/// conséquences voulues : les modèles existants ne changent pas de comportement
+/// au jour de la migration, et supprimer un type de tournage (Cascade) fait
+/// RÉAPPARAÎTRE la fiche au lieu de la faire disparaître — même doctrine
+/// d'échec ouvert que le `SetNull` de OrderTemplateRecipe.shootTypeId. C'est
+/// aussi pourquoi ce n'est pas un tableau d'ids : un id périmé y rendrait la
+/// fiche invisible en silence.
+model OrderTemplateItemShootType {
+  id                  String                 @id @default(cuid())
+  orderTemplateItemId String
+  item                OrderTemplateItem      @relation(fields: [orderTemplateItemId], references: [id], onDelete: Cascade)
+  shootTypeId         String
+  shootType           OrderTemplateShootType @relation(fields: [shootTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([orderTemplateItemId, shootTypeId])
+  @@index([shootTypeId])
 }
 
 /// « Quelles vidéos déclenchées » — N reels de cette recette à la validation.
@@ -1461,6 +1490,7 @@ model OrderTemplateShootType {
 
   recipes OrderTemplateRecipe[]
   orders  Order[]
+  items   OrderTemplateItemShootType[]
 
   @@index([orderTemplateId])
 }

@@ -60,6 +60,8 @@ export default async function OrderTemplatesPage() {
     items: t.items.map((i) => ({
       entityTypeId: i.entityTypeId,
       entityTypeName: i.entityType.name,
+      // Vide = la fiche est demandée par TOUS les types de tournage.
+      shootTypeIds: i.shootTypes.map((st) => st.shootTypeId),
     })),
     recipes: t.recipes.map((r) => ({
       patternTemplateId: r.patternTemplateId,

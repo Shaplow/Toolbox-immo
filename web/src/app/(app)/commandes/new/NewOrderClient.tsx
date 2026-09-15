@@ -38,6 +38,8 @@ export interface OrderTemplateOption {
   items: {
     entityTypeId: string;
     typeName: string;
+    /** Types de tournage qui demandent cette fiche. VIDE = tous la demandent. */
+    shootTypeIds: string[];
     hasPlanning: boolean;
     hasAccount: boolean;
     fieldSchema: CustomField[];
@@ -66,6 +68,8 @@ export interface OrderTemplateOption {
     label: string;
     description: string | null;
     videosDecidedLater: boolean;
+    /** Ce que ce type produit — rend les types comparables avant le choix. */
+    videoCount: number;
   }[];
   videoSummary: string;
   videoCount: number;
@@ -126,6 +130,19 @@ export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientPr
           (r) => r.shootTypeId === null || r.shootTypeId === shootTypeId,
         );
 
+  /**
+   * Les fiches que le type retenu demande. « Si c'est un RPOD, pas besoin de la
+   * fiche bien. »
+   *
+   * Asymétrie ASSUMÉE avec `applicableRecipes`, qui ne montre rien tant qu'aucun
+   * type n'est choisi : une fiche sans restriction est demandée quelle que soit
+   * la réponse, la cacher ne gagnerait rien et donnerait un formulaire vide.
+   * Seules les fiches restreintes attendent le choix.
+   */
+  const applicableItems = (template?.items ?? []).filter(
+    (i) => i.shootTypeIds.length === 0 || (!!shootTypeId && i.shootTypeIds.includes(shootTypeId)),
+  );
+
   useEffect(() => {
     setRecipeCounts(
       Object.fromEntries(
@@ -170,7 +187,9 @@ export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientPr
    * réimplémenter le calcul : un miroir écrit à la main finit par diverger.
    */
   function primaryEffectiveLabel(): string {
-    const primary = template?.items[0];
+    // La première fiche APPLICABLE : sur un RPOD sans fiche Bien, c'est le
+    // Tournage qui porte le libellé saisi, et les suivantes en dérivent.
+    const primary = applicableItems[0];
     if (!primary) return "";
     const draft = fiches[primary.entityTypeId];
     return primary.labelTemplate
@@ -222,7 +241,10 @@ export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientPr
     if (shootTypes.length > 0 && !shootTypeId) {
       found.shootType = "Choisissez un type de tournage.";
     }
-    for (const [index, item] of template.items.entries()) {
+    // Sur les fiches APPLICABLES uniquement : valider une fiche que le type de
+    // tournage ne demande pas bloquerait le formulaire sur un champ obligatoire
+    // jamais affiché — blocage dur, sans un seul champ en rouge à l'écran.
+    for (const [index, item] of applicableItems.entries()) {
       const draft = fiches[item.entityTypeId];
       // Les fiches suivantes tirent leur libellé de la première ; un type à
       // modèle ne demande aucune saisie.
@@ -265,7 +287,10 @@ export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientPr
           })),
           notes: notes.trim() || null,
           clientId: isAdmin ? clientId : undefined,
-          fiches: template.items.map((item, index) => {
+          // Les brouillons des fiches hors périmètre restent en mémoire (un
+          // client qui bascule RVA → RPOD ne doit pas reperdre son adresse) mais
+          // ne partent pas : le serveur refuse une fiche que le type ne demande pas.
+          fiches: applicableItems.map((item, index) => {
             const draft = fiches[item.entityTypeId];
             return {
               entityTypeId: item.entityTypeId,
@@ -392,26 +417,59 @@ export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientPr
                   label="Type de tournage"
                   required
                   error={shootTypeId ? undefined : errors.shootType}
-                  help={shootType?.description ?? "Il détermine les vidéos proposées."}
+                  help="Il détermine les vidéos proposées et les informations demandées."
                 >
-                  <Select
-                    value={shootTypeId}
-                    onChange={(v) => {
-                      setShootTypeId(v);
-                      setErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.shootType;
-                        return next;
-                      });
-                    }}
-                    options={shootTypes.map((t) => ({ value: t.id, label: t.label }))}
-                    placeholder="Choisir un type…"
-                  />
+                  {/* Des cartes, pas une liste déroulante : la description de
+                      chaque type n'apparaissait qu'APRÈS l'avoir choisi, donc
+                      jamais au moment où elle sert. Ici elles se comparent. */}
+                  <div role="radiogroup" aria-label="Type de tournage" className="grid gap-2 sm:grid-cols-2">
+                    {shootTypes.map((t) => {
+                      const selected = t.id === shootTypeId;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => {
+                            setShootTypeId(t.id);
+                            setErrors((prev) => {
+                              const next = { ...prev };
+                              delete next.shootType;
+                              return next;
+                            });
+                          }}
+                          className={`text-left rounded-lg border p-3 transition-colors ${
+                            selected
+                              ? "border-primary bg-accent/40"
+                              : "border-border bg-card hover:bg-muted/40 hover:border-zinc-300"
+                          }`}
+                        >
+                          <span className="block text-[13px] font-semibold text-foreground">
+                            {t.label}
+                          </span>
+                          {/* Pas de texte de remplissage quand rien n'est saisi :
+                              une phrase générique n'apprend rien et occupe la place. */}
+                          {t.description && (
+                            <span className="mt-0.5 block text-[11.5px] leading-snug text-muted-foreground">
+                              {t.description}
+                            </span>
+                          )}
+                          {/* Le second signal comparable : ce que le type produit. */}
+                          <span className="mt-1 block text-[11px] text-muted-foreground">
+                            {t.videosDecidedLater
+                              ? "Nombre de vidéos décidé après le tournage"
+                              : `${t.videoCount} vidéo${t.videoCount > 1 ? "s" : ""}`}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </FormField>
               )}
 
               {/* 2. Une section par fiche */}
-              {template.items.map((item, idx) => {
+              {applicableItems.map((item, idx) => {
                 const draft = fiches[item.entityTypeId] ?? {
                   label: "",
                   fields: {},
@@ -458,7 +516,7 @@ export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientPr
                         <p className="text-[13px] text-muted-foreground bg-muted/50 border border-border rounded-md px-3 py-2">
                           {derivedLabel(item.typeName) || (
                             <span className="italic">
-                              Renseignez le libellé de « {template.items[0].typeName} »
+                              Renseignez le libellé de « {applicableItems[0].typeName} »
                             </span>
                           )}
                         </p>
@@ -515,17 +573,21 @@ export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientPr
                 );
               })}
 
-              {/* 3. Vidéos commandées — visible seulement si le modèle laisse
-                     un choix, sinon c'est une section qui ne fait rien. */}
-              {optionalRecipes.length > 0 && (
+              {/* 3. Vidéos commandées — visible dès qu'il y a quelque chose à
+                     annoncer, pas seulement quand il y a quelque chose à cocher :
+                     un type à trois vidéos imposées et aucune option affichait
+                     une page muette, et le client ne savait pas ce qu'il
+                     commandait. */}
+              {applicableRecipes.length > 0 && (
                 <div className="rounded-lg border border-border bg-card p-4 space-y-3">
                   <div>
                     <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
                       Vidéos commandées
                     </h3>
                     <p className="text-[11.5px] text-muted-foreground">
-                      Décochez ce dont vous n&apos;avez pas besoin. L&apos;équipe peut en
-                      retirer ensuite si les rushs manquent.
+                      {optionalRecipes.length > 0
+                        ? "Décochez ce dont vous n'avez pas besoin. L'équipe peut en retirer ensuite si les rushs manquent."
+                        : "Ce que ce type de tournage produit. Rien à choisir ici."}
                     </p>
                   </div>
 
@@ -538,9 +600,11 @@ export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientPr
                         Incluse
                       </Badge>
                       <div className="flex-1 min-w-0">
-                        <span className="block truncate">{r.label}</span>
+                        {/* Pas de `truncate` : tronquer le nom de ce qu'on
+                            commande est le contraire d'explicite. */}
+                        <span className="block">{r.label}</span>
                         {r.description && (
-                          <span className="block text-[11.5px] text-muted-foreground">
+                          <span className="block text-[11.5px] leading-snug text-muted-foreground">
                             {r.description}
                           </span>
                         )}
@@ -556,29 +620,31 @@ export function NewOrderClient({ templates, clients, isAdmin }: NewOrderClientPr
                     const checked = value > 0;
                     return (
                       <div key={r.patternTemplateId} className="flex items-start gap-2">
-                        <Checkbox
-                          checked={checked}
-                          onChange={(next) =>
-                            setRecipeCounts((prev) => ({
-                              ...prev,
-                              // Recocher repart du plancher s'il existe, sinon
-                              // d'une vidéo : jamais de 0 « coché ».
-                              [r.patternTemplateId]: next ? Math.max(1, r.minCount) : 0,
-                            }))
-                          }
-                          size="sm"
-                          label={r.label}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <span className="block truncate text-[13px] text-foreground">
-                            {r.label}
+                        {/* Toute la ligne coche : le libellé et sa description
+                            étaient du texte mort à côté d'une case de 14 px. */}
+                        <label className="flex flex-1 min-w-0 items-start gap-2 cursor-pointer">
+                          <Checkbox
+                            checked={checked}
+                            onChange={(next) =>
+                              setRecipeCounts((prev) => ({
+                                ...prev,
+                                // Recocher repart du plancher s'il existe, sinon
+                                // d'une vidéo : jamais de 0 « coché ».
+                                [r.patternTemplateId]: next ? Math.max(1, r.minCount) : 0,
+                              }))
+                            }
+                            size="sm"
+                            label={r.label}
+                          />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-[13px] text-foreground">{r.label}</span>
+                            {r.description && (
+                              <span className="block text-[11.5px] leading-snug text-muted-foreground">
+                                {r.description}
+                              </span>
+                            )}
                           </span>
-                          {r.description && (
-                            <span className="block text-[11.5px] text-muted-foreground">
-                              {r.description}
-                            </span>
-                          )}
-                        </div>
+                        </label>
                         {checked && r.count > 1 && (
                           <div className="w-24 shrink-0">
                             <NumberStepper

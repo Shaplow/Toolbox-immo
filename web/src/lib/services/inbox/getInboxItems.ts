@@ -15,6 +15,10 @@
  */
 
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
+import {
+  SLOT_NEEDS_MONTEUR_WHERE,
+  SLOT_NEEDS_VIDEASTE_WHERE,
+} from "@/lib/publications/roleNeeds";
 import { prisma } from "@/lib/prisma";
 import { validatedForTeamFilter } from "@/lib/permissions/entityScope";
 import type { SlotStatus } from "@/types/roles";
@@ -211,23 +215,28 @@ export async function getInboxItems(): Promise<InboxItem[]> {
       orderBy: { scheduledAt: "asc" },
       take: ITEM_LIMIT_PER_TYPE,
     }),
-    // Slots sans monteur (statuts qui requièrent un monteur).
+    // Slots sans monteur (statuts qui requièrent un monteur), ET dont la
+    // recette en demande vraiment un — cf. `SLOT_NEEDS_MONTEUR_WHERE`.
     prisma.publicationSlot.findMany({
       where: {
         assigneeMonteurId: null,
         status: {
           in: ["RUSHES_RECEIVED", "IN_EDIT", "EDIT_REVIEW"],
         },
+        ...SLOT_NEEDS_MONTEUR_WHERE,
       },
       select: SLOT_SELECT,
       orderBy: { updatedAt: "desc" },
       take: ITEM_LIMIT_PER_TYPE,
     }),
-    // Slots sans vidéaste (statuts shoot).
+    // Slots sans vidéaste (statuts shoot), ET dont la recette suppose un
+    // tournage. Sans ce filtre, TOUTE recette auto était comptée « sans
+    // vidéaste » : elle naît `PLANNED`, et il n'y a personne à envoyer filmer.
     prisma.publicationSlot.findMany({
       where: {
         assigneeVideasteId: null,
         status: { in: ["PLANNED", "RUSHES_EXPECTED"] },
+        ...SLOT_NEEDS_VIDEASTE_WHERE,
       },
       select: SLOT_SELECT,
       orderBy: { scheduledAt: "asc" },

@@ -64,6 +64,7 @@ import { toast } from "@/components/ui/Toast";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { resolveNextActionInfo } from "@/lib/publications/nextActionLabel";
 import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
+import { needsMonteur, needsVideaste } from "@/lib/publications/roleNeeds";
 import { PARIS_TZ } from "@/lib/date/formatFr";
 
 export type SlotDetailPanelMode = "admin" | "monteur" | "cm";
@@ -1056,6 +1057,11 @@ export function SlotDetailPanel({
                 storageKey="slot-panel:team"
               >
                 <div className="space-y-3 pt-1">
+                  {/* Un rôle dont la recette n'a pas besoin ne traîne pas une
+                      case vide — SAUF si quelqu'un y est déjà assigné : masquer
+                      un champ qui porte un nom rendrait l'assignation invisible
+                      et impossible à retirer. On ne masque que le vide. */}
+                  {(needsVideaste(slot.pattern) || !!assigneeVideasteId) && (
                   <FormField label="Vidéaste">
                     <AssigneePicker
                       value={assigneeVideasteId || null}
@@ -1071,6 +1077,8 @@ export function SlotDetailPanel({
                       groupByRole={false}
                     />
                   </FormField>
+                  )}
+                  {(needsMonteur(slot.pattern) || !!assigneeMonteurId) && (
                   <FormField label="Monteur">
                     <AssigneePicker
                       value={assigneeMonteurId || null}
@@ -1086,6 +1094,7 @@ export function SlotDetailPanel({
                       groupByRole={false}
                     />
                   </FormField>
+                  )}
                   <FormField label="CM">
                     <AssigneePicker
                       value={assigneeCmId || null}

@@ -1,5 +1,6 @@
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { compareNatural } from "@/lib/utils/naturalSort";
+import { needsMonteur, needsVideaste } from "@/lib/publications/roleNeeds";
 import { redirect, notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -350,17 +351,23 @@ export default async function AccountFichePage({ params }: Props) {
     </>
   );
 
-  // Recettes actives dont un rôle reste vide une fois l'héritage du compte
-  // appliqué — le seul chiffre actionnable de cet en-tête.
-  const incompleteTeamCount = allRecipes.filter(
-    (r) =>
-      r.isActive &&
-      [
-        r.defaultAssigneeVideasteId ?? account.defaultAssigneeVideasteId,
-        r.defaultAssigneeMonteurId ?? account.defaultAssigneeMonteurId,
-        r.defaultAssigneeCmId ?? account.defaultAssigneeCmId,
-      ].some((id) => !id),
-  ).length;
+  // Recettes actives dont un rôle NÉCESSAIRE reste vide une fois l'héritage du
+  // compte appliqué — le seul chiffre actionnable de cet en-tête.
+  //
+  // « Nécessaire » fait tout le travail : une recette auto n'a personne à
+  // envoyer filmer, la compter « sans équipe complète » était un reproche
+  // qu'on ne pouvait pas satisfaire (cf. lib/publications/roleNeeds).
+  const incompleteTeamCount = allRecipes.filter((r) => {
+    if (!r.isActive) return false;
+    const missing = (id: string | null | undefined) => !id;
+    return (
+      (needsVideaste(r) &&
+        missing(r.defaultAssigneeVideasteId ?? account.defaultAssigneeVideasteId)) ||
+      (needsMonteur(r) &&
+        missing(r.defaultAssigneeMonteurId ?? account.defaultAssigneeMonteurId)) ||
+      missing(r.defaultAssigneeCmId ?? account.defaultAssigneeCmId)
+    );
+  }).length;
 
   return (
     <PageShell variant="wide">

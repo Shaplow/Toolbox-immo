@@ -186,6 +186,29 @@ export function recipesForShootType<T extends { shootTypeId?: string | null }>(
   );
 }
 
+/**
+ * Les FICHES d'un modèle que le type de tournage retenu demande.
+ *
+ * « Si c'est un RPOD, pas besoin de la fiche bien. » Une liste de types VIDE (ou
+ * absente) = la fiche est demandée par tous, ce qui est l'état de toutes les
+ * lignes existantes — comportement d'avant strictement préservé, sans backfill.
+ *
+ * Échoue ouvert, comme `recipesForShootType` et pour la même raison : une fiche
+ * affichée en trop se voit, une fiche évaporée non. Et il doit vivre ICI autant
+ * que dans le formulaire — filtré seulement à l'affichage, le serveur
+ * continuerait d'exiger une fiche que le client ne peut plus remplir.
+ */
+export function itemsForShootType<T extends { shootTypeIds?: string[] }>(
+  items: T[],
+  shootTypeId: string | null | undefined,
+): T[] {
+  return items.filter(
+    (i) =>
+      !i.shootTypeIds?.length ||
+      (shootTypeId != null && i.shootTypeIds.includes(shootTypeId)),
+  );
+}
+
 /** Type « tournage-like » : planning + rushs (mode reel des fiches). */
 function isShootType(t: { hasPlanning: boolean; hasRushes: boolean }): boolean {
   return t.hasPlanning && t.hasRushes;
@@ -420,6 +443,7 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
         orderBy: { position: "asc" },
         select: {
           entityTypeId: true,
+          shootTypes: { select: { shootTypeId: true } },
           entityType: {
             select: {
               id: true,
@@ -503,13 +527,29 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
     accountId = account.id;
   }
 
-  // Une entrée fiche par item du modèle, matching par type, whitelist stricte
+  // Les fiches que le type de tournage retenu demande. TOUT ce qui suit raisonne
+  // là-dessus et jamais sur `template.items` : sinon le serveur exigerait une
+  // fiche que le formulaire ne montre plus.
+  const templateItems = itemsForShootType(
+    // `?? []` : une projection qui oublierait la jonction rend la fiche
+    // demandée par tous plutôt que de faire disparaître le formulaire.
+    template.items.map((i) => ({
+      ...i,
+      shootTypeIds: (i.shootTypes ?? []).map((s) => s.shootTypeId),
+    })),
+    shootTypeId,
+  );
+
+  // Une entrée fiche par item applicable, matching par type, whitelist stricte
   // {label, fields, scheduledAt} — jamais assignés/statuts/compte arbitraire.
   const fichesByType = new Map(
     (input.fiches ?? []).filter((f) => f?.entityTypeId).map((f) => [f.entityTypeId, f]),
   );
   for (const key of fichesByType.keys()) {
-    if (!template.items.some((i) => i.entityTypeId === key)) {
+    if (!templateItems.some((i) => i.entityTypeId === key)) {
+      // Comparé aux items APPLICABLES : un formulaire en cache qui pousserait la
+      // fiche Bien sur un RPOD serait sinon accepté, et créerait une fiche que
+      // le type ne veut pas.
       throw new ValidationError("Fiche inattendue dans la commande");
     }
   }
@@ -533,7 +573,11 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
   // Quand le type de la fiche primaire porte un modèle de libellé, la référence
   // est le libellé CALCULÉ — avec repli, jamais vide : sinon une primaire au
   // rendu vide passerait pendant que la secondaire échouerait sur un label vide.
-  const primaryItem = template.items[0];
+  // La première fiche APPLICABLE, pas la première du modèle : sur un RPOD sans
+  // fiche Bien, c'est le Tournage qui porte le libellé saisi. Laisser
+  // `template.items[0]` produirait « Tournage — Bien du 15/09 » pour un bien qui
+  // n'existe pas (le type Bien porte un `labelTemplate`), ou un libellé vide.
+  const primaryItem = templateItems[0];
   const primaryFiche = primaryItem ? fichesByType.get(primaryItem.entityTypeId) : undefined;
   const primaryLabel = !primaryItem
     ? ""
@@ -544,7 +588,7 @@ export async function createOrder(input: CreateOrderInput, ctx: UserContext) {
   // Préparation (validations complètes, hors tx) — une par item, dans l'ordre.
   const prepared: { data: Awaited<ReturnType<typeof prepareEntityCreate>>; isShoot: boolean }[] =
     [];
-  for (const [index, item] of template.items.entries()) {
+  for (const [index, item] of templateItems.entries()) {
     const fiche = fichesByType.get(item.entityTypeId);
     if (!fiche) {
       throw new ValidationError(`La fiche « ${item.entityType.name} » est requise`);

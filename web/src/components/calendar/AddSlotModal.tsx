@@ -37,6 +37,7 @@ import { formatNextActionLine } from "@/lib/publications/nextActionLabel";
 import { SOURCE_LABELS_FR } from "@/lib/i18n/glossary";
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { requiredEntityTypeId, requiresEntity } from "@/lib/publications/entityRequirement";
+import { needsMonteur } from "@/lib/publications/roleNeeds";
 import { SYSTEM_ENTITY_TYPE_IDS } from "@/lib/entityTypes";
 
 interface Account {
@@ -53,6 +54,9 @@ interface PatternOption {
   publishTime: string;
   isActive: boolean;
   source?: string;
+  /** Avec `source`, ce qui permet de savoir si un monteur est nécessaire (cf. roleNeeds). */
+  needsBrief?: boolean;
+  coverMode?: string;
   requiresProperty?: boolean;
   /** Phase 5 (métaobjet) — remplace requiresProperty. */
   requiresEntityTypeId?: string | null;
@@ -218,6 +222,8 @@ export function AddSlotModal({
         id: string;
         label: string;
         source: string;
+        needsBrief: boolean;
+        coverMode: string;
         templateId: string | null;
         requiresProperty: boolean;
         requiresEntityTypeId: string | null;
@@ -240,6 +246,8 @@ export function AddSlotModal({
             publishTime: b.publishTime,
             isActive: b.isActive,
             source: b.patternTemplate.source,
+            needsBrief: b.patternTemplate.needsBrief,
+            coverMode: b.patternTemplate.coverMode,
             requiresProperty: b.patternTemplate.requiresProperty,
             requiresEntityTypeId: b.patternTemplate.requiresEntityTypeId,
             defaultAssigneeMonteur: b.defaultAssigneeMonteur,
@@ -735,7 +743,7 @@ export function AddSlotModal({
               le pattern (action rare). Ouverte en mode manuel ou si aucun
               défaut. Le warning "sans monteur" reste visible hors collapse
               car bloquant (slot non assigné = invisible côté monteur). */}
-          {!assigneeMonteurId && (
+          {!assigneeMonteurId && needsMonteur(selectedPattern) && (
             <div className="flex items-start gap-2 text-[11px] text-warning-700 bg-warning-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
               <AlertCircle size={12} className="mt-0.5 shrink-0" />
               Sans monteur assigné, ce slot n&apos;apparaîtra dans la worklist d&apos;aucun

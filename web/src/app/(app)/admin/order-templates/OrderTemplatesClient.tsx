@@ -32,7 +32,7 @@ export interface OrderTemplateRow {
   description: string | null;
   isArchived: boolean;
   position: number;
-  items: { entityTypeId: string; entityTypeName: string }[];
+  items: { entityTypeId: string; entityTypeName: string; shootTypeIds: string[] }[];
   recipes: {
     patternTemplateId: string;
     label: string;
@@ -64,7 +64,11 @@ interface Draft {
   name: string;
   description: string;
   isArchived: boolean;
-  itemTypeIds: string[];
+  /**
+   * Fiches à remplir, dans l'ordre. `shootTypeKeys` VIDE = tous les types de
+   * tournage demandent cette fiche ; sinon, seulement ceux-là.
+   */
+  items: { entityTypeId: string; shootTypeKeys: string[] }[];
   recipes: {
     patternTemplateId: string;
     count: number;
@@ -105,7 +109,12 @@ function toDraft(t: OrderTemplateRow | null): Draft {
     name: t?.name ?? "",
     description: t?.description ?? "",
     isArchived: t?.isArchived ?? false,
-    itemTypeIds: t?.items.map((i) => i.entityTypeId) ?? [],
+    items:
+      t?.items.map((i) => ({
+        entityTypeId: i.entityTypeId,
+        // Un type déjà en base a pour clé son propre id (cf. shootTypes).
+        shootTypeKeys: i.shootTypeIds,
+      })) ?? [],
     recipes:
       t?.recipes.map((r) => ({
         patternTemplateId: r.patternTemplateId,
@@ -178,7 +187,11 @@ export function OrderTemplatesClient({
           description: string | null;
           isArchived: boolean;
           position: number;
-          items: { entityTypeId: string; entityType: { name: string } }[];
+          items: {
+            entityTypeId: string;
+            entityType: { name: string };
+            shootTypes: { shootTypeId: string }[];
+          }[];
           recipes: {
             patternTemplateId: string;
             count: number;
@@ -208,6 +221,7 @@ export function OrderTemplatesClient({
           items: t.items.map((i) => ({
             entityTypeId: i.entityTypeId,
             entityTypeName: i.entityType.name,
+            shootTypeIds: (i.shootTypes ?? []).map((st) => st.shootTypeId),
           })),
           recipes: t.recipes.map((r) => ({
             patternTemplateId: r.patternTemplateId,
@@ -234,7 +248,7 @@ export function OrderTemplatesClient({
       toast.error("Un nom est requis.");
       return;
     }
-    if (draft.itemTypeIds.length === 0) {
+    if (draft.items.length === 0) {
       toast.error("Ajoutez au moins un type de fiche.");
       return;
     }
@@ -244,7 +258,10 @@ export function OrderTemplatesClient({
         name: draft.name.trim(),
         description: draft.description.trim() || null,
         isArchived: draft.isArchived,
-        items: draft.itemTypeIds.map((entityTypeId) => ({ entityTypeId })),
+        items: draft.items.map((i) => ({
+          entityTypeId: i.entityTypeId,
+          shootTypeKeys: i.shootTypeKeys,
+        })),
         recipes: draft.recipes.map((r) => ({
           ...r,
           // "" = vidéo commune à tous les types.
@@ -372,18 +389,20 @@ export function OrderTemplatesClient({
     },
   ];
 
-  const availableTypes = entityTypes.filter((t) => !draft.itemTypeIds.includes(t.id));
+  const availableTypes = entityTypes.filter(
+    (t) => !draft.items.some((i) => i.entityTypeId === t.id),
+  );
   const availableRecipes = patternTemplates.filter(
     (t) => !draft.recipes.some((r) => r.patternTemplateId === t.id),
   );
 
   function moveItem(index: number, delta: -1 | 1) {
     setDraft((d) => {
-      const ids = [...d.itemTypeIds];
+      const ids = [...d.items];
       const j = index + delta;
       if (j < 0 || j >= ids.length) return d;
       [ids[index], ids[j]] = [ids[j], ids[index]];
-      return { ...d, itemTypeIds: ids };
+      return { ...d, items: ids };
     });
   }
 
@@ -448,49 +467,106 @@ export function OrderTemplatesClient({
             help="Types de fiches que l'agence renseigne, dans l'ordre du formulaire. Un tournage pointera automatiquement la fiche précédente (ex : le bien)."
           >
             <div className="space-y-2">
-              {draft.itemTypeIds.map((typeId, i) => (
-                <div key={typeId} className="flex items-center gap-2">
-                  <span className="flex-1 text-[13px] text-foreground rounded-md border border-border bg-muted/50 px-3 py-1.5">
-                    {i + 1}. {typeName(typeId)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => moveItem(i, -1)}
-                    disabled={i === 0}
-                    className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    aria-label="Monter"
-                  >
-                    <ArrowUp size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveItem(i, 1)}
-                    disabled={i === draft.itemTypeIds.length - 1}
-                    className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    aria-label="Descendre"
-                  >
-                    <ArrowDown size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDraft((d) => ({
-                        ...d,
-                        itemTypeIds: d.itemTypeIds.filter((id) => id !== typeId),
-                      }))
-                    }
-                    className="p-1 rounded text-muted-foreground hover:text-danger-600"
-                    aria-label={`Retirer ${typeName(typeId)}`}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+              {draft.items.map((item, i) => (
+                <div key={item.entityTypeId} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 text-[13px] text-foreground rounded-md border border-border bg-muted/50 px-3 py-1.5">
+                      {i + 1}. {typeName(item.entityTypeId)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => moveItem(i, -1)}
+                      disabled={i === 0}
+                      className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      aria-label="Monter"
+                    >
+                      <ArrowUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveItem(i, 1)}
+                      disabled={i === draft.items.length - 1}
+                      className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      aria-label="Descendre"
+                    >
+                      <ArrowDown size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraft((d) => ({
+                          ...d,
+                          items: d.items.filter((x) => x.entityTypeId !== item.entityTypeId),
+                        }))
+                      }
+                      className="p-1 rounded text-muted-foreground hover:text-danger-600"
+                      aria-label={`Retirer ${typeName(item.entityTypeId)}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  {/* « Si c'est un RPOD, pas besoin de la fiche bien. » Rien de
+                      coché = tous les types la demandent : c'est l'état de tous
+                      les modèles existants, et celui qu'on veut par défaut. */}
+                  {draft.shootTypes.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pl-3">
+                      <span className="text-[11px] text-muted-foreground">Demandée par :</span>
+                      {draft.shootTypes.map((st) => {
+                        const all = item.shootTypeKeys.length === 0;
+                        const on = all || item.shootTypeKeys.includes(st.key);
+                        return (
+                          <button
+                            key={st.key}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() =>
+                              setDraft((d) => ({
+                                ...d,
+                                items: d.items.map((x) => {
+                                  if (x.entityTypeId !== item.entityTypeId) return x;
+                                  // « Tous » est encodé par la liste VIDE : décocher
+                                  // depuis cet état part de la liste complète, et
+                                  // recocher tout le monde y revient. Sans ça, deux
+                                  // encodages d'une même vérité — et un type ajouté
+                                  // plus tard exclurait la fiche en silence.
+                                  const base =
+                                    x.shootTypeKeys.length > 0
+                                      ? x.shootTypeKeys
+                                      : d.shootTypes.map((t) => t.key);
+                                  const next = base.includes(st.key)
+                                    ? base.filter((k) => k !== st.key)
+                                    : [...base, st.key];
+                                  return {
+                                    ...x,
+                                    shootTypeKeys:
+                                      next.length === d.shootTypes.length ? [] : next,
+                                  };
+                                }),
+                              }))
+                            }
+                            className={`px-2 py-0.5 rounded-md text-[11px] border transition-colors ${
+                              on
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-card text-muted-foreground border-border hover:bg-accent"
+                            }`}
+                          >
+                            {st.label.trim() || "Sans nom"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
               {availableTypes.length > 0 && (
                 <Select
                   value=""
                   onChange={(v) =>
-                    v && setDraft((d) => ({ ...d, itemTypeIds: [...d.itemTypeIds, v] }))
+                    v &&
+                    setDraft((d) => ({
+                      ...d,
+                      items: [...d.items, { entityTypeId: v, shootTypeKeys: [] }],
+                    }))
                   }
                   options={availableTypes.map((t) => ({ value: t.id, label: t.name }))}
                   placeholder="Ajouter un type de fiche…"
@@ -537,6 +613,12 @@ export function OrderTemplatesClient({
                           recipes: d.recipes.map((r) =>
                             r.shootTypeKey === st.key ? { ...r, shootTypeKey: "" } : r,
                           ),
+                          // Même raisonnement pour les fiches : une fiche qui ne
+                          // restreignait qu'à ce type redevient demandée partout.
+                          items: d.items.map((i) => ({
+                            ...i,
+                            shootTypeKeys: i.shootTypeKeys.filter((k) => k !== st.key),
+                          })),
                         }))
                       }
                       className="p-1 rounded text-muted-foreground hover:text-danger-600 shrink-0"

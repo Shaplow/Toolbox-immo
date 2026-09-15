@@ -96,6 +96,7 @@ import {
   cancelOrder,
   createOrder,
   deleteOrder,
+  itemsForShootType,
   parseCreateOrderInput,
   recipesForShootType,
   rejectOrder,
@@ -155,8 +156,10 @@ function mockTemplate(over: Record<string, unknown> = {}) {
     // le comportement doit y être strictement celui d'avant la migration.
     shootTypes: [],
     items: [
-      { entityTypeId: "etype_bien", entityType: bienType },
-      { entityTypeId: "etype_tournage", entityType: tournageType },
+      // `shootTypes: []` = fiche demandée par TOUS les types de tournage,
+      // l'état de toutes les lignes existantes en base.
+      { entityTypeId: "etype_bien", shootTypes: [], entityType: bienType },
+      { entityTypeId: "etype_tournage", shootTypes: [], entityType: tournageType },
     ],
     accesses: [{ clientId: "c1" }],
     ...over,
@@ -1171,6 +1174,114 @@ describe("type de tournage", () => {
       expect(recipesForShootType([{ id: "sans-champ" }], RVA.id).map((r) => r.id)).toEqual([
         "sans-champ",
       ]);
+    });
+  });
+
+  describe("itemsForShootType", () => {
+    const partout = { shootTypeIds: [], id: "partout" };
+    const rvaOnly = { shootTypeIds: [RVA.id], id: "rva-only" };
+    const deuxTypes = { shootTypeIds: [RVA.id, RPOD.id], id: "deux" };
+
+    it("garde les fiches sans restriction ET celles du type retenu", () => {
+      expect(
+        itemsForShootType([partout, rvaOnly, deuxTypes], RVA.id).map((i) => i.id),
+      ).toEqual(["partout", "rva-only", "deux"]);
+    });
+
+    it("écarte une fiche qui ne concerne pas le type retenu", () => {
+      expect(itemsForShootType([partout, rvaOnly, deuxTypes], RPOD.id).map((i) => i.id)).toEqual([
+        "partout",
+        "deux",
+      ]);
+    });
+
+    it("sans type retenu, seules les fiches sans restriction sont demandées", () => {
+      expect(itemsForShootType([partout, rvaOnly], null).map((i) => i.id)).toEqual(["partout"]);
+    });
+
+    /**
+     * Échec OUVERT, comme `recipesForShootType` : une projection qui oublierait
+     * la jonction doit demander une fiche de trop, jamais faire disparaître le
+     * formulaire. C'est aussi ce qui rend la migration rétrocompatible — aucune
+     * ligne existante n'a de rattachement.
+     */
+    it("un rattachement absent compte comme « demandée par tous »", () => {
+      expect(itemsForShootType([{ id: "sans-champ" }], RVA.id).map((i) => i.id)).toEqual([
+        "sans-champ",
+      ]);
+    });
+  });
+
+  describe("createOrder — fiches conditionnées au type de tournage", () => {
+    /** Modèle « Bien + Tournage » où le Bien n'est demandé que par RVA. */
+    function templateBienRvaOnly() {
+      return mockTemplate({
+        shootTypes: [{ id: RVA.id }, { id: RPOD.id }],
+        items: [
+          {
+            entityTypeId: "etype_bien",
+            shootTypes: [{ shootTypeId: RVA.id }],
+            entityType: bienType,
+          },
+          { entityTypeId: "etype_tournage", shootTypes: [], entityType: tournageType },
+        ],
+      });
+    }
+
+    it("RPOD : la fiche Bien n'est plus exigée", async () => {
+      mockOrderTemplateFindUnique.mockResolvedValue(templateBienRvaOnly());
+      await expect(
+        createOrder(
+          baseInput({
+            clientId: "c1",
+            shootTypeId: RPOD.id,
+            fiches: [
+              {
+                entityTypeId: "etype_tournage",
+                label: "Tournage seul",
+                fields: {},
+                scheduledAt: "2026-09-01T09:00:00Z",
+              },
+            ],
+          }),
+          ctx("ADMIN"),
+        ),
+      ).resolves.toBeTruthy();
+    });
+
+    it("RVA : la fiche Bien reste exigée", async () => {
+      mockOrderTemplateFindUnique.mockResolvedValue(templateBienRvaOnly());
+      await expect(
+        createOrder(
+          baseInput({
+            clientId: "c1",
+            shootTypeId: RVA.id,
+            fiches: [
+              {
+                entityTypeId: "etype_tournage",
+                label: "Tournage seul",
+                fields: {},
+                scheduledAt: "2026-09-01T09:00:00Z",
+              },
+            ],
+          }),
+          ctx("ADMIN"),
+        ),
+      ).rejects.toThrow(/Bien » est requise/);
+    });
+
+    /**
+     * Le verrou : un formulaire en cache qui pousserait la fiche Bien sur un
+     * RPOD créerait une fiche que le type de tournage ne veut pas.
+     */
+    it("RPOD : envoyer quand même la fiche Bien est refusé", async () => {
+      mockOrderTemplateFindUnique.mockResolvedValue(templateBienRvaOnly());
+      await expect(
+        createOrder(
+          baseInput({ clientId: "c1", shootTypeId: RPOD.id }),
+          ctx("ADMIN"),
+        ),
+      ).rejects.toThrow(/Fiche inattendue/);
     });
   });
 

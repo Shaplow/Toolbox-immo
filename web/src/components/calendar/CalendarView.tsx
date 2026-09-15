@@ -50,6 +50,7 @@ import {
   localInputToIso,
 } from "@/lib/date/formatFr";
 import { Button } from "@/components/ui/Button";
+import { needsMonteur, needsVideaste } from "@/lib/publications/roleNeeds";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
 import { Alert } from "@/components/ui/Alert";
@@ -401,10 +402,12 @@ export function CalendarView({
         // Sans recette = ni binding ni recette globale (fix résidu G.3 : les
         // slots recette avaient patternId legacy null et étaient comptés à tort).
         return !slot.patternBindingId && !slot.patternTemplateId;
+      // « Sans monteur » / « sans vidéaste » ne veut rien dire sur une recette
+      // qui n'en demande pas : un RAUTO n'a personne à envoyer filmer.
       case "no-monteur":
-        return !slot.assigneeMonteurId;
+        return !slot.assigneeMonteurId && needsMonteur(slot.pattern);
       case "no-videaste":
-        return !slot.assigneeVideasteId;
+        return !slot.assigneeVideasteId && needsVideaste(slot.pattern);
       default:
         return true;
     }

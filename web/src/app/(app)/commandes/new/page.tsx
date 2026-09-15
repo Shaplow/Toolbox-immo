@@ -41,6 +41,7 @@ export default async function NewOrderPage() {
         orderBy: { position: "asc" },
         select: {
           entityTypeId: true,
+          shootTypes: { select: { shootTypeId: true } },
           entityType: {
             select: {
               id: true,
@@ -85,6 +86,8 @@ export default async function NewOrderPage() {
     description: t.description,
     items: t.items.map((i) => ({
       entityTypeId: i.entityTypeId,
+      // Vide = la fiche est demandée quel que soit le type de tournage.
+      shootTypeIds: i.shootTypes.map((st) => st.shootTypeId),
       typeName: i.entityType.name,
       hasPlanning: i.entityType.hasPlanning,
       hasAccount: i.entityType.hasAccount,
@@ -106,6 +109,12 @@ export default async function NewOrderPage() {
       label: st.label,
       description: st.description,
       videosDecidedLater: st.videosDecidedLater,
+      // Ce que CE type produit — le second signal qui rend les types
+      // comparables avant de choisir, à côté de la description. Même règle que
+      // `videoCount` : imposées + optionnelles pré-cochées, communes comprises.
+      videoCount: t.recipes
+        .filter((r) => (!r.isOptional || r.defaultSelected) && (!r.shootTypeId || r.shootTypeId === st.id))
+        .reduce((n, r) => n + r.count, 0),
     })),
     // Résumé / compteur : seulement les vidéos IMPOSÉES et les optionnelles
     // pré-cochées — annoncer « 5 vidéos » alors que deux sont décochées par

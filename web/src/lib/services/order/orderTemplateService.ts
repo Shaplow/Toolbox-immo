@@ -37,7 +37,15 @@ export interface OrderTemplateInput {
   position?: number;
   isArchived?: boolean;
   /** Types de fiches à remplir, dans l'ordre du formulaire client. */
-  items: { entityTypeId: string }[];
+  items: {
+    entityTypeId: string;
+    /**
+     * Types de tournage qui demandent cette fiche, par leur `key` locale.
+     * VIDE = tous les types la demandent — « si c'est un RPOD, pas besoin de la
+     * fiche bien » se règle en décochant RPOD ici.
+     */
+    shootTypeKeys?: string[];
+  }[];
   /**
    * Recettes instanciées à la validation (count reels chacune).
    * `isOptional` laisse le négo cocher la vidéo et ajuster sa quantité
@@ -94,6 +102,7 @@ const orderTemplateSelect = {
       entityTypeId: true,
       position: true,
       entityType: { select: { id: true, name: true, icon: true, hasPlanning: true, hasRushes: true } },
+      shootTypes: { select: { shootTypeId: true } },
     },
   },
   recipes: {
@@ -153,8 +162,12 @@ export function parseOrderTemplateInput(body: Record<string, unknown>): OrderTem
     position: typeof body.position === "number" ? body.position : undefined,
     isArchived: body.isArchived === true,
     items: Array.isArray(body.items)
-      ? (body.items as { entityTypeId?: unknown }[]).map((i) => ({
+      ? (body.items as { entityTypeId?: unknown; shootTypeKeys?: unknown }[]).map((i) => ({
           entityTypeId: typeof i?.entityTypeId === "string" ? i.entityTypeId : "",
+          // Absent ou vide = fiche demandée par tous les types de tournage.
+          shootTypeKeys: Array.isArray(i?.shootTypeKeys)
+            ? (i.shootTypeKeys as unknown[]).filter((k): k is string => typeof k === "string" && !!k)
+            : [],
         }))
       : [],
     recipes: Array.isArray(body.recipes)
@@ -225,7 +238,8 @@ async function validateInput(input: OrderTemplateInput) {
 
   // Items — ≥1, types existants, dédupliqués (2 fiches du même type dans une
   // même commande seraient ambiguës pour le câblage relatedEntityId).
-  const itemTypeIds = (input.items ?? []).map((i) => i?.entityTypeId).filter(Boolean);
+  const rawItems = (input.items ?? []).filter((i) => i?.entityTypeId);
+  const itemTypeIds = rawItems.map((i) => i.entityTypeId);
   if (itemTypeIds.length === 0) {
     throw new ValidationError("Au moins un type de fiche est requis");
   }
@@ -272,6 +286,35 @@ async function validateInput(input: OrderTemplateInput) {
   const shootLabels = cleanShootTypes.map((t) => t.label.toLowerCase());
   if (new Set(shootLabels).size !== shootLabels.length) {
     throw new ValidationError("Deux types de tournage portent le même nom");
+  }
+
+  // Rattachement des fiches aux types de tournage.
+  const knownShootKeys = new Set(shootKeys);
+  const cleanItems = rawItems.map((i) => {
+    const keys = [...new Set(i.shootTypeKeys ?? [])];
+    for (const k of keys) {
+      if (!knownShootKeys.has(k)) {
+        throw new ValidationError("Une fiche référence un type de tournage inconnu");
+      }
+    }
+    // Normalisation VITALE : « tous les types cochés » et « aucune restriction »
+    // disent la même chose, et deux encodages d'une même vérité divergent au
+    // premier type ajouté — la fiche s'en trouverait silencieusement exclue du
+    // nouveau type alors que l'admin croit l'avoir mise partout.
+    const restricted = keys.length > 0 && keys.length < shootKeys.length;
+    return { entityTypeId: i.entityTypeId, shootTypeKeys: restricted ? keys : [] };
+  });
+  // Un type de tournage qui ne demande AUCUNE fiche produirait une commande sans
+  // la moindre entité : rien à quoi rattacher les publications, et toute recette
+  // exigeant une fiche échouerait le jour de la validation. C'est une erreur de
+  // configuration, elle doit parler maintenant.
+  for (const t of cleanShootTypes) {
+    const demanded = cleanItems.some(
+      (i) => i.shootTypeKeys.length === 0 || i.shootTypeKeys.includes(t.key),
+    );
+    if (!demanded) {
+      throw new ValidationError(`Le type de tournage « ${t.label} » ne demande aucune fiche`);
+    }
   }
 
   // Recettes — existantes, non archivées, count borné.
@@ -337,7 +380,7 @@ async function validateInput(input: OrderTemplateInput) {
         ? input.position
         : undefined,
     isArchived: input.isArchived === true,
-    itemTypeIds,
+    items: cleanItems,
     recipes,
     shootTypes: cleanShootTypes,
     clientIds,
@@ -394,6 +437,39 @@ async function writeShootTypes(
   return keyToId;
 }
 
+/**
+ * Écrit les items ET leur rattachement aux types de tournage.
+ *
+ * Un `create` par item et non un `createMany` : la jonction a besoin de l'id de
+ * l'item, que `createMany` ne rend pas. Dix items au maximum (`MAX_ITEMS`),
+ * dans la transaction existante — le coût est nul, et l'écriture imbriquée
+ * garantit qu'un item ne peut pas exister sans ses liaisons.
+ *
+ * À appeler APRÈS `writeShootTypes` : les clés locales n'ont d'id qu'ensuite.
+ */
+async function writeItems(
+  tx: Prisma.TransactionClient,
+  orderTemplateId: string,
+  items: { entityTypeId: string; shootTypeKeys: string[] }[],
+  keyToId: Map<string, string>,
+): Promise<void> {
+  for (const [i, item] of items.entries()) {
+    const shootTypeIds = item.shootTypeKeys
+      .map((k) => keyToId.get(k))
+      .filter((id): id is string => Boolean(id));
+    await tx.orderTemplateItem.create({
+      data: {
+        orderTemplateId,
+        entityTypeId: item.entityTypeId,
+        position: i,
+        ...(shootTypeIds.length > 0
+          ? { shootTypes: { create: shootTypeIds.map((shootTypeId) => ({ shootTypeId })) } }
+          : {}),
+      },
+    });
+  }
+}
+
 // ─── CRUD ───────────────────────────────────────────────────────────────────
 
 export async function listOrderTemplates(opts: { includeArchived?: boolean } = {}) {
@@ -425,15 +501,10 @@ export async function createOrderTemplate(input: OrderTemplateInput) {
       },
       select: { id: true },
     });
-    await tx.orderTemplateItem.createMany({
-      data: clean.itemTypeIds.map((entityTypeId, i) => ({
-        orderTemplateId: created.id,
-        entityTypeId,
-        position: i,
-      })),
-    });
-    // Les types AVANT les recettes : celles-ci y réfèrent par leur id.
+    // Les types de tournage EN PREMIER : les items comme les recettes y réfèrent
+    // par leur id, qui n'existe qu'une fois les types écrits.
     const keyToId = await writeShootTypes(tx, created.id, clean.shootTypes);
+    await writeItems(tx, created.id, clean.items, keyToId);
     if (clean.recipes.length > 0) {
       await tx.orderTemplateRecipe.createMany({
         data: clean.recipes.map((r, i) => ({
@@ -484,16 +555,12 @@ export async function updateOrderTemplate(id: string, input: OrderTemplateInput)
         isArchived: clean.isArchived,
       },
     });
-    await tx.orderTemplateItem.deleteMany({ where: { orderTemplateId: id } });
-    await tx.orderTemplateItem.createMany({
-      data: clean.itemTypeIds.map((entityTypeId, i) => ({
-        orderTemplateId: id,
-        entityTypeId,
-        position: i,
-      })),
-    });
     await tx.orderTemplateRecipe.deleteMany({ where: { orderTemplateId: id } });
+    // Les types de tournage AVANT les items (leurs liaisons en dépendent) — les
+    // items sont réécrits wholesale, la jonction part avec eux en Cascade.
     const keyToId = await writeShootTypes(tx, id, clean.shootTypes);
+    await tx.orderTemplateItem.deleteMany({ where: { orderTemplateId: id } });
+    await writeItems(tx, id, clean.items, keyToId);
     if (clean.recipes.length > 0) {
       await tx.orderTemplateRecipe.createMany({
         data: clean.recipes.map((r, i) => ({
