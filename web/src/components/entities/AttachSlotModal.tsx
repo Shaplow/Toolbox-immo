@@ -28,7 +28,13 @@ export interface AttachAccountOption {
 interface AttachSlotModalProps {
   entityId: string;
   entityLabel: string;
-  /** Fiche « admin » (ex-Bien) : N recettes lancées d'un coup (« missions »). */
+  /**
+   * Fiche « admin » (ex-Bien) : N recettes lancées d'un coup.
+   *
+   * `"missions"` est une CLÉ, pas un mot d'écran : le service serveur et la
+   * route la renvoient telle quelle (`entityService.attachSlotToEntity`). Le
+   * mot « mission » a quitté l'interface — ici on affiche « publications ».
+   */
   mode: "missions" | "reel";
   recipes: AttachRecipeOption[];
   accounts?: AttachAccountOption[];
@@ -106,15 +112,17 @@ export function AttachSlotModal({
         };
         const detail = failed.map((f) => `${f.label} : ${f.error}`).join(" — ");
         if (count === 0) {
-          setError(`Aucune mission créée. ${detail}`);
+          setError(`Aucune publication créée. ${detail}`);
           return;
         }
         if (failed.length > 0) {
           toast.error(
-            `${count} mission${count > 1 ? "s" : ""} créée${count > 1 ? "s" : ""}, ${failed.length} en échec — ${detail}`,
+            `${count} publication${count > 1 ? "s" : ""} créée${count > 1 ? "s" : ""}, ${failed.length} en échec — ${detail}`,
           );
         } else {
-          toast.success(`${count} mission${count > 1 ? "s" : ""} créée${count > 1 ? "s" : ""}.`);
+          toast.success(
+            `${count} publication${count > 1 ? "s" : ""} créée${count > 1 ? "s" : ""}.`,
+          );
         }
         router.push("/calendar");
       } else {
@@ -143,14 +151,14 @@ export function AttachSlotModal({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
-              {mode === "missions" ? "Missions" : "Reel"}
+              {mode === "missions" ? "Publications" : "Reel"}
             </p>
             <h2 className="mt-1 text-[18px] font-semibold text-foreground">
-              {mode === "missions" ? "Lancer des missions" : "Ajouter un reel"}
+              {mode === "missions" ? "Lancer des publications" : "Ajouter un reel"}
             </h2>
             <p className="mt-0.5 text-[12px] text-muted-foreground">
               {mode === "missions"
-                ? `Une mission par recette, toutes rattachées à « ${entityLabel} ».`
+                ? `Une publication par recette, toutes rattachées à « ${entityLabel} ».`
                 : "Le reel démarre directement au montage (les rushs de la fiche sont partagés)."}
             </p>
           </div>
@@ -186,7 +194,10 @@ export function AttachSlotModal({
                 )}
               </div>
 
-              <FormField label="Compte Instagram" help="Optionnel. S'applique à toutes les missions créées.">
+              <FormField
+                label="Compte Instagram"
+                help="Optionnel. S'applique à toutes les publications créées."
+              >
                 <Select
                   value={accountId}
                   onChange={setAccountId}
@@ -239,7 +250,10 @@ export function AttachSlotModal({
             {submitting
               ? "Envoi…"
               : mode === "missions"
-                ? `Lancer ${selected.size || ""} mission${selected.size > 1 ? "s" : ""}`.replace("  ", " ")
+                ? `Lancer ${selected.size || ""} publication${selected.size > 1 ? "s" : ""}`.replace(
+                    "  ",
+                    " ",
+                  )
                 : "Ajouter le reel"}
           </Button>
         </div>

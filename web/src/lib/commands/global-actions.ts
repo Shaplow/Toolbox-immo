@@ -50,12 +50,14 @@ export const GLOBAL_COMMANDS: Command[] = [
   },
   {
     id: "global.bank-view",
-    label: "Vue banque",
-    description: "Contenus produits en attente de programmation",
+    label: "Banque",
+    description: "Publications sans date, à placer sur le calendrier",
     icon: Settings2,
     group: "nav",
     canRun: (u) => u.isAdminReal,
     keywords: ["banque", "bank", "programmer", "prêts"],
-    run: (ctx) => ctx.push("/calendar?view=bank"),
+    // `?bank=1` ouvre le rail sur la vue semaine : la banque n'est plus un
+    // ailleurs où l'on perd le calendrier de vue.
+    run: (ctx) => ctx.push("/calendar?bank=1"),
   },
 ];

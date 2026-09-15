@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { LayoutTemplate, ShieldAlert, ArrowRight, Wrench } from "lucide-react";
 import { TOOL_LABELS, TOOL_DESCRIPTIONS, type Tool } from "@/lib/permissions";
-import { TOOL_META } from "@/lib/toolMeta";
+import { TOOL_META, type ToolKey } from "@/lib/toolMeta";
 
 // parsePermissions inliné — évite de pull userContext.ts (qui importe
 // next/headers et casse le bundle client).
@@ -35,7 +35,11 @@ interface HomeExternalClientProps {
  */
 export function HomeExternalClient({ permissions, access }: HomeExternalClientProps) {
   const userPerms = parsePermissions(permissions) as Tool[];
-  const knownTools = userPerms.filter((p): p is Tool => p in TOOL_LABELS);
+  // Filtré sur TOOL_META et non sur TOOL_LABELS : une permission peut exister
+  // sans page dédiée (« mission » garde le rattachement de reels à une fiche
+  // depuis la suppression du formulaire), et une tuile sans destination mène
+  // nulle part.
+  const knownTools = userPerms.filter((p): p is ToolKey => p in TOOL_META);
   const otherTools = knownTools.filter((t) => t !== "templates");
   const hasOtherTools = otherTools.length > 0;
   const hasTemplates = access.templates.length > 0;

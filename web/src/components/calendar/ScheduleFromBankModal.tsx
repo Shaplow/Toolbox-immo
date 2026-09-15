@@ -27,6 +27,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { toast } from "@/components/ui/Toast";
+import { localInputToIso } from "@/lib/date/formatFr";
 import type { PublicationSlot } from "@/types/calendar";
 
 interface ScheduleFromBankModalProps {
@@ -70,12 +71,15 @@ export function ScheduleFromBankModal({
       setError("Choisissez le compte Instagram de cette publication.");
       return;
     }
-    const parsed = new Date(`${date}T${time}:00`);
-    if (isNaN(parsed.getTime())) {
+    // L'heure saisie est une heure de PARIS, pas celle du navigateur.
+    // `new Date("2026-09-15T10:00:00")` l'interprétait dans le fuseau local :
+    // depuis un poste à +08:00, « 10:00 » atterrissait à 04:00 à Paris. Même
+    // classe de bug que le publishTime du moteur hebdo, même remède.
+    const scheduledAtIso = localInputToIso(`${date}T${time}`);
+    if (!scheduledAtIso) {
       setError("Date ou heure invalide.");
       return;
     }
-    const scheduledAtIso = parsed.toISOString();
 
     setSaving(true);
     setError(null);

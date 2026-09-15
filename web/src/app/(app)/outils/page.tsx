@@ -10,7 +10,7 @@
  */
 
 import { redirect } from "next/navigation";
-import { Subtitles, FileText, ClipboardList, Mic, Wrench, Clapperboard } from "lucide-react";
+import { Subtitles, FileText, ClipboardList, Mic, Wrench } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { canAccessTool } from "@/lib/permissions/tools";
 import { Hub, type HubItem } from "@/components/ui/molecules/Hub";
@@ -20,14 +20,6 @@ interface ToolEntry extends HubItem {
 }
 
 const TOOLS: ToolEntry[] = [
-  // Missions — création d'une mission (recette + compte optionnel) → génération.
-  {
-    perm: "mission",
-    href: "/missions/new",
-    label: "Lancer une mission",
-    description: "Générer depuis une recette, compte Instagram optionnel.",
-    icon: Clapperboard,
-  },
   // Templates volontairement retiré : déjà accessible top-level dans la nav.
   {
     perm: "captions",

@@ -415,7 +415,7 @@ export function EntityTypesClient({ initialTypes }: { initialTypes: EntityTypeRo
 
           <FormField
             label="Capacités"
-            help="Planning + Rushs ⇒ la fiche fonctionne en mode « reel » (un tournage alimente le montage). Sinon, mode « missions » (N recettes lancées d'un coup depuis la fiche)."
+            help="Planning + Rushs ⇒ la fiche fonctionne en mode « reel » (un tournage alimente le montage). Sinon, N recettes sont lancées d'un coup depuis la fiche, une publication par recette."
           >
             <div className="space-y-1.5">
               {CAPABILITIES.map((c) => (

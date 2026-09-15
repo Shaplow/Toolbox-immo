@@ -10,7 +10,7 @@
  * - badge      : optional badge text (e.g. "Bêta"), null if none
  */
 
-import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText, ClipboardList, Clapperboard } from "lucide-react";
+import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText, ClipboardList } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type ToolKey =
@@ -19,8 +19,7 @@ export type ToolKey =
   | "covers"
   | "transcription"
   | "description"
-  | "brief"
-  | "mission";
+  | "brief";
 
 export type ToolMeta = {
   href: string;
@@ -93,16 +92,6 @@ export const TOOL_META: Record<ToolKey, ToolMeta> = {
     // deux outils voisins avec la même icône se confondent dans la nav.
     Icon: ClipboardList,
     color: "violet",
-    badge: null,
-  },
-  mission: {
-    href: "/missions/new",
-    navLabel: "Missions",
-    cardLabel: "Lancer une mission",
-    description:
-      "Générez depuis une recette (compte Instagram optionnel) et archivez le résultat en médiathèque.",
-    Icon: Clapperboard,
-    color: "indigo",
     badge: null,
   },
 };

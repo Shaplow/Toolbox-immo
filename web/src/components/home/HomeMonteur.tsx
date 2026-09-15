@@ -46,7 +46,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
   const weekSunday = getCurrentWeekSunday();
 
   // MONTEUR_STATUSES exclut RUSHES_EXPECTED en datée mais on l'ajoute sans date
-  // pour banque : le monteur veut voir la mission attribuée même en attente rushs.
+  // pour banque : le monteur veut voir la publication attribuée même en attente rushs.
   const rawSlots = await prisma.publicationSlot.findMany({
     where: {
       assigneeMonteurId: userId,
@@ -147,12 +147,12 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     const section = getMonteurSection(status);
     return section === "todo" || section === "in_progress";
   };
-  const bankMissions = slots.filter(
+  const bankSlots = slots.filter(
     (s) => s.scheduledAt == null && isBankActiveStatus(s.status),
   );
 
   const totalActive =
-    overdue.length + thisWeekTodo.length + upcoming.length + bankMissions.length;
+    overdue.length + thisWeekTodo.length + upcoming.length + bankSlots.length;
   const isFullyEmpty = totalActive === 0 && waiting.length === 0;
 
   // ── Bandeau « à faire » + mini-calendrier ──────────────────────────────────
@@ -254,10 +254,10 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
               monteurBadgesMap={monteurBadgesMap}
             />
 
-            {bankMissions.length > 0 && (
+            {bankSlots.length > 0 && (
               <WorklistSection
-                title="Missions sans date (banque)"
-                slots={bankMissions}
+                title="Banque — sans date"
+                slots={bankSlots}
                 mode="monteur"
                 tone="default"
                 monteurBadgesMap={monteurBadgesMap}

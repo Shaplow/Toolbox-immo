@@ -12,13 +12,11 @@ import {
   Filter,
   X,
   Inbox,
-  Calendar as CalendarIcon,
   CheckSquare,
   Square,
   UserCheck,
   Ban,
   CheckCircle,
-  Clapperboard,
 } from "lucide-react";
 import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
@@ -26,7 +24,6 @@ import type { UserRole } from "@/types/roles";
 import { SlotCard } from "./SlotCard";
 import { SlotDetailPanel, type SlotDetailPanelMode } from "./SlotDetailPanel";
 import { AddSlotModal } from "./AddSlotModal";
-import { BankView } from "./BankView";
 import { BankRail } from "./BankRail";
 import { isReadyToSchedule } from "@/lib/slots/bankReady";
 import { BulkReassignModal } from "./BulkReassignModal";
@@ -54,7 +51,6 @@ import { needsMonteur, needsVideaste } from "@/lib/publications/roleNeeds";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
 import { Alert } from "@/components/ui/Alert";
-import { Tabs } from "@/components/ui/Tabs";
 
 interface Account {
   id: string;
@@ -164,10 +160,6 @@ export function CalendarView({
     return new Date(initialWeekStart);
   })();
 
-  const initialView: "week" | "bank" =
-    searchParams?.get("view") === "bank" ? "bank" : "week";
-
-  const [view, setView] = useState<"week" | "bank">(initialView);
   // Compteurs backlog server-side conservés en state local. Mis à jour
   // optimistiquement quand l'admin crée/programme/supprime des slots banque
   // — évite un refetch à chaque action et garde le badge réactif.
@@ -186,9 +178,12 @@ export function CalendarView({
   /** Jour visé par un glisser-déposer dérouté vers la modale (choix du compte). */
   const [scheduleFromBankDate, setScheduleFromBankDate] = useState<string | undefined>(undefined);
   const [addDefaultDate, setAddDefaultDate] = useState<string | undefined>(undefined);
-  // Phase 2 — rail latéral banque en vue semaine (drag→jour). Slots possédés
-  // ici (chargés à l'ouverture) pour pouvoir les retirer après un drop réussi.
-  const [showBankRail, setShowBankRail] = useState(false);
+  // Le rail « Banque » — tout ce qui n'a pas de date, à glisser sur un jour.
+  // Slots possédés ici (chargés à l'ouverture) pour pouvoir les retirer après un
+  // drop réussi. `?bank=1` l'ouvre d'entrée (palette de commandes, liens).
+  const [showBankRail, setShowBankRail] = useState(
+    () => searchParams?.get("bank") === "1",
+  );
   const [bankRailSlots, setBankRailSlots] = useState<PublicationSlot[]>([]);
   const [bankRailLoading, setBankRailLoading] = useState(false);
   // Sprint C — multi-select calendrier admin pour bulk-patch
@@ -229,32 +224,19 @@ export function CalendarView({
     setLoading(true);
     setLoadError(null);
     try {
-      // En mode "bank" on charge uniquement les slots sans date programmée,
-      // sans aucun filtre date — la banque transcende la semaine.
-      const params = new URLSearchParams(
-        view === "bank"
-          ? {
-              bank: "only",
-              ...(filters.accountId ? { accountId: filters.accountId } : {}),
-              ...(filters.status ? { status: filters.status } : {}),
-              ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
-              ...(filters.cmId ? { cmId: filters.cmId } : {}),
-              ...(filters.videasteId ? { videasteId: filters.videasteId } : {}),
-            }
-          : (() => {
-              const dateToEnd = new Date(dateTo);
-              dateToEnd.setHours(23, 59, 59, 999);
-              return {
-                dateFrom: dateFrom.toISOString(),
-                dateTo: dateToEnd.toISOString(),
-                ...(filters.accountId ? { accountId: filters.accountId } : {}),
-                ...(filters.status ? { status: filters.status } : {}),
-                ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
-                ...(filters.cmId ? { cmId: filters.cmId } : {}),
-                ...(filters.videasteId ? { videasteId: filters.videasteId } : {}),
-              };
-            })(),
-      );
+      // La grille ne charge que la semaine : ce qui n'a pas de date vit dans
+      // le rail « Banque », qui a sa propre requête.
+      const dateToEnd = new Date(dateTo);
+      dateToEnd.setHours(23, 59, 59, 999);
+      const params = new URLSearchParams({
+        dateFrom: dateFrom.toISOString(),
+        dateTo: dateToEnd.toISOString(),
+        ...(filters.accountId ? { accountId: filters.accountId } : {}),
+        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
+        ...(filters.cmId ? { cmId: filters.cmId } : {}),
+        ...(filters.videasteId ? { videasteId: filters.videasteId } : {}),
+      });
       const res = await fetch(`/api/calendar/slots?${params.toString()}`);
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
       const data = (await res.json()) as { slots: PublicationSlot[]; hasMore: boolean };
@@ -268,7 +250,7 @@ export function CalendarView({
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, weekStart, filters]);
+  }, [weekStart, filters]);
 
   useEffect(() => {
     void load();
@@ -309,38 +291,6 @@ export function CalendarView({
     url.searchParams.delete("week");
     router.replace(url.pathname + url.search, { scroll: false });
   }, [router]);
-
-  // Switch entre vue semaine et vue banque — persiste dans l'URL pour
-  // que le rechargement (et les liens entrants depuis HomeAdmin KPI) tombent
-  // sur la bonne vue. Reset les filtres au switch pour éviter que le compteur
-  // KPI (banner HomeAdmin = "5 prêts") diverge de la liste filtrée affichée
-  // (= 2 visibles à cause d'un filtre monteur résiduel).
-  const switchView = useCallback(
-    (next: "week" | "bank") => {
-      setView(next);
-      setSlots([]);
-      setFilters({
-        accountId: "",
-        status: "",
-        monteurId: "",
-        cmId: "",
-        videasteId: "",
-        onlyMine: false,
-      });
-      const url = new URL(window.location.href);
-      if (next === "bank") {
-        url.searchParams.set("view", "bank");
-        url.searchParams.delete("week");
-      } else {
-        url.searchParams.delete("view");
-      }
-      // Clear aussi les query params filtres pour cohérence
-      url.searchParams.delete("accountId");
-      url.searchParams.delete("filter");
-      router.replace(url.pathname + url.search, { scroll: false });
-    },
-    [router],
-  );
 
   // Phase 7 — raccourcis clavier globaux du calendrier.
   // ⌘N / Ctrl+N : ouvre AddSlotModal (ADMIN only)
@@ -462,23 +412,37 @@ export function CalendarView({
     toast.success("Publication créée");
   }
 
-  // Charge les contenus banque "prêts" pour le rail latéral (vue semaine).
+  /**
+   * Charge TOUTE la banque pour le rail (vue semaine).
+   *
+   * Le `.filter(isReadyToSchedule)` d'avant était le verrou : il ne laissait
+   * passer que 2 des 16 statuts, alors que rien côté serveur n'interdit de
+   * dater une publication en attente de rushs. `isReadyToSchedule` reste, mais
+   * comme MARQUEUR visuel dans le rail — plus comme filtre.
+   */
   const loadBankRail = useCallback(async () => {
     setBankRailLoading(true);
     try {
       const res = await fetch("/api/calendar/slots?bank=only");
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
       const data = (await res.json()) as { slots: PublicationSlot[] };
-      const ready = (Array.isArray(data.slots) ? data.slots : []).filter(
-        isReadyToSchedule,
-      );
-      setBankRailSlots(ready);
+      setBankRailSlots(Array.isArray(data.slots) ? data.slots : []);
     } catch {
       setBankRailSlots([]);
       toast.error("Impossible de charger la banque");
     } finally {
       setBankRailLoading(false);
     }
+  }, []);
+
+  // Ouverture par l'URL : le contenu doit suivre, sinon le rail s'affiche vide.
+  useEffect(() => {
+    if (showBankRail && bankRailSlots.length === 0 && !bankRailLoading) {
+      void loadBankRail();
+    }
+    // Volontairement sur le seul montage : ensuite c'est `toggleBankRail` qui
+    // charge, et un effet réactif relancerait la requête à chaque banque vidée.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function toggleBankRail() {
@@ -587,75 +551,29 @@ export function CalendarView({
 
   return (
     <div className="flex flex-col h-full">
-      {/* I.1 — Header sticky compact (~48px) : tabs + nav semaine + actions */}
+      {/* I.1 — Header sticky compact (~48px) : nav semaine + actions. Les
+          onglets « Calendrier / Missions » ont disparu avec la vue banque
+          plein écran : la banque est un rail à côté de la grille, pas un
+          ailleurs où l'on perd le calendrier de vue. */}
       <header className="shrink-0 sticky top-0 z-30 bg-card border-b border-border">
         <div className="px-4 sm:px-6 py-2 flex items-center gap-3 flex-wrap">
-          {/* Tabs Calendrier / Missions — compact inline */}
-          <Tabs
-            variant="line"
-            size="sm"
-            value={view}
-            onChange={(v) => switchView(v as "week" | "bank")}
-            items={[
-              { id: "week", label: "Calendrier", icon: CalendarIcon },
-              {
-                id: "bank",
-                label: "Missions",
-                icon: Inbox,
-                badge: backlogTotal > 0 ? (
-                  <span
-                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums ${
-                      backlogReadyCount > 0
-                        ? "bg-info-100 text-info-700"
-                        : "bg-muted text-foreground"
-                    }`}
-                    title={
-                      backlogReadyCount > 0
-                        ? `${backlogTotal} mission${backlogTotal > 1 ? "s" : ""} · ${backlogReadyCount} prête${backlogReadyCount > 1 ? "s" : ""}`
-                        : `${backlogTotal} mission${backlogTotal > 1 ? "s" : ""}`
-                    }
-                  >
-                    {backlogReadyCount > 0 ? (
-                      <>
-                        {backlogTotal}
-                        <span className="opacity-60">·</span>
-                        <span>{backlogReadyCount}</span>
-                      </>
-                    ) : (
-                      backlogTotal
-                    )}
-                  </span>
-                ) : undefined,
-              },
-            ]}
-          />
-
-          {/* Navigation semaine — visible en vue week uniquement */}
-          {view === "week" && (
-            <>
-              <span className="h-5 w-px bg-border" aria-hidden />
-              <div className="inline-flex items-center gap-0.5">
-                <ButtonIcon icon={ChevronLeft} label="Semaine précédente (←)" variant="ghost" size="sm" onClick={prevWeek} />
-                <Button variant="ghost" size="sm" icon={CalendarDays} onClick={goToday} title="Aujourd'hui (T)" disabled={isCurrentWeek}>
-                  Aujourd&apos;hui
-                </Button>
-                <ButtonIcon icon={ChevronRight} label="Semaine suivante (→)" variant="ghost" size="sm" onClick={nextWeek} />
-              </div>
-              <span className="text-[12px] font-mono text-foreground tabular-nums inline-flex items-center gap-1.5">
-                {isCurrentWeek && <span className="inline-block h-1.5 w-1.5 rounded-full bg-success-600" />}
-                {weekLabel}
-              </span>
-            </>
-          )}
+          <div className="inline-flex items-center gap-0.5">
+            <ButtonIcon icon={ChevronLeft} label="Semaine précédente (←)" variant="ghost" size="sm" onClick={prevWeek} />
+            <Button variant="ghost" size="sm" icon={CalendarDays} onClick={goToday} title="Aujourd'hui (T)" disabled={isCurrentWeek}>
+              Aujourd&apos;hui
+            </Button>
+            <ButtonIcon icon={ChevronRight} label="Semaine suivante (→)" variant="ghost" size="sm" onClick={nextWeek} />
+          </div>
+          <span className="text-[12px] font-mono text-foreground tabular-nums inline-flex items-center gap-1.5">
+            {isCurrentWeek && <span className="inline-block h-1.5 w-1.5 rounded-full bg-success-600" />}
+            {weekLabel}
+          </span>
 
           {/* Compteur publications visible */}
           <span className="text-[11px] text-muted-foreground tabular-nums">
-            {view === "bank"
-              ? `${visibleSlots.length} mission${visibleSlots.length > 1 ? "s" : ""}`
-              : `${visibleSlots.length} publication${visibleSlots.length > 1 ? "s" : ""}`}
+            {`${visibleSlots.length} publication${visibleSlots.length > 1 ? "s" : ""}`}
             {mineCount > 0 &&
               !filters.onlyMine &&
-              view === "week" &&
               currentUserRole !== "EXTERNAL_GENERATOR" && (
                 <>
                   {" · "}
@@ -714,22 +632,10 @@ export function CalendarView({
 
             {/* Actions admin contextuelles */}
             <>
-                {/* Missions — un seul point d'entrée : le formulaire complet
-                    (recette + compte optionnel + bien). */}
-                {isAdmin && view === "bank" && (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon={Clapperboard}
-                    onClick={() => router.push("/missions/new")}
-                    title="Créer une mission (recette, compte optionnel, bien)"
-                  >
-                    Nouvelle mission
-                  </Button>
-                )}
-
-                {/* Phase 2 — Toggle rail des contenus prêts (drag→jour, vue semaine admin). */}
-                {isAdmin && view === "week" && (
+                {/* La banque — porte unique vers tout ce qui n'a pas de date.
+                    Le compteur montre le total ET ce qui est prêt : c'est ce
+                    dernier qui est actionnable tout de suite. */}
+                {isAdmin && (
                   <Chip
                     variant={showBankRail ? "sky" : "default"}
                     size="sm"
@@ -737,15 +643,20 @@ export function CalendarView({
                     icon={Inbox}
                     onClick={toggleBankRail}
                   >
-                    Prêts
-                    {backlogReadyCount > 0 && (
-                      <span className="ml-1 tabular-nums">·{backlogReadyCount}</span>
+                    Banque
+                    {backlogTotal > 0 && (
+                      <span className="ml-1 tabular-nums">
+                        ·{backlogTotal}
+                        {backlogReadyCount > 0 && (
+                          <span className="opacity-60"> ·{backlogReadyCount}</span>
+                        )}
+                      </span>
                     )}
                   </Chip>
                 )}
 
                 {/* Sprint C — Toggle sélection multiple (vue semaine admin). */}
-                {isAdmin && view === "week" && (
+                {isAdmin && (
                   <Chip
                     variant={bulkSelectMode ? "sky" : "default"}
                     size="sm"
@@ -760,7 +671,7 @@ export function CalendarView({
                   </Chip>
                 )}
 
-                {isAdmin && view === "week" && (
+                {isAdmin && (
                   <>
                     <Button
                       variant="primary"
@@ -828,7 +739,7 @@ export function CalendarView({
 
             {/* Empty state semaine (V3.3) — la grille reste affichée (cliquer
                 un jour crée une publication), le bandeau guide l'admin. */}
-            {!loading && !loadError && view !== "bank" && visibleSlots.length === 0 && (
+            {!loading && !loadError && visibleSlots.length === 0 && (
               <div className="rounded-lg border border-border bg-card px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
                 <p className="text-[13px] text-muted-foreground">
                   Aucune publication cette semaine. Crée-en une, ou clique un
@@ -842,21 +753,7 @@ export function CalendarView({
               </div>
             )}
 
-            {view === "bank" ? (
-              <BankView
-                slots={visibleSlots}
-                loading={loading}
-                onOpenSlot={(slot) => setSelectedSlot(slot)}
-                onScheduleSlot={(slot) => setScheduleFromBank(slot)}
-                onBulkScheduled={(count) => {
-                  // Mise à jour optimiste : on retire les slots dont la date a
-                  // été posée (refresh complet via load() pour récupérer le
-                  // nouvel état canonique).
-                  setBacklogTotal((prev) => Math.max(0, prev - count));
-                  void load();
-                }}
-              />
-            ) : (
+            {(
               /* Grille 7 colonnes — densifiée I.1, enveloppée DnD (admin) */
               <CalendarDndContext
                 onSlotDrop={handleSlotDropOnDay}
@@ -910,6 +807,14 @@ export function CalendarView({
                   loading={bankRailLoading}
                   onClose={() => setShowBankRail(false)}
                   onScheduleSlot={(slot) => setScheduleFromBank(slot)}
+                  onBulkScheduled={(count) => {
+                    // Mise à jour optimiste du compteur, puis rechargement des
+                    // deux côtés : les publications datées quittent la banque
+                    // et apparaissent dans la grille.
+                    setBacklogTotal((prev) => Math.max(0, prev - count));
+                    void loadBankRail();
+                    void load();
+                  }}
                 />
               )}
               </div>
@@ -981,10 +886,11 @@ export function CalendarView({
           accounts={accounts}
           initialDate={scheduleFromBankDate}
           onScheduled={(slotId) => {
-            // Le slot quitte la banque — on l'enlève de la liste locale et on
-            // décrémente les compteurs. Si le slot programmé était dans la
-            // catégorie "ready" (currentVersion + status finalisable),
-            // décrémente aussi readyCount.
+            // Le slot quitte la banque et REJOINT la grille. Le retrait de
+            // `slots` datait de la vue banque plein écran, où la grille ÉTAIT
+            // la liste de la banque : depuis que le rail vit à côté du
+            // calendrier, filtrer ici faisait disparaître la publication des
+            // deux côtés à la fois — programmée, et nulle part.
             const scheduledSlot = scheduleFromBank;
             const wasReady =
               scheduledSlot.currentVersionId != null &&
@@ -994,9 +900,11 @@ export function CalendarView({
             if (wasReady) {
               setBacklogReadyCount((prev) => Math.max(0, prev - 1));
             }
-            setSlots((prev) => prev.filter((s) => s.id !== slotId));
-            // Si la programmation venait du rail banque, retire aussi l'item.
             setBankRailSlots((prev) => prev.filter((s) => s.id !== slotId));
+            // La date posée peut tomber hors de la semaine affichée : on
+            // recharge plutôt que d'insérer à la main un slot qu'on ne sait pas
+            // placer.
+            void load();
           }}
           onClose={() => {
             setScheduleFromBank(null);
@@ -1008,7 +916,7 @@ export function CalendarView({
       {/* Sprint C — Sticky bar multi-select calendrier (vue semaine admin).
           Phase 7 V2 — split actions de groupe en 3 boutons dédiés (clarté
           immédiate de l'intention). */}
-      {isAdmin && view === "week" && bulkSelectMode && bulkSelectedIds.size > 0 && (
+      {isAdmin && bulkSelectMode && bulkSelectedIds.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gray-950 text-white shadow-[0_8px_24px_-4px_rgba(15,23,42,0.45)]">
           <span className="text-[12px] font-medium tabular-nums mr-1">
             {bulkSelectedIds.size} sélectionnée{bulkSelectedIds.size > 1 ? "s" : ""}

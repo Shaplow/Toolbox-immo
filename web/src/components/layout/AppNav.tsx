@@ -54,9 +54,6 @@ type NavItem = {
   icon: ReactNode;
   disabled?: boolean;
   exact?: boolean;
-  /** Préfixes de chemin supplémentaires qui marquent cet item comme actif
-   *  (ex: "Atelier" (/outils) reste actif sur les pages d'un outil : /missions). */
-  matchPaths?: string[];
 };
 
 type NavSection = {
@@ -109,8 +106,13 @@ export function AppNav({
   const isAdminView = canSeeAdmin && !isImpersonating && !isRoleOverride;
 
   // canAccessTool honore le scope de rôle ET les permissions individuelles →
-  // cohérent avec le hub Atelier et le gate serveur (hasTool). Inclut "mission".
-  const hasAnyToolPerm = ["templates", "captions", "covers", "transcription", "description", "mission"].some(
+  // cohérent avec le hub Atelier et le gate serveur (hasTool).
+  //
+  // « mission » n'y figure plus : elle ne donne plus accès à aucun outil du hub
+  // (le formulaire /missions/new est supprimé), elle ne sert qu'à rattacher des
+  // publications depuis une fiche. L'y laisser afficherait « Atelier » à
+  // quelqu'un que /outils renverrait aussitôt vers /home.
+  const hasAnyToolPerm = ["templates", "captions", "covers", "transcription", "description"].some(
     (t) => canAccessTool(navUser, t),
   );
 
@@ -137,7 +139,7 @@ export function AppNav({
         title: "Production",
         items: [
           { href: "/templates", label: "Studio", icon: <Clapperboard size={14} /> },
-          { href: "/outils", label: "Atelier", icon: <Hammer size={14} />, matchPaths: ["/missions"] },
+          { href: "/outils", label: "Atelier", icon: <Hammer size={14} /> },
           { href: "/listings", label: "Mes générations", icon: <History size={14} /> },
         ],
       },
@@ -181,7 +183,7 @@ export function AppNav({
             ? [{ href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> }]
             : []),
           ...(hasAnyToolPerm
-            ? [{ href: "/outils", label: "Atelier", icon: <Hammer size={14} />, matchPaths: ["/missions"] }]
+            ? [{ href: "/outils", label: "Atelier", icon: <Hammer size={14} /> }]
             : []),
           { href: "/listings", label: "Mes générations", icon: <History size={14} /> },
         ],
@@ -434,11 +436,7 @@ function NavItemLink({
 }) {
   const active =
     !item.disabled &&
-    (pathname === item.href ||
-      (!item.exact && pathname.startsWith(`${item.href}/`)) ||
-      (item.matchPaths ?? []).some(
-        (p) => pathname === p || pathname.startsWith(`${p}/`),
-      ));
+    (pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`)));
 
   if (item.disabled) {
     return (

@@ -142,7 +142,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
           <p className="mt-1 text-[13px] text-muted-foreground">
             {events.length === 0
               ? pendingShoots.length > 0
-                ? `${pendingShoots.length} mission${pendingShoots.length > 1 ? "s" : ""} à confirmer`
+                ? `${pendingShoots.length} tournage${pendingShoots.length > 1 ? "s" : ""} à confirmer`
                 : "Aucun tournage à venir."
               : `${events.length} tournage${events.length > 1 ? "s" : ""} en cours`}
           </p>

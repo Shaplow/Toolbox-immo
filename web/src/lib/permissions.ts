@@ -29,7 +29,11 @@ export const TOOL_LABELS: Record<Tool, string> = {
   transcription: "Transcription audio/vidéo",
   description:   "Générateur de descriptions",
   brief:         "Briefs monteur",
-  mission:       "Lancer une mission",
+  // L'outil « Lancer une mission » (formulaire /missions/new) est supprimé —
+  // zéro publication créée par ce chemin. La permission SURVIT parce qu'elle
+  // garde encore une porte bien vivante : rattacher des reels à une fiche
+  // (`attachSlotToEntity`, chemin « missions » des fiches admin).
+  mission:       "Rattacher des reels à une fiche",
 };
 
 export const TOOL_DESCRIPTIONS: Record<Tool, string> = {
@@ -39,7 +43,7 @@ export const TOOL_DESCRIPTIONS: Record<Tool, string> = {
   transcription: "Transcription automatique de fichiers audio/vidéo avec identification des intervenants",
   description:   "Génération de descriptions texte à partir d'un fichier SRT ou d'une transcription",
   brief:         "Génération de briefs de montage à partir d'une transcription et d'un prompt dédié",
-  mission:       "Créer une mission depuis une recette (compte Instagram optionnel) et générer",
+  mission:       "Créer des publications depuis une fiche, en choisissant les recettes",
 };
 
 /**

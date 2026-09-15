@@ -244,12 +244,12 @@ export async function createSlot(
     }
   }
 
-  // Missions — le compte devient optionnel. Une mission sans compte est une
-  // production « stock » : elle DOIT alors être pilotée par une recette globale
-  // (patternTemplateId). La date reste optionnelle (mission en banque).
+  // Le compte est optionnel. Une publication sans compte est une production
+  // « stock » : elle DOIT alors être pilotée par une recette globale
+  // (patternTemplateId). La date reste optionnelle (publication en banque).
   if (!input.accountId && !input.patternTemplateId) {
     throw new ValidationError(
-      "Un compte Instagram OU une recette (mission) est requis pour créer une publication",
+      "Un compte Instagram OU une recette est requis pour créer une publication",
     );
   }
 
@@ -373,7 +373,7 @@ export async function createSlot(
       throw new ValidationError("Recette introuvable");
     }
     if (template.isArchived) {
-      throw new ValidationError("Recette archivée : impossible de créer une mission dessus");
+      throw new ValidationError("Recette archivée : impossible de créer une publication dessus");
     }
     patternLabel = template.label;
     // Même helper canonique que la branche binding ci-dessus et patchSlot —

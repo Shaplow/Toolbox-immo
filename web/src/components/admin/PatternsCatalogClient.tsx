@@ -25,7 +25,6 @@ import {
   Rocket,
   Square,
   Trash2,
-  Clapperboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
@@ -473,11 +472,6 @@ export function PatternsCatalogClient({
                         />
                       }
                       items={[
-                        {
-                          label: "Lancer une mission",
-                          icon: Clapperboard,
-                          onClick: () => router.push(`/missions/new?recipeId=${item.id}`),
-                        },
                         {
                           label: "Appliquer à des comptes",
                           icon: Rocket,

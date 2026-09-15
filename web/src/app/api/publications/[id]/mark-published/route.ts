@@ -46,9 +46,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Permission insuffisante pour marquer ce slot comme publié" }, { status: 403 });
   }
 
-  // Missions — une publication sur Instagram suppose un compte. Une mission sans
-  // compte (production stock) ne peut pas être marquée publiée tant qu'aucun
-  // compte n'a été assigné. resolveSlotContext ne charge pas accountId (volontairement
+  // Publier sur Instagram suppose un compte. Une publication sans compte
+  // (production stock) ne peut pas être marquée publiée tant qu'aucun compte
+  // n'a été assigné. resolveSlotContext ne charge pas accountId (volontairement
   // minimal) → petit findUnique dédié.
   const slotAccount = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
@@ -56,7 +56,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   });
   if (!slotAccount?.accountId) {
     return NextResponse.json(
-      { error: "Assignez d'abord un compte Instagram à cette mission avant de la marquer publiée." },
+      {
+        error:
+          "Assignez d'abord un compte Instagram à cette publication avant de la marquer publiée.",
+      },
       { status: 400 },
     );
   }

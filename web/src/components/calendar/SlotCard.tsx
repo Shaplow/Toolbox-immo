@@ -17,7 +17,8 @@
 import { Link2 as LinkIcon, Settings2 } from "lucide-react";
 import { AvatarGroup } from "@/components/ui/Avatar";
 import { type PublicationSlot } from "@/types/calendar";
-import { resolveSlotOwner } from "@/lib/slots/statusLabels";
+import { resolveSlotOwner, STATUS_LABELS } from "@/lib/slots/statusLabels";
+import { isReadyToSchedule } from "@/lib/slots/bankReady";
 import {
   getPublicationPhase,
   PHASE_DOT,
@@ -51,7 +52,19 @@ export function SlotCard({
     : "—";
   const phase = getPublicationPhase(slot.status);
   const phaseDot = PHASE_DOT[phase];
-  const phaseLabel = PHASE_LABELS[phase];
+  /**
+   * Une case posée mais pas livrable doit le DIRE.
+   *
+   * Depuis que la banque laisse pré-programmer n'importe quoi, le calendrier
+   * mélange des publications prêtes et des cases réservées dont les rushs
+   * n'existent pas encore. La phase (« En production ») est trop grossière pour
+   * les distinguer : on affiche alors le statut exact (« Rushes attendus »,
+   * « En montage »). Une fois livrable, on revient à la phase — c'est plus
+   * calme, et il n'y a plus rien à signaler.
+   */
+  const phaseLabel = isReadyToSchedule(slot)
+    ? PHASE_LABELS[phase]
+    : (STATUS_LABELS[slot.status] ?? PHASE_LABELS[phase]);
   const ownerRole = resolveSlotOwner(slot);
   // Publié sans lien Instagram (marquage admin) — reste à compléter.
   const missingPublishedUrl = slot.status === "PUBLISHED" && !slot.publishedUrl;
@@ -117,7 +130,10 @@ export function SlotCard({
         <span className="text-[11px] font-mono text-foreground tabular-nums font-medium shrink-0">
           {time}
         </span>
-        <span className="text-[10px] text-muted-foreground truncate min-w-0">
+        {/* `title` : « Rushes attendus » se tronque dans une carte de 56 px —
+            le survol doit rendre le mot entier, sinon l'étiquette qu'on vient
+            d'ajouter ne sert qu'à moitié. */}
+        <span className="text-[10px] text-muted-foreground truncate min-w-0" title={phaseLabel}>
           {phaseLabel}
         </span>
         {missingPublishedUrl && (

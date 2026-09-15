@@ -196,8 +196,8 @@ function activityLabel(type: string, payload: Record<string, unknown> | null): s
     case "BANK_SLOT_CREATED": {
       const size = typeof payload?.batchSize === "number" ? payload.batchSize : null;
       return size
-        ? `Mission ajoutée à la banque (lot de ${size})`
-        : "Mission ajoutée à la banque";
+        ? `Publication ajoutée à la banque (lot de ${size})`
+        : "Publication ajoutée à la banque";
     }
     case "BANK_SLOT_SCHEDULED": {
       const iso = typeof payload?.scheduledAt === "string" ? payload.scheduledAt : null;
@@ -286,7 +286,7 @@ function ActivityIcon({ type }: ActivityIconProps) {
       return <span className={warning} title="Cover : config invalide"><Circle size={10} /></span>;
     // ── Banque ──────────────────────────────────────────────────────────
     case "BANK_SLOT_CREATED":
-      return <span className={neutral} title="Mission ajoutée à la banque"><Inbox size={12} /></span>;
+      return <span className={neutral} title="Publication ajoutée à la banque"><Inbox size={12} /></span>;
     case "BANK_SLOT_SCHEDULED":
       return <span className={success} title="Programmée depuis la banque"><CalendarClock size={12} /></span>;
     default:

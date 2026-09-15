@@ -1,24 +1,39 @@
 "use client";
 
 /**
- * BankRail — rail latéral repliable affiché en vue semaine (ADMIN).
+ * BankRail — la BANQUE, rail latéral de la vue semaine (ADMIN).
  *
- * Liste les contenus de banque « prêts à programmer », draggables directement
- * vers une colonne-jour de la grille (le drop pose le scheduledAt). Comme la
- * vue semaine et la vue banque sont mutuellement exclusives, ce rail est le
- * seul endroit où un vrai drag banque→jour est possible.
+ * Avant, deux portes menaient au même endroit : l'onglet « Missions » (vue
+ * plein écran) et ce rail, filtré aux seuls contenus « prêts ». Même requête,
+ * même objet — « mission » n'a jamais été qu'un mot d'écran, il n'existe aucun
+ * champ en base. Il ne reste qu'une porte, et elle montre TOUT le backlog.
  *
- * Composant présentational : les slots + le loading sont possédés par
- * CalendarView (qui les charge via /api/calendar/slots?bank=only et les retire
- * du rail après un drop réussi). Un clic (sans drag) sur un item ouvre le
- * ScheduleFromBankModal en repli.
+ * Pourquoi tout, y compris ce qui n'est pas prêt : « l'admin doit déjà pouvoir
+ * les placer sur le calendrier pour pré-programmer ». Rien ne s'y opposait
+ * côté serveur — poser une date ne change pas le statut et aucune garde ne lie
+ * les deux ; le verrou était ici, dans un filtre d'affichage.
+ *
+ * Composant présentational : les slots et le chargement sont possédés par
+ * CalendarView, qui les retire du rail après un drop réussi.
  */
 
-import { Inbox, X, GripVertical, CalendarClock } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Inbox,
+  X,
+  GripVertical,
+  CalendarClock,
+  CheckSquare,
+  Square,
+} from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
 import { STATUS_LABELS, type PublicationSlot } from "@/types/calendar";
 import { getPublicationPhase, PHASE_COLORS } from "@/lib/slots/phase";
+import { isReadyToSchedule } from "@/lib/slots/bankReady";
+import { BANK_GROUP_BG, partitionBank } from "@/lib/slots/bankGroups";
+import { BulkScheduleModal } from "./BulkScheduleModal";
 import { useSlotDrag } from "./dnd/useSlotDrag";
 
 interface BankRailProps {
@@ -26,22 +41,52 @@ interface BankRailProps {
   loading: boolean;
   onClose: () => void;
   onScheduleSlot: (slot: PublicationSlot) => void;
+  /** Programmation en lot réussie — l'appelant recharge. */
+  onBulkScheduled?: (count: number) => void;
 }
 
-export function BankRail({ slots, loading, onClose, onScheduleSlot }: BankRailProps) {
+export function BankRail({
+  slots,
+  loading,
+  onClose,
+  onScheduleSlot,
+  onBulkScheduled,
+}: BankRailProps) {
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+
+  const { groups, rest } = useMemo(() => partitionBank(slots), [slots]);
+  const readyCount = useMemo(() => slots.filter(isReadyToSchedule).length, [slots]);
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }
+
   return (
     <aside className="w-64 shrink-0 flex flex-col rounded-lg border border-border bg-card">
       <header className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <Inbox size={14} className="text-muted-foreground" />
-        <span className="text-[12px] font-semibold text-foreground">
-          Prêts à programmer
-        </span>
-        <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
+        <span className="text-[12px] font-semibold text-foreground">Banque</span>
+        <span
+          className="text-[11px] font-mono tabular-nums text-muted-foreground"
+          title={`${slots.length} en banque · ${readyCount} prête${readyCount > 1 ? "s" : ""}`}
+        >
           {slots.length}
+          {readyCount > 0 && <span className="opacity-60"> · {readyCount}</span>}
         </span>
         <ButtonIcon
           icon={X}
-          label="Fermer le rail des contenus prêts"
+          label="Fermer la banque"
           variant="ghost"
           size="sm"
           onClick={onClose}
@@ -49,7 +94,23 @@ export function BankRail({ slots, loading, onClose, onScheduleSlot }: BankRailPr
         />
       </header>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5 max-h-[70vh]">
+      {slots.length > 1 && !loading && (
+        <div className="px-2 py-1.5 border-b border-border">
+          <Chip
+            size="sm"
+            selected={selectMode}
+            icon={selectMode ? CheckSquare : Square}
+            onClick={() => {
+              setSelectMode((v) => !v);
+              setSelectedIds(new Set());
+            }}
+          >
+            Sélection multiple
+          </Chip>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto p-2 space-y-3 max-h-[70vh]">
         {loading ? (
           <>
             <div className="h-14 rounded-md bg-muted animate-pulse" />
@@ -57,23 +118,100 @@ export function BankRail({ slots, loading, onClose, onScheduleSlot }: BankRailPr
           </>
         ) : slots.length === 0 ? (
           <p className="px-2 py-6 text-center text-[11.5px] text-muted-foreground">
-            Aucun contenu prêt à programmer.
+            La banque est vide.
           </p>
         ) : (
-          slots.map((slot) => (
-            <BankRailItem
-              key={slot.id}
-              slot={slot}
-              onSchedule={() => onScheduleSlot(slot)}
-            />
-          ))
+          <>
+            {groups.map(({ group, slots: groupSlots }) =>
+              groupSlots.length === 0 ? null : (
+                <section key={group.key} className="space-y-1.5">
+                  <header
+                    className={`flex items-center gap-1.5 rounded px-1.5 py-1 ${BANK_GROUP_BG[group.key]}`}
+                    title={group.hint}
+                  >
+                    <span className="text-[10.5px] font-semibold text-foreground truncate">
+                      {group.label}
+                    </span>
+                    <span className="ml-auto text-[10px] font-mono tabular-nums text-muted-foreground">
+                      {groupSlots.length}
+                    </span>
+                  </header>
+                  {groupSlots.map((slot) => (
+                    <BankRailItem
+                      key={slot.id}
+                      slot={slot}
+                      selectMode={selectMode}
+                      selected={selectedIds.has(slot.id)}
+                      onToggleSelect={() => toggleSelect(slot.id)}
+                      onSchedule={() => onScheduleSlot(slot)}
+                    />
+                  ))}
+                </section>
+              ),
+            )}
+            {/* Hors taxonomie (une annulée restée sans date, par exemple) : la
+                banque montre tout ce qu'elle contient, sinon elle ment. */}
+            {rest.length > 0 && (
+              <section className="space-y-1.5">
+                <header className="flex items-center gap-1.5 rounded px-1.5 py-1 bg-muted">
+                  <span className="text-[10.5px] font-semibold text-foreground">Autres</span>
+                  <span className="ml-auto text-[10px] font-mono tabular-nums text-muted-foreground">
+                    {rest.length}
+                  </span>
+                </header>
+                {rest.map((slot) => (
+                  <BankRailItem
+                    key={slot.id}
+                    slot={slot}
+                    selectMode={selectMode}
+                    selected={selectedIds.has(slot.id)}
+                    onToggleSelect={() => toggleSelect(slot.id)}
+                    onSchedule={() => onScheduleSlot(slot)}
+                  />
+                ))}
+              </section>
+            )}
+          </>
         )}
       </div>
 
-      {!loading && slots.length > 0 && (
-        <footer className="px-3 py-1.5 border-t border-border text-[10.5px] text-muted-foreground">
-          Glisse un contenu sur un jour pour le programmer.
+      {selectMode && selectedIds.size > 0 ? (
+        <footer className="px-2 py-2 border-t border-border space-y-1.5">
+          <Button
+            variant="primary"
+            size="sm"
+            icon={CalendarClock}
+            className="w-full"
+            onClick={() => setBulkOpen(true)}
+          >
+            Programmer {selectedIds.size}
+          </Button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="w-full text-[10.5px] text-muted-foreground hover:text-foreground"
+          >
+            Annuler la sélection
+          </button>
         </footer>
+      ) : (
+        !loading &&
+        slots.length > 0 && (
+          <footer className="px-3 py-1.5 border-t border-border text-[10.5px] text-muted-foreground">
+            Glisse une publication sur un jour pour la programmer.
+          </footer>
+        )
+      )}
+
+      {bulkOpen && (
+        <BulkScheduleModal
+          slotIds={[...selectedIds]}
+          onScheduled={(count) => {
+            onBulkScheduled?.(count);
+            clearSelection();
+          }}
+          onClose={() => setBulkOpen(false)}
+        />
       )}
     </aside>
   );
@@ -83,33 +221,54 @@ export function BankRail({ slots, loading, onClose, onScheduleSlot }: BankRailPr
 
 function BankRailItem({
   slot,
+  selectMode,
+  selected,
+  onToggleSelect,
   onSchedule,
 }: {
   slot: PublicationSlot;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onSchedule: () => void;
 }) {
+  // En sélection, on ne glisse plus : les deux gestes partent du même appui et
+  // se disputeraient le pointeur.
   const { listeners, setNodeRef, isDragging } = useSlotDrag(slot, {
     fromBank: true,
+    disabled: selectMode,
   });
   const phase = getPublicationPhase(slot.status);
   const title = slot.pattern?.label ?? slot.title ?? "Publication";
+  const ready = isReadyToSchedule(slot);
 
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
+      {...(selectMode ? {} : listeners)}
       role="button"
       tabIndex={0}
-      onClick={onSchedule}
+      onClick={selectMode ? onToggleSelect : onSchedule}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSchedule();
+          if (selectMode) onToggleSelect();
+          else onSchedule();
         }
       }}
-      title={`${title} · ${slot.account ? `@${slot.account.handle}` : "Sans compte"} — glisser sur un jour ou cliquer pour programmer`}
+      title={`${title} · ${slot.account ? `@${slot.account.handle}` : "Sans compte"} — ${
+        selectMode ? "cliquer pour sélectionner" : "glisser sur un jour ou cliquer pour programmer"
+      }`}
       className={[
-        "group w-full text-left rounded-md border border-border bg-card px-2 py-1.5 cursor-grab touch-none transition-colors",
+        "group w-full text-left rounded-md border bg-card px-2 py-1.5 touch-none transition-colors",
+        selectMode ? "cursor-pointer" : "cursor-grab",
+        // Ce qui est livrable se repère sans lire : la bordure d'accent remplace
+        // le filtre qui masquait tout le reste.
+        selected
+          ? "border-primary ring-1 ring-primary/30"
+          : ready
+            ? "border-info-200"
+            : "border-border",
         "hover:bg-muted hover:border-zinc-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
         isDragging ? "opacity-40" : "",
       ]
@@ -117,14 +276,24 @@ function BankRailItem({
         .join(" ")}
     >
       <div className="flex items-center gap-1.5">
-        <GripVertical size={12} className="text-muted-foreground/60 shrink-0" />
+        {selectMode ? (
+          selected ? (
+            <CheckSquare size={12} className="text-primary shrink-0" />
+          ) : (
+            <Square size={12} className="text-muted-foreground/60 shrink-0" />
+          )
+        ) : (
+          <GripVertical size={12} className="text-muted-foreground/60 shrink-0" />
+        )}
         <p className="text-[12.5px] font-medium text-foreground truncate flex-1 leading-tight">
           {title}
         </p>
-        <CalendarClock
-          size={12}
-          className="text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0"
-        />
+        {!selectMode && (
+          <CalendarClock
+            size={12}
+            className="text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0"
+          />
+        )}
       </div>
       <div className="mt-1 flex items-center justify-between gap-1.5 pl-[18px]">
         <span className="text-[10.5px] text-muted-foreground truncate">

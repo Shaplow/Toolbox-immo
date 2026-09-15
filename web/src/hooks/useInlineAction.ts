@@ -13,7 +13,7 @@ interface ActionConfig {
 }
 
 /**
- * Hook générique pour les actions inline sur les listes (Inbox, BankView, etc.)
+ * Hook générique pour les actions inline sur les listes (Inbox, banque, etc.)
  *
  * Extrait du pattern de EditReviewQuickActions (Sprint B livré) — fetch + toast
  * + router.refresh. Réutilisable pour tous les types d'action d'item.

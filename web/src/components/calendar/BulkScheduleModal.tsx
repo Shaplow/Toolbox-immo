@@ -3,7 +3,7 @@
 /**
  * BulkScheduleModal — Sprint B.
  *
- * Programme N slots banque en une opération depuis BankView.
+ * Programme N slots banque en une opération depuis le rail « Banque ».
  * - Date de départ + heure de base
  * - Toggle « Étaler sur N jours » (cadence quotidienne)
  * - Toggle « Garder l'heure de chaque recette » (lit binding.publishTime)

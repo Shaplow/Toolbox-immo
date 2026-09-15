@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Bandeau « missions à confirmer » en tête de la worklist vidéaste.
+ * Bandeau « tournages à confirmer » en tête de la worklist vidéaste.
  *
  * Jusqu'ici, répondre à une demande de disponibilité imposait d'ouvrir la fiche
  * — et rien, ni sur `/home` ni sur `/fiches`, n'indiquait qu'une réponse était
@@ -76,7 +76,7 @@ export function ShootAvailabilityStrip({ shoots }: { shoots: PendingShoot[] }) {
         <header className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
           <CalendarClock size={14} className="text-warning-700" />
           <h2 className="text-[13px] font-semibold tracking-tight text-foreground">
-            Missions à confirmer{" "}
+            Tournages à confirmer{" "}
             <span className="tabular-nums text-muted-foreground">· {shoots.length}</span>
           </h2>
         </header>
