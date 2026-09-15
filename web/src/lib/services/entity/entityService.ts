@@ -1322,12 +1322,40 @@ const entityAttachSelect = {
   assigneeVideasteId: true,
   defaultAssigneeMonteurId: true,
   defaultAssigneeCmId: true,
+  // Un reel ajouté à la main sur une fiche de commande appartient à cette
+  // commande — sinon il échappe à la garde de `deleteOrder` (qui refuse de
+  // supprimer une commande dont une publication est publiée) et disparaît du
+  // détail que le client consulte. Le statut conditionne ce rattachement,
+  // cf. `orderIdForManualAttach`.
+  orderId: true,
+  order: { select: { status: true } },
   shootSlots: {
     select: { assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   },
 } satisfies Prisma.EntitySelect;
 
 type EntityAttachRow = Prisma.EntityGetPayload<{ select: typeof entityAttachSelect }>;
+
+/**
+ * La commande à laquelle rattacher un slot ajouté À LA MAIN sur une fiche.
+ *
+ * Seulement quand elle est déjà instanciée. Avant validation, les fiches
+ * existent mais les publications pas encore : un reel ajouté là consommerait le
+ * quota de `instantiateOrderSlots` (qui plafonne par recette) et ferait naître
+ * MOINS de vidéos que le client en a commandé. Après, le compte est juste, et
+ * le rattachement rend la vidéo visible dans son suivi.
+ *
+ * `input.orderId` explicite gagne toujours : c'est `instantiateOrderSlots`
+ * lui-même qui le passe, au moment où il crée les publications de la commande.
+ */
+function orderIdForManualAttach(
+  entity: Pick<EntityAttachRow, "orderId" | "order">,
+  explicitOrderId?: string | null,
+): string | null {
+  if (explicitOrderId) return explicitOrderId;
+  const status = entity.order?.status;
+  return status === "VALIDATED" || status === "DONE" ? entity.orderId : null;
+}
 
 /**
  * Attache un slot à une fiche. Deux chemins distincts selon les capacités du
@@ -1463,7 +1491,22 @@ async function attachReelToEntity(
         "Cette recette (contenu automatique) ne peut pas être utilisée pour un reel",
       );
     }
-  } else if (!input.patternTemplateId) {
+  } else if (input.patternTemplateId) {
+    // Branche symétrique de celle du binding, et elle manquait : une recette
+    // globale passait SANS contrôle de source, et `createSlot` ne re-vérifie
+    // rien. Inatteignable tant qu'aucune UI n'envoyait ce champ — la modale
+    // « Ajouter un reel » le fait maintenant, pour les fiches sans compte.
+    const template = await prisma.patternTemplate.findUnique({
+      where: { id: input.patternTemplateId },
+      select: { source: true },
+    });
+    if (!template) throw new ValidationError("Recette introuvable");
+    if (!(REEL_ATTACHABLE_SOURCES as readonly string[]).includes(template.source)) {
+      throw new ValidationError(
+        "Cette recette (contenu automatique) ne peut pas être utilisée pour un reel",
+      );
+    }
+  } else {
     if (!entity.accountId) {
       throw new ValidationError(
         "Aucun compte associé à cette fiche : impossible de résoudre une recette de montage",
@@ -1495,7 +1538,7 @@ async function attachReelToEntity(
     eventId: entityId,
     patternBindingId,
     patternTemplateId: input.patternTemplateId ?? null,
-    orderId: input.orderId ?? null,
+    orderId: orderIdForManualAttach(entity, input.orderId),
     // Fallback admin quand la fiche tournage n'a pas de compte (type sans
     // hasAccount) — createSlot force de toute façon le compte du tournage
     // quand il en a un.

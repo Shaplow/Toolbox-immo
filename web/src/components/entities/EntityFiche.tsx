@@ -51,7 +51,12 @@ import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
 import { MAX_DECLINE_REASON, needsVideasteAnswer } from "@/lib/entityAvailability";
 import type { CustomField } from "@/lib/customFields";
-import { AttachSlotModal, type AttachRecipeOption, type AttachAccountOption } from "./AttachSlotModal";
+import {
+  AttachSlotModal,
+  type AttachRecipeOption,
+  type AttachAccountOption,
+  type AttachShootTypeOption,
+} from "./AttachSlotModal";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { EntityRushesPanel, type EntityRush } from "@/components/entities/EntityRushesPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -160,6 +165,9 @@ export interface EntityFicheProps {
   attachMode: "missions" | "reel";
   recipes: AttachRecipeOption[];
   accounts: AttachAccountOption[];
+  /** Types de tournage du modèle de commande — vide si la fiche n'en vient pas. */
+  shootTypes?: AttachShootTypeOption[];
+  defaultShootTypeId?: string | null;
   videastes: { id: string; name: string }[];
   monteurs: { id: string; name: string }[];
   cms: { id: string; name: string }[];
@@ -199,6 +207,8 @@ export function EntityFiche({
   attachMode,
   recipes,
   accounts,
+  shootTypes = [],
+  defaultShootTypeId = null,
   videastes,
   monteurs,
   cms,
@@ -1436,6 +1446,8 @@ export function EntityFiche({
           mode={attachMode}
           recipes={recipes}
           accounts={accounts}
+          shootTypes={shootTypes}
+          defaultShootTypeId={defaultShootTypeId}
           onClose={() => setAttachOpen(false)}
         />
       )}

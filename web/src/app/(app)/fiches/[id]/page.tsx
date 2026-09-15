@@ -13,11 +13,14 @@ import { NotFoundError } from "@/lib/services/_runtime/errors";
 import { PageShell } from "@/components/ui/PageShell";
 import { EntityFiche, type EntityFicheData } from "@/components/entities/EntityFiche";
 import { longDateTimeFr } from "@/lib/date/formatFr";
-import type { AttachAccountOption, AttachRecipeOption } from "@/components/entities/AttachSlotModal";
+import { REEL_ATTACHABLE_SOURCES } from "@/lib/publications/constants";
+import type {
+  AttachAccountOption,
+  AttachRecipeOption,
+  AttachShootTypeOption,
+} from "@/components/entities/AttachSlotModal";
 
 type Params = { params: Promise<{ id: string }> };
-
-const REEL_ATTACHABLE_SOURCES = ["manual_rushes", "external_upload"] as const;
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params;
@@ -53,6 +56,8 @@ export default async function EntityDetailPage({ params }: Params) {
   // global) ou « reel » (bindings actifs compatibles du compte de la fiche).
   let recipes: AttachRecipeOption[] = [];
   let accounts: AttachAccountOption[] = [];
+  let shootTypes: AttachShootTypeOption[] = [];
+  let defaultShootTypeId: string | null = null;
   if (attachMode === "missions") {
     // Ne proposer que les recettes compatibles avec le type de CETTE fiche :
     // createSlot rejette les autres (garde requiresEntityTypeId, avec fallback
@@ -79,21 +84,93 @@ export default async function EntityDetailPage({ params }: Params) {
     ]);
     recipes = templates;
     accounts = accs;
-  } else if (entity.accountId) {
-    const bindings = await prisma.patternBinding.findMany({
-      where: {
-        accountId: entity.accountId,
-        isActive: true,
-        patternTemplate: { source: { in: [...REEL_ATTACHABLE_SOURCES] } },
-      },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, customLabel: true, patternTemplate: { select: { label: true, source: true } } },
-    });
-    recipes = bindings.map((b) => ({
-      id: b.id,
-      label: patternLabel(b),
-      source: b.patternTemplate.source,
-    }));
+  } else {
+    // Chemin « reel ». Deux sources de recettes selon que la fiche porte un
+    // compte ou non — et le second cas n'est PAS marginal : la commande ne
+    // demande plus de compte (« il se choisit au placement »), donc un tournage
+    // né d'une commande arrive ici sans compte. Tant que cette branche était un
+    // `else if (entity.accountId)`, « Ajouter un reel » y était mort.
+    if (entity.accountId) {
+      const bindings = await prisma.patternBinding.findMany({
+        where: {
+          accountId: entity.accountId,
+          isActive: true,
+          patternTemplate: { source: { in: [...REEL_ATTACHABLE_SOURCES] } },
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          customLabel: true,
+          patternTemplateId: true,
+          patternTemplate: { select: { label: true, source: true } },
+        },
+      });
+      recipes = bindings.map((b) => ({
+        id: b.id,
+        kind: "binding" as const,
+        patternTemplateId: b.patternTemplateId,
+        label: patternLabel(b),
+        source: b.patternTemplate.source,
+      }));
+    } else {
+      // Sans compte, on propose les recettes elles-mêmes. `attachReelToEntity`
+      // accepte `patternTemplateId` ; le reel naîtra sans compte, en banque, et
+      // le compte se choisira au placement — la doctrine, pas un pis-aller.
+      const templates = await prisma.patternTemplate.findMany({
+        where: { isArchived: false, source: { in: [...REEL_ATTACHABLE_SOURCES] } },
+        orderBy: { label: "asc" },
+        select: { id: true, label: true, source: true },
+      });
+      recipes = templates.map((t) => ({
+        id: t.id,
+        kind: "template" as const,
+        patternTemplateId: t.id,
+        label: t.label,
+        source: t.source,
+      }));
+    }
+
+    // Les types de tournage du modèle de commande de la fiche. Ils n'existent
+    // que si la fiche vient d'une commande — sinon le sélecteur ne s'affiche
+    // pas du tout, plutôt que de proposer un choix vide.
+    if (entity.orderId) {
+      const order = await prisma.order.findUnique({
+        where: { id: entity.orderId },
+        select: {
+          shootTypeId: true,
+          orderTemplate: {
+            select: {
+              shootTypes: {
+                select: { id: true, label: true, description: true },
+                orderBy: { position: "asc" },
+              },
+              recipes: {
+                select: { patternTemplateId: true, shootTypeId: true },
+                orderBy: { position: "asc" },
+              },
+            },
+          },
+        },
+      });
+      if (order) {
+        shootTypes = order.orderTemplate.shootTypes;
+        defaultShootTypeId = order.shootTypeId;
+        // Une recette peut être déclenchée par plusieurs types ; `shootTypeId:
+        // null` côté commande signifie « commune à tous ». On garde cette
+        // sémantique telle quelle : liste vide = proposée quel que soit le type.
+        const byTemplate = new Map<string, string[]>();
+        for (const r of order.orderTemplate.recipes) {
+          if (!r.shootTypeId) continue;
+          const list = byTemplate.get(r.patternTemplateId) ?? [];
+          list.push(r.shootTypeId);
+          byTemplate.set(r.patternTemplateId, list);
+        }
+        recipes = recipes.map((r) => ({
+          ...r,
+          shootTypeIds: r.patternTemplateId ? (byTemplate.get(r.patternTemplateId) ?? []) : [],
+        }));
+      }
+    }
   }
 
   const isAdmin = userContext.canAdminBypass;
@@ -234,6 +311,8 @@ export default async function EntityDetailPage({ params }: Params) {
         attachMode={attachMode}
         recipes={recipes}
         accounts={accounts}
+        shootTypes={shootTypes}
+        defaultShootTypeId={defaultShootTypeId}
         videastes={videastes.map((u) => ({ id: u.id, name: u.name }))}
         monteurs={monteurs.map((u) => ({ id: u.id, name: u.name }))}
         cms={cms.map((u) => ({ id: u.id, name: u.name }))}

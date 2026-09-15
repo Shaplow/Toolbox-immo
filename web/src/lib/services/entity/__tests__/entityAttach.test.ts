@@ -15,6 +15,7 @@ const mockEntityFindUnique = vi.fn();
 const mockBindingFindUnique = vi.fn();
 const mockBindingFindFirst = vi.fn();
 const mockTemplateFindMany = vi.fn();
+const mockTemplateFindUnique = vi.fn();
 const mockActivityCreate = vi.fn().mockResolvedValue({ id: "act" });
 const mockCreateSlot = vi.fn();
 const mockHasTool = vi.fn();
@@ -26,7 +27,10 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...a: unknown[]) => mockBindingFindUnique(...a),
       findFirst: (...a: unknown[]) => mockBindingFindFirst(...a),
     },
-    patternTemplate: { findMany: (...a: unknown[]) => mockTemplateFindMany(...a) },
+    patternTemplate: {
+      findMany: (...a: unknown[]) => mockTemplateFindMany(...a),
+      findUnique: (...a: unknown[]) => mockTemplateFindUnique(...a),
+    },
     entityActivity: { create: (...a: unknown[]) => mockActivityCreate(...a) },
   },
 }));
@@ -63,11 +67,13 @@ const TEAM_ENTITY = {
   id: "ent-1",
   isArchived: false,
   type: { visibility: "team", hasPlanning: true, hasRushes: true },
-  accountId: "acc-1",
+  accountId: "acc-1" as string | null,
   status: "SHOT",
   assigneeVideasteId: "vid-1",
   defaultAssigneeMonteurId: "mon-1",
   defaultAssigneeCmId: "cm-1",
+  orderId: null as string | null,
+  order: null as { status: string } | null,
   shootSlots: [] as Array<{ assigneeMonteurId: string | null; assigneeCmId: string | null }>,
 };
 
@@ -93,10 +99,16 @@ beforeEach(() => {
     { id: "r1", label: "Recette 1", templateId: "tpl-1" },
     { id: "r2", label: "Recette 2", templateId: null },
   ]);
+  mockTemplateFindUnique.mockReset().mockResolvedValue({ source: "manual_rushes" });
   mockActivityCreate.mockReset().mockResolvedValue({ id: "act" });
   mockCreateSlot.mockReset().mockResolvedValue({ id: "slot-x" });
   mockHasTool.mockReset().mockResolvedValue(false);
 });
+
+/** Le dernier `createSlot` reçu — toutes les assertions d'entrée passent par là. */
+function lastSlotInput(): Record<string, unknown> {
+  return mockCreateSlot.mock.calls.at(-1)![0] as Record<string, unknown>;
+}
 
 describe("attachSlotToEntity — chemin reel (fiche team)", () => {
   it("MONTEUR : les overrides assignés/date/bien sont ignorés (strip)", async () => {
@@ -269,5 +281,110 @@ describe("attachSlotToEntity — chemin missions (fiche admin)", () => {
     );
     expect(res.mode).toBe("missions");
     expect(mockHasTool).toHaveBeenCalledWith("ext-1", "mission");
+  });
+});
+
+// ─── Reel par recette globale, et rattachement à la commande ────────────────
+//
+// Deux chemins ouverts en même temps, et le premier protège le second : la
+// modale « Ajouter un reel » poste désormais `patternTemplateId` quand la fiche
+// n'a pas de compte — cas devenu la norme depuis que la commande ne demande
+// plus de compte.
+
+describe("attachSlotToEntity — reel par recette globale (fiche sans compte)", () => {
+  const NO_ACCOUNT = { ...TEAM_ENTITY, accountId: null };
+
+  it("crée le reel sans compte, sans chercher de binding par défaut", async () => {
+    mockEntityFindUnique.mockResolvedValue({ ...NO_ACCOUNT });
+
+    await attachSlotToEntity("ent-1", { patternTemplateId: "tpl-42" }, ctx("ADMIN", "a1", true));
+
+    const input = lastSlotInput();
+    expect(input.patternTemplateId).toBe("tpl-42");
+    expect(input.patternBindingId).toBeNull();
+    // Le fallback « premier binding du compte » n'a pas lieu d'être : il n'y a
+    // pas de compte, et c'est précisément le cas qu'on vient de débloquer.
+    expect(mockBindingFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("recette auto_template par patternTemplateId → ValidationError", async () => {
+    // Ce chemin ne vérifiait RIEN avant : la garde de source ne couvrait que
+    // les bindings, et createSlot ne re-vérifie pas.
+    mockEntityFindUnique.mockResolvedValue({ ...NO_ACCOUNT });
+    mockTemplateFindUnique.mockResolvedValue({ source: "auto_template" });
+
+    await expect(
+      attachSlotToEntity("ent-1", { patternTemplateId: "tpl-auto" }, ctx("ADMIN", "a1", true)),
+    ).rejects.toThrow(ValidationError);
+    expect(mockCreateSlot).not.toHaveBeenCalled();
+  });
+
+  it("recette introuvable → ValidationError", async () => {
+    mockEntityFindUnique.mockResolvedValue({ ...NO_ACCOUNT });
+    mockTemplateFindUnique.mockResolvedValue(null);
+
+    await expect(
+      attachSlotToEntity("ent-1", { patternTemplateId: "nope" }, ctx("ADMIN", "a1", true)),
+    ).rejects.toThrow(ValidationError);
+  });
+
+  it("sans recette DU TOUT et sans compte → ValidationError (inchangé)", async () => {
+    mockEntityFindUnique.mockResolvedValue({ ...NO_ACCOUNT });
+
+    await expect(
+      attachSlotToEntity("ent-1", {}, ctx("ADMIN", "a1", true)),
+    ).rejects.toThrow(ValidationError);
+  });
+});
+
+describe("attachSlotToEntity — orderId dérivé de la fiche", () => {
+  it("commande VALIDATED → le reel lui est rattaché", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...TEAM_ENTITY,
+      orderId: "ord-1",
+      order: { status: "VALIDATED" },
+    });
+
+    await attachSlotToEntity("ent-1", { patternBindingId: "b1" }, ctx("ADMIN", "a1", true));
+
+    expect(lastSlotInput().orderId).toBe("ord-1");
+  });
+
+  it("commande SUBMITTED → PAS rattaché : sinon la validation créerait moins de vidéos", async () => {
+    // instantiateOrderSlots plafonne par recette. Un reel ajouté avant la
+    // validation consommerait le quota du client.
+    mockEntityFindUnique.mockResolvedValue({
+      ...TEAM_ENTITY,
+      orderId: "ord-1",
+      order: { status: "SUBMITTED" },
+    });
+
+    await attachSlotToEntity("ent-1", { patternBindingId: "b1" }, ctx("ADMIN", "a1", true));
+
+    expect(lastSlotInput().orderId).toBeNull();
+  });
+
+  it("fiche hors commande → null", async () => {
+    mockEntityFindUnique.mockResolvedValue({ ...TEAM_ENTITY });
+
+    await attachSlotToEntity("ent-1", { patternBindingId: "b1" }, ctx("ADMIN", "a1", true));
+
+    expect(lastSlotInput().orderId).toBeNull();
+  });
+
+  it("orderId explicite gagne — c'est instantiateOrderSlots qui le passe", async () => {
+    mockEntityFindUnique.mockResolvedValue({
+      ...TEAM_ENTITY,
+      orderId: "ord-1",
+      order: { status: "SUBMITTED" },
+    });
+
+    await attachSlotToEntity(
+      "ent-1",
+      { patternBindingId: "b1", orderId: "ord-explicite" },
+      ctx("ADMIN", "a1", true),
+    );
+
+    expect(lastSlotInput().orderId).toBe("ord-explicite");
   });
 });

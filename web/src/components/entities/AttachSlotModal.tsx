@@ -18,11 +18,33 @@ export interface AttachRecipeOption {
   id: string;
   label: string;
   source: string;
+  /**
+   * Ce que `id` désigne, donc quel champ poster.
+   *
+   * Une fiche avec compte propose ses recettes appliquées (`PatternBinding`) ;
+   * une fiche sans compte propose les recettes elles-mêmes (`PatternTemplate`).
+   * Sans ce discriminant, la modale posterait un id de recette dans le champ
+   * réservé aux bindings. Absent = binding, pour le mode « missions » qui, lui,
+   * envoie toujours des `recipeIds`.
+   */
+  kind?: "binding" | "template";
+  /** Recette sous-jacente — sert à rattacher l'option à un type de tournage. */
+  patternTemplateId?: string;
+  /**
+   * Types de tournage qui déclenchent cette recette. **Vide = proposée quel que
+   * soit le type**, exactement la sémantique `shootTypeId: null` côté commande.
+   */
+  shootTypeIds?: string[];
 }
 export interface AttachAccountOption {
   id: string;
   name: string;
   handle: string;
+}
+export interface AttachShootTypeOption {
+  id: string;
+  label: string;
+  description: string | null;
 }
 
 interface AttachSlotModalProps {
@@ -38,6 +60,10 @@ interface AttachSlotModalProps {
   mode: "missions" | "reel";
   recipes: AttachRecipeOption[];
   accounts?: AttachAccountOption[];
+  /** Types de tournage du modèle de commande de la fiche. Vide = pas de choix à offrir. */
+  shootTypes?: AttachShootTypeOption[];
+  /** Type retenu à la commande — pré-sélection. */
+  defaultShootTypeId?: string | null;
   onClose: () => void;
 }
 
@@ -54,6 +80,8 @@ export function AttachSlotModal({
   mode,
   recipes,
   accounts = [],
+  shootTypes = [],
+  defaultShootTypeId = null,
   onClose,
 }: AttachSlotModalProps) {
   const router = useRouter();
@@ -61,6 +89,21 @@ export function AttachSlotModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [accountId, setAccountId] = useState("");
   // Mode reel.
+  const [shootTypeId, setShootTypeId] = useState<string>(defaultShootTypeId ?? "");
+
+  // Le type de tournage FILTRE la liste, il ne la contraint pas : c'est une
+  // aide à la saisie. L'admin garde le droit d'ajouter une vidéo hors type —
+  // le serveur ne vérifie que la source (reel vs auto).
+  const visibleRecipes =
+    shootTypeId === ""
+      ? recipes
+      : recipes.filter((r) => !r.shootTypeIds?.length || r.shootTypeIds.includes(shootTypeId));
+  // Un type « nombre décidé plus tard » n'a typiquement AUCUNE vidéo attachée —
+  // c'est tout son sens. Filtrer dessus rendrait une liste vide ; on retombe
+  // alors sur le catalogue complet plutôt que sur un écran sans issue.
+  const typeYieldsNothing = shootTypeId !== "" && visibleRecipes.length === 0;
+  const effectiveRecipes = typeYieldsNothing ? recipes : visibleRecipes;
+
   const [recipeId, setRecipeId] = useState(recipes[0]?.id ?? "");
   const [title, setTitle] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
@@ -82,17 +125,23 @@ export function AttachSlotModal({
       setError("Sélectionnez au moins une recette.");
       return;
     }
-    if (mode === "reel" && recipes.length > 0 && !recipeId) {
+    if (mode === "reel" && effectiveRecipes.length > 0 && !recipeId) {
       setError("Choisissez une recette.");
       return;
     }
     setSubmitting(true);
     try {
+      // En mode reel, l'id sélectionné désigne un binding OU une recette selon
+      // que la fiche porte un compte : poster le mauvais champ créerait un slot
+      // sans recette, et tout le pipeline en dépend.
+      const chosen = recipes.find((r) => r.id === recipeId);
       const body =
         mode === "missions"
           ? { recipeIds: [...selected], accountId: accountId || null }
           : {
-              patternBindingId: recipeId || null,
+              ...(chosen?.kind === "template"
+                ? { patternTemplateId: recipeId || null }
+                : { patternBindingId: recipeId || null }),
               title: title.trim() || null,
               scheduledAt: scheduledAt ? localInputToIso(scheduledAt) : null,
             };
@@ -208,19 +257,58 @@ export function AttachSlotModal({
             </>
           ) : (
             <>
-              {recipes.length > 0 ? (
+              {/* Le type ne s'affiche que s'il y a un choix à offrir : une fiche
+                  hors commande n'en a aucun, et un sélecteur vide poserait une
+                  question sans réponse. */}
+              {shootTypes.length > 0 && (
+                <FormField
+                  label="Type de tournage"
+                  help="Il détermine les vidéos proposées. « Toutes » lève le filtre."
+                >
+                  <Select
+                    value={shootTypeId}
+                    onChange={(v) => {
+                      setShootTypeId(v);
+                      // La recette choisie peut ne plus être dans la liste : la
+                      // garder afficherait un champ vide au-dessus d'un id
+                      // invisible, et l'envoi partirait quand même.
+                      const stillThere =
+                        v === "" ||
+                        recipes.some(
+                          (r) =>
+                            r.id === recipeId &&
+                            (!r.shootTypeIds?.length || r.shootTypeIds.includes(v)),
+                        );
+                      if (!stillThere) setRecipeId("");
+                    }}
+                    options={[
+                      { value: "", label: "Toutes les vidéos du modèle" },
+                      ...shootTypes.map((t) => ({ value: t.id, label: t.label })),
+                    ]}
+                  />
+                </FormField>
+              )}
+
+              {typeYieldsNothing && (
+                <p className="text-[12px] text-muted-foreground">
+                  Ce type ne déclenche aucune vidéo prédéfinie — toutes les recettes de montage
+                  sont proposées.
+                </p>
+              )}
+
+              {effectiveRecipes.length > 0 ? (
                 <FormField label="Recette" required>
                   <Select
                     value={recipeId}
                     onChange={setRecipeId}
-                    options={recipes.map((r) => ({ value: r.id, label: r.label }))}
+                    options={effectiveRecipes.map((r) => ({ value: r.id, label: r.label }))}
                     placeholder="Choisir une recette…"
                   />
                 </FormField>
               ) : (
                 <p className="text-[12px] text-warning-700 bg-warning-50 border border-warning-200 rounded-md px-3 py-2">
-                  Aucune recette active sur ce compte. Configurez une recette pour ce compte avant
-                  d&apos;ajouter des reels.
+                  Aucune recette de montage disponible. Créez une recette à rushs ou à envoi externe
+                  avant d&apos;ajouter des reels.
                 </p>
               )}
 
@@ -244,7 +332,8 @@ export function AttachSlotModal({
           <Button
             onClick={handleSubmit}
             disabled={
-              submitting || (mode === "missions" ? selected.size === 0 : recipes.length === 0)
+              submitting ||
+              (mode === "missions" ? selected.size === 0 : effectiveRecipes.length === 0)
             }
           >
             {submitting
