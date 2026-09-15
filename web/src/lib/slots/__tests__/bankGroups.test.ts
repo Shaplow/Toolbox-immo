@@ -33,7 +33,25 @@ describe("partitionBank", () => {
 
   it("les statuts livrables forment le premier groupe", () => {
     expect(BANK_GROUPS[0].key).toBe("ready");
-    expect(BANK_GROUPS[0].statuses).toEqual(["EDIT_APPROVED", "READY_FOR_CM"]);
+    // SCHEDULED en fait partie depuis la remise en banque : une publication
+    // validée qu'on met de côté n'attend plus qu'une date, comme les deux
+    // autres.
+    expect(BANK_GROUPS[0].statuses).toEqual([
+      "EDIT_APPROVED",
+      "READY_FOR_CM",
+      "SCHEDULED",
+    ]);
+  });
+
+  it("une publication partie chez le client a son propre groupe", () => {
+    // Elles tombaient dans « Autres », rangées avec les accidents.
+    const { groups, rest } = partitionBank([
+      { status: "AWAITING_CLIENT" as SlotStatus },
+      { status: "CLIENT_REVISION" as SlotStatus },
+    ]);
+    const client = groups.find((g) => g.group.key === "client");
+    expect(client?.slots).toHaveLength(2);
+    expect(rest).toHaveLength(0);
   });
 
   it("l'attente de rushs et le montage sont distingués", () => {

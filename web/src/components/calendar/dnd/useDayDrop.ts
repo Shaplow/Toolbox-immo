@@ -15,3 +15,19 @@ export function useDayDrop(dateIso: string, opts?: { disabled?: boolean }) {
   });
   return { setNodeRef, isOver };
 }
+
+/**
+ * useBankDrop — déclare le rail « Banque » comme cible de drop.
+ *
+ * Le geste inverse exact du glisser-sur-un-jour : lâcher une carte du
+ * calendrier ici lui retire sa date. Le rail était jusqu'ici source de drag
+ * seulement ; le trajet ne se faisait que dans un sens.
+ */
+export function useBankDrop(opts?: { disabled?: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: "bank",
+    data: { type: "bank" },
+    disabled: opts?.disabled,
+  });
+  return { setNodeRef, isOver };
+}

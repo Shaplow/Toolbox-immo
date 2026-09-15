@@ -144,6 +144,10 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
   const waiting = slots.filter((s) => getMonteurSection(s.status) === "waiting");
   const isBankActiveStatus = (status: SlotStatus): boolean => {
     if (status === "RUSHES_EXPECTED") return true;
+    // SCHEDULED n'a aucune section monteur (il est hors de sa worklist) : sans
+    // ce cas, une publication validée puis remise en banque par l'admin
+    // disparaîtrait de ses DEUX listes, les datées comme la banque.
+    if (status === "SCHEDULED") return true;
     const section = getMonteurSection(status);
     return section === "todo" || section === "in_progress";
   };

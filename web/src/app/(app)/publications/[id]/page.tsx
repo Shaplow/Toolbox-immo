@@ -73,6 +73,11 @@ export default async function PublicationPage({ params }: PageProps) {
           client: { select: { name: true } },
         },
       },
+      // Comptes en collab — le CM doit les inviter dans le composer Instagram.
+      collabs: {
+        select: { account: { select: { id: true, handle: true } } },
+        orderBy: { createdAt: "asc" },
+      },
       // Fiche data liée — pour le résumé lecture seule des champs (chantier
       // « rendre visible le lien fiche→publication »).
       entity: {
@@ -672,6 +677,7 @@ export default async function PublicationPage({ params }: PageProps) {
             }
           : null
       }
+      collabs={slot.collabs.map((c) => ({ id: c.account.id, handle: c.account.handle }))}
       listing={listing}
       pattern={
         effectivePattern

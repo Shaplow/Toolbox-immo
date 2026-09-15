@@ -31,6 +31,7 @@ import {
   SlidersHorizontal,
   Clapperboard,
   MoreHorizontal,
+  Inbox,
   ChevronUp,
   ChevronDown,
   Sparkles,
@@ -42,8 +43,10 @@ import {
   type SlotStatus,
   type PublicationSlot,
 } from "@/types/calendar";
+import { TERMINAL_STATUSES } from "@/types/roles";
 import { STATUS_TRANSITIONS } from "@/lib/services/slot/transitions";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { UnscheduleSlotModal } from "./UnscheduleSlotModal";
 import { Drawer } from "@/components/ui/Drawer";
 import { Tabs } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
@@ -56,6 +59,7 @@ import { EntityPicker } from "@/components/entities/EntityPicker";
 import { SYSTEM_ENTITY_TYPE_IDS } from "@/lib/entityTypes";
 import { REEL_ATTACHABLE_SOURCES } from "@/lib/publications/constants";
 import { Combobox } from "@/components/ui/Combobox";
+import { Chip } from "@/components/ui/Chip";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TimePicker } from "@/components/ui/TimePicker";
 import { AssigneePicker } from "@/components/ui/molecules/AssigneePicker";
@@ -244,12 +248,20 @@ export function SlotDetailPanel({
   const [duplicating, setDuplicating] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmUnschedule, setConfirmUnschedule] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   // Rattachement à un tournage après coup (cas RPOD : on pré-shoote des slots
   // sans savoir combien de vidéos sortiront du contenu tourné).
   const [attachingShoot, setAttachingShoot] = useState(false);
   const [assigningAccount, setAssigningAccount] = useState(false);
   const [accountChoice, setAccountChoice] = useState("");
+  // Collab : liste des comptes invités. État local pour que le toggle réponde
+  // tout de suite ; le PUT remplace le set entier, donc pas de danse
+  // ajout/retrait à orchestrer.
+  const [collabIds, setCollabIds] = useState<string[]>(
+    () => (slot.collabs ?? []).map((c) => c.id),
+  );
+  const [savingCollabs, setSavingCollabs] = useState(false);
   const [accountOptions, setAccountOptions] = useState<
     { id: string; name: string; handle: string }[]
   >([]);
@@ -614,7 +626,9 @@ export function SlotDetailPanel({
    * une requête inutile à chaque ouverture du panneau.
    */
   useEffect(() => {
-    if (slot.account || tab !== "config" || accountOptions.length > 0) return;
+    // Chargés dès l'onglet Configuration, même si la publication a déjà un
+    // compte : le sélecteur de collab en a besoin lui aussi.
+    if (tab !== "config" || accountOptions.length > 0) return;
     let cancelled = false;
     void fetch("/api/admin/accounts")
       .then((r) => (r.ok ? r.json() : []))
@@ -625,7 +639,52 @@ export function SlotDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [slot.account, tab, accountOptions.length]);
+  }, [tab, accountOptions.length]);
+
+  /**
+   * Enregistre les comptes en collab. Optimiste : on pose l'état local avant la
+   * réponse, et on le remet en place si le serveur refuse (compte principal
+   * choisi, plafond dépassé) — le refus vient avec son motif.
+   */
+  /**
+   * Comptes proposables en collab : ni le compte qui publie (il ne peut pas
+   * être son propre collaborateur), ni les sentinelles `__shared__` qui sont
+   * des curseurs de médiathèque déguisés en comptes.
+   */
+  const collabOptions = accountOptions.filter(
+    (a) => a.id !== slot.account?.id && !a.handle.startsWith("__shared__"),
+  );
+
+  async function handleToggleCollab(accountId: string) {
+    const next = collabIds.includes(accountId)
+      ? collabIds.filter((id) => id !== accountId)
+      : [...collabIds, accountId];
+    const previous = collabIds;
+    setCollabIds(next);
+    setSavingCollabs(true);
+    try {
+      const res = await fetch(`/api/publications/${slot.id}/collabs`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountIds: next }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Erreur ${res.status}`);
+      }
+      onUpdated({
+        ...slot,
+        collabs: accountOptions
+          .filter((a) => next.includes(a.id))
+          .map((a) => ({ id: a.id, handle: a.handle })),
+      });
+    } catch (err) {
+      setCollabIds(previous);
+      toast.error(err instanceof Error ? err.message : "Enregistrement impossible");
+    } finally {
+      setSavingCollabs(false);
+    }
+  }
 
   // P1 — 4 tabs → 2 tabs. "Configuration" regroupe Planning + Équipe +
   // Ajustements via des CollapsibleSection internes (planning en haut car
@@ -661,6 +720,23 @@ export function SlotDetailPanel({
 
   return (
     <>
+      {confirmUnschedule && slot.scheduledAt && (
+        <UnscheduleSlotModal
+          slotId={slot.id}
+          label={title}
+          scheduledAt={slot.scheduledAt}
+          status={slot.status}
+          onDone={() => {
+            // Le drawer se ferme : la publication n'est plus sur la grille, la
+            // garder ouverte laisserait un panneau qui parle d'une carte
+            // disparue. CalendarView recharge les deux côtés.
+            onUpdated({ ...slot, scheduledAt: null });
+            onClose();
+          }}
+          onClose={() => setConfirmUnschedule(false)}
+        />
+      )}
+
       <ConfirmDialog
         open={confirmCancel}
         title="Retirer cette vidéo ?"
@@ -824,6 +900,21 @@ export function SlotDetailPanel({
                             onClick: () => {
                               void handleDuplicate();
                             },
+                          },
+                          "separator",
+                        ] as const)
+                      : []),
+                    // Mettre de côté, au-dessus de « Retirer » : c'est le geste
+                    // réversible des deux, et le placer après ferait de
+                    // l'abandon le premier réflexe. Absent si déjà sans date.
+                    ...(!isRestricted &&
+                    slot.scheduledAt &&
+                    !(TERMINAL_STATUSES as readonly string[]).includes(slot.status)
+                      ? ([
+                          {
+                            label: "Remettre en banque",
+                            icon: Inbox,
+                            onClick: () => setConfirmUnschedule(true),
                           },
                           "separator",
                         ] as const)
@@ -1033,6 +1124,46 @@ export function SlotDetailPanel({
                   </div>
                 </CollapsibleSection>
               )}
+
+              {/* Collab : le post part du compte principal et apparaît aussi
+                  sur les comptes cochés. Ici parce que c'est la question qui
+                  suit immédiatement « quel compte » — même geste, même endroit. */}
+              <CollapsibleSection
+                title="Collaboration"
+                defaultOpen={collabIds.length > 0}
+                storageKey="slot-panel:collabs"
+              >
+                <div className="pt-1 space-y-2">
+                  {collabOptions.length === 0 ? (
+                    <p className="text-[11.5px] text-muted-foreground">
+                      Aucun autre compte disponible.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {collabOptions.map((a) => (
+                          <Chip
+                            key={a.id}
+                            size="sm"
+                            selected={collabIds.includes(a.id)}
+                            variant={collabIds.includes(a.id) ? "sky" : "default"}
+                            onClick={() => {
+                              if (!savingCollabs) void handleToggleCollab(a.id);
+                            }}
+                          >
+                            @{a.handle}
+                          </Chip>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        {collabIds.length > 0
+                          ? "Le CM verra la consigne au moment de poster : inviter ces comptes en collaborateur."
+                          : "Comptes à inviter en collaborateur — la publication apparaîtra aussi sur leur profil."}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </CollapsibleSection>
 
               <CollapsibleSection
                 title="Planning"

@@ -31,6 +31,7 @@ import {
   Circle,
   Inbox,
   CalendarClock,
+  Users,
 } from "lucide-react";
 import { STATUS_LABELS } from "@/lib/slots/statusLabels";
 import type { SlotStatus } from "@/types/calendar";
@@ -211,6 +212,25 @@ function activityLabel(type: string, payload: Record<string, unknown> | null): s
       });
       return `Sortie de banque · programmée le ${date} à ${time}`;
     }
+    case "COLLAB_ACCOUNTS_CHANGED": {
+      const to = Array.isArray(payload?.to) ? (payload.to as string[]) : [];
+      // Les handles sont dans le payload : le fil reste lisible même si un
+      // compte est renommé ou supprimé plus tard.
+      if (to.length === 0) return "Collaboration retirée";
+      return `Collab : ${to.map((h) => `@${h}`).join(", ")}`;
+    }
+    case "BANK_SLOT_UNSCHEDULED": {
+      const iso = typeof payload?.from === "string" ? payload.from : null;
+      if (!iso) return "Remise en banque · date retirée";
+      const d = new Date(iso);
+      const date = dayMonthLongFr(d);
+      const time = d.toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: PARIS_TZ,
+      });
+      return `Remise en banque · était prévue le ${date} à ${time}`;
+    }
     default:
       return type;
   }
@@ -289,6 +309,11 @@ function ActivityIcon({ type }: ActivityIconProps) {
       return <span className={neutral} title="Publication ajoutée à la banque"><Inbox size={12} /></span>;
     case "BANK_SLOT_SCHEDULED":
       return <span className={success} title="Programmée depuis la banque"><CalendarClock size={12} /></span>;
+    case "COLLAB_ACCOUNTS_CHANGED":
+      return <span className={neutral} title="Comptes en collaboration"><Users size={12} /></span>;
+    // Ton neutre : mettre de côté est un choix d'orchestration, pas un échec.
+    case "BANK_SLOT_UNSCHEDULED":
+      return <span className={neutral} title="Remise en banque"><Inbox size={12} /></span>;
     default:
       return <span className={neutral} title={type}><Circle size={10} /></span>;
   }

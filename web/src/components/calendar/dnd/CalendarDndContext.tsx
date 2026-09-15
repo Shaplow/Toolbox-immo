@@ -39,6 +39,8 @@ export interface SlotDropPayload {
 interface CalendarDndContextProps {
   children: ReactNode;
   onSlotDrop: (payload: SlotDropPayload) => void;
+  /** Lâcher sur le rail « Banque » : la publication perd sa date. */
+  onSlotDropOnBank?: (slot: PublicationSlot) => void;
   currentUserRole?: UserRole;
   currentUserId?: string;
 }
@@ -46,6 +48,7 @@ interface CalendarDndContextProps {
 export function CalendarDndContext({
   children,
   onSlotDrop,
+  onSlotDropOnBank,
   currentUserRole,
   currentUserId,
 }: CalendarDndContextProps) {
@@ -73,8 +76,14 @@ export function CalendarDndContext({
     const overData = over.data.current as
       | { type?: string; dateIso?: string }
       | undefined;
-    if (overData?.type !== "day" || !overData.dateIso) return;
     if (!activeData?.slot) return;
+    // Retour vers la banque. Une carte tirée DEPUIS le rail et relâchée dessus
+    // n'a pas de date à perdre : on ignore, plutôt que d'émettre un patch nul.
+    if (overData?.type === "bank") {
+      if (!activeData.fromBank) onSlotDropOnBank?.(activeData.slot);
+      return;
+    }
+    if (overData?.type !== "day" || !overData.dateIso) return;
     onSlotDrop({
       slotId: String(active.id),
       dateIso: overData.dateIso,

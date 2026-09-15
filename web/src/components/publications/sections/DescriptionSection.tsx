@@ -29,11 +29,15 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Alert } from "@/components/ui/Alert";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/components/ui/Toast";
+import { SlotAccountLine } from "../SlotAccountLine";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 import { canGenerateDescription } from "@/lib/publications/actions";
 
 interface Props {
   slot: { id: string };
+  /** Compte qui publie + comptes en collab — rappel avant de copier la légende. */
+  account?: { id: string; handle: string; name: string } | null;
+  collabs?: { id: string; handle: string }[];
   /** Subset du pattern requis par canGenerateDescription (source +
    *  needsCaptions + coverMode + needsDescription). Avant Phase 2.6, on
    *  hardcodait source="auto_template" — bug silencieux pour manual_rushes
@@ -122,6 +126,8 @@ export function DescriptionSection(props: Props) {
 
 function DescriptionSectionInner({
   slot,
+  account = null,
+  collabs = [],
   pattern,
   initialDescription,
   canEdit,
@@ -499,6 +505,12 @@ function DescriptionSectionInner({
 
   const headerActions = (
     <>
+      {/* Le rappel de collab vit dans l'en-tête de section, pas dans la branche
+          du bouton « Copier » : celle-ci n'est qu'un des cinq modes de rendu
+          (auto sans contenu, auto avec contenu, édition, manuel, vide), et le
+          rappel disparaîtrait dans les quatre autres. Ici, le CM le lit quel
+          que soit le mode — juste avant de copier et de basculer sur Instagram. */}
+      {collabs.length > 0 && <SlotAccountLine account={account} collabs={collabs} variant="compact" />}
       {verdict.visible && verdict.enabled && (
         <button
           type="button"

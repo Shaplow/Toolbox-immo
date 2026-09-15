@@ -35,6 +35,7 @@ import { isReadyToSchedule } from "@/lib/slots/bankReady";
 import { BANK_GROUP_BG, partitionBank } from "@/lib/slots/bankGroups";
 import { BulkScheduleModal } from "./BulkScheduleModal";
 import { useSlotDrag } from "./dnd/useSlotDrag";
+import { useBankDrop } from "./dnd/useDayDrop";
 
 interface BankRailProps {
   slots: PublicationSlot[];
@@ -58,6 +59,9 @@ export function BankRail({
 
   const { groups, rest } = useMemo(() => partitionBank(slots), [slots]);
   const readyCount = useMemo(() => slots.filter(isReadyToSchedule).length, [slots]);
+  // En sélection multiple le pointeur sert déjà à cocher : accepter un drop
+  // par-dessus mélangerait deux gestes sur le même appui.
+  const { setNodeRef: setDropRef, isOver } = useBankDrop({ disabled: selectMode });
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -73,7 +77,12 @@ export function BankRail({
   }
 
   return (
-    <aside className="w-64 shrink-0 flex flex-col rounded-lg border border-border bg-card">
+    <aside
+      ref={setDropRef}
+      className={`w-64 shrink-0 flex flex-col rounded-lg border bg-card transition-colors ${
+        isOver ? "border-primary ring-2 ring-primary/25" : "border-border"
+      }`}
+    >
       <header className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <Inbox size={14} className="text-muted-foreground" />
         <span className="text-[12px] font-semibold text-foreground">Banque</span>

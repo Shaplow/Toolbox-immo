@@ -10,6 +10,11 @@ export interface PublicationSlot {
   /** null = mission sans compte Instagram. */
   account: { id: string; name: string; handle: string } | null;
   /**
+   * Comptes invités en collaborateur : le post part de `account` et apparaît
+   * AUSSI sur ces profils. Consigne lue par le CM au moment de poster.
+   */
+  collabs?: { id: string; handle: string }[];
+  /**
    * Fiche (Entity) rattachée — clé API historique `propertyId`, valeur = id
    * d'Entity mappé serveur depuis la colonne `entityId` (la colonne DB
    * `propertyId` est morte depuis la Phase 5).

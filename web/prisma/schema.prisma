@@ -777,6 +777,9 @@ model InstagramAccount {
   dataCursors      AccountDataLibraryCursor[]
   renders          Render[]
   publicationSlots PublicationSlot[]
+  /// Publications où ce compte est invité en collaborateur (il n'est pas le
+  /// compte qui poste — cf. `PublicationSlotCollab`).
+  slotCollabs      PublicationSlotCollab[]
   assetAccesses    MediaAssetAccess[]
   assetUsages      MediaAssetUsage[]
   entryAccesses    DataEntryAccess[]
@@ -809,6 +812,29 @@ model DataEntryAccess {
   account   InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([entryId, accountId])
+}
+
+/// Comptes invités en « collaborateur » sur une publication.
+///
+/// Sur Instagram, un post en collab part d'UN compte qui invite les autres :
+/// il apparaît ensuite sur tous les profils. Le CM doit le savoir AVANT de
+/// poster — l'invitation se fait dans le composer, pas après coup.
+///
+/// Décidé PAR PUBLICATION et non sur la recette : la collab est ponctuelle
+/// (« parfois »), et un défaut récurrent qui ne serait juste que parfois
+/// détruirait la confiance dans ce que le CM lit.
+///
+/// Cascade des deux côtés, comme `PublicationSlot.accountId` : une ligne
+/// orpheline afficherait « collab avec (compte supprimé) », pire que rien.
+model PublicationSlotCollab {
+  slotId    String
+  accountId String
+  createdAt DateTime         @default(now())
+  slot      PublicationSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  account   InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([slotId, accountId])
+  @@index([accountId])
 }
 
 /// Suivi d'utilisation d'une fiche de données par compte.
@@ -1042,6 +1068,9 @@ model PublicationSlot {
   versions                      PublicationVersion[]    @relation("SlotVersions")
   comments                      PublicationComment[]
   activities                    PublicationActivity[]
+  /// Comptes invités en « collaborateur » sur ce post. Le post part du compte
+  /// principal (`accountId`) et apparaît AUSSI sur ces profils.
+  collabs                       PublicationSlotCollab[]
   brief                         PublicationBrief?
   rushes                        PublicationRush[]
   /// Jobs captions liés à ce slot (Phase 1.9 — A2)

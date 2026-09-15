@@ -59,6 +59,13 @@ export function slotBadgeLabel(
   const meta = SLOT_STATUS_META[status];
   if (!meta) return status;
   if (!scheduledAt && meta.phase === "planned") return "En banque";
+  // Depuis qu'on peut remettre de côté une publication AVANCÉE, un montage en
+  // cours peut se retrouver sans date. « Montage à valider » tout seul laisse
+  // croire qu'elle est toujours au planning ; le suffixe dit ce qui manque,
+  // sans effacer l'état de production qui, lui, reste vrai.
+  if (!scheduledAt && !(TERMINAL_STATUSES as readonly string[]).includes(status)) {
+    return `${meta.label} · sans date`;
+  }
   return meta.label;
 }
 

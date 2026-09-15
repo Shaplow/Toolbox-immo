@@ -14,34 +14,57 @@ import { CheckCircle2, XCircle, Info, X } from "lucide-react";
 
 export type ToastType = "success" | "error" | "info";
 
+/**
+ * Action optionnelle portée par le toast — un « Annuler » après coup.
+ *
+ * Pour les gestes qu'on déclenche d'un mouvement plutôt que d'un clic réfléchi
+ * (un glisser-déposer, typiquement) : une modale de confirmation en fin de drag
+ * est bancale, alors qu'un rattrapage offert juste après se lit sans effort.
+ */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastItem {
   id: string;
   message: string;
   type: ToastType;
+  action?: ToastAction;
 }
 
 interface ToastStore {
   toasts: ToastItem[];
-  add: (message: string, type?: ToastType) => void;
+  add: (message: string, type?: ToastType, action?: ToastAction) => void;
   remove: (id: string) => void;
 }
 
+/** Un toast qui propose une action reste plus longtemps : il faut le lire, puis décider. */
+const DISMISS_MS = 4000;
+const DISMISS_WITH_ACTION_MS = 9000;
+
 export const useToastStore = create<ToastStore>()((set) => ({
   toasts: [],
-  add: (message, type = "info") => {
+  add: (message, type = "info", action) => {
     const id = String(Date.now()) + Math.random().toString(36).slice(2, 6);
-    set((s) => ({ toasts: [...s.toasts, { id, message, type }] }));
-    setTimeout(() => {
-      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-    }, 4000);
+    set((s) => ({ toasts: [...s.toasts, { id, message, type, action }] }));
+    setTimeout(
+      () => {
+        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+      },
+      action ? DISMISS_WITH_ACTION_MS : DISMISS_MS,
+    );
   },
   remove: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
 export const toast = {
-  success: (msg: string) => useToastStore.getState().add(msg, "success"),
-  error:   (msg: string) => useToastStore.getState().add(msg, "error"),
-  info:    (msg: string) => useToastStore.getState().add(msg, "info"),
+  success: (msg: string, action?: ToastAction) =>
+    useToastStore.getState().add(msg, "success", action),
+  error:   (msg: string, action?: ToastAction) =>
+    useToastStore.getState().add(msg, "error", action),
+  info:    (msg: string, action?: ToastAction) =>
+    useToastStore.getState().add(msg, "info", action),
 };
 
 const TYPE_ICON = {
@@ -72,6 +95,21 @@ function ToastItem({ item, onRemove }: { item: ToastItem; onRemove: () => void }
     >
       <Icon size={15} className={`${TYPE_ICON_CLS[item.type]} shrink-0 mt-0.5`} />
       <span className="flex-1 leading-relaxed">{item.message}</span>
+      {item.action && (
+        <button
+          type="button"
+          // Le conteneur se ferme au clic : sans stopPropagation, l'action
+          // partirait ET le toast disparaîtrait, sans qu'on sache lequel a agi.
+          onClick={(e) => {
+            e.stopPropagation();
+            item.action!.onClick();
+            onRemove();
+          }}
+          className="shrink-0 font-medium text-primary hover:underline"
+        >
+          {item.action.label}
+        </button>
+      )}
       <button
         className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
         aria-label="Fermer"

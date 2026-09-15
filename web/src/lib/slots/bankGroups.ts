@@ -10,7 +10,7 @@
 
 import type { SlotStatus } from "@/types/calendar";
 
-export type BankGroupKey = "ready" | "review" | "wip" | "todo";
+export type BankGroupKey = "ready" | "review" | "client" | "wip" | "todo";
 
 export interface BankGroup {
   key: BankGroupKey;
@@ -20,25 +20,36 @@ export interface BankGroup {
 }
 
 /**
- * Quatre groupes, dans l'ordre d'utilité pour celui qui place : ce qui est
+ * Cinq groupes, dans l'ordre d'utilité pour celui qui place : ce qui est
  * livrable d'abord, ce qui n'a pas encore commencé en dernier.
  *
- * Pas de groupe « validation client » : `AWAITING_CLIENT` / `CLIENT_REVISION`
- * sont rares hors workflow client complet et créaient une section
- * structurellement vide.
+ * Le groupe « Chez le client » a d'abord été écarté — `AWAITING_CLIENT` /
+ * `CLIENT_REVISION` étaient rares en banque, et la section restait vide. Il
+ * revient avec la remise en banque : mettre de côté une publication partie en
+ * validation est un cas normal, et elle n'a rien à faire dans « Autres ».
  */
 export const BANK_GROUPS: BankGroup[] = [
   {
     key: "ready",
+    // `SCHEDULED` y entre depuis qu'on peut remettre une publication de côté :
+    // le statut dit « validée, prête à partir », et sans date il ne lui manque
+    // effectivement plus que ça. La laisser dans « Autres » la rangeait avec
+    // les accidents.
     label: "Prêtes à programmer",
     hint: "Montage validé — il ne manque qu'une date.",
-    statuses: ["EDIT_APPROVED", "READY_FOR_CM"],
+    statuses: ["EDIT_APPROVED", "READY_FOR_CM", "SCHEDULED"],
   },
   {
     key: "review",
     label: "Montage à valider",
     hint: "Une nouvelle version a été livrée.",
     statuses: ["EDIT_REVIEW"],
+  },
+  {
+    key: "client",
+    label: "Chez le client",
+    hint: "Envoyée en validation, ou en attente de corrections.",
+    statuses: ["AWAITING_CLIENT", "CLIENT_REVISION"],
   },
   {
     key: "wip",
@@ -58,6 +69,7 @@ export const BANK_GROUPS: BankGroup[] = [
 export const BANK_GROUP_BG: Record<BankGroupKey, string> = {
   ready: "bg-info-50",
   review: "bg-warning-50",
+  client: "bg-sky-50",
   wip: "bg-stone-50",
   todo: "bg-muted",
 };

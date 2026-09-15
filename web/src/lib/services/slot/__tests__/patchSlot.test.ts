@@ -108,6 +108,8 @@ interface SlotFixture {
   id: string;
   status: string;
   accountId: string;
+  /** Date programmée — `null` = la publication est en banque. */
+  scheduledAt: Date | null;
   assigneeMonteurId: string | null;
   assigneeCmId: string | null;
   assigneeVideasteId: string | null;
@@ -217,6 +219,7 @@ function makeSlot(overrides: Partial<SlotFixture> = {}): SlotFixture {
     id: "slot-1",
     status: "DRAFT",
     accountId: "account-A",
+    scheduledAt: null,
     assigneeMonteurId: "user-monteur",
     assigneeCmId: "user-cm",
     assigneeVideasteId: "user-videaste",
@@ -723,3 +726,126 @@ describe("patchSlot — légende pré-remplie depuis une DataLibrary (rattacheme
   });
 });
 
+
+// ─── Invariant 8 : remise en banque (scheduledAt → null) ──────────────────
+//
+// Ce chemin n'avait AUCUN test alors qu'il est ouvert côté service depuis
+// juin : le contrat (qui a le droit, sur quels statuts, ce qui est tracé)
+// n'était tenu que par la lecture du code.
+
+describe("patchSlot — remise en banque", () => {
+  const SCHEDULED_AT = new Date("2026-03-12T17:00:00.000Z");
+
+  it("ADMIN remet une publication datée en banque", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({ status: "IN_EDIT", scheduledAt: SCHEDULED_AT }),
+    );
+
+    await patchSlot("slot-1", { scheduledAt: null }, makeUserCtx("ADMIN"));
+
+    const { data } = mockSlotUpdate.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data.scheduledAt).toBeNull();
+  });
+
+  it("un montage avancé est autorisé — c'est le cas d'usage", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({ status: "SCHEDULED", scheduledAt: SCHEDULED_AT }),
+    );
+
+    await expect(
+      patchSlot("slot-1", { scheduledAt: null }, makeUserCtx("ADMIN")),
+    ).resolves.toBeDefined();
+  });
+
+  it("une publication PUBLISHED garde sa date : c'est un fait, pas un plan", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({ status: "PUBLISHED", scheduledAt: SCHEDULED_AT }),
+    );
+
+    await expect(
+      patchSlot("slot-1", { scheduledAt: null }, makeUserCtx("ADMIN")),
+    ).rejects.toThrow(/publiée ou terminée/i);
+  });
+
+  it("CANCELLED et ARCHIVED aussi — il n'y a plus de travail à garder de côté", async () => {
+    for (const status of ["CANCELLED", "ARCHIVED"]) {
+      mockSlotFindUnique.mockResolvedValueOnce(
+        makeSlot({ status, scheduledAt: SCHEDULED_AT }),
+      );
+      await expect(
+        patchSlot("slot-1", { scheduledAt: null }, makeUserCtx("ADMIN")),
+      ).rejects.toThrow(/publiée ou terminée/i);
+    }
+  });
+
+  it("un PATCH combiné ne contourne pas la garde (statut lu en base, pas dans le body)", async () => {
+    // Sans cette lecture côté base, { status: "PLANNED", scheduledAt: null }
+    // ferait passer une publication publiée pour une simple planifiée.
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({ status: "PUBLISHED", scheduledAt: SCHEDULED_AT }),
+    );
+
+    await expect(
+      patchSlot(
+        "slot-1",
+        { status: "PLANNED", scheduledAt: null },
+        makeUserCtx("ADMIN"),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("un non-admin ne peut pas renvoyer vers la banque", async () => {
+    // Double barrière, et c'est la PREMIÈRE qui agit : `scheduledAt` n'est pas
+    // dans ALLOWED_PATCH_FIELDS_BY_ROLE pour un monteur, donc le champ est
+    // retiré du body avant d'atteindre la garde 403. Le refus est silencieux —
+    // ce test fige le fait que la date ne bouge pas, pas la façon de le dire.
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({ status: "IN_EDIT", scheduledAt: SCHEDULED_AT }),
+    );
+
+    await patchSlot("slot-1", { scheduledAt: null }, makeUserCtx("MONTEUR", "user-monteur"));
+
+    const { data } = mockSlotUpdate.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data).not.toHaveProperty("scheduledAt");
+    const types = mockActivityCreate.mock.calls.map(
+      (c) => (c[0] as { data: { type: string } }).data.type,
+    );
+    expect(types).not.toContain("BANK_SLOT_UNSCHEDULED");
+  });
+
+  it("trace BANK_SLOT_UNSCHEDULED avec la date abandonnée", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({ status: "IN_EDIT", scheduledAt: SCHEDULED_AT }),
+    );
+
+    await patchSlot("slot-1", { scheduledAt: null }, makeUserCtx("ADMIN"));
+
+    const logged = mockActivityCreate.mock.calls
+      .map(
+        (c) =>
+          (c[0] as { data: { type: string; payload?: { from?: string } } }).data,
+      )
+      .find((d) => d.type === "BANK_SLOT_UNSCHEDULED");
+    expect(logged).toBeDefined();
+    expect(logged!.payload?.from).toBe(SCHEDULED_AT.toISOString());
+  });
+
+  it("une publication DÉJÀ en banque ne re-déclenche ni garde ni trace", async () => {
+    // scheduledAt: null sur un slot déjà sans date est un no-op sémantique —
+    // le tracer polluerait le fil à chaque sauvegarde du drawer.
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({ status: "IN_EDIT", scheduledAt: null }),
+    );
+
+    await patchSlot("slot-1", { scheduledAt: null }, makeUserCtx("ADMIN"));
+
+    const types = mockActivityCreate.mock.calls.map(
+      (c) => (c[0] as { data: { type: string } }).data.type,
+    );
+    expect(types).not.toContain("BANK_SLOT_UNSCHEDULED");
+  });
+});

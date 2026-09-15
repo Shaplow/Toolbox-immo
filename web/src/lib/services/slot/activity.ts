@@ -49,6 +49,18 @@ export type ActivityType =
   | "BANK_SLOT_CREATED"
   /** Slot banque promu en publication datée (transition scheduledAt null → date). */
   | "BANK_SLOT_SCHEDULED"
+  /**
+   * Publication datée remise en banque (transition date → null) — le miroir de
+   * `BANK_SLOT_SCHEDULED`. Sans lui, mettre une publication de côté ne laissait
+   * aucune trace : la date disparaissait du fil sans que rien ne l'explique.
+   * Payload `{ from: <ISO précédent> }` pour pouvoir dire quelle date a sauté.
+   */
+  | "BANK_SLOT_UNSCHEDULED"
+  /**
+   * Comptes en collaboration modifiés. Le CM lit cette consigne juste avant de
+   * poster : si elle change, il doit pouvoir voir quand, et par qui.
+   */
+  | "COLLAB_ACCOUNTS_CHANGED"
   /** Légende pré-remplie depuis le bien rattaché (mode description "preFilled"). */
   | "DESCRIPTION_PREFILLED";
 

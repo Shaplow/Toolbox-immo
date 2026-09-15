@@ -64,3 +64,12 @@ export const REEL_ATTACHABLE_SOURCES = ["manual_rushes", "external_upload"] as c
  * bougent pas — forcer un reel déjà en montage le ferait régresser.
  */
 export const REEL_STATUSES_BUMPED_ON_SHOT = ["PLANNED", "RUSHES_EXPECTED"] as const;
+
+/**
+ * Nombre maximum de comptes invités en collaborateur sur une publication.
+ *
+ * C'est la limite d'Instagram elle-même. La poser ici évite qu'un admin
+ * enregistre une consigne que le composer refusera au moment de poster — le CM
+ * découvrirait le problème seul, devant son téléphone.
+ */
+export const MAX_SLOT_COLLABS = 3;

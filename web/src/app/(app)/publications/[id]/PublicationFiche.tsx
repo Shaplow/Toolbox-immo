@@ -242,6 +242,8 @@ export interface PublicationFicheProps {
   slot: SlotInfo;
   /** null = mission sans compte Instagram (production stock). */
   account: AccountInfo | null;
+  /** Comptes invités en collab — consigne lue par le CM avant de poster. */
+  collabs?: { id: string; handle: string }[];
   listing: { id: string } | null;
   pattern: PatternInfo | null;
   /** Nom du type de fiche exigé par la recette (titre de la section Fiche). */
@@ -358,6 +360,7 @@ export interface PublicationFicheProps {
 export function PublicationFiche({
   slot,
   account,
+  collabs = [],
   listing,
   pattern,
   requiredEntityTypeName,
@@ -820,6 +823,8 @@ export function PublicationFiche({
               "description",
               <DescriptionSection
                 slot={{ id: slot.id }}
+                account={account}
+                collabs={collabs}
                 pattern={
                   pattern
                     ? {
@@ -920,6 +925,8 @@ export function PublicationFiche({
                   publishedUrl: slot.publishedUrl,
                   publishedAt: slot.publishedAt,
                 }}
+                account={account}
+                collabs={collabs}
                 canPublish={canMarkPublished}
                 canPublishWithoutUrl={canPublishWithoutUrl}
                 incompleteSteps={steps

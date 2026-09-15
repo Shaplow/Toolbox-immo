@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
-import type { UserRole } from "@/types/roles";
+import { TERMINAL_STATUSES, type UserRole } from "@/types/roles";
 import { SlotCard } from "./SlotCard";
 import { SlotDetailPanel, type SlotDetailPanelMode } from "./SlotDetailPanel";
 import { AddSlotModal } from "./AddSlotModal";
@@ -29,6 +29,7 @@ import { isReadyToSchedule } from "@/lib/slots/bankReady";
 import { BulkReassignModal } from "./BulkReassignModal";
 import { BulkShiftDateModal } from "./BulkShiftDateModal";
 import { BulkCancelModal } from "./BulkCancelModal";
+import { BulkUnscheduleModal } from "./BulkUnscheduleModal";
 import { BulkMarkPublishedModal } from "./BulkMarkPublishedModal";
 import { BULK_PUBLISHABLE_STATUSES } from "@/lib/publications/constants";
 import { ScheduleFromBankModal } from "./ScheduleFromBankModal";
@@ -194,7 +195,7 @@ export function CalendarView({
   );
   // Phase 7 V2 — split BulkPatchModal en actions focalisées.
   const [bulkAction, setBulkAction] = useState<
-    "reassign" | "shift" | "cancel" | "publish" | null
+    "reassign" | "shift" | "cancel" | "publish" | "unschedule" | null
   >(null);
   // W4.9 : preview dry-run avant confirmation (created/skipped sans insert DB).
   const [showFilters, setShowFilters] = useState(false);
@@ -393,6 +394,17 @@ export function CalendarView({
 
 
   function handleSlotUpdated(updated: PublicationSlot) {
+    // Remise en banque : la publication quitte la grille pour le rail. Le toast
+    // est déjà porté par la modale — en ajouter un second dirait deux fois la
+    // même chose, avec deux mots différents.
+    if (updated.scheduledAt == null) {
+      setSlots((prev) => prev.filter((s) => s.id !== updated.id));
+      setSelectedSlot(null);
+      setBacklogTotal((prev) => prev + 1);
+      if (isReadyToSchedule(updated)) setBacklogReadyCount((prev) => prev + 1);
+      if (showBankRail) void loadBankRail();
+      return;
+    }
     setSlots((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     setSelectedSlot((current) =>
       current && current.id === updated.id ? updated : current,
@@ -515,6 +527,71 @@ export function CalendarView({
       }
     },
     [slots, bankRailSlots],
+  );
+
+  /**
+   * Lâcher une carte du calendrier sur le rail : elle perd sa date.
+   *
+   * Pas de modale ici, contrairement au menu du drawer — une confirmation en
+   * fin de drag se lit mal, et le geste peut partir d'un lâcher approximatif.
+   * Le rattrapage est offert après coup dans le toast, avec la date exacte à
+   * reposer : c'est la réponse au risque de fausse manœuvre, pas une facilité.
+   */
+  const handleSlotDropOnBank = useCallback(
+    async (slot: PublicationSlot) => {
+      const previous = slot.scheduledAt;
+      if (!previous) return;
+      // Une publiée ou terminée n'a pas à quitter le calendrier : le serveur la
+      // refuserait, autant ne pas la faire disparaître puis revenir.
+      if ((TERMINAL_STATUSES as readonly string[]).includes(slot.status)) {
+        toast.error("Une publication publiée ou terminée garde sa date.");
+        return;
+      }
+
+      const prevSlots = slots;
+      setSlots((prev) => prev.filter((s) => s.id !== slot.id));
+
+      async function patchDate(value: string | null) {
+        const res = await fetch(`/api/calendar/slots/${slot.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduledAt: value }),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error ?? `Erreur ${res.status}`);
+        }
+        return (await res.json()) as PublicationSlot;
+      }
+
+      try {
+        await patchDate(null);
+        setBacklogTotal((prev) => prev + 1);
+        if (isReadyToSchedule(slot)) setBacklogReadyCount((prev) => prev + 1);
+        void loadBankRail();
+        toast.success("Remise en banque", {
+          label: "Annuler",
+          onClick: () => {
+            void (async () => {
+              try {
+                const restored = await patchDate(previous);
+                setSlots((prev) => [...prev.filter((s) => s.id !== slot.id), restored]);
+                setBacklogTotal((prev) => Math.max(0, prev - 1));
+                if (isReadyToSchedule(slot))
+                  setBacklogReadyCount((prev) => Math.max(0, prev - 1));
+                void loadBankRail();
+              } catch {
+                toast.error("Impossible de reposer la date");
+              }
+            })();
+          },
+        });
+      } catch (err) {
+        setSlots(prevSlots);
+        toast.error(err instanceof Error ? err.message : "Remise en banque impossible");
+      }
+    },
+    [slots, loadBankRail],
   );
 
   // Fin de semaine : jour + mois long + année, sans équivalent exact dans
@@ -757,6 +834,9 @@ export function CalendarView({
               /* Grille 7 colonnes — densifiée I.1, enveloppée DnD (admin) */
               <CalendarDndContext
                 onSlotDrop={handleSlotDropOnDay}
+                onSlotDropOnBank={(slot) => {
+                  void handleSlotDropOnBank(slot);
+                }}
                 currentUserRole={currentUserRole}
                 currentUserId={currentUserId}
               >
@@ -950,6 +1030,15 @@ export function CalendarView({
           </Button>
           <Button
             type="button"
+            variant="primary"
+            size="sm"
+            icon={Inbox}
+            onClick={() => setBulkAction("unschedule")}
+          >
+            Remettre en banque
+          </Button>
+          <Button
+            type="button"
             variant="danger"
             size="sm"
             icon={Ban}
@@ -1019,6 +1108,23 @@ export function CalendarView({
             setBulkSelectedIds(new Set());
             setBulkSelectMode(false);
             void load();
+          }}
+          onClose={() => setBulkAction(null)}
+        />
+      )}
+
+      {bulkAction === "unschedule" && (
+        <BulkUnscheduleModal
+          slotIds={[...bulkSelectedIds]}
+          onPatched={(count) => {
+            setBulkSelectedIds(new Set());
+            setBulkSelectMode(false);
+            // Les deux côtés bougent : la grille se vide de ces cartes, le rail
+            // les reçoit. Recharger plutôt que deviner — le serveur a pu en
+            // écarter certaines.
+            setBacklogTotal((prev) => prev + count);
+            void load();
+            if (showBankRail) void loadBankRail();
           }}
           onClose={() => setBulkAction(null)}
         />

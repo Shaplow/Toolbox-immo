@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
 import { Badge } from "@/components/ui/Badge";
 import { toast } from "@/components/ui/Toast";
+import { SlotAccountLine } from "../SlotAccountLine";
 
 interface Props {
   slot: {
@@ -40,6 +41,14 @@ interface Props {
   canPublishWithoutUrl?: boolean;
   /** Steps "amont" pas encore terminées au moment du rendu. */
   incompleteSteps?: Array<{ key: string; label: string; status: "todo" | "failed" }>;
+  /**
+   * Le compte qui publie, et ceux à inviter en collaborateur.
+   *
+   * La section les ignorait complètement : elle demandait une URL Instagram
+   * sans jamais dire de quel compte il s'agissait.
+   */
+  account?: { id: string; handle: string; name: string } | null;
+  collabs?: { id: string; handle: string }[];
   sectionId?: string;
   storageKey?: string;
   defaultOpen?: boolean;
@@ -59,6 +68,8 @@ function formatDateTimeFR(date: Date): string {
 
 export function PublishSection({
   slot, canPublish, canPublishWithoutUrl = false, incompleteSteps = [],
+  account = null,
+  collabs = [],
   sectionId = "publish",
   storageKey,
   defaultOpen = true,
@@ -267,6 +278,10 @@ export function PublishSection({
               </div>
             </div>
           )}
+
+          {/* D'où part le post, et qui inviter dessus. Au-dessus du champ URL
+              parce que c'est ce qu'on lit AVANT d'aller poster, pas après. */}
+          <SlotAccountLine account={account} collabs={collabs} />
 
           <FormField
             label="URL Instagram"

@@ -38,6 +38,7 @@ import {
 // REEL_* : mêmes règles que la création d'un reel et que markEntityShot.
 import {
   BULK_PUBLISHABLE_STATUSES,
+  MAX_SLOT_COLLABS,
   REEL_ATTACHABLE_SOURCES,
   REEL_STATUSES_BUMPED_ON_SHOT,
 } from "@/lib/publications/constants";
@@ -737,6 +738,9 @@ export async function bulkPatchSlots(
     select: {
       id: true,
       status: true,
+      // Nécessaire pour la remise en banque : distinguer « était datée » de
+      // « l'était déjà pas », et porter l'ancienne date dans le log.
+      scheduledAt: true,
       assigneeMonteurId: true,
       assigneeCmId: true,
       assigneeVideasteId: true,
@@ -771,6 +775,16 @@ export async function bulkPatchSlots(
           continue;
         }
       }
+      // Remise en banque en lot : une publiée ou terminée est écartée SANS
+      // faire échouer le reste — l'admin sélectionne à la souris, il aura
+      // presque toujours une carte terminale dans le tas. Le refus est compté,
+      // et l'appelant l'annonce.
+      const unschedulingThis =
+        patch.scheduledAt === null && slot.scheduledAt !== null;
+      if (unschedulingThis && (TERMINAL_STATUSES as readonly string[]).includes(slot.status)) {
+        skipped += 1;
+        continue;
+      }
       await tx.publicationSlot.update({
         where: { id: slot.id },
         data,
@@ -783,6 +797,14 @@ export async function bulkPatchSlots(
           actorId,
           type: "STATUS_CHANGED",
           payload: { from: slot.status, to: patch.status, batch: true },
+        });
+      }
+      if (unschedulingThis) {
+        await logActivity(tx as typeof prisma, {
+          slotId: slot.id,
+          actorId,
+          type: "BANK_SLOT_UNSCHEDULED",
+          payload: { from: slot.scheduledAt!.toISOString(), batch: true },
         });
       }
       const monteurChanged =
@@ -1090,6 +1112,27 @@ export async function bulkScheduleSlots(
  */
 const RESERVED_TERMINAL_STATUSES = ["PUBLISHED", "CANCELLED", "ARCHIVED"] as const;
 
+/**
+ * Remettre une publication en banque (retirer sa date) : autorisé partout SAUF
+ * sur un statut terminal.
+ *
+ * La date d'une publication PUBLIÉE est un fait, pas un plan — la retirer
+ * réécrirait le passé, d'autant que `publishedAt`/`publishedUrl` restent, eux.
+ * ARCHIVED et CANCELLED n'ont plus de travail à garder de côté : le geste
+ * n'aurait rien à préserver.
+ *
+ * Tout le reste passe, y compris `SCHEDULED` (c'est précisément le cas d'usage :
+ * « on est avancé, on veut le garder de côté ») et `AWAITING_CLIENT` (le lien
+ * client valide le MONTAGE, pas la date — aucune page client ne lit `scheduledAt`).
+ */
+export function assertCanUnschedule(status: string): void {
+  if ((TERMINAL_STATUSES as readonly string[]).includes(status)) {
+    throw new ForbiddenError(
+      "Une publication publiée ou terminée ne se remet pas en banque : sa date est un fait, pas un plan.",
+    );
+  }
+}
+
 /** Borne max pour les champs texte libres (DoS storage + XSS différé). */
 const MAX_TEXT_FIELD = 5000;
 
@@ -1271,6 +1314,13 @@ export async function patchSlot(
     throw new ForbiddenError(
       "Seul un administrateur peut renvoyer un slot vers la banque.",
     );
+  }
+  // Le statut décide de ce qui peut encore être mis de côté. Testé sur le slot
+  // TEL QU'IL EST EN BASE, pas sur le statut éventuellement patché dans le même
+  // appel : sinon un PATCH combiné { status: "PLANNED", scheduledAt: null }
+  // contournerait la garde sur une publication déjà publiée.
+  if (scheduledAt === null && slot.scheduledAt !== null) {
+    assertCanUnschedule(slot.status);
   }
 
   // E3 — fix M4 mass-assignment : bornes sur les champs texte.
@@ -1494,8 +1544,18 @@ export async function patchSlot(
     scheduledAt !== undefined &&
     scheduledAt !== null &&
     typeof scheduledAt === "string";
+  // Le mouvement inverse : une publication datée qu'on met de côté. On garde
+  // l'ancienne date pour que le fil puisse dire ce qui a été abandonné — après
+  // l'update elle n'existe plus nulle part.
+  const bankUnscheduled = slot.scheduledAt !== null && scheduledAt === null;
+  const previousScheduledAt = slot.scheduledAt;
 
-  let updated: Awaited<ReturnType<typeof prisma.publicationSlot.update>>;
+  // L'`include` de l'update ajoute des relations que le type nu de
+  // `publicationSlot.update` ne connaît pas — on les déclare ici plutôt que de
+  // caster au retour.
+  let updated: Awaited<ReturnType<typeof prisma.publicationSlot.update>> & {
+    collabs?: { account: { id: string; handle: string } }[];
+  };
   try {
     updated = await prisma.$transaction(async (tx) => {
       // W5.14 : construction iterative de la data — chaque field passe par
@@ -1573,6 +1633,7 @@ export async function patchSlot(
         data: updateData as Prisma.PublicationSlotUpdateInput,
         include: {
           account: { select: { id: true, name: true, handle: true } },
+          collabs: { select: { account: { select: { id: true, handle: true } } }, orderBy: { createdAt: "asc" } },
           template: { select: { id: true, name: true } },
           render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
         },
@@ -1612,6 +1673,15 @@ export async function patchSlot(
           actorId,
           type: "BANK_SLOT_SCHEDULED",
           payload: { scheduledAt: scheduledAt as string },
+        });
+      }
+
+      if (bankUnscheduled) {
+        await logActivity(tx as typeof prisma, {
+          slotId: id,
+          actorId,
+          type: "BANK_SLOT_UNSCHEDULED",
+          payload: { from: previousScheduledAt!.toISOString() },
         });
       }
 
@@ -1673,6 +1743,7 @@ export async function patchSlot(
 
   return {
     ...updated,
+    collabs: flattenCollabs(updated),
     fields: safeJSON<Record<string, string>>(updated.fields, {}),
     fieldSchema: safeJSON<string[]>(updated.fieldSchema, []),
     // Clé API `propertyId` = fiche liée (Entity) — cf. mapping de listSlots.
@@ -1762,6 +1833,7 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
     take: 500,
     include: {
       account: { select: { id: true, name: true, handle: true } },
+      collabs: { select: { account: { select: { id: true, handle: true } } }, orderBy: { createdAt: "asc" } },
       template: { select: { id: true, name: true } },
       // render + coverFramePack du render (cas auto_template). Pour les patterns
       // manual_rushes, le coverFramePack est rattaché à currentVersion ; on le
@@ -1836,6 +1908,7 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
   return {
     slots: slots.map((s) => ({
       ...s,
+      collabs: flattenCollabs(s),
       pattern: patternViewOf(s),
       status: updates.get(s.id) ?? s.status,
       fields: safeJSON<Record<string, string>>(s.fields, {}),
@@ -1847,6 +1920,17 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
     })),
     hasMore: slots.length === 500,
   };
+}
+
+/**
+ * Aplatit la jonction collab en `{ id, handle }[]` — la forme que le client
+ * consomme. Sans ça chaque lecteur trimballerait `collabs[].account.handle`,
+ * et le type client divergerait du serveur au premier oubli.
+ */
+function flattenCollabs<T extends { collabs?: { account: { id: string; handle: string } }[] }>(
+  row: T,
+): { id: string; handle: string }[] {
+  return (row.collabs ?? []).map((c) => c.account);
 }
 
 // ─── getSlot ──────────────────────────────────────────────────────────────────
@@ -1865,6 +1949,7 @@ export async function getSlot(id: string, ctx: UserContext) {
     where: { id },
     include: {
       account: { select: { id: true, name: true, handle: true } },
+      collabs: { select: { account: { select: { id: true, handle: true } } }, orderBy: { createdAt: "asc" } },
       template: { select: { id: true, name: true } },
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
       assigneeMonteur: { select: { id: true, name: true } },
@@ -1879,6 +1964,7 @@ export async function getSlot(id: string, ctx: UserContext) {
 
   return {
     ...slot,
+    collabs: flattenCollabs(slot),
     fields: safeJSON<Record<string, string>>(slot.fields, {}),
     fieldSchema: safeJSON<string[]>(slot.fieldSchema, []),
     // Clé API `propertyId` = fiche liée (Entity) — cf. mapping de listSlots.
@@ -2243,6 +2329,84 @@ export async function attachShootToSlot(
  * quand la commande n'a pas de compte : sans ce déplacement, il ne
  * s'exécuterait tout simplement plus nulle part.
  */
+/**
+ * Remplace la liste des comptes invités en collaborateur sur une publication.
+ *
+ * Remplacement du set entier, pas d'ajout/retrait unitaire : c'est un ÉTAT
+ * (« voilà avec qui on poste »), pas un journal. L'appel est donc idempotent,
+ * et l'UI n'a aucune danse à orchestrer.
+ *
+ * Autorisé même sur une publication DÉJÀ PUBLIÉE, contrairement au changement
+ * de compte : le compte principal pilote la résolution de recette et la
+ * visibilité calendrier, alors que le collab ne pilote rien. C'est une
+ * métadonnée descriptive — on doit pouvoir consigner après coup ce qui s'est
+ * réellement passé.
+ */
+export async function setSlotCollabs(
+  slotId: string,
+  accountIds: string[],
+  ctx: UserContext,
+): Promise<{ accounts: { id: string; handle: string; name: string }[] }> {
+  if (!ctx.canAdminBypass) throw new ForbiddenError("Réservé aux administrateurs");
+
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id: slotId },
+    select: { id: true, accountId: true, collabs: { select: { accountId: true } } },
+  });
+  if (!slot) throw new NotFoundError("Slot");
+
+  const wanted = [...new Set(accountIds.filter((id) => typeof id === "string" && id.trim()))];
+
+  if (wanted.length > MAX_SLOT_COLLABS) {
+    throw new ValidationError(
+      `Instagram n'accepte pas plus de ${MAX_SLOT_COLLABS} collaborateurs sur une publication.`,
+    );
+  }
+  // Se mettre en collab avec soi-même : la consigne afficherait deux fois le
+  // même compte au CM, qui chercherait ce qu'il a raté.
+  if (slot.accountId && wanted.includes(slot.accountId)) {
+    throw new ValidationError(
+      "Le compte qui publie ne peut pas être aussi son propre collaborateur.",
+    );
+  }
+
+  const accounts = wanted.length
+    ? await prisma.instagramAccount.findMany({
+        where: { id: { in: wanted } },
+        select: { id: true, handle: true, name: true },
+        orderBy: { handle: "asc" },
+      })
+    : [];
+  if (accounts.length !== wanted.length) {
+    throw new ValidationError("Compte Instagram introuvable");
+  }
+
+  const before = slot.collabs.map((c) => c.accountId).sort();
+  const after = [...wanted].sort();
+  const unchanged = before.length === after.length && before.every((id, i) => id === after[i]);
+
+  if (!unchanged) {
+    await prisma.$transaction(async (tx) => {
+      await tx.publicationSlotCollab.deleteMany({ where: { slotId } });
+      if (wanted.length) {
+        await tx.publicationSlotCollab.createMany({
+          data: wanted.map((accountId) => ({ slotId, accountId })),
+        });
+      }
+      await logActivity(tx as typeof prisma, {
+        slotId,
+        actorId: ctx.actualUser.id,
+        type: "COLLAB_ACCOUNTS_CHANGED",
+        // Les handles et non les ids : le fil se lit sans aller chercher
+        // quel compte porte quel identifiant.
+        payload: { to: accounts.map((a) => a.handle) },
+      });
+    });
+  }
+
+  return { accounts };
+}
+
 export async function assignSlotAccount(slotId: string, accountId: string, ctx: UserContext) {
   if (!ctx.canAdminBypass) throw new ForbiddenError("Réservé aux administrateurs");
 
