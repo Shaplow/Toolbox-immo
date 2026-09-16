@@ -14,6 +14,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { OPEN_SECTION_EVENT } from "@/components/fiches/openSectionEvent";
 
 type Variant = "default" | "glass" | "frosted" | "tinted";
 type Tint = "peach" | "sage" | "sky" | "rose";
@@ -80,8 +81,8 @@ export function Section({
       const detail = (e as CustomEvent<{ sectionId?: string }>).detail;
       if (detail?.sectionId === sectionId) setOpen(true);
     }
-    window.addEventListener("pub:open-section", handler);
-    return () => window.removeEventListener("pub:open-section", handler);
+    window.addEventListener(OPEN_SECTION_EVENT, handler);
+    return () => window.removeEventListener(OPEN_SECTION_EVENT, handler);
   }, [sectionId]);
 
   if (collapsible && !open) {

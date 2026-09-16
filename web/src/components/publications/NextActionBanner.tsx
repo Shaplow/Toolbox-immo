@@ -22,6 +22,7 @@ import {
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
 import type { UserRole } from "@/types/roles";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { emitOpenSection } from "@/components/fiches/openSectionEvent";
 
 interface Props {
   slotStatus: string;
@@ -88,18 +89,7 @@ const STATUS_TO_SECTION: Record<string, string> = {
   // scroller, la pill reste non-cliquable.
 };
 
-function goToSection(sectionId: string) {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("pub:open-section", { detail: { sectionId } }),
-    );
-  }
-  // Petit délai pour laisser la section se déplier avant le scroll.
-  setTimeout(() => {
-    const el = document.getElementById(sectionId);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 50);
-}
+
 
 export function NextActionBanner({
   slotStatus,
@@ -169,7 +159,7 @@ export function NextActionBanner({
       {isClickable && sectionId ? (
         <button
           type="button"
-          onClick={() => goToSection(sectionId)}
+          onClick={() => emitOpenSection(sectionId)}
           className="group focus-ring rounded-lg"
           title={`Aller à la section "${sectionId}"`}
         >

@@ -6,13 +6,14 @@
  * Wrapper léger autour de la molécule `Stepper variant="glass"`. Filtre les
  * steps visibles pour le rôle viewer, mappe `PublicationStep.status` →
  * `StepStatus`, identifie le step actif (nextAction), et dispatche
- * `pub:open-section` au click pour scroller vers la section correspondante
+ * `fiche:open-section` au click pour scroller vers la section correspondante
  * (consommé par les molécules `Section` côté fiche).
  */
 
 import { Stepper, type Step as StepperStep, type StepStatus as StepperStatus } from "@/components/ui/Stepper";
 import type { PublicationStep, StepStatus } from "@/lib/publications/steps";
 import type { UserRole } from "@/types/roles";
+import { emitOpenSection } from "@/components/fiches/openSectionEvent";
 
 export interface ProductionChainProps {
   steps: PublicationStep[];
@@ -55,15 +56,7 @@ const STEP_TO_SECTION: Record<string, string> = {
 function scrollToSection(stepKey: string) {
   const sectionId = STEP_TO_SECTION[stepKey];
   if (!sectionId) return;
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("pub:open-section", { detail: { sectionId } }),
-    );
-  }
-  setTimeout(() => {
-    const el = document.getElementById(sectionId);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 50);
+  emitOpenSection(sectionId);
 }
 
 export function ProductionChain({ steps, viewerRole }: ProductionChainProps) {

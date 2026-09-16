@@ -34,8 +34,6 @@ import { VersionsSection } from "@/components/publications/sections/VersionsSect
 import type { VersionItem } from "@/components/publications/sections/VersionsSection";
 import { CommentsSection } from "@/components/publications/CommentsSection";
 import { ActivityToggleButton } from "@/components/publications/ActivityToggleButton";
-import { cloneElement } from "react";
-import type { ReactElement } from "react";
 import type { PublicationStep } from "@/lib/publications/steps";
 import { promoteVersionWarning } from "@/lib/publications/actions";
 import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
@@ -43,6 +41,10 @@ import { resolveCaptionsMode, isCaptionsEnabled } from "@/lib/publications/capti
 import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
 import type { UserRole } from "@/types/roles";
+import {
+  createSectionWrapper,
+  type SectionsByRole,
+} from "@/components/fiches/sectionShell";
 
 // ---------------------------------------------------------------------------
 // Logique de priorité des sections selon le rôle
@@ -82,7 +84,7 @@ type SectionKey =
  * ne leur sont pas ouvrables ailleurs (`lib/permissions/entityScope.ts`) —
  * cette section est leur seule vue sur ces valeurs.
  */
-const PRIMARY_SECTIONS_BY_ROLE: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
+const PRIMARY_SECTIONS_BY_ROLE: SectionsByRole<SectionKey> = {
   VIDEASTE: ["entityFields", "brief", "rushes", "comments"],
   // Phase 2.5 : MONTEUR voit aussi "cover" pour le cas monteurUpload (il
   // uploade la cover avec sa version). CoverSection se masque elle-même
@@ -96,19 +98,8 @@ const PRIMARY_SECTIONS_BY_ROLE: Record<Exclude<UserRole, "ADMIN">, SectionKey[]>
   EXTERNAL_GENERATOR: [],
 };
 
-/**
- * true = la section est MONTÉE dans le DOM pour ce rôle. false = ne
- * s'affiche pas du tout. ADMIN voit tout. Le pliage ouvert/fermé est
- * géré séparément par Section (defaultOpen + persistance localStorage).
- */
-function shouldRenderForRole(section: SectionKey, role: UserRole): boolean {
-  if (role === "ADMIN") return true;
-  const list = PRIMARY_SECTIONS_BY_ROLE[role as Exclude<UserRole, "ADMIN">];
-  // Activité = fil d'audit réservé aux ADMIN. Les ADMIN ont déjà renvoyé true
-  // ci-dessus ; tout autre rôle est explicitement exclu ici.
-  if (section === "activity") return false;
-  return list?.includes(section) ?? false;
-}
+/** Le fil d'activité est un journal d'audit : ADMIN seul, quelle que soit la liste. */
+const ADMIN_ONLY_SECTIONS = ["activity"] as const satisfies readonly SectionKey[];
 
 
 interface AssigneeInfo {
@@ -420,12 +411,23 @@ export function PublicationFiche({
     Boolean(brief?.body?.trim()) ||
     briefAttachments.length > 0;
 
+  // Le contrat de section vit dans `components/fiches/sectionShell` : même
+  // gating par rôle, même injection d'ancre et de mémoire de pliage, à
+  // l'identique. Le préfixe `pub-section-v2:` est conservé tel quel — le
+  // changer effacerait les replis mémorisés de tout le monde.
+  const { wrap, isVisible: shouldRenderForRole } = createSectionWrapper<SectionKey>({
+    role: currentUserRole,
+    sectionsByRole: PRIMARY_SECTIONS_BY_ROLE,
+    storagePrefix: `pub-section-v2:${slot.id}`,
+    adminOnly: ADMIN_ONLY_SECTIONS,
+  });
+
   // Set des sections rendues dans le DOM — passé au NextActionBanner pour
   // masquer le lien "Aller à la section" si la cible n'existe pas (sinon
   // scroll mort sur slot CM en READY_FOR_CM + needsDescription="none").
   const visibleSectionIds = new Set<string>();
   const trackVisible = (key: SectionKey, condition: boolean) => {
-    if (condition && shouldRenderForRole(key, currentUserRole)) {
+    if (condition && shouldRenderForRole(key)) {
       visibleSectionIds.add(key);
     }
   };
@@ -461,37 +463,6 @@ export function PublicationFiche({
   trackVisible("comments", true);
   trackVisible("activity", true);
 
-  // Helper pour wrap conditionnel : chaque section enfant utilise la molécule
-  // Section (icon + title + actions + collapsible). wrap() injecte les props
-  // de collapse/storage via cloneElement et retourne null si le rôle ne doit
-  // pas voir la section.
-  //
-  // Phase 8 V2 — `permanent: true` retire le pli/dépli pour les sections
-  // critiques (Render, Captions) qui doivent rester toujours visibles. Aucun
-  // localStorage, pas de chevron, le contenu est ancré.
-  const wrap = (
-    key: SectionKey,
-    node: ReactElement,
-    permanent?: boolean,
-  ): ReactElement | null => {
-    if (!shouldRenderForRole(key, currentUserRole)) return null;
-    if (permanent) {
-      return cloneElement(node, {
-        sectionId: key,
-        collapsible: false,
-      } as Record<string, unknown>);
-    }
-    return cloneElement(node, {
-      sectionId: key,
-      // v2 : bump du préfixe pour invalider les états "closed" hérités des anciens
-      // défauts (repli auto), tout en conservant la mémoire des replis manuels futurs.
-      storageKey: `pub-section-v2:${slot.id}:${key}`,
-      // Toutes les sections montées sont dépliées par défaut. Un repli manuel reste
-      // mémorisé via storageKey (restauré au prochain chargement).
-      defaultOpen: true,
-      collapsible: true,
-    } as Record<string, unknown>);
-  };
 
   // Connecteurs gradient entre sections retirés (DA v3) — la navigation
   // inter-étapes est assurée par le stepper ProductionChain (clic → scroll).
@@ -608,7 +579,7 @@ export function PublicationFiche({
                 fiche Event). Comble le trou : sans ça, un reel issu d'un event a
                 sa section rushs slot vide. Même audience que les rushs (le
                 monteur assigné les voit). */}
-            {shootEvent && shouldRenderForRole("rushes", currentUserRole) && (
+            {shootEvent && shouldRenderForRole("rushes") && (
               <div className="space-y-1.5">
                 <RushesSection
                   slotId={slot.id}
@@ -950,7 +921,7 @@ export function PublicationFiche({
                   La timeline n'est plus rendue inline (gain ~25% viewport).
                   Le bouton expose le count comme signal et ouvre la modale
                   uniquement quand l'admin en a besoin. */}
-              {shouldRenderForRole("activity", currentUserRole) && (
+              {shouldRenderForRole("activity") && (
                 <ActivityToggleButton
                   slotId={slot.id}
                   initialActivities={activities}

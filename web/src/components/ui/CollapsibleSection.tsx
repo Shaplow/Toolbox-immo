@@ -6,12 +6,13 @@
  * Fermée : pill compact bg-muted + chevron, click n'importe où pour ouvrir.
  * Ouverte : bouton chevron flottant en haut à droite du contenu pour fermer.
  *
- * storageKey persiste l'état. sectionId écoute `pub:open-section` pour
+ * storageKey persiste l'état. sectionId écoute `fiche:open-section` pour
  * ouverture programmatique depuis ProductionChain / header.
  */
 
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { OPEN_SECTION_EVENT } from "@/components/fiches/openSectionEvent";
 
 interface CollapsibleSectionProps {
   title: string;
@@ -57,8 +58,8 @@ export function CollapsibleSection({
       const detail = (e as CustomEvent<{ sectionId?: string }>).detail;
       if (detail?.sectionId === sectionId) setOpen(true);
     }
-    window.addEventListener("pub:open-section", handler);
-    return () => window.removeEventListener("pub:open-section", handler);
+    window.addEventListener(OPEN_SECTION_EVENT, handler);
+    return () => window.removeEventListener(OPEN_SECTION_EVENT, handler);
   }, [sectionId]);
 
   if (open) {
