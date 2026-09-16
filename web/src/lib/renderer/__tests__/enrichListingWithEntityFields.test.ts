@@ -205,7 +205,15 @@ describe("loadRenderEntityContext", () => {
   });
 });
 
-describe("non-régression — enrichListingWithAssetMetadata garde sa précédence (asset en dernier)", () => {
+/**
+ * Ces deux tests importent `generateRender` dynamiquement — soit tout le render
+ * engine et ses dépendances, ~3 s de transformation. Sous le timeout par défaut
+ * de 5 s, ils basculent en échec dès que la machine est chargée (build ou dev
+ * server en parallèle), et la suite entière devient un signal qu'on n'ose plus
+ * lire. Le timeout est explicite ici plutôt que relevé globalement : c'est CE
+ * chargement qui est lent, pas les 1680 autres tests.
+ */
+describe("non-régression — enrichListingWithAssetMetadata garde sa précédence (asset en dernier)", { timeout: 20_000 }, () => {
   it("l'enrichissement fiche (appliqué en premier) n'est jamais écrasé par l'enrichissement asset (appliqué en dernier)", async () => {
     const { enrichListingWithAssetMetadata } = await import("@/lib/renderer/generateRender");
 
