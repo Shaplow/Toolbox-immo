@@ -22,10 +22,24 @@ const recipeWithRushes = {
   needsBrief: false,
 };
 
+/**
+ * `external_upload` : le client livre la vidéo finie. C'est le SEUL cas où
+ * `needsBrief` décide vraiment de la visibilité du montage — partout ailleurs
+ * la source ou les rushs suffisent. La fixture précédente héritait de
+ * `source: "manual_rushes"`, donc les trois tests ci-dessous passaient sans
+ * jamais toucher au drapeau.
+ */
 const recipeWithBrief = {
   ...recipeWithRushes,
+  source: "external_upload" as const,
   needsBrief: true,
   needsRushes: false,
+};
+
+/** Même recette, drapeau décoché — le témoin qui manquait. */
+const recipeExternalNoBrief = {
+  ...recipeWithBrief,
+  needsBrief: false,
 };
 
 const recipeWithBoth = {
@@ -69,6 +83,14 @@ describe("computePublicationSteps — step 'edit' visibility", () => {
     const steps = computePublicationSteps({ slot: baseSlot(), pattern: null });
     const edit = steps.find((s) => s.key === "edit");
     expect(edit?.visible).toBe(false);
+  });
+
+  it("external_upload SANS brief → pas de montage chez nous", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeExternalNoBrief,
+    });
+    expect(steps.find((s) => s.key === "edit")?.visible).toBe(false);
   });
 
   it("non visible si needsRushes=false et needsBrief=false", () => {

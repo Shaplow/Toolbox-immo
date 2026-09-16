@@ -30,8 +30,6 @@ import {
   Archive,
   ArchiveRestore,
   ClipboardList,
-  Mic,
-  Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -44,10 +42,6 @@ import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { TERMINAL_STATUSES } from "@/types/roles";
 import { validateFieldValuesAll } from "@/lib/customFields";
 import { toast } from "@/components/ui/Toast";
-import { MediaDropzone, type UploadResult } from "@/components/ui/MediaDropzone";
-import { DeleteButton } from "@/components/ui/DeleteButton";
-import { BRIEF_ATTACHMENT_MIME_TYPES } from "@/lib/briefAttachmentTypes";
-import { UPLOAD_LIMITS } from "@/lib/upload/limits";
 import { CustomFieldValueInput } from "@/components/fields/CustomFieldValueInput";
 import { MAX_DECLINE_REASON, needsVideasteAnswer } from "@/lib/entityAvailability";
 import type { CustomField } from "@/lib/customFields";
@@ -129,16 +123,6 @@ export interface EntityFicheData {
   defaultAssigneeMonteurId: string | null;
   defaultAssigneeCmId: string | null;
   notes: string | null;
-  /** Brief de tournage — consignes de prise de vue, lues par le vidéaste. */
-  brief: string | null;
-  /** Pièces jointes du brief — vocal, doc, photo de repérage. */
-  briefAttachments: {
-    id: string;
-    fileName: string;
-    mimeType: string;
-    sizeBytes: number | null;
-    createdAt: string;
-  }[];
   relatedEntityId: string | null;
   relatedLabel: string | null;
   /** Commande d'origine, si la fiche est née d'un bon de commande. */
@@ -157,8 +141,6 @@ export interface EntityFicheProps {
   canMarkShot: boolean;
   canUploadRushes: boolean;
   canManageRushes: boolean;
-  /** ADMIN ou vidéaste : le brief est lu par tous, écrit par ces deux-là. */
-  canEditBrief: boolean;
   canAttachSlot: boolean;
   /** Retirer un reel sans rushs — ADMIN, MONTEUR, VIDEASTE (cf. canCancelSlot). */
   canCancelSlot: boolean;
@@ -201,7 +183,6 @@ export function EntityFiche({
   canMarkShot,
   canUploadRushes,
   canManageRushes,
-  canEditBrief,
   canAttachSlot,
   canCancelSlot,
   attachMode,
@@ -284,40 +265,6 @@ export function EntityFiche({
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
 
-  const [brief, setBrief] = useState(entity.brief ?? "");
-  const [attachments, setAttachments] = useState(entity.briefAttachments ?? []);
-  const [savingBrief, setSavingBrief] = useState(false);
-  const briefDirty = brief !== (entity.brief ?? "");
-
-  /** Télécharge une pièce jointe via une URL signée à la demande. */
-  async function downloadAttachment(attId: string, fileName: string) {
-    try {
-      const res = await fetch(`/api/entities/${entity.id}/brief/attachments/${attId}`);
-      if (!res.ok) throw new Error("Téléchargement indisponible");
-      const { downloadUrl } = (await res.json()) as { downloadUrl: string };
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch {
-      toast.error("Téléchargement impossible.");
-    }
-  }
-
-  async function deleteAttachment(attId: string) {
-    const res = await fetch(`/api/entities/${entity.id}/brief/attachments/${attId}`, {
-      method: "DELETE",
-    });
-    if (!res.ok) {
-      toast.error("Suppression impossible.");
-      return;
-    }
-    setAttachments((prev) => prev.filter((a) => a.id !== attId));
-    toast.success("Pièce jointe retirée.");
-  }
-
   function setFieldValue(key: string, value: string) {
     setFields((prev) => ({ ...prev, [key]: value }));
     setFieldsDirty(true);
@@ -370,30 +317,6 @@ export function EntityFiche({
       toast.error("Erreur réseau.");
     } finally {
       setCancelling(false);
-    }
-  }
-
-  async function saveBrief() {
-    setSavingBrief(true);
-    try {
-      const res = await fetch(`/api/entities/${entity.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        // Chaîne vide → null : un brief effacé doit disparaître de la fiche,
-        // pas y rester comme un bloc vide.
-        body: JSON.stringify({ brief: brief.trim() || null }),
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(data.error ?? "Échec de l'enregistrement.");
-        return;
-      }
-      toast.success("Brief enregistré.");
-      router.refresh();
-    } catch {
-      toast.error("Erreur réseau.");
-    } finally {
-      setSavingBrief(false);
     }
   }
 
@@ -968,114 +891,6 @@ export function EntityFiche({
         </div>
       )}
 
-      {/* Brief de tournage — la colonne existait en base depuis la migration
-          métaobjet mais n'avait jamais eu d'interface : le champ était écrit
-          par l'API et lu par personne. */}
-      {entity.hasRushes && (canEditBrief || entity.brief || attachments.length > 0) && (
-        <Section title="Brief de tournage" icon={ClipboardList}>
-          {canEditBrief ? (
-            <div className="space-y-3">
-              <Textarea
-                value={brief}
-                onChange={setBrief}
-                rows={5}
-                placeholder="Consignes de tournage : plans attendus, angles, ambiance, contraintes sur place…"
-              />
-              {briefDirty && (
-                <div className="flex justify-end gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setBrief(entity.brief ?? "")}
-                    disabled={savingBrief}
-                  >
-                    Annuler
-                  </Button>
-                  <Button size="sm" onClick={() => void saveBrief()} disabled={savingBrief}>
-                    {savingBrief ? "Enregistrement…" : "Enregistrer"}
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : entity.brief ? (
-            <p className="text-[13px] text-foreground whitespace-pre-wrap">{entity.brief}</p>
-          ) : null}
-
-          {/* Pièces jointes — « déposer un vocal pour le monteur ». Le même
-              bloc que le brief : le mot écrit et le mot dit répondent à la
-              même question, ils ne se rangent pas à deux endroits. */}
-          <div className="mt-4 pt-4 border-t border-border">
-            {canEditBrief && (
-              <div className="mb-3">
-                <MediaDropzone
-                  slotId={entity.id}
-                  uploadBasePath={`/api/entities/${entity.id}/brief`}
-                  kind="brief-attachment"
-                  accept={BRIEF_ATTACHMENT_MIME_TYPES}
-                  maxSizeBytes={UPLOAD_LIMITS.BRIEF_ATTACHMENT_MAX_BYTES}
-                  multiple
-                  label="Déposer un vocal, une photo de repérage, un document…"
-                  onUploaded={(r: UploadResult) => {
-                    // La route rend la ligne créée ; on la reconstruit ici pour
-                    // afficher sans recharger, l'id définitif arrivant au refresh.
-                    setAttachments((prev) => [
-                      ...prev,
-                      {
-                        id: r.r2Key,
-                        fileName: r.fileName,
-                        mimeType: r.mimeType,
-                        sizeBytes: r.sizeBytes ?? null,
-                        createdAt: new Date().toISOString(),
-                      },
-                    ]);
-                    router.refresh();
-                  }}
-                  onError={(m) => toast.error(m)}
-                />
-              </div>
-            )}
-            {attachments.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground">
-                {canEditBrief
-                  ? "Aucune pièce jointe. Un vocal vaut souvent mieux qu'un paragraphe."
-                  : "Aucune pièce jointe."}
-              </p>
-            ) : (
-              <ul className="space-y-1.5">
-                {attachments.map((att) => (
-                  <li key={att.id} className="flex items-center gap-2">
-                    {att.mimeType.startsWith("audio/") ? (
-                      <Mic size={13} className="shrink-0 text-muted-foreground" />
-                    ) : (
-                      <Paperclip size={13} className="shrink-0 text-muted-foreground" />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void downloadAttachment(att.id, att.fileName)}
-                      className="flex-1 min-w-0 text-left text-[13px] text-foreground truncate hover:underline"
-                    >
-                      {att.fileName}
-                    </button>
-                    {att.sizeBytes != null && (
-                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                        {Math.max(1, Math.round(att.sizeBytes / 1024))} Ko
-                      </span>
-                    )}
-                    {canEditBrief && (
-                      <DeleteButton
-                        itemLabel={`« ${att.fileName} »`}
-                        description="La pièce jointe sera définitivement supprimée."
-                        size="sm"
-                        onConfirm={() => deleteAttachment(att.id)}
-                      />
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </Section>
-      )}
 
       {/* Champs custom */}
       <Section title="Champs" icon={FileText}>

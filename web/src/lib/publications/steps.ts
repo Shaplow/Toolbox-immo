@@ -267,9 +267,11 @@ export function computePublicationSteps(input: {
   const editVisible =
     pattern?.source === "manual_rushes" ||
     pattern?.needsRushes === true ||
-    // `needsBrief` retiré du test : le brief n'est plus un drapeau de recette
-    // (il est toujours disponible), il ne peut donc plus signifier « il y a un
-    // montage ». Un montage se prouve par la source, les rushs ou une version.
+    // `needsBrief` : le SEUL signal qui rend le montage visible sur un
+    // `external_upload`. Retiré un temps en le croyant décoratif, il portait en
+    // fait toute la sémantique « quelqu'un a des consignes à suivre sur cette
+    // vidéo » — donc il y a un monteur, donc il y a une étape de montage.
+    pattern?.needsBrief === true ||
     versionsCount > 0 ||
     slot.status === "IN_EDIT" ||
     slot.status === "EDIT_REVIEW" ||

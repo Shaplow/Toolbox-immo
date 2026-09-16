@@ -95,15 +95,6 @@ export default async function PublicationPage({ params }: PageProps) {
           id: true,
           label: true,
           fields: true,
-          // Le mot du vidéaste au monteur : écrit sur la FICHE (c'est là qu'il
-          // travaille), lu ICI (c'est là que le monteur travaille). Sans ça, le
-          // brief de tournage n'était repris nulle part et le monteur devait
-          // savoir qu'il existait pour aller le chercher.
-          brief: true,
-          briefAttachments: {
-            select: { id: true, fileName: true, mimeType: true, sizeBytes: true },
-            orderBy: { createdAt: "asc" as const },
-          },
           type: { select: { name: true, fieldSchema: true } },
         },
       },
@@ -348,8 +339,6 @@ export default async function PublicationPage({ params }: PageProps) {
   let shootEvent: {
     id: string;
     title: string;
-    brief: string | null;
-    briefAttachments: { id: string; fileName: string; mimeType: string; sizeBytes: number | null }[];
   } | null = null;
   let eventRushes: ReturnType<typeof mapRush>[] = [];
   // Accès à la fiche tournage — calculé une seule fois, réutilisé ci-dessous
@@ -362,8 +351,6 @@ export default async function PublicationPage({ params }: PageProps) {
       shootEvent = {
         id: slot.shootEntity.id,
         title: slot.shootEntity.label,
-        brief: slot.shootEntity.brief,
-        briefAttachments: slot.shootEntity.briefAttachments,
       };
       eventRushes = (
         await prisma.publicationRush.findMany({

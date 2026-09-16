@@ -1,0 +1,15 @@
+-- Retrait du « brief de tournage » — erreur d'interprétation.
+--
+-- Le « brief éditorial » configurait le SLOT DE PUBLICATION (consignes au
+-- monteur), pas le tournage. Cette table était un calque exact de
+-- `PublicationBriefAttachment`, qui existait déjà et rendait le même service au
+-- bon endroit.
+--
+-- DROP immédiat et non « pending N+1 » : la table a vécu moins de 24 h, elle
+-- n'a jamais reçu une seule ligne (vérifié avant suppression), et aucun fichier
+-- R2 n'existe sous `entities/*/brief/`. Attendre n'aurait rien protégé — et
+-- laisser la table entretiendrait la confusion qu'on répare.
+--
+-- `Entity.brief` (la colonne texte) est CONSERVÉE : elle est antérieure à
+-- l'erreur (migration métaobjet du 17/08) et reste dans la whitelist de PATCH.
+DROP TABLE IF EXISTS "EntityBriefAttachment";

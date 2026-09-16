@@ -286,12 +286,6 @@ const entityDetailSelect = {
   defaultAssigneeCm: { select: { id: true, name: true } },
   notes: true,
   brief: true,
-  // Pièces jointes du brief (vocal, doc, photo de repérage) — le r2Key reste
-  // côté serveur : le téléchargement passe par une URL signée à la demande.
-  briefAttachments: {
-    select: { id: true, fileName: true, mimeType: true, sizeBytes: true, createdAt: true },
-    orderBy: { createdAt: "asc" as const },
-  },
   relatedEntityId: true,
   related: { select: { id: true, label: true, typeId: true } },
   relatedOf: { select: { id: true, label: true, typeId: true } },

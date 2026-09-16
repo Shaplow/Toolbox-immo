@@ -22,6 +22,7 @@
 export interface RoleNeedsPattern {
   source?: string | null;
   coverMode?: string | null;
+  needsBrief?: boolean | null;
 }
 
 /**
@@ -42,12 +43,20 @@ export function needsVideaste(pattern: RoleNeedsPattern | null | undefined): boo
  * sur une recette auto. L'ignorer masquerait un champ dont l'étape, elle,
  * resterait affichée à l'écran.
  *
- * `needsBrief` a été retiré de ce test en même temps que le drapeau de recette :
- * le brief est désormais toujours disponible, il ne dit plus rien de qui monte.
+ * `needsBrief` en fait partie, et son retrait a été une erreur : un brief, ce
+ * sont des consignes DE MONTAGE. Une recette qui en donne attend donc quelqu'un
+ * pour les suivre. Pendant ce retrait, ce prédicat et son miroir Prisma
+ * `SLOT_NEEDS_MONTEUR_WHERE` (plus bas) ont divergé — l'inbox admin lisait la
+ * requête, l'écran lisait le prédicat, et ils ne disaient plus la même chose.
+ * Toute modification ici doit être reportée là-bas, et réciproquement.
  */
 export function needsMonteur(pattern: RoleNeedsPattern | null | undefined): boolean {
   if (!pattern) return false;
-  return pattern.source === "manual_rushes" || pattern.coverMode === "monteurUpload";
+  return (
+    pattern.source === "manual_rushes" ||
+    pattern.needsBrief === true ||
+    pattern.coverMode === "monteurUpload"
+  );
 }
 
 /**

@@ -205,9 +205,6 @@ export default async function EntityDetailPage({ params }: Params) {
     userId,
   );
   const canManageRushes = role === "ADMIN";
-  // Le brief se lit dès qu'on accède à la fiche ; l'écriture suit la whitelist
-  // (ADMIN, et le vidéaste qui était sur le tournage).
-  const canEditBrief = isAdmin || role === "VIDEASTE";
   // Retirer un reel sans rushs : miroir de canCancelSlot côté serveur.
   const canCancel = canCancelSlot(role);
   const canAttachSlot =
@@ -250,14 +247,6 @@ export default async function EntityDetailPage({ params }: Params) {
     defaultAssigneeMonteurId: entity.defaultAssigneeMonteurId,
     defaultAssigneeCmId: entity.defaultAssigneeCmId,
     notes: entity.notes,
-    brief: entity.brief,
-    briefAttachments: entity.briefAttachments.map((a) => ({
-      id: a.id,
-      fileName: a.fileName,
-      mimeType: a.mimeType,
-      sizeBytes: a.sizeBytes,
-      createdAt: a.createdAt.toISOString(),
-    })),
     relatedEntityId: entity.relatedEntityId,
     relatedLabel: entity.related?.label ?? null,
     orderId: entity.orderId,
@@ -305,7 +294,6 @@ export default async function EntityDetailPage({ params }: Params) {
         canMarkShot={canMarkShot}
         canUploadRushes={canUploadRushes}
         canManageRushes={canManageRushes}
-        canEditBrief={canEditBrief}
         canCancelSlot={canCancel}
         canAttachSlot={canAttachSlot}
         attachMode={attachMode}

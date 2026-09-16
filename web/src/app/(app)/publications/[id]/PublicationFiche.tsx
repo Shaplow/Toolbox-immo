@@ -30,7 +30,6 @@ import { OneOffTriggerButtons } from "@/components/publications/sections/OneOffT
 import { PublishSection } from "@/components/publications/sections/PublishSection";
 import { RushesSection } from "@/components/publications/sections/RushesSection";
 import { BriefSection } from "@/components/publications/sections/BriefSection";
-import { ShootBriefRecap } from "@/components/publications/sections/ShootBriefRecap";
 import { VersionsSection } from "@/components/publications/sections/VersionsSection";
 import type { VersionItem } from "@/components/publications/sections/VersionsSection";
 import { CommentsSection } from "@/components/publications/CommentsSection";
@@ -266,9 +265,6 @@ export interface PublicationFicheProps {
   shootEvent: {
     id: string;
     title: string;
-    /** Le mot du vidéaste, écrit sur la fiche — lu ici en lecture seule. */
-    brief: string | null;
-    briefAttachments: { id: string; fileName: string; mimeType: string; sizeBytes: number | null }[];
   } | null;
   // Phase B3 — Brief
   brief: BriefItem | null;
@@ -413,11 +409,16 @@ export function PublicationFiche({
     : null;
 
   /**
-   * Le brief s'affiche s'il y a quelque chose à lire, ou quelqu'un pour
-   * l'écrire. Avant, il dépendait d'une case sur la recette : décochée, la
-   * section n'existait pour personne et rien ne disait qu'elle pouvait exister.
+   * Le brief est déclaré par la recette — « cette recette donne des consignes
+   * au monteur » — mais la section reste montée dès qu'il y a quelque chose à
+   * lire, même si la case a été décochée depuis. C'est la leçon de l'aller-
+   * retour précédent : une section qui disparaît AVEC son contenu dedans se
+   * lit comme une fonction supprimée, et on la redéveloppe ailleurs.
    */
-  const briefVisible = Boolean(brief?.body?.trim()) || briefAttachments.length > 0 || canEditBrief;
+  const briefVisible =
+    pattern?.needsBrief === true ||
+    Boolean(brief?.body?.trim()) ||
+    briefAttachments.length > 0;
 
   // Set des sections rendues dans le DOM — passé au NextActionBanner pour
   // masquer le lien "Aller à la section" si la cible n'existe pas (sinon
@@ -609,18 +610,6 @@ export function PublicationFiche({
                 monteur assigné les voit). */}
             {shootEvent && shouldRenderForRole("rushes", currentUserRole) && (
               <div className="space-y-1.5">
-                {/* Le brief du TOURNAGE, au-dessus de ses rushs : les deux
-                    viennent de la même fiche et du même geste du vidéaste.
-                    Titré par son origine, pas par sa nature — une publication
-                    peut aussi porter son propre brief éditorial, et les
-                    confondre serait pire que de n'en avoir aucun. */}
-                {(shootEvent.brief || shootEvent.briefAttachments.length > 0) && (
-                  <ShootBriefRecap
-                    entityId={shootEvent.id}
-                    brief={shootEvent.brief}
-                    attachments={shootEvent.briefAttachments}
-                  />
-                )}
                 <RushesSection
                   slotId={slot.id}
                   apiBasePath={`/api/entities/${shootEvent.id}/rushes`}
@@ -643,13 +632,14 @@ export function PublicationFiche({
               </div>
             )}
 
-            {/* Versions livrées — visible si le pattern implique un montage
-                humain (manual_rushes, needsRushes), ou si une phase de montage
-                est atteinte côté statut, ou si une version existe déjà. Aligné
-                sur editVisible de computePublicationSteps — `needsBrief` en est
-                parti avec le drapeau de recette. */}
+            {/* Versions livrées — même règle que `editVisible` dans
+                computePublicationSteps : si la chaîne affiche une étape
+                « Montage », la section qui la sert doit être là. La condition
+                est recopiée (le moteur ne rend pas ses prédicats) ; les deux
+                doivent bouger ensemble. */}
             {(pattern?.source === "manual_rushes" ||
               pattern?.needsRushes ||
+              pattern?.needsBrief ||
               slot.status === "RUSHES_EXPECTED" ||
               slot.status === "RUSHES_RECEIVED" ||
               slot.status === "IN_EDIT" ||

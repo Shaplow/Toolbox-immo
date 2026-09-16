@@ -714,11 +714,19 @@ export function PatternTemplateFields({
         <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground mb-1">
           Workflow
         </h3>
-        {/* « Brief éditorial » retiré : le brief ne se déclare plus recette par
-            recette. Il s'affiche partout où il y a quelque chose à lire ou
-            quelqu'un pour l'écrire — une case décochée faisait passer la
-            fonction pour supprimée. La colonne `needsBrief` reste en base
-            jusqu'au drop N+1, plus personne ne la lit. */}
+        {/* Le drapeau dit « cette recette donne des consignes au monteur ». Il
+            avait été retiré en le croyant décoratif : il pilote en réalité la
+            visibilité de l'étape « Montage » sur les recettes `external_upload`
+            — le seul cas où rien d'autre ne prouve qu'il y a un montage. Le
+            libellé dit maintenant ce qu'il fait ; « éditorial » ne le disait
+            pas, et c'est ce qui a permis de le confondre avec un brief de
+            tournage. */}
+        <WorkflowToggle
+          label="Brief pour le monteur"
+          description="Une zone de consignes (texte, vocal, pièces jointes) s'ouvre sur chaque publication de cette recette."
+          checked={v.needsBrief}
+          onChange={(val) => onChange({ needsBrief: val })}
+        />
         <WorkflowToggle
           label="Validation admin du montage"
           description="Le montage passe par « À valider » avant publication."

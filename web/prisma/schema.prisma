@@ -1247,13 +1247,11 @@ model Entity {
   updatedAt       DateTime @updatedAt
 
   /// Reels/missions dont cette fiche est la source de données (ex-propertyId).
-  slots            PublicationSlot[]       @relation("SlotEntity")
+  slots      PublicationSlot[] @relation("SlotEntity")
   /// Reels rattachés à cette fiche comme tournage (ex-eventId).
-  shootSlots       PublicationSlot[]       @relation("SlotShootEntity")
-  rushes           PublicationRush[]       @relation("EntityRushes")
-  activities       EntityActivity[]
-  /// Pièces jointes du brief de tournage (vocal, doc, photo de repérage).
-  briefAttachments EntityBriefAttachment[]
+  shootSlots PublicationSlot[] @relation("SlotShootEntity")
+  rushes     PublicationRush[] @relation("EntityRushes")
+  activities EntityActivity[]
 
   @@index([typeId, isArchived, label])
   @@index([accountId, scheduledAt])
@@ -1269,22 +1267,6 @@ model Entity {
 /// partagé : un attachement à deux parents possibles est une invitation
 /// permanente aux requêtes à moitié filtrées.
 ///
-/// Le besoin : « faut que l'admin ou le vidéaste puisse écrire / déposer un
-/// vocal pour le monteur ». Le vidéaste travaille depuis la fiche, pas depuis
-/// une publication — c'est donc ici que le dépôt doit exister.
-model EntityBriefAttachment {
-  id        String   @id @default(cuid())
-  entityId  String
-  entity    Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  r2Key     String   @unique
-  fileName  String
-  mimeType  String
-  sizeBytes Int?
-  createdAt DateTime @default(now())
-
-  @@index([entityId])
-}
-
 /// Journal d'activité d'une fiche (remplace ShootEventActivity —
 /// PublicationActivity reste dédiée aux slots, chemin chaud).
 model EntityActivity {
