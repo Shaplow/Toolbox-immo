@@ -11,21 +11,34 @@
  * Le clic déplie la section correspondante et y amène. Sans cible connue, le
  * bandeau reste affiché mais n'est pas cliquable — mieux vaut dire quoi faire
  * sans lien que de promettre un saut qui ne se produit pas.
+ *
+ * « À toi » n'est vrai que si l'étape est bien du ressort de celui qui regarde :
+ * le bandeau ne s'affiche donc pas quand l'étape active appartient à un autre
+ * rôle. Sans cette garde, un monteur se voyait réclamer « marquer le tournage
+ * réalisé » — une action de vidéaste, absente de sa propre chaîne, qui plus est.
  */
 
 import { ArrowRight, Sparkles } from "lucide-react";
 import { emitOpenSection } from "@/components/fiches/openSectionEvent";
 import type { ChainStep } from "@/lib/steps/engine";
+import type { UserRole } from "@/types/roles";
 
 export interface NextStepBannerProps {
   steps: ChainStep<string>[];
   /** Étape → id de section à ouvrir. Une clé absente rend le bandeau inerte. */
   stepToSection?: Record<string, string>;
+  /** Si fourni, le bandeau se tait quand l'étape active n'est pas de ce rôle. */
+  viewerRole?: UserRole;
 }
 
-export function NextStepBanner({ steps, stepToSection = {} }: NextStepBannerProps) {
+export function NextStepBanner({
+  steps,
+  stepToSection = {},
+  viewerRole,
+}: NextStepBannerProps) {
   const next = steps.find((s) => s.nextAction);
   if (!next) return null;
+  if (viewerRole && viewerRole !== "ADMIN" && !next.roles.includes(viewerRole)) return null;
 
   const sectionId = stepToSection[next.key];
   // Le nom de l'étape est un état (« Tournage ») ; le bandeau veut un verbe.

@@ -70,13 +70,23 @@ const SHOOT_STEP_TO_SECTION: Record<string, string> = {
 };
 
 const ENTITY_SECTIONS_BY_ROLE: SectionsByRole<EntitySectionKey> = {
-  VIDEASTE: ["fields", "rushes", "publications", "activity"],
-  MONTEUR: ["fields", "rushes", "publications", "activity"],
-  CM: ["fields", "rushes", "publications", "activity"],
+  VIDEASTE: ["fields", "rushes", "publications"],
+  MONTEUR: ["fields", "rushes", "publications"],
+  CM: ["fields", "rushes", "publications"],
   // N'atteint jamais cette route (entityScope le coupe avant le rendu). Si ça
   // changeait, la fiche n'aurait qu'un en-tête et rien dessous.
   EXTERNAL_GENERATOR: [],
 };
+
+/**
+ * Le fil d'activité est un journal d'audit : ADMIN seul, quelle que soit la liste.
+ *
+ * En double de l'absence d'`activity` ci-dessus, et c'est voulu : la matrice dit
+ * ce qu'un rôle voit, cette liste dit ce qu'aucun rôle ne verra jamais — une
+ * garantie qui compte précisément parce que la matrice est faite pour être
+ * éditée. Même règle que sur la publication.
+ */
+const ENTITY_ADMIN_ONLY_SECTIONS = ["activity"] as const satisfies readonly EntitySectionKey[];
 
 export interface EntityFicheProps {
   entity: EntityFicheData;
@@ -126,6 +136,7 @@ export function EntityFiche({
     role,
     sectionsByRole: ENTITY_SECTIONS_BY_ROLE,
     storagePrefix: `fiche-section:${entity.id}`,
+    adminOnly: ENTITY_ADMIN_ONLY_SECTIONS,
   });
 
   // Le bandeau ne s'adresse qu'à l'ASSIGNÉ du tournage : la passerelle d'accès
@@ -172,7 +183,11 @@ export function EntityFiche({
         showAvailabilityPrompt ? (
           <ShootAvailabilityPrompt entity={entity} />
         ) : shootSteps.length > 0 ? (
-          <NextStepBanner steps={shootSteps} stepToSection={SHOOT_STEP_TO_SECTION} />
+          <NextStepBanner
+            steps={shootSteps}
+            stepToSection={SHOOT_STEP_TO_SECTION}
+            viewerRole={role}
+          />
         ) : undefined
       }
       chain={
