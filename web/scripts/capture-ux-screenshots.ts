@@ -143,10 +143,22 @@ const SURFACES: Surface[] = [
     desc: "Liste des biens (fiches de données partagées) — recherche + création",
   },
   {
-    name: "13-bien-editor",
-    path: "/biens/ux-bien-demo",
+    name: "13-fiche-bien",
+    path: "/fiches/ux-fiche-bien",
     wait: 700,
-    desc: "Éditeur d'un bien — label + champs partagés + Lancer des missions",
+    desc: "Fiche Bien — aucune capacité : champs custom seuls, pas de planning",
+  },
+  {
+    name: "14-fiche-tournage",
+    path: "/fiches/ux-fiche-tournage",
+    wait: 700,
+    desc: "Fiche Tournage — planning + équipe, rushs, et les DEUX relations de slots",
+  },
+  {
+    name: "15-fiche-tournage-dispo",
+    path: "/fiches/ux-fiche-dispo",
+    wait: 700,
+    desc: "Fiche Tournage en attente de réponse — bandeau « es-tu disponible ? »",
   },
 ];
 
@@ -1268,6 +1280,175 @@ async function capturePatternFixture(
   return outPath;
 }
 
+// ─── Fixtures « fiches » ─────────────────────────────────────────────────────
+
+/**
+ * Le baseline ne regardait qu'un « Bien » — et sur une fiche qui n'existe pas.
+ *
+ * `13-bien-editor` visait `/biens/ux-bien-demo` : aucun seed ne crée cette
+ * fiche, la capture ramenait donc une page d'erreur. Et un Bien n'a ni
+ * planning, ni rushs, ni assignés : la moitié de la fiche n'était de toute
+ * façon jamais regardée.
+ *
+ * Trois fiches, choisies pour les cas qui divergent :
+ *  - `ux-fiche-tournage` : planning + rushs + assignés, ET les DEUX relations
+ *    de slots à la fois (source de données et tournage) — le cas qu'une fiche
+ *    n'affiche jamais en entier aujourd'hui.
+ *  - `ux-fiche-dispo` : l'admin y est le vidéaste assigné. C'est le seul moyen
+ *    de voir le bandeau « es-tu disponible ? » depuis le compte de capture,
+ *    puisqu'il se déclenche sur l'identité, pas sur le rôle.
+ *  - `ux-fiche-bien` : la fiche sans aucune capacité, qui remplace la morte.
+ */
+async function seedEntityFixtures(): Promise<void> {
+  const prisma = new PrismaClient({
+    datasources: { db: { url: TEST_DB_URL } },
+  });
+  try {
+    const [admin, videaste, monteur, cm, account] = await Promise.all([
+      prisma.user.findUnique({ where: { email: "admin@test.local" } }),
+      prisma.user.findUnique({ where: { email: "videaste@test.local" } }),
+      prisma.user.findUnique({ where: { email: "monteur@test.local" } }),
+      prisma.user.findUnique({ where: { email: "cm@test.local" } }),
+      prisma.instagramAccount.findFirst({ where: { handle: "test_account" } }),
+    ]);
+    if (!admin || !videaste || !monteur || !cm || !account) {
+      throw new Error("Fixtures de base manquantes — npm run test:db:seed d'abord.");
+    }
+
+    // Les deux types système sont seedés sans champs : la section « Champs »
+    // n'aurait que son état vide à montrer. On en donne au Bien, sinon l'écran
+    // le plus dense de la fiche n'est jamais capturé.
+    await prisma.entityType.update({
+      where: { id: "etype_bien" },
+      data: {
+        fieldSchema: JSON.stringify([
+          { key: "adresse", label: "Adresse", type: "text", required: true,
+            placeholder: "12 rue de la Canebière" },
+          { key: "prix", label: "Prix", type: "number",
+            description: "Repris tel quel dans la légende générée." },
+          { key: "surface", label: "Surface (m²)", type: "number" },
+          { key: "type_bien", label: "Type", type: "select",
+            options: ["Appartement", "Maison", "Terrain"] },
+        ]),
+      },
+    });
+
+    const inTenDays = new Date(Date.now() + 10 * 86_400_000);
+
+    const tournage = await prisma.entity.upsert({
+      where: { id: "ux-fiche-tournage" },
+      update: {},
+      create: {
+        id: "ux-fiche-tournage",
+        typeId: "etype_tournage",
+        label: "Tournage — Villa vue mer",
+        status: "PLANNED",
+        scheduledAt: inTenDays,
+        accountId: account.id,
+        assigneeVideasteId: videaste.id,
+        defaultAssigneeMonteurId: monteur.id,
+        defaultAssigneeCmId: cm.id,
+        validationStatus: "APPROVED",
+        videasteConfirmation: "CONFIRMED",
+        videasteConfirmationAt: new Date(),
+        notes: "Prévoir le drone. Le propriétaire est sur place à 9h.",
+      },
+    });
+
+    // Un rush, pour que la section ait autre chose que son état vide.
+    await prisma.publicationRush.upsert({
+      where: { r2Key: "ux/rushes/villa-plan-large.mp4" },
+      update: {},
+      create: {
+        entityId: tournage.id,
+        r2Key: "ux/rushes/villa-plan-large.mp4",
+        fileName: "villa-plan-large.mp4",
+        mimeType: "video/mp4",
+        sizeBytes: 428_000_000,
+        durationSec: 74.5,
+        uploadedByUserId: videaste.id,
+      },
+    });
+
+    // Les DEUX relations sur la MÊME fiche : `shootEntityId` (elle est le
+    // tournage) et `entityId` (elle est la source de données). C'est ce que
+    // `attachMode` empêche aujourd'hui d'afficher ensemble.
+    const slotBase = {
+      accountId: account.id,
+      patternBindingId: "test-pattern-1",
+      scheduledAt: inTenDays,
+      status: "PLANNED" as const,
+      assigneeMonteurId: monteur.id,
+      assigneeCmId: cm.id,
+      assigneeVideasteId: videaste.id,
+      isAuto: false,
+    };
+    await prisma.publicationSlot.upsert({
+      where: { id: "ux-slot-shoot" },
+      update: { shootEntityId: tournage.id },
+      create: { ...slotBase, id: "ux-slot-shoot",
+        title: "Reel — visite guidée", shootEntityId: tournage.id },
+    });
+    await prisma.publicationSlot.upsert({
+      where: { id: "ux-slot-data" },
+      update: { entityId: tournage.id },
+      create: { ...slotBase, id: "ux-slot-data",
+        title: "Reel — annonce du bien", entityId: tournage.id },
+    });
+
+    await prisma.entity.upsert({
+      where: { id: "ux-fiche-dispo" },
+      update: { assigneeVideasteId: admin.id, videasteConfirmation: null },
+      create: {
+        id: "ux-fiche-dispo",
+        typeId: "etype_tournage",
+        label: "Tournage — Loft Prado (réponse attendue)",
+        status: "PLANNED",
+        scheduledAt: new Date(Date.now() + 3 * 86_400_000),
+        accountId: account.id,
+        assigneeVideasteId: admin.id,
+        validationStatus: "APPROVED",
+        videasteConfirmation: null,
+      },
+    });
+
+    await prisma.entity.upsert({
+      where: { id: "ux-fiche-bien" },
+      update: {},
+      create: {
+        id: "ux-fiche-bien",
+        typeId: "etype_bien",
+        label: "Appartement Canebière",
+        fields: JSON.stringify({
+          adresse: "12 rue de la Canebière, Marseille",
+          prix: "345000",
+          surface: "78",
+          type_bien: "Appartement",
+        }),
+      },
+    });
+
+    // Sans activité, la section « Activité » n'est pas montée du tout — elle
+    // échappait donc à la capture ET à la vérification du contrat de section.
+    const activities = [
+      { type: "CREATED", actorId: admin.id },
+      { type: "VIDEASTE_CONFIRMED", actorId: videaste.id },
+      { type: "RUSHES_UPLOADED", actorId: videaste.id },
+    ];
+    for (const [i, a] of activities.entries()) {
+      await prisma.entityActivity.upsert({
+        where: { id: `ux-activity-${i}` },
+        update: {},
+        create: { id: `ux-activity-${i}`, entityId: tournage.id, ...a },
+      });
+    }
+
+    console.log("  ↳ Fiches : tournage (2 relations, 1 rush, 3 activités), dispo, bien");
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 async function main() {
   console.log(`▶ Audit UX — capture surfaces + scenarios + 10 patterns canoniques`);
   console.log(`  Output : ${OUTPUT_DIR}`);
@@ -1281,6 +1462,8 @@ async function main() {
   await seedPatternFixtures();
   // Seed fixtures admin (médiathèque usages, data library, 2e compte).
   await seedAdminFixtures();
+  // Seed fiches (métaobjet) : la surface /fiches/[id] n'avait aucune fixture.
+  await seedEntityFixtures();
 
   let ownsServer: ChildProcess | null = null;
   if (!(await isServerUp())) {
