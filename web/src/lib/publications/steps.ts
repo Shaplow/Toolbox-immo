@@ -14,6 +14,7 @@ import type {
   DescriptionJob,
 } from "@prisma/client";
 import type { UserRole } from "@/types/roles";
+import { resolveChain, type ChainStep, type StepStatus } from "@/lib/steps/engine";
 import { POST_VALIDATION_STATUSES } from "./constants";
 import { resolveCaptionsMode, isCaptionsEnabled } from "./captionsMode";
 
@@ -63,36 +64,13 @@ export function getStepRoles(key: StepKey): UserRole[] {
   return STEP_ROLES[key];
 }
 
-export type StepStatus =
-  | "todo"
-  | "waiting" // étape future, en attente d'une étape amont non terminée (visuel todo, label "En attente")
-  | "queued"
-  | "processing"
-  | "done"
-  | "failed"
-  | "blocked";
-
-export interface PublicationStep {
-  key: StepKey;
-  /** Libellé affiché dans l'UI (FR). */
-  label: string;
-  /** Faux si le step n'est pas applicable pour cette recipe. */
-  visible: boolean;
-  status: StepStatus;
-  /**
-   * true uniquement pour le premier step visible dont
-   * status ∈ ["todo", "failed"] — indique la prochaine action à mener.
-   */
-  nextAction: boolean;
-  /** Rôles intéressés par ce step (utilisé par ProductionChain pour filtrer). */
-  roles: UserRole[];
-  /**
-   * V8.5 — Quand `status === "waiting"`, label du premier step amont visible
-   * non terminé. Permet à ProductionChain d'afficher "En attente de : Montage"
-   * au lieu de "En attente de l'étape précédente" (générique trompeur).
-   */
-  waitingFor?: string;
-}
+/**
+ * Le contrat d'étape vient du moteur générique. Réexporté ici pour que les
+ * appelants historiques (`ProductionChain`, `PublicationFiche`, les tests)
+ * gardent leur import inchangé.
+ */
+export type { StepStatus } from "@/lib/steps/engine";
+export type PublicationStep = ChainStep<StepKey>;
 
 // ---------------------------------------------------------------------------
 // Statuts slot terminaux / bloquants
@@ -466,79 +444,14 @@ export function computePublicationSteps(input: {
     },
   ];
 
-  // ── Post-process : propage la cohérence amont (V8.5 + V8.9) ─────────────
+  // La mécanique (cohérence d'amont, prochaine action) vit dans
+  // `lib/steps/engine` : elle est commune à la publication et au tournage.
   //
-  // Règle stricte : un step ne peut pas être plus "avancé" que ses upstream
-  // visibles. Cela couvre 2 cas :
-  //
-  //   a) `todo` → `waiting` si un upstream est non-done (V8.5)
-  //   b) `done` → `waiting` si un upstream est non-done (V8.9)
-  //      Cas typique : un captionJob COMPLETED orphelin (créé sans render
-  //      ou avec une version qui a été dépromue). Avant V8.9 la chaîne
-  //      affichait "Sous-titres : Fait" tout en montrant "Montage : Action
-  //      attendue" en amont — sémantique cassée. Maintenant le step "done
-  //      orphelin" est ramené à `waiting` avec waitingFor sur le blocker —
-  //      l'utilisateur voit clairement quelle étape débloquer pour réellement
-  //      considérer ce step comme fait.
-  //
-  // Si un jour on veut signaler explicitement "done orphelin" (badge "Pré-livré"
-  // ou similaire), il suffit d'introduire un nouveau status. Pour l'instant,
-  // on privilégie la lisibilité de la chaîne linéaire.
-  const TERMINAL_FOR_NEXT = new Set<StepStatus>(["done"]);
-  // Steps dont le statut est piloté par `slot.status` directement (et non
-  // par un job aval). Ces steps reflètent un état terminal global de la
-  // publication — on ne les déclasse JAMAIS via la règle d'amont :
-  //   - publish : "done" quand slot.status = PUBLISHED, peu importe le reste
-  //   - validation : peut être "failed" en CLIENT_REVISION sans rapport aux jobs
-  const STATUS_DRIVEN_STEPS = new Set<StepKey>(["publish", "validation"]);
-  const visibleSteps = rawSteps.filter((s) => s.visible);
-  const adjustedSteps = rawSteps.map((step) => {
-    if (STATUS_DRIVEN_STEPS.has(step.key)) {
-      // Ces steps dépendent du status slot, pas de leurs upstream — sauf
-      // pour le cas "todo → waiting" classique que la règle V8.5 couvre.
-      if (step.status !== "todo") return step;
-    }
-    // Statuts "neutres" qui n'ont pas besoin d'arbitrage upstream.
-    if (
-      step.status !== "todo" &&
-      step.status !== "done" &&
-      step.status !== "processing" &&
-      step.status !== "queued"
-    ) {
-      return step;
-    }
-    const idx = visibleSteps.findIndex((s) => s.key === step.key);
-    if (idx <= 0) return step;
-    const upstream = visibleSteps.slice(0, idx);
-    const blocker = upstream.find((s) => !TERMINAL_FOR_NEXT.has(s.status));
-    if (blocker) {
-      return {
-        ...step,
-        status: "waiting" as StepStatus,
-        waitingFor: blocker.label,
-      };
-    }
-    return step;
+  // `publish` et `validation` sont pilotés par le statut du slot lui-même, pas
+  // par les jobs en amont : `publish` est « fait » dès que le slot est publié,
+  // et `validation` peut être « échoué » en révision client sans que rien en
+  // amont ne bouge.
+  return resolveChain<StepKey>(rawSteps, {
+    statusDriven: ["publish", "validation"],
   });
-
-  // ── Résolution de nextAction ───────────────────────────────────────────────
-  // Le step actif est la première étape réellement actionnable maintenant
-  // (todo ou failed). Les étapes en "waiting" sont futures, pas actives.
-  let nextActionSet = false;
-
-  const steps: PublicationStep[] = adjustedSteps.map((step) => {
-    const isActionable =
-      step.visible &&
-      (step.status === "todo" || step.status === "failed") &&
-      !nextActionSet;
-
-    if (isActionable) {
-      nextActionSet = true;
-      return { ...step, nextAction: true };
-    }
-
-    return { ...step, nextAction: false };
-  });
-
-  return steps;
 }

@@ -15,10 +15,17 @@
  *
  * La charpente est celle de `/publications/[id]` : `FicheShell`. C'est lui qui
  * remplace `PageShell` sur cette route — les deux ne s'imbriquent pas.
+ *
+ * La chaîne d'étapes se calcule ICI, et non côté serveur comme celle de la
+ * publication : celle-là a besoin de l'état de quatre jobs, celle-ci ne lit que
+ * des champs déjà présents dans `entity`.
  */
 
 import { needsVideasteAnswer } from "@/lib/entityAvailability";
 import { FicheShell } from "@/components/fiches/FicheShell";
+import { NextStepBanner } from "@/components/fiches/NextStepBanner";
+import { ProductionChain } from "@/components/publications/ProductionChain";
+import { computeShootSteps } from "@/lib/entities/shootSteps";
 import {
   createSectionWrapper,
   type SectionsByRole,
@@ -54,6 +61,14 @@ type EntitySectionKey = "fields" | "planning" | "rushes" | "publications" | "act
  * ajouter `planning` à un rôle ici ne produirait rien, et la recherche du
  * pourquoi partirait dans le mauvais fichier.
  */
+/** Où mène le clic sur une étape de la chaîne. */
+const SHOOT_STEP_TO_SECTION: Record<string, string> = {
+  planned: "planning",
+  confirmed: "planning",
+  shot: "rushes",
+  published: "publications",
+};
+
 const ENTITY_SECTIONS_BY_ROLE: SectionsByRole<EntitySectionKey> = {
   VIDEASTE: ["fields", "rushes", "publications", "activity"],
   MONTEUR: ["fields", "rushes", "publications", "activity"],
@@ -124,6 +139,22 @@ export function EntityFiche({
   const isAssignedVideaste = currentUserId === entity.assigneeVideasteId;
   const showAvailabilityPrompt = isAssignedVideaste && needsVideasteAnswer(entity);
 
+  // La chaîne n'a de sens que sur un type qui a un planning : sans date, sans
+  // assigné et sans rushs, il n'y a pas de tournage à suivre.
+  const shootSteps = entity.hasPlanning
+    ? computeShootSteps({
+        hasPlanning: entity.hasPlanning,
+        hasAssignees: entity.hasAssignees,
+        isArchived: entity.isArchived,
+        status: entity.status,
+        validationStatus: entity.validationStatus,
+        scheduledAt: entity.scheduledAt,
+        assigneeVideasteId: entity.assigneeVideasteId,
+        videasteConfirmation: entity.videasteConfirmation,
+        rushCount: entity.rushes.length,
+        slotStatuses: entity.shootSlots.map((s) => s.status),
+      })
+    : [];
 
   return (
     <FicheShell
@@ -135,13 +166,32 @@ export function EntityFiche({
           backHref={backHref}
         />
       }
-      banner={showAvailabilityPrompt ? <ShootAvailabilityPrompt entity={entity} /> : undefined}
-      chain={
-        entity.notes ? (
-          <p className="mt-4 text-[13px] text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
-            {entity.notes}
-          </p>
+      banner={
+        // Un seul « ce que tu dois faire » à la fois : quand la fiche demande
+        // une disponibilité à l'assigné, c'est ça, la prochaine action.
+        showAvailabilityPrompt ? (
+          <ShootAvailabilityPrompt entity={entity} />
+        ) : shootSteps.length > 0 ? (
+          <NextStepBanner steps={shootSteps} stepToSection={SHOOT_STEP_TO_SECTION} />
         ) : undefined
+      }
+      chain={
+        <>
+          {shootSteps.length > 0 && (
+            <div className="mt-4 p-4 rounded-lg bg-card border border-border">
+              <ProductionChain
+                steps={shootSteps}
+                viewerRole={role}
+                stepToSection={SHOOT_STEP_TO_SECTION}
+              />
+            </div>
+          )}
+          {entity.notes && (
+            <p className="mt-4 text-[13px] text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+              {entity.notes}
+            </p>
+          )}
+        </>
       }
       aside={
         entity.activities.length > 0

@@ -1,27 +1,34 @@
 "use client";
 
 /**
- * ProductionChain — chaîne de production de la fiche publication.
+ * ProductionChain — la chaîne d'étapes, au-dessus de la molécule `Stepper`.
  *
- * Wrapper léger autour de la molécule `Stepper variant="glass"`. Filtre les
- * steps visibles pour le rôle viewer, mappe `PublicationStep.status` →
- * `StepStatus`, identifie le step actif (nextAction), et dispatche
- * `fiche:open-section` au click pour scroller vers la section correspondante
- * (consommé par les molécules `Section` côté fiche).
+ * Sert les DEUX fiches. Rien ici ne parle de publication : la table
+ * « étape → section » arrive en prop, parce que c'est la seule chose qui
+ * changeait d'une surface à l'autre.
+ *
+ * Filtre les étapes visibles pour le rôle, mappe leur statut vers celui du
+ * Stepper, désigne l'étape active (`nextAction`), et émet `fiche:open-section`
+ * au clic pour déplier la section correspondante et y amener.
  */
 
 import { Stepper, type Step as StepperStep, type StepStatus as StepperStatus } from "@/components/ui/Stepper";
-import type { PublicationStep, StepStatus } from "@/lib/publications/steps";
+import type { ChainStep, StepStatus } from "@/lib/steps/engine";
 import type { UserRole } from "@/types/roles";
 import { emitOpenSection } from "@/components/fiches/openSectionEvent";
 
 export interface ProductionChainProps {
-  steps: PublicationStep[];
+  steps: ChainStep<string>[];
   /** Si fourni, filtre les steps pour le rôle concerné (sauf ADMIN). */
   viewerRole?: UserRole;
+  /**
+   * Étape → id de la section à déplier au clic. Une clé absente rend l'étape
+   * non cliquable, en silence — c'est le défaut sur une chaîne sans sections.
+   */
+  stepToSection?: Record<string, string>;
 }
 
-/** Map PublicationStep.status → Stepper StepStatus. */
+/** Map le statut d'étape → statut du Stepper. */
 function mapStatus(status: StepStatus): StepperStatus {
   switch (status) {
     case "done":
@@ -39,7 +46,8 @@ function mapStatus(status: StepStatus): StepperStatus {
   }
 }
 
-const STEP_TO_SECTION: Record<string, string> = {
+/** La table de la fiche publication — son défaut, pas une fatalité. */
+export const PUBLICATION_STEP_TO_SECTION: Record<string, string> = {
   rushes: "rushes",
   render: "render",
   edit: "versions",
@@ -53,13 +61,17 @@ const STEP_TO_SECTION: Record<string, string> = {
   publish: "publish",
 };
 
-function scrollToSection(stepKey: string) {
-  const sectionId = STEP_TO_SECTION[stepKey];
-  if (!sectionId) return;
-  emitOpenSection(sectionId);
-}
+export function ProductionChain({
+  steps,
+  viewerRole,
+  stepToSection = PUBLICATION_STEP_TO_SECTION,
+}: ProductionChainProps) {
+  function scrollToSection(stepKey: string) {
+    const sectionId = stepToSection[stepKey];
+    if (!sectionId) return;
+    emitOpenSection(sectionId);
+  }
 
-export function ProductionChain({ steps, viewerRole }: ProductionChainProps) {
   const visibleSteps = steps.filter((s) => {
     if (!s.visible) return false;
     if (!viewerRole) return true;
@@ -79,7 +91,7 @@ export function ProductionChain({ steps, viewerRole }: ProductionChainProps) {
     description:
       s.status === "waiting" && s.waitingFor
         ? `En attente de ${s.waitingFor.toLowerCase()}`
-        : STEP_STATUS_LABELS[s.status],
+        : (s.hint ?? STEP_STATUS_LABELS[s.status]),
     status: mapStatus(s.status),
   }));
 
