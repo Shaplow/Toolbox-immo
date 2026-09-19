@@ -10,7 +10,6 @@ import { canCancelSlot } from "@/lib/permissions/slotScope";
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { SYSTEM_ENTITY_TYPE_IDS } from "@/lib/entityTypes";
 import { NotFoundError } from "@/lib/services/_runtime/errors";
-import { PageShell } from "@/components/ui/PageShell";
 import { EntityFiche, type EntityFicheData } from "@/components/entities/EntityFiche";
 import { longDateTimeFr } from "@/lib/date/formatFr";
 import { REEL_ATTACHABLE_SOURCES } from "@/lib/publications/constants";
@@ -287,26 +286,25 @@ export default async function EntityDetailPage({ params }: Params) {
   const backHref = `/fiches?type=${entity.typeId}`;
 
   return (
-    <PageShell variant="narrow">
-      <EntityFiche
-        entity={data}
-        isAdmin={isAdmin}
-        canMarkShot={canMarkShot}
-        canUploadRushes={canUploadRushes}
-        canManageRushes={canManageRushes}
-        canCancelSlot={canCancel}
-        canAttachSlot={canAttachSlot}
-        attachMode={attachMode}
-        recipes={recipes}
-        accounts={accounts}
-        shootTypes={shootTypes}
-        defaultShootTypeId={defaultShootTypeId}
-        videastes={videastes.map((u) => ({ id: u.id, name: u.name }))}
-        monteurs={monteurs.map((u) => ({ id: u.id, name: u.name }))}
-        cms={cms.map((u) => ({ id: u.id, name: u.name }))}
-        currentUserId={userId}
-        backHref={backHref}
-      />
-    </PageShell>
+    <EntityFiche
+      entity={data}
+      role={role}
+      isAdmin={isAdmin}
+      canMarkShot={canMarkShot}
+      canUploadRushes={canUploadRushes}
+      canManageRushes={canManageRushes}
+      canCancelSlot={canCancel}
+      canAttachSlot={canAttachSlot}
+      attachMode={attachMode}
+      recipes={recipes}
+      accounts={accounts}
+      shootTypes={shootTypes}
+      defaultShootTypeId={defaultShootTypeId}
+      videastes={videastes.map((u) => ({ id: u.id, name: u.name }))}
+      monteurs={monteurs.map((u) => ({ id: u.id, name: u.name }))}
+      cms={cms.map((u) => ({ id: u.id, name: u.name }))}
+      currentUserId={userId}
+      backHref={backHref}
+    />
   );
 }

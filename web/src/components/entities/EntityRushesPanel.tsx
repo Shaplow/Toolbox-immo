@@ -12,6 +12,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Clapperboard, Download, Trash2 } from "lucide-react";
+import { Section } from "@/components/ui/molecules/Section";
+import type { FicheSectionChromeProps } from "@/components/fiches/sectionShell";
 import { MediaDropzone } from "@/components/ui/MediaDropzone";
 import { toast } from "@/components/ui/Toast";
 import { UPLOAD_LIMITS } from "@/lib/upload/limits";
@@ -44,7 +46,7 @@ export function formatRushBytes(bytes: number | null): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} Go`;
 }
 
-interface EntityRushesPanelProps {
+interface EntityRushesPanelProps extends FicheSectionChromeProps {
   entityId: string;
   rushes: EntityRush[];
   canUpload: boolean;
@@ -61,6 +63,10 @@ export function EntityRushesPanel({
   canManage,
   currentUserId,
   title = "Rushs de la fiche",
+  sectionId = "rushes",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
 }: EntityRushesPanelProps) {
   const router = useRouter();
   const [rushes, setRushes] = useState<EntityRush[]>(initialRushes);
@@ -95,13 +101,16 @@ export function EntityRushesPanel({
   }
 
   return (
-    <section className="rounded-lg bg-card border border-border">
-      <header className="flex items-center gap-2 px-4 py-3 border-b border-border">
-        <Clapperboard size={15} className="text-muted-foreground" />
-        <h2 className="text-[13px] font-semibold tracking-tight text-foreground">{title}</h2>
-        <span className="text-[11px] tabular-nums text-muted-foreground">· {rushes.length}</span>
-      </header>
-      <div className="p-4 space-y-3">
+    <Section
+      title={title}
+      icon={Clapperboard}
+      description={`${rushes.length} rush${rushes.length > 1 ? "s" : ""}`}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+    >
+      <div className="space-y-3">
         {canUpload && (
           <MediaDropzone
             slotId={entityId}
@@ -154,6 +163,6 @@ export function EntityRushesPanel({
           </ul>
         )}
       </div>
-    </section>
+    </Section>
   );
 }

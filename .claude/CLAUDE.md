@@ -27,6 +27,12 @@ Doctrine DA v3 (15/06) : **flat shadcn-style, light only, accent indigo Linear (
 - Feedback : `Toast` (`toast.success/error/info`) — **jamais** `alert()` ou `confirm()` natifs
 - Surfaces : `bg-card border border-border rounded-lg` ; pas de `backdrop-blur`, pas de `gradient-page-shell`, pas de pastels Coastal Studio.
 - Shell pages : **toujours `<PageShell variant="default|wide|narrow">`**, jamais de wrapper inline `ml-[Npx] mr-[Npx] rounded-3xl` (banni — pattern Liquid Glass island jeté en DA v3 / Phase F).
+- **Exception, les deux fiches** : `/fiches/[id]` et `/publications/[id]` utilisent
+  `components/fiches/FicheShell` **à la place** de `PageShell` — jamais les deux imbriqués.
+  `PageShell` centre tout dans un conteneur borné, or ces pages ont une barre d'en-tête collante
+  pleine largeur, et une largeur (`max-w-6xl`) qu'aucun variant n'offre. `FicheShell` fournit la
+  barre, la grille deux colonnes et l'aside sticky ; les sections passent par
+  `components/fiches/sectionShell` (ancre + mémoire de pliage + filtrage par rôle).
 
 Si une primitive manque pour un usage récurrent, **ajoute-la** dans `web/src/components/ui/` plutôt que de dupliquer des classes. ESLint guard `no-restricted-syntax` flag toute réintroduction de `bg-(peach|sage)-*`.
 
