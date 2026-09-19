@@ -1,5 +1,5 @@
 /**
- * Répartition des reels auto entre les comptes — le calcul, sans base de données.
+ * Le choix d'une recette pour une case — le calcul, sans base de données.
  *
  * LE BESOIN : « j'essaie de dispatcher correctement les reels entre tous les
  * comptes pour pas qu'on se retrouve avec 2× le même reel posté trop
@@ -13,19 +13,19 @@
  * ── La métrique : distance à l'occurrence la plus proche, PASSÉE OU FUTURE ──
  *
  * Un « moins récemment utilisé » classique reproduirait le bug à l'identique :
- * en remplissant la semaine prochaine, une recette peut être à la fois la plus
- * ancienne (20 jours) ET déjà posée mardi par une session précédente. Le LRU la
- * proposerait lundi. Regarder des deux côtés, c'est exactement ce que fait
- * l'œil sur le calendrier — et ça règle gratuitement le bord de semaine.
+ * une recette peut être à la fois la plus ancienne (20 jours) ET déjà posée
+ * mardi prochain. Le LRU la proposerait lundi. Regarder des deux côtés, c'est
+ * exactement ce que fait l'œil sur le calendrier — et ça règle gratuitement le
+ * bord de semaine.
  *
  * ── La borne physique, qu'aucun algorithme ne franchit ──
  *
  * Avec N recettes et c publications par jour, l'écart minimum atteignable est
  * `⌊N / c⌋` : dans toute fenêtre de g jours chaque recette apparaît au plus une
  * fois, donc c·g ≤ N. 15 recettes sur 8 comptes qui publient le même jour → 1
- * jour d'écart, point. Le « lundi/mardi » observé était inévitable. D'où
- * `minimumAchievableGap`, à afficher : le levier n'est pas l'algorithme, c'est
- * la taille du pool ou le nombre de publications par jour.
+ * jour d'écart, point. Le « lundi/mardi » observé était inévitable, et le levier
+ * n'est pas l'algorithme : c'est la taille du pool ou le nombre de publications
+ * par jour.
  */
 
 /** Une case à remplir : un compte, un jour civil (Paris), un rang. */
@@ -60,6 +60,9 @@ export interface DispatchCandidate {
  * qu'elles « rendaient le même reel ». C'était une erreur de catégorie — le
  * gabarit est une mise en page, le contenu vient des données — et elle enterrait
  * huit recettes d'un coup dès que l'une d'elles sortait.
+ *
+ * `allDays` couvre TOUS les comptes, jamais le seul compte de la case : c'est
+ * entre comptes que le doublon se voit, puisqu'ils partagent l'audience.
  */
 export interface RecipeHistory {
   /** Tous les comptes du périmètre. */
@@ -68,59 +71,12 @@ export interface RecipeHistory {
   byAccount: Record<string, number[]>;
 }
 
-export type DispatchUnfilledReason =
-  /** Aucune recette du pool n'est activée sur ce compte. */
-  | "no_candidate"
-  /** Toutes les recettes disponibles sont déjà posées ce jour-là. */
-  | "pool_exhausted_day"
-  /** L'admin a vidé la case à la main. */
-  | "pinned_empty";
-
-export interface DispatchAssignment {
-  cell: DispatchCell;
-  candidate: DispatchCandidate;
-  /**
-   * Distance en jours à l'occurrence la plus proche, AVANT cette assignation.
-   * `null` = jamais servie dans la fenêtre. C'est le « il y a N j. » de la case.
-   */
-  gapDays: number | null;
-  /** Choix manuel de l'admin, non recalculé. */
-  pinned: boolean;
-}
-
-export interface DispatchUnfilled {
-  cell: DispatchCell;
-  reason: DispatchUnfilledReason;
-}
-
-export interface DispatchResult {
-  assignments: DispatchAssignment[];
-  unfilled: DispatchUnfilled[];
-  /**
-   * Les alternatives de chaque case (`cellKey` → classement), telles qu'elles
-   * étaient AU MOMENT où la case a été servie.
-   *
-   * Sans ça, l'écran rappelait `rankCandidatesForCell` contre l'historique
-   * INITIAL, alors que l'attribution avait classé contre un historique enrichi
-   * au fil du lot : le « · N j » du menu et la pastille de la même case
-   * pouvaient afficher deux nombres différents, et le premier élément du menu
-   * n'était pas toujours celui qui avait été choisi — exactement ce que la
-   * promesse « SOURCE UNIQUE » de `rankCandidatesForCell` exclut.
-   */
-  optionsByCell: Record<string, DispatchOption[]>;
-}
-
 /**
- * Fenêtre d'historique, en jours, de part et d'autre de la semaine visée.
+ * Fenêtre d'historique, en jours, de part et d'autre du jour visé.
  * Sert aussi de plafond de distance : au-delà, deux recettes sont « aussi
  * fraîches l'une que l'autre » et les départages suivants tranchent.
  */
 export const DISPATCH_WINDOW_DAYS = 120;
-
-/** Identité d'une case, pour la table des choix manuels. */
-export function cellKey(cell: DispatchCell): string {
-  return `${cell.accountId}|${cell.dayKey}|${cell.rank}`;
-}
 
 /**
  * "YYYY-MM-DD" → nombre de jours depuis l'époque.
@@ -137,29 +93,6 @@ export function dayIndexFromKey(dayKey: string): number {
   return Math.floor(
     Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86_400_000,
   );
-}
-
-/** Écart minimum atteignable — la borne physique. `null` si rien à publier. */
-export function minimumAchievableGap(
-  poolSize: number,
-  publicationsPerDay: number,
-): number | null {
-  if (publicationsPerDay <= 0) return null;
-  return Math.floor(poolSize / publicationsPerDay);
-}
-
-/**
- * La charge du jour LE PLUS CHARGÉ — c'est lui qui borne l'écart, pas la moyenne.
- *
- * `minimumAchievableGap` prend un nombre de publications par jour ; tant que tous
- * les comptes publient tous les jours, ce nombre est le même partout. Dès qu'on
- * éteint un jour sur un compte, il varie d'un jour à l'autre, et c'est la journée
- * la plus chargée qui dicte la contrainte : c'est là que les recettes se
- * consomment le plus vite. Prendre la moyenne annoncerait un écart que la
- * semaine ne tient pas.
- */
-export function busiestDayCapacity(publicationsByDay: number[]): number {
-  return publicationsByDay.reduce((max, n) => (n > max ? n : max), 0);
 }
 
 /** Une alternative classée pour une case — ce que l'écran propose au clic. */
@@ -197,13 +130,15 @@ function twoClosest(day: number, days: number[], cap: number): [number, number] 
 /**
  * Classe les recettes proposables pour une case, de la meilleure à la pire.
  *
- * SOURCE UNIQUE : l'assignation automatique ET le menu d'échange de l'écran
- * sortent d'ici. Deux classements séparés divergeraient, et l'admin verrait une
- * liste dont le premier élément n'est pas celui que le système a choisi.
+ * SOURCE UNIQUE : le choix proposé ET la liste des alternatives sortent d'ici.
+ * Deux classements séparés divergeraient, et l'admin verrait une liste dont le
+ * premier élément n'est pas celui que le système a choisi.
  *
  * Les recettes déjà posées LE MÊME JOUR sont exclues, pas seulement mal
  * classées : proposer deux fois le même reel le même jour sur deux comptes qui
- * partagent l'audience est précisément ce qu'on vient corriger.
+ * partagent l'audience est précisément ce qu'on vient corriger. Un classement
+ * vide est donc une réponse valide — « toutes sont déjà sorties aujourd'hui » —
+ * et l'appelant doit la traiter comme telle plutôt que de la contourner.
  */
 export function rankCandidatesForCell(
   cell: DispatchCell,
@@ -241,185 +176,4 @@ export function rankCandidatesForCell(
       (a.candidate.patternTemplateId < b.candidate.patternTemplateId ? -1 : 1),
   );
   return scored;
-}
-
-/**
- * Ordre de traitement des cases — LE PLUS CONTRAINT D'ABORD.
- *
- * Le point sur lequel une première version était fausse. Avec un compte A qui a
- * 8 recettes actives et deux comptes B et C qui n'en ont que 2 (les mêmes),
- * servir A en premier lui fait prendre une recette rare et laisse C SANS RIEN.
- * En commençant par les comptes les moins pourvus, les trois cases se
- * remplissent — et l'écart obtenu est le même.
- *
- * Le rang passe AVANT le nombre de candidats : avec « 2 par compte et par
- * jour », traiter les deux cases d'un compte à la suite lui donnerait les deux
- * meilleures recettes du jour.
- *
- * `accountPriority` tranche en dernier — et ce n'est pas un détail. Sans lui le
- * départage se faisait sur l'`accountId`, un identifiant technique : l'ordre de
- * création des comptes décidait qui recevait la recette la plus ancienne, sans
- * que rien ne le laisse deviner. Et dès que tous les comptes ont le même nombre
- * de candidats — ce qui arrive dès qu'on filtre sur une famille — ce critère
- * opaque devenait le SEUL à décider. Avec l'ordre d'affichage, la règle
- * s'énonce : la ligne du haut est servie en premier.
- */
-export function orderCells(
-  cells: DispatchCell[],
-  candidatesByAccount: Record<string, DispatchCandidate[]>,
-  accountPriority: string[] = [],
-): DispatchCell[] {
-  const rank = new Map(accountPriority.map((id, i) => [id, i]));
-  // Un compte absent de la liste passe après ceux qui y sont, par ordre d'id :
-  // le déterminisme prime, même sur un appelant qui aurait oublié un compte.
-  const priorityOf = (accountId: string) => rank.get(accountId) ?? Number.MAX_SAFE_INTEGER;
-
-  return [...cells].sort(
-    (a, b) =>
-      (a.dayKey < b.dayKey ? -1 : a.dayKey > b.dayKey ? 1 : 0) ||
-      a.rank - b.rank ||
-      (candidatesByAccount[a.accountId]?.length ?? 0) -
-        (candidatesByAccount[b.accountId]?.length ?? 0) ||
-      priorityOf(a.accountId) - priorityOf(b.accountId) ||
-      (a.accountId < b.accountId ? -1 : a.accountId > b.accountId ? 1 : 0),
-  );
-}
-
-export interface DispatchInput {
-  cells: DispatchCell[];
-  candidatesByAccount: Record<string, DispatchCandidate[]>;
-  /** Historique existant, hors cases de ce lot. */
-  existingUse: Record<string, RecipeHistory>;
-  /**
-   * Choix manuels de l'admin, par `cellKey`. La valeur est un
-   * `patternTemplateId`, ou `null` pour une case volontairement vidée.
-   *
-   * Sans ça, échanger une case recalculerait tout le reste sous ses pieds.
-   */
-  pinned?: Record<string, string | null>;
-  /**
-   * Ordre d'AFFICHAGE des comptes. Sert de dernier départage : la ligne du haut
-   * est servie en premier, donc reçoit la recette la plus anciennement publiée.
-   */
-  accountPriority?: string[];
-  cap?: number;
-}
-
-/**
- * Attribue une recette à chaque case.
- *
- * Glouton, et c'est suffisant : quand tous les comptes partagent le même pool,
- * « prendre la plus éloignée » EST le tourniquet demandé, et chaque recette
- * revient après exactement N assignations.
- *
- * Après chaque attribution, le jour de la case REJOINT l'historique de la
- * recette : les cases suivantes du même jour la voient à distance 0 et
- * l'excluent d'elles-mêmes. C'est ce qui garantit six recettes différentes pour
- * six comptes le même jour, sans règle spéciale.
- *
- * LES CASES ÉPINGLÉES PASSENT D'ABORD, toutes autant qu'elles sont. Un choix
- * manuel est une CONTRAINTE, pas un concurrent : traité dans l'ordre commun, il
- * pouvait se faire voler sa recette par une attribution automatique servie
- * avant lui — et les deux se retrouvaient le même jour. C'est exactement le
- * doublon qu'on corrige, réintroduit par la porte de service.
- */
-export function dispatchRecipes({
-  cells,
-  candidatesByAccount,
-  existingUse,
-  pinned = {},
-  accountPriority = [],
-  cap = DISPATCH_WINDOW_DAYS,
-}: DispatchInput): DispatchResult {
-  // Copie de travail : on ne mute jamais l'historique de l'appelant, et les
-  // attributions du lot doivent compter pour les cases suivantes.
-  const history: Record<string, RecipeHistory> = {};
-  for (const [templateId, h] of Object.entries(existingUse)) {
-    history[templateId] = {
-      allDays: [...h.allDays],
-      byAccount: Object.fromEntries(
-        Object.entries(h.byAccount).map(([accountId, days]) => [accountId, [...days]]),
-      ),
-    };
-  }
-
-  function remember(templateId: string, accountId: string, day: number) {
-    const h = (history[templateId] ??= { allDays: [], byAccount: {} });
-    h.allDays.push(day);
-    (h.byAccount[accountId] ??= []).push(day);
-  }
-
-  const assignments: DispatchAssignment[] = [];
-  const unfilled: DispatchUnfilled[] = [];
-  const optionsByCell: Record<string, DispatchOption[]> = {};
-
-  const ordered = orderCells(cells, candidatesByAccount, accountPriority);
-  const isPinned = (cell: DispatchCell) => pinned[cellKey(cell)] !== undefined;
-
-  // ── 1. Les choix manuels, d'abord et tous ────────────────────────────────
-  for (const cell of ordered.filter(isPinned)) {
-    const pin = pinned[cellKey(cell)];
-    if (pin === null) {
-      unfilled.push({ cell, reason: "pinned_empty" });
-      continue;
-    }
-    // Le classement est capturé AVANT d'enregistrer ce choix : c'est ce que
-    // l'écran propose en alternative, et il doit refléter l'état vu par la case.
-    optionsByCell[cellKey(cell)] = rankCandidatesForCell(
-      cell,
-      candidatesByAccount[cell.accountId] ?? [],
-      history,
-      cap,
-    );
-    const chosen = (candidatesByAccount[cell.accountId] ?? []).find(
-      (c) => c.patternTemplateId === pin,
-    );
-    if (!chosen) {
-      // La recette a été désactivée sur ce compte depuis l'épinglage.
-      unfilled.push({ cell, reason: "no_candidate" });
-      continue;
-    }
-    const day = dayIndexFromKey(cell.dayKey);
-    const [gap] = twoClosest(day, history[chosen.patternTemplateId]?.allDays ?? [], cap);
-    assignments.push({
-      cell,
-      candidate: chosen,
-      gapDays: gap >= cap ? null : gap,
-      pinned: true,
-    });
-    remember(chosen.patternTemplateId, cell.accountId, day);
-  }
-
-  // ── 2. Le reste, glouton ─────────────────────────────────────────────────
-  for (const cell of ordered.filter((c) => !isPinned(c))) {
-    const candidates = candidatesByAccount[cell.accountId] ?? [];
-    if (candidates.length === 0) {
-      optionsByCell[cellKey(cell)] = [];
-      unfilled.push({ cell, reason: "no_candidate" });
-      continue;
-    }
-    const ranked = rankCandidatesForCell(cell, candidates, history, cap);
-    optionsByCell[cellKey(cell)] = ranked;
-    if (ranked.length === 0) {
-      // Le compte a bien des recettes, mais toutes sont déjà posées ce jour-là.
-      unfilled.push({ cell, reason: "pool_exhausted_day" });
-      continue;
-    }
-    const best = ranked[0];
-    assignments.push({
-      cell,
-      candidate: best.candidate,
-      gapDays: best.rawGap,
-      pinned: false,
-    });
-    remember(best.candidate.patternTemplateId, cell.accountId, dayIndexFromKey(cell.dayKey));
-  }
-
-  // Rendre les assignations dans l'ordre des cases, pas dans celui du
-  // traitement : l'appelant dessine une grille, pas une file d'attente.
-  const rank = new Map(ordered.map((c, i) => [cellKey(c), i]));
-  assignments.sort((a, b) => rank.get(cellKey(a.cell))! - rank.get(cellKey(b.cell))!);
-  unfilled.sort((a, b) => rank.get(cellKey(a.cell))! - rank.get(cellKey(b.cell))!);
-
-  return { assignments, unfilled, optionsByCell };
 }

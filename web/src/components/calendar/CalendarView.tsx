@@ -8,7 +8,6 @@ import {
   Plus,
   RefreshCw,
   CalendarDays,
-  LayoutGrid,
   Filter,
   X,
   Inbox,
@@ -33,7 +32,6 @@ import { BulkUnscheduleModal } from "./BulkUnscheduleModal";
 import { BulkMarkPublishedModal } from "./BulkMarkPublishedModal";
 import { BULK_PUBLISHABLE_STATUSES } from "@/lib/publications/constants";
 import { ScheduleFromBankModal } from "./ScheduleFromBankModal";
-import { WeekFillModal } from "./WeekFillModal";
 import { CalendarFilters, type CalendarFiltersState } from "./CalendarFilters";
 import { CalendarDndContext, type SlotDropPayload } from "./dnd/CalendarDndContext";
 import { useSlotDrag } from "./dnd/useSlotDrag";
@@ -174,7 +172,6 @@ export function CalendarView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<PublicationSlot | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [showWeekFill, setShowWeekFill] = useState(false);
   const [scheduleFromBank, setScheduleFromBank] = useState<PublicationSlot | null>(null);
   /** Jour visé par un glisser-déposer dérouté vers la modale (choix du compte). */
   const [scheduleFromBankDate, setScheduleFromBankDate] = useState<string | undefined>(undefined);
@@ -303,7 +300,7 @@ export function CalendarView({
       if (isInTextField(e.target)) return;
       // Ne pas intercepter quand une modal est ouverte (Drawer / AddSlot / Confirm)
       // — sinon ← / → cassent la navigation dans les pickers du drawer.
-      if (selectedSlot || showAdd || showWeekFill) return;
+      if (selectedSlot || showAdd) return;
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         if (!isAdmin) return;
@@ -323,7 +320,7 @@ export function CalendarView({
     }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isAdmin, prevWeek, nextWeek, goToday, selectedSlot, showAdd, showWeekFill]);
+  }, [isAdmin, prevWeek, nextWeek, goToday, selectedSlot, showAdd]);
 
   function isSlotMine(slot: PublicationSlot): boolean {
     const owner = resolveSlotOwner(slot);
@@ -762,18 +759,6 @@ export function CalendarView({
                     >
                       Nouvelle publication
                     </Button>
-                    {/* Répartit les reels auto entre les comptes en espaçant
-                        les recettes — le geste qui se faisait à l'œil, une
-                        publication à la fois, en scrutant le calendrier. */}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={LayoutGrid}
-                      onClick={() => setShowWeekFill(true)}
-                      title="Répartit les reels auto sur la semaine en espaçant les recettes entre les comptes"
-                    >
-                      <span className="hidden sm:inline">Remplir la semaine</span>
-                    </Button>
                   </>
                 )}
             </>
@@ -946,16 +931,6 @@ export function CalendarView({
           defaultDate={addDefaultDate}
           onCreated={handleSlotCreated}
           onClose={() => setShowAdd(false)}
-        />
-      )}
-
-      {showWeekFill && (
-        <WeekFillModal
-          weekStart={weekStart}
-          accounts={accounts}
-          filteredAccountId={filters.accountId || undefined}
-          onCreated={() => void load()}
-          onClose={() => setShowWeekFill(false)}
         />
       )}
 
