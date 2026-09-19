@@ -15,6 +15,9 @@
  *
  * Plus de badge statut, plus d'inline-edit MONTEUR/CM, plus de pattern badge
  * — tout ça reste dans le drawer.
+ *
+ * Ne porte PAS sa barre : la coque collante et le conteneur centré viennent
+ * de `FicheShell`, pour que la fiche métaobjet colle exactement pareil.
  */
 
 import { useState } from "react";
@@ -110,91 +113,86 @@ export function PublicationHeader({
         }}
         onCancel={() => setConfirmDeleteOpen(false)}
       />
-      {/* Header sticky flat (DA v3) — barre compacte ancrée en haut. */}
-      <header className="sticky top-0 z-20 bg-card border-b border-border">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3">
-          {/* Breadcrumb discret */}
-          <nav className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-2 flex-wrap">
-            <Link
-              href={currentUserRole === "ADMIN" ? "/calendar" : "/home"}
-              className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-            >
-              <ArrowLeft size={11} className="flex-shrink-0" />
-              {currentUserRole === "ADMIN" ? "Calendrier" : "Ma liste"}
-            </Link>
-            <ChevronRight size={11} className="flex-shrink-0 text-muted-foreground/60" />
-            {account === null ? (
-              <span className="text-muted-foreground">Sans compte</span>
-            ) : currentUserRole === "ADMIN" ? (
-              <Link
-                href={`/admin/accounts/${account.id}`}
-                className="hover:text-foreground transition-colors"
-                title="Voir la fiche compte"
-              >
-                @{account.handle}
-              </Link>
+      {/* Breadcrumb discret */}
+      <nav className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-2 flex-wrap">
+        <Link
+          href={currentUserRole === "ADMIN" ? "/calendar" : "/home"}
+          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+        >
+          <ArrowLeft size={11} className="flex-shrink-0" />
+          {currentUserRole === "ADMIN" ? "Calendrier" : "Ma liste"}
+        </Link>
+        <ChevronRight size={11} className="flex-shrink-0 text-muted-foreground/60" />
+        {account === null ? (
+          <span className="text-muted-foreground">Sans compte</span>
+        ) : currentUserRole === "ADMIN" ? (
+          <Link
+            href={`/admin/accounts/${account.id}`}
+            className="hover:text-foreground transition-colors"
+            title="Voir la fiche compte"
+          >
+            @{account.handle}
+          </Link>
+        ) : (
+          <span>@{account.handle}</span>
+        )}
+      </nav>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-[20px] font-semibold tracking-tight text-foreground truncate">
+              {title}
+            </h1>
+            {/* Statut — visible pour tous les rôles. */}
+            <StatusBadge domain="slot" status={slot.status} size="sm" />
+          </div>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            {scheduledAt ? (
+              <>
+                {dateFrLong(scheduledAt)} · {formatTimeFR(scheduledAt)}
+              </>
             ) : (
-              <span>@{account.handle}</span>
+              "En banque · non programmé"
             )}
-          </nav>
-
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-[20px] font-semibold tracking-tight text-foreground truncate">
-                  {title}
-                </h1>
-                {/* Statut — visible pour tous les rôles. */}
-                <StatusBadge domain="slot" status={slot.status} size="sm" />
-              </div>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">
-                {scheduledAt ? (
-                  <>
-                    {dateFrLong(scheduledAt)} · {formatTimeFR(scheduledAt)}
-                  </>
-                ) : (
-                  "En banque · non programmé"
-                )}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Édition rapide (drawer) — admin only. */}
-              {currentUserRole === "ADMIN" && (
-                <SlotQuickEditButton slotId={slot.id} />
-              )}
-
-              {canDelete && (
-                <DropdownMenu
-                  align="end"
-                  trigger={
-                    <ButtonIcon icon={MoreHorizontal} label="Actions" size="sm" />
-                  }
-                  items={[
-                    {
-                      label: "Voir tous les jobs",
-                      icon: List,
-                      onClick: () => router.push(`/listings?slotId=${slot.id}`),
-                    },
-                    "separator",
-                    {
-                      label: "Supprimer",
-                      icon: Trash2,
-                      destructive: true,
-                      onClick: () => setConfirmDeleteOpen(true),
-                    },
-                  ]}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Timeline narrative 5 étapes — vue d'ensemble compacte. */}
-          <div className="mt-2">
-            <SlotStatusTimeline status={slot.status as SlotStatus} size="sm" />
-          </div>
+          </p>
         </div>
-      </header>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Édition rapide (drawer) — admin only. */}
+          {currentUserRole === "ADMIN" && (
+            <SlotQuickEditButton slotId={slot.id} />
+          )}
+
+          {canDelete && (
+            <DropdownMenu
+              align="end"
+              trigger={
+                <ButtonIcon icon={MoreHorizontal} label="Actions" size="sm" />
+              }
+              items={[
+                {
+                  label: "Voir tous les jobs",
+                  icon: List,
+                  onClick: () => router.push(`/listings?slotId=${slot.id}`),
+                },
+                "separator",
+                {
+                  label: "Supprimer",
+                  icon: Trash2,
+                  destructive: true,
+                  onClick: () => setConfirmDeleteOpen(true),
+                },
+              ]}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Timeline narrative 5 étapes — vue d'ensemble compacte. */}
+      <div className="mt-2">
+        <SlotStatusTimeline status={slot.status as SlotStatus} size="sm" />
+      </div>
     </>
   );
 }

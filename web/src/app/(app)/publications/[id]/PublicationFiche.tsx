@@ -45,6 +45,7 @@ import {
   createSectionWrapper,
   type SectionsByRole,
 } from "@/components/fiches/sectionShell";
+import { FicheShell } from "@/components/fiches/FicheShell";
 
 // ---------------------------------------------------------------------------
 // Logique de priorité des sections selon le rôle
@@ -468,7 +469,7 @@ export function PublicationFiche({
   // inter-étapes est assurée par le stepper ProductionChain (clic → scroll).
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
       {/* Refresh live de la fiche sur events SSE — supprime le besoin de F5
           pour voir l'avancement du pipeline (render/captions/description/cover). */}
       <PublicationLiveRefresh
@@ -480,458 +481,455 @@ export function PublicationFiche({
         expectedJobTypes={["captions", "transcription", "render", "cover", "description"]}
       />
 
-      {/* Header sticky flat (DA v3) — le composant porte sa propre barre. */}
-      <PublicationHeader
-        slot={slot}
-        account={account}
-        pattern={pattern ? { id: pattern.id, label: pattern.label } : null}
-        canMarkPublished={canMarkPublished}
-        canDelete={canDelete}
-        currentUserRole={currentUserRole}
-      />
-
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-        <NextActionBanner
-          slotStatus={slot.status}
-          currentUserId={currentUserId}
-          currentUserRole={currentUserRole}
-          assigneeMonteurId={assigneeMonteur?.id ?? null}
-          assigneeCmId={assigneeCm?.id ?? null}
-          assigneeVideasteId={assigneeVideaste?.id ?? null}
-          visibleSectionIds={visibleSectionIds}
-        />
-
-        {/* Chaîne de production */}
-        <div className="mt-4 p-4 rounded-lg bg-card border border-border">
-          <ProductionChain steps={steps} viewerRole={currentUserRole} />
-        </div>
-
-        {/* Fiche liée — rattacher/changer la fiche partagée (admin + CM). */}
-        {(currentUserRole === "ADMIN" || currentUserRole === "CM") && (
-          <div className="mt-4 p-4 rounded-lg bg-card border border-border flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-foreground">
-                {requiredEntityTypeName ?? "Fiche"}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Fiche partagée (adresse, prix…) qui préremplit la génération.
-              </p>
+      <FicheShell
+        header={
+          <PublicationHeader
+            slot={slot}
+            account={account}
+            pattern={pattern ? { id: pattern.id, label: pattern.label } : null}
+            canMarkPublished={canMarkPublished}
+            canDelete={canDelete}
+            currentUserRole={currentUserRole}
+          />
+        }
+        banner={
+          <NextActionBanner
+            slotStatus={slot.status}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+            assigneeMonteurId={assigneeMonteur?.id ?? null}
+            assigneeCmId={assigneeCm?.id ?? null}
+            assigneeVideasteId={assigneeVideaste?.id ?? null}
+            visibleSectionIds={visibleSectionIds}
+          />
+        }
+        chain={
+          <>
+            {/* Chaîne de production */}
+            <div className="mt-4 p-4 rounded-lg bg-card border border-border">
+              <ProductionChain steps={steps} viewerRole={currentUserRole} />
             </div>
-            <div className="w-64 shrink-0">
-              <SlotEntitySelect
+
+            {/* Fiche liée — rattacher/changer la fiche partagée (admin + CM). */}
+            {(currentUserRole === "ADMIN" || currentUserRole === "CM") && (
+              <div className="mt-4 p-4 rounded-lg bg-card border border-border flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-foreground">
+                    {requiredEntityTypeName ?? "Fiche"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Fiche partagée (adresse, prix…) qui préremplit la génération.
+                  </p>
+                </div>
+                <div className="w-64 shrink-0">
+                  <SlotEntitySelect
+                    slotId={slot.id}
+                    initialPropertyId={slot.propertyId ?? null}
+                    requiredEntityTypeId={requiredEntityTypeId(pattern)}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        }
+        aside={
+          <>
+            {wrap(
+              "comments",
+              <CommentsSection
                 slotId={slot.id}
-                initialPropertyId={slot.propertyId ?? null}
-                requiredEntityTypeId={requiredEntityTypeId(pattern)}
+                initialComments={comments}
+                initialHasMore={commentsHasMore}
+                currentUserId={currentUserId}
+                currentUserRole={currentUserRole}
+                displayMode="preview"
               />
-            </div>
+            )}
+
+            {/* V8 Phase 8 — Activity timeline en bouton + modale.
+                La timeline n'est plus rendue inline (gain ~25% viewport).
+                Le bouton expose le count comme signal et ouvre la modale
+                uniquement quand l'admin en a besoin. */}
+            {shouldRenderForRole("activity") && (
+              <ActivityToggleButton
+                slotId={slot.id}
+                initialActivities={activities}
+                initialHasMore={activityHasMore}
+              />
+            )}
+          </>
+        }
+        asideStickyTop="xl:top-[128px]"
+      >
+        {/* Champs de la fiche rattachée — résumé lecture seule (data +
+            tournage). Masquée si aucune fiche n'est rattachée. */}
+        {entitySummaries.length > 0 &&
+          wrap("entityFields", <EntityFieldsSection summaries={entitySummaries} />)}
+
+        {/* Brief éditorial. N'est plus conditionné à un drapeau de recette :
+            une section qui n'existe nulle part passe pour supprimée — c'est
+            exactement ce qui s'est produit. Elle apparaît dès qu'il y a
+            quelque chose à lire, ou quelqu'un pour l'écrire. */}
+        {briefVisible &&
+          wrap(
+            "brief",
+            <BriefSection
+              slotId={slot.id}
+              brief={brief}
+              attachments={briefAttachments}
+              canEditBrief={canEditBrief}
+              canManageAttachments={canManageAttachments}
+            />
+          )}
+
+        {/* Rushes — visible si la recipe en attend (pattern.needsRushes)
+            OU si l'on est déjà dans une phase rushs/montage (statut le
+            signale) OU si des rushs ont déjà été déposés. Robuste aux
+            slots dont le pattern a été modifié après création. */}
+        {(pattern?.needsRushes ||
+          slot.status === "RUSHES_EXPECTED" ||
+          slot.status === "RUSHES_RECEIVED" ||
+          rushes.length > 0) &&
+          // Sur un reel d'event, la section rushs SLOT reste masquée sauf
+          // s'il a réellement des rushs slot — évite un doublon vide à côté
+          // de la section « Rushs du tournage (événement) ».
+          (!shootEvent || rushes.length > 0) &&
+          wrap(
+            "rushes",
+            <RushesSection
+              slotId={slot.id}
+              rushes={rushes}
+              canUploadRushes={canUploadRushes}
+              canManageRushes={canManageRushes}
+              currentUserId={currentUserId}
+            />
+          )}
+
+        {/* Rushs de l'événement de tournage lié — partagés par tous les
+            reels, en LECTURE SEULE ici (upload/suppression se font sur la
+            fiche Event). Comble le trou : sans ça, un reel issu d'un event a
+            sa section rushs slot vide. Même audience que les rushs (le
+            monteur assigné les voit). */}
+        {shootEvent && shouldRenderForRole("rushes") && (
+          <div className="space-y-1.5">
+            <RushesSection
+              slotId={slot.id}
+              apiBasePath={`/api/entities/${shootEvent.id}/rushes`}
+              rushes={eventRushes}
+              canUploadRushes={false}
+              canManageRushes={false}
+              readOnly
+              title="Rushs du tournage"
+              currentUserId={currentUserId}
+              sectionId="event-rushes"
+              storageKey={`pub-event-rushes:${slot.id}`}
+              collapsible
+            />
+            <Link
+              href={`/fiches/${shootEvent.id}`}
+              className="inline-block text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Depuis la fiche « {shootEvent.title} » →
+            </Link>
           </div>
         )}
 
-        <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-6">
-          {/* Colonne workflow — sections d'action */}
-          <div className="space-y-4 min-w-0">
-            {/* Champs de la fiche rattachée — résumé lecture seule (data +
-                tournage). Masquée si aucune fiche n'est rattachée. */}
-            {entitySummaries.length > 0 &&
-              wrap("entityFields", <EntityFieldsSection summaries={entitySummaries} />)}
-
-            {/* Brief éditorial. N'est plus conditionné à un drapeau de recette :
-                une section qui n'existe nulle part passe pour supprimée — c'est
-                exactement ce qui s'est produit. Elle apparaît dès qu'il y a
-                quelque chose à lire, ou quelqu'un pour l'écrire. */}
-            {briefVisible &&
-              wrap(
-                "brief",
-                <BriefSection
-                  slotId={slot.id}
-                  brief={brief}
-                  attachments={briefAttachments}
-                  canEditBrief={canEditBrief}
-                  canManageAttachments={canManageAttachments}
-                />
-              )}
-
-            {/* Rushes — visible si la recipe en attend (pattern.needsRushes)
-                OU si l'on est déjà dans une phase rushs/montage (statut le
-                signale) OU si des rushs ont déjà été déposés. Robuste aux
-                slots dont le pattern a été modifié après création. */}
-            {(pattern?.needsRushes ||
-              slot.status === "RUSHES_EXPECTED" ||
-              slot.status === "RUSHES_RECEIVED" ||
-              rushes.length > 0) &&
-              // Sur un reel d'event, la section rushs SLOT reste masquée sauf
-              // s'il a réellement des rushs slot — évite un doublon vide à côté
-              // de la section « Rushs du tournage (événement) ».
-              (!shootEvent || rushes.length > 0) &&
-              wrap(
-                "rushes",
-                <RushesSection
-                  slotId={slot.id}
-                  rushes={rushes}
-                  canUploadRushes={canUploadRushes}
-                  canManageRushes={canManageRushes}
-                  currentUserId={currentUserId}
-                />
-              )}
-
-            {/* Rushs de l'événement de tournage lié — partagés par tous les
-                reels, en LECTURE SEULE ici (upload/suppression se font sur la
-                fiche Event). Comble le trou : sans ça, un reel issu d'un event a
-                sa section rushs slot vide. Même audience que les rushs (le
-                monteur assigné les voit). */}
-            {shootEvent && shouldRenderForRole("rushes") && (
-              <div className="space-y-1.5">
-                <RushesSection
-                  slotId={slot.id}
-                  apiBasePath={`/api/entities/${shootEvent.id}/rushes`}
-                  rushes={eventRushes}
-                  canUploadRushes={false}
-                  canManageRushes={false}
-                  readOnly
-                  title="Rushs du tournage"
-                  currentUserId={currentUserId}
-                  sectionId="event-rushes"
-                  storageKey={`pub-event-rushes:${slot.id}`}
-                  collapsible
-                />
-                <Link
-                  href={`/fiches/${shootEvent.id}`}
-                  className="inline-block text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Depuis la fiche « {shootEvent.title} » →
-                </Link>
-              </div>
-            )}
-
-            {/* Versions livrées — même règle que `editVisible` dans
-                computePublicationSteps : si la chaîne affiche une étape
-                « Montage », la section qui la sert doit être là. La condition
-                est recopiée (le moteur ne rend pas ses prédicats) ; les deux
-                doivent bouger ensemble. */}
-            {(pattern?.source === "manual_rushes" ||
-              pattern?.needsRushes ||
-              pattern?.needsBrief ||
-              slot.status === "RUSHES_EXPECTED" ||
-              slot.status === "RUSHES_RECEIVED" ||
-              slot.status === "IN_EDIT" ||
-              slot.status === "EDIT_REVIEW" ||
-              slot.status === "EDIT_APPROVED" ||
-              versions.length > 0) &&
-              wrap(
-                "versions",
-                <VersionsSection
-                  slotId={slot.id}
-                  versions={versions}
-                  currentVersionId={currentVersionId}
-                  canUploadVersion={canUploadVersion}
-                  canPromoteVersion={canPromoteVersion}
-                  isAdmin={currentUserRole === "ADMIN"}
-                  currentUserId={currentUserId}
-                  displayMode="preview"
-                  promoteCoherenceWarning={promoteVersionWarning({
-                    pattern: pattern
-                      ? {
-                          source: pattern.source,
-                          needsCaptionsMode: pattern.needsCaptionsMode,
-                          needsDescription: pattern.needsDescription,
-                          coverMode: pattern.coverMode,
-                        }
-                      : null,
-                    resolved: {
-                      needsCaptionsMode: resolvedConfig.needsCaptionsMode,
-                      needsDescription: pattern?.needsDescription ?? "none",
-                      coverMode: resolvedConfig.coverMode,
-                      // promoteVersionWarning ne lit pas coverPresetId (seuls
-                      // latestCaptionJob/coverPack comptent) — champ requis par
-                      // ResolvedConfigForActions, non exploitable ici sans un
-                      // second aller-retour Prisma. coverPresetResolvable est la
-                      // source de vérité du gate réel (cf. OneOffTriggerButtons).
-                      coverPresetId: null,
-                      captionPresetId: resolvedConfig.captionPresetId,
-                      descriptionPromptId:
-                        slot.descriptionPromptIdOverride ??
-                        pattern?.descriptionPromptId ??
-                        null,
-                    },
-                    render: render ? { status: render.status } : null,
-                    currentVersion: currentVersion ? { id: currentVersion.id } : null,
-                    coverPack: coverPack ? { status: coverPack.status } : null,
-                    latestCaptionJob: latestCaptionJob ? { status: latestCaptionJob.status } : null,
-                    isAdmin: currentUserRole === "ADMIN",
-                    canEdit: canPromoteVersion,
-                  })}
-                />
-              )}
-
-            {/* Ordre process (2026-05-30) : Render → Captions → Validation client
-                → Description → Cover → Publier. Le sous-titrage précède la
-                validation pour que le client reçoive la vidéo finale (avec
-                sous-titres si requis). */}
-
-            {/* 1. Rendu vidéo — version finale (avec captions incrustées si dispo).
-                Phase 8 V2 — section permanente (toujours ouverte, pas de pli). */}
-            {wrap(
-              "render",
-              <RenderSection
-                slot={{ id: slot.id }}
-                pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
-                render={render}
-                /* Fix 2026-05-30 : on passe latestCompletedCaptionJob (dernier
-                   CaptionJob COMPLETED), pas latestCaptionJob (qui peut être
-                   PROCESSING/FAILED après retry et masquait la version finale). */
-                finalVideoUrl={getSlotFinalVideoUrl({
-                  render,
-                  latestCaptionJob: latestCompletedCaptionJob,
-                })}
-                isCaptioned={isFinalVideoCaptioned({
-                  render,
-                  latestCaptionJob: latestCompletedCaptionJob,
-                })}
-                /* V8.10 — Indique si on attend l'incrustation des sous-titres
-                   alors que la vidéo brute est dispo. Évite l'écran noir
-                   pendant que les captions burn-in tournent. */
-                pendingCaptionsBurnIn={
-                  captionsActive &&
-                  latestCaptionJob?.status !== "COMPLETED" &&
-                  latestCaptionJob?.status !== "FAILED" &&
-                  Boolean(render?.videoUrl)
-                }
-                listingId={listing?.id ?? null}
-                canEdit={canEditRender}
-              />,
-              true,
-            )}
-
-            {/* 2. Sous-titres — visible si mode auto OU manual (V8).
-                Phase 8 V2 — section permanente (toujours ouverte, pas de pli). */}
-            {captionsActive &&
-              wrap(
-                "captions",
-                <CaptionsSection
-                  slot={{ id: slot.id }}
-                  renderId={render?.id ?? null}
-                  renderStatus={render?.status ?? null}
-                  pattern={
-                    pattern
-                      ? {
-                          needsCaptionsMode: pattern.needsCaptionsMode,
-                          source: pattern.source,
-                        }
-                      : null
-                  }
-                  canEdit={canEditCaptions}
-                  isAdmin={currentUserRole === "ADMIN"}
-                  currentVersion={currentVersion}
-                  latestCaptionJob={latestCaptionJob}
-                  transcriptionJobStatus={transcriptionJobStatus}
-                  effectiveCaptionPresetId={
-                    slot.captionPresetIdOverride ??
-                    pattern?.captionPresetId ??
-                    null
-                  }
-                />,
-                true,
-              )}
-
-            {/* 3. Validation client externe — masquée si needsClientValidation false.
-                V8.10 — On bloque l'envoi tant que les sous-titres ne sont pas
-                COMPLETED (le client doit voir la version finale avec captions). */}
-            {(() => {
-              const captionsRequired = captionsActive;
-              // Bug-hunter #2 (2026-06-01) : exiger !staleSince pour éviter
-              // d'envoyer au client une validation sur un caption obsolète
-              // (lié à l'ancienne version pré-promote).
-              const captionsReady =
-                !captionsRequired ||
-                (latestCaptionJob?.status === "COMPLETED" && !latestCaptionJob?.staleSince);
-              // Aligné sur la whitelist backend (validation-token/route.ts) : le
-              // montage doit être validé avant l'envoi. Sans ce gating, le bouton
-              // restait actif dans les statuts amont (IN_EDIT, EDIT_REVIEW…) puis
-              // échouait en 400 côté route — bouton actif trompeur.
-              const SENDABLE_STATUSES = [
-                "READY_FOR_CM",
-                "EDIT_APPROVED",
-                "CLIENT_REVISION",
-                "AWAITING_CLIENT",
-              ];
-              const statusAllowsSend = SENDABLE_STATUSES.includes(slot.status);
-              const canSendValidation = captionsReady && statusAllowsSend;
-              const cannotSendReason = !captionsReady
-                ? latestCaptionJob?.staleSince
-                  ? "Les sous-titres en place sont obsolètes (lien à l'ancienne version). Relance la chaîne avant de valider."
-                  : "Les sous-titres ne sont pas encore générés. Le client doit voir la vidéo finale avec sous-titres avant validation."
-                : !statusAllowsSend
-                  ? "Le montage doit être validé avant d'envoyer la vidéo en validation client."
-                  : null;
-              return wrap(
-                "clientValidation",
-                <ClientValidationSection
-                  slotId={slot.id}
-                  slotStatus={slot.status}
-                  needsClientValidation={clientValidation.needsClientValidation}
-                  allowsClientRevision={clientValidation.allowsClientRevision}
-                  initialActiveToken={clientValidation.activeToken}
-                  rounds={clientValidation.rounds}
-                  currentUserRole={currentUserRole}
-                  canSendValidation={canSendValidation}
-                  cannotSendReason={cannotSendReason}
-                />
-              );
-            })()}
-
-            {/* 4. Description de publication */}
-            {wrap(
-              "description",
-              <DescriptionSection
-                slot={{ id: slot.id }}
-                account={account}
-                collabs={collabs}
-                pattern={
-                  pattern
-                    ? {
-                        needsDescription: pattern.needsDescription,
-                        source: pattern.source,
-                        needsCaptionsMode: pattern.needsCaptionsMode,
-                        coverMode: pattern.coverMode,
-                      }
-                    : null
-                }
-                initialDescription={slot.description ?? ""}
-                canEdit={canEditDescription}
-                /**
-                 * Prompt par défaut : override slot > pattern.
-                 * Quand l'admin a configuré un prompt sur le pattern (et/ou un
-                 * override sur le slot), il doit être pré-sélectionné dans la
-                 * modal IA — pas un fallback "data[0]".
-                 */
-                defaultPromptId={
-                  slot.descriptionPromptIdOverride ??
-                  pattern?.descriptionPromptId ??
-                  null
-                }
-                descriptionJobStatus={latestDescriptionJob?.status ?? null}
-                descriptionJobResult={latestDescriptionJob?.result ?? null}
-                descriptionJobErrorMsg={latestDescriptionJob?.errorMsg ?? null}
-                slotStatus={slot.status}
-                aiConfig={aiConfig}
-                renderStatus={render?.status ?? null}
-                hasCurrentVersion={!!currentVersionId}
-                needsClientValidation={clientValidation.needsClientValidation}
-                transcriptionJobStatus={transcriptionJobStatus}
-                hasCaptionLibrary={hasCaptionLibrary ?? false}
-                captionEntry={captionEntry ?? null}
-                captionPinnedSetTag={captionPinnedSetTag ?? null}
-              />
-            )}
-
-            {/* 5. Cover Instagram */}
-            {wrap(
-              "cover",
-              <CoverSection
-                slot={{ id: slot.id }}
-                pattern={pattern ? { coverMode: pattern.coverMode } : null}
-                renderId={render?.status === "DONE" ? render.id : null}
-                coverPack={
-                  coverPack
-                    ? {
-                        id: coverPack.id,
-                        status: coverPack.status,
-                        finalCoverUrl: coverPack.finalCoverUrl,
-                        errorMsg: coverPack.errorMsg ?? null,
-                        // V6.5.1 — sérialisation Date → string ISO côté boundary client.
-                        staleSince:
-                          coverPack.staleSince instanceof Date
-                            ? coverPack.staleSince.toISOString()
-                            : coverPack.staleSince ?? null,
-                        staleReason: coverPack.staleReason ?? null,
-                      }
-                    : null
-                }
-                coverConfigError={coverConfigError}
-                canEdit={canEditCover}
-                viewerRole={currentUserRole}
-                canMonteurUpload={
-                  currentUserRole === "ADMIN" ||
-                  (currentUserRole === "MONTEUR" &&
-                    assigneeMonteur?.id === currentUserId)
-                }
-                currentVersion={currentVersion}
-                needsClientValidation={clientValidation.needsClientValidation}
-                slotStatus={slot.status}
-              />
-            )}
-
-            {/* Phase 6 — Boutons triggers manuels pour slots one-off (ADMIN only)
-                Utilise resolvedConfig (override slot + pattern) au lieu de pattern brut
-                pour respecter les overrides du slot (Phase 4 cohérence). */}
-            <OneOffTriggerButtons
+        {/* Versions livrées — même règle que `editVisible` dans
+            computePublicationSteps : si la chaîne affiche une étape
+            « Montage », la section qui la sert doit être là. La condition
+            est recopiée (le moteur ne rend pas ses prédicats) ; les deux
+            doivent bouger ensemble. */}
+        {(pattern?.source === "manual_rushes" ||
+          pattern?.needsRushes ||
+          pattern?.needsBrief ||
+          slot.status === "RUSHES_EXPECTED" ||
+          slot.status === "RUSHES_RECEIVED" ||
+          slot.status === "IN_EDIT" ||
+          slot.status === "EDIT_REVIEW" ||
+          slot.status === "EDIT_APPROVED" ||
+          versions.length > 0) &&
+          wrap(
+            "versions",
+            <VersionsSection
               slotId={slot.id}
+              versions={versions}
+              currentVersionId={currentVersionId}
+              canUploadVersion={canUploadVersion}
+              canPromoteVersion={canPromoteVersion}
               isAdmin={currentUserRole === "ADMIN"}
-              hasCurrentVersion={!!currentVersion}
-              hasNoRender={!render}
-              resolvedConfig={resolvedConfig}
-              hasCaptionJob={!!latestCaptionJob}
-              hasCoverPack={!!coverPack && coverPack.status !== "FAILED"}
+              currentUserId={currentUserId}
+              displayMode="preview"
+              promoteCoherenceWarning={promoteVersionWarning({
+                pattern: pattern
+                  ? {
+                      source: pattern.source,
+                      needsCaptionsMode: pattern.needsCaptionsMode,
+                      needsDescription: pattern.needsDescription,
+                      coverMode: pattern.coverMode,
+                    }
+                  : null,
+                resolved: {
+                  needsCaptionsMode: resolvedConfig.needsCaptionsMode,
+                  needsDescription: pattern?.needsDescription ?? "none",
+                  coverMode: resolvedConfig.coverMode,
+                  // promoteVersionWarning ne lit pas coverPresetId (seuls
+                  // latestCaptionJob/coverPack comptent) — champ requis par
+                  // ResolvedConfigForActions, non exploitable ici sans un
+                  // second aller-retour Prisma. coverPresetResolvable est la
+                  // source de vérité du gate réel (cf. OneOffTriggerButtons).
+                  coverPresetId: null,
+                  captionPresetId: resolvedConfig.captionPresetId,
+                  descriptionPromptId:
+                    slot.descriptionPromptIdOverride ??
+                    pattern?.descriptionPromptId ??
+                    null,
+                },
+                render: render ? { status: render.status } : null,
+                currentVersion: currentVersion ? { id: currentVersion.id } : null,
+                coverPack: coverPack ? { status: coverPack.status } : null,
+                latestCaptionJob: latestCaptionJob ? { status: latestCaptionJob.status } : null,
+                isAdmin: currentUserRole === "ADMIN",
+                canEdit: canPromoteVersion,
+              })}
             />
+          )}
 
-            {/* Publication — récupère les steps incomplets pour afficher
-                un warning non-bloquant si le CM tente de publier alors
-                que cover/captions/description sont todo ou failed. */}
-            {wrap(
-              "publish",
-              <PublishSection
-                slot={{
-                  id: slot.id,
-                  status: slot.status,
-                  publishedUrl: slot.publishedUrl,
-                  publishedAt: slot.publishedAt,
-                }}
-                account={account}
-                collabs={collabs}
-                canPublish={canMarkPublished}
-                canPublishWithoutUrl={canPublishWithoutUrl}
-                incompleteSteps={steps
-                  .filter((s) => s.visible && s.key !== "publish")
-                  .filter((s): s is typeof s & { status: "todo" | "failed" } =>
-                    s.status === "todo" || s.status === "failed",
-                  )
-                  .map((s) => ({ key: String(s.key), label: s.label, status: s.status }))}
-              />
-            )}
-          </div>
+        {/* Ordre process (2026-05-30) : Render → Captions → Validation client
+            → Description → Cover → Publier. Le sous-titrage précède la
+            validation pour que le client reçoive la vidéo finale (avec
+            sous-titres si requis). */}
 
-          {/* Colonne droite — Conversation + Activité, sticky en xl.
-              Pas de max-h + overflow-y-auto interne : laisse scroller la page
-              naturellement. Sinon scrollbar visible + activité tronquée. */}
-          <aside className="mt-6 xl:mt-0">
-            <div className="xl:sticky xl:top-[128px] space-y-4">
-              {wrap(
-                "comments",
-                <CommentsSection
-                  slotId={slot.id}
-                  initialComments={comments}
-                  initialHasMore={commentsHasMore}
-                  currentUserId={currentUserId}
-                  currentUserRole={currentUserRole}
-                  displayMode="preview"
-                />
-              )}
+        {/* 1. Rendu vidéo — version finale (avec captions incrustées si dispo).
+            Phase 8 V2 — section permanente (toujours ouverte, pas de pli). */}
+        {wrap(
+          "render",
+          <RenderSection
+            slot={{ id: slot.id }}
+            pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
+            render={render}
+            /* Fix 2026-05-30 : on passe latestCompletedCaptionJob (dernier
+               CaptionJob COMPLETED), pas latestCaptionJob (qui peut être
+               PROCESSING/FAILED après retry et masquait la version finale). */
+            finalVideoUrl={getSlotFinalVideoUrl({
+              render,
+              latestCaptionJob: latestCompletedCaptionJob,
+            })}
+            isCaptioned={isFinalVideoCaptioned({
+              render,
+              latestCaptionJob: latestCompletedCaptionJob,
+            })}
+            /* V8.10 — Indique si on attend l'incrustation des sous-titres
+               alors que la vidéo brute est dispo. Évite l'écran noir
+               pendant que les captions burn-in tournent. */
+            pendingCaptionsBurnIn={
+              captionsActive &&
+              latestCaptionJob?.status !== "COMPLETED" &&
+              latestCaptionJob?.status !== "FAILED" &&
+              Boolean(render?.videoUrl)
+            }
+            listingId={listing?.id ?? null}
+            canEdit={canEditRender}
+          />,
+          true,
+        )}
 
-              {/* V8 Phase 8 — Activity timeline en bouton + modale.
-                  La timeline n'est plus rendue inline (gain ~25% viewport).
-                  Le bouton expose le count comme signal et ouvre la modale
-                  uniquement quand l'admin en a besoin. */}
-              {shouldRenderForRole("activity") && (
-                <ActivityToggleButton
-                  slotId={slot.id}
-                  initialActivities={activities}
-                  initialHasMore={activityHasMore}
-                />
-              )}
-            </div>
-          </aside>
-        </div>
-      </div>
-    </div>
+        {/* 2. Sous-titres — visible si mode auto OU manual (V8).
+            Phase 8 V2 — section permanente (toujours ouverte, pas de pli). */}
+        {captionsActive &&
+          wrap(
+            "captions",
+            <CaptionsSection
+              slot={{ id: slot.id }}
+              renderId={render?.id ?? null}
+              renderStatus={render?.status ?? null}
+              pattern={
+                pattern
+                  ? {
+                      needsCaptionsMode: pattern.needsCaptionsMode,
+                      source: pattern.source,
+                    }
+                  : null
+              }
+              canEdit={canEditCaptions}
+              isAdmin={currentUserRole === "ADMIN"}
+              currentVersion={currentVersion}
+              latestCaptionJob={latestCaptionJob}
+              transcriptionJobStatus={transcriptionJobStatus}
+              effectiveCaptionPresetId={
+                slot.captionPresetIdOverride ??
+                pattern?.captionPresetId ??
+                null
+              }
+            />,
+            true,
+          )}
+
+        {/* 3. Validation client externe — masquée si needsClientValidation false.
+            V8.10 — On bloque l'envoi tant que les sous-titres ne sont pas
+            COMPLETED (le client doit voir la version finale avec captions). */}
+        {(() => {
+          const captionsRequired = captionsActive;
+          // Bug-hunter #2 (2026-06-01) : exiger !staleSince pour éviter
+          // d'envoyer au client une validation sur un caption obsolète
+          // (lié à l'ancienne version pré-promote).
+          const captionsReady =
+            !captionsRequired ||
+            (latestCaptionJob?.status === "COMPLETED" && !latestCaptionJob?.staleSince);
+          // Aligné sur la whitelist backend (validation-token/route.ts) : le
+          // montage doit être validé avant l'envoi. Sans ce gating, le bouton
+          // restait actif dans les statuts amont (IN_EDIT, EDIT_REVIEW…) puis
+          // échouait en 400 côté route — bouton actif trompeur.
+          const SENDABLE_STATUSES = [
+            "READY_FOR_CM",
+            "EDIT_APPROVED",
+            "CLIENT_REVISION",
+            "AWAITING_CLIENT",
+          ];
+          const statusAllowsSend = SENDABLE_STATUSES.includes(slot.status);
+          const canSendValidation = captionsReady && statusAllowsSend;
+          const cannotSendReason = !captionsReady
+            ? latestCaptionJob?.staleSince
+              ? "Les sous-titres en place sont obsolètes (lien à l'ancienne version). Relance la chaîne avant de valider."
+              : "Les sous-titres ne sont pas encore générés. Le client doit voir la vidéo finale avec sous-titres avant validation."
+            : !statusAllowsSend
+              ? "Le montage doit être validé avant d'envoyer la vidéo en validation client."
+              : null;
+          return wrap(
+            "clientValidation",
+            <ClientValidationSection
+              slotId={slot.id}
+              slotStatus={slot.status}
+              needsClientValidation={clientValidation.needsClientValidation}
+              allowsClientRevision={clientValidation.allowsClientRevision}
+              initialActiveToken={clientValidation.activeToken}
+              rounds={clientValidation.rounds}
+              currentUserRole={currentUserRole}
+              canSendValidation={canSendValidation}
+              cannotSendReason={cannotSendReason}
+            />
+          );
+        })()}
+
+        {/* 4. Description de publication */}
+        {wrap(
+          "description",
+          <DescriptionSection
+            slot={{ id: slot.id }}
+            account={account}
+            collabs={collabs}
+            pattern={
+              pattern
+                ? {
+                    needsDescription: pattern.needsDescription,
+                    source: pattern.source,
+                    needsCaptionsMode: pattern.needsCaptionsMode,
+                    coverMode: pattern.coverMode,
+                  }
+                : null
+            }
+            initialDescription={slot.description ?? ""}
+            canEdit={canEditDescription}
+            /**
+             * Prompt par défaut : override slot > pattern.
+             * Quand l'admin a configuré un prompt sur le pattern (et/ou un
+             * override sur le slot), il doit être pré-sélectionné dans la
+             * modal IA — pas un fallback "data[0]".
+             */
+            defaultPromptId={
+              slot.descriptionPromptIdOverride ??
+              pattern?.descriptionPromptId ??
+              null
+            }
+            descriptionJobStatus={latestDescriptionJob?.status ?? null}
+            descriptionJobResult={latestDescriptionJob?.result ?? null}
+            descriptionJobErrorMsg={latestDescriptionJob?.errorMsg ?? null}
+            slotStatus={slot.status}
+            aiConfig={aiConfig}
+            renderStatus={render?.status ?? null}
+            hasCurrentVersion={!!currentVersionId}
+            needsClientValidation={clientValidation.needsClientValidation}
+            transcriptionJobStatus={transcriptionJobStatus}
+            hasCaptionLibrary={hasCaptionLibrary ?? false}
+            captionEntry={captionEntry ?? null}
+            captionPinnedSetTag={captionPinnedSetTag ?? null}
+          />
+        )}
+
+        {/* 5. Cover Instagram */}
+        {wrap(
+          "cover",
+          <CoverSection
+            slot={{ id: slot.id }}
+            pattern={pattern ? { coverMode: pattern.coverMode } : null}
+            renderId={render?.status === "DONE" ? render.id : null}
+            coverPack={
+              coverPack
+                ? {
+                    id: coverPack.id,
+                    status: coverPack.status,
+                    finalCoverUrl: coverPack.finalCoverUrl,
+                    errorMsg: coverPack.errorMsg ?? null,
+                    // V6.5.1 — sérialisation Date → string ISO côté boundary client.
+                    staleSince:
+                      coverPack.staleSince instanceof Date
+                        ? coverPack.staleSince.toISOString()
+                        : coverPack.staleSince ?? null,
+                    staleReason: coverPack.staleReason ?? null,
+                  }
+                : null
+            }
+            coverConfigError={coverConfigError}
+            canEdit={canEditCover}
+            viewerRole={currentUserRole}
+            canMonteurUpload={
+              currentUserRole === "ADMIN" ||
+              (currentUserRole === "MONTEUR" &&
+                assigneeMonteur?.id === currentUserId)
+            }
+            currentVersion={currentVersion}
+            needsClientValidation={clientValidation.needsClientValidation}
+            slotStatus={slot.status}
+          />
+        )}
+
+        {/* Phase 6 — Boutons triggers manuels pour slots one-off (ADMIN only)
+            Utilise resolvedConfig (override slot + pattern) au lieu de pattern brut
+            pour respecter les overrides du slot (Phase 4 cohérence). */}
+        <OneOffTriggerButtons
+          slotId={slot.id}
+          isAdmin={currentUserRole === "ADMIN"}
+          hasCurrentVersion={!!currentVersion}
+          hasNoRender={!render}
+          resolvedConfig={resolvedConfig}
+          hasCaptionJob={!!latestCaptionJob}
+          hasCoverPack={!!coverPack && coverPack.status !== "FAILED"}
+        />
+
+        {/* Publication — récupère les steps incomplets pour afficher
+            un warning non-bloquant si le CM tente de publier alors
+            que cover/captions/description sont todo ou failed. */}
+        {wrap(
+          "publish",
+          <PublishSection
+            slot={{
+              id: slot.id,
+              status: slot.status,
+              publishedUrl: slot.publishedUrl,
+              publishedAt: slot.publishedAt,
+            }}
+            account={account}
+            collabs={collabs}
+            canPublish={canMarkPublished}
+            canPublishWithoutUrl={canPublishWithoutUrl}
+            incompleteSteps={steps
+              .filter((s) => s.visible && s.key !== "publish")
+              .filter((s): s is typeof s & { status: "todo" | "failed" } =>
+                s.status === "todo" || s.status === "failed",
+              )
+              .map((s) => ({ key: String(s.key), label: s.label, status: s.status }))}
+          />
+        )}
+      </FicheShell>
+    </>
   );
 }

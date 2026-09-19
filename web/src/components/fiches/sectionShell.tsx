@@ -25,6 +25,22 @@ import type { UserRole } from "@/types/roles";
  *
  * L'ADMIN n'a pas d'entrée : il voit tout (cf. `createSectionWrapper`).
  */
+/**
+ * Ce que `wrap()` injecte dans une section, par `cloneElement`.
+ *
+ * Toute section de fiche étend ce type. L'injection reste castée en
+ * `Record<string, unknown>` plus bas — donc TypeScript ne vérifie pas
+ * l'appariement — mais au moins la prop EXISTE dans la signature, ce que la
+ * fiche publication n'a jamais eu : une section qui oublie de les déclarer
+ * perd son ancre et sa mémoire en silence.
+ */
+export interface FicheSectionChromeProps {
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
+}
+
 export type SectionsByRole<K extends string> = Record<Exclude<UserRole, "ADMIN">, K[]>;
 
 export interface SectionWrapperOptions<K extends string> {
