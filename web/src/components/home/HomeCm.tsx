@@ -51,6 +51,10 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     },
     include: {
       account: { select: { id: true, handle: true, name: true } },
+      collabs: {
+        select: { account: { select: { id: true, handle: true } } },
+        orderBy: { createdAt: "asc" },
+      },
       patternBinding: {
         select: {
           customLabel: true,
@@ -87,6 +91,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     assigneeMonteurId: s.assigneeMonteurId,
     assigneeCmId: s.assigneeCmId,
     account: s.account,
+    collabs: s.collabs.map((c) => c.account),
     pattern: patternViewOf(s),
   }));
 

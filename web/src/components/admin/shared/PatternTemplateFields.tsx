@@ -370,12 +370,14 @@ export function PatternTemplateFields({
           />
         </FormField>
 
-        {/* Ce qui permet de remplir une semaine « en TRANSACTION » sans cocher
-            quinze recettes. Saisie libre mais assistée : « TRANSAC » et
+        {/* Ce qui permet de créer une publication en choisissant « RAUTO »
+            plutôt qu'en tranchant entre huit recettes interchangeables : à la
+            création, une famille se choisit comme une recette, et le tourniquet
+            désigne le membre. Saisie libre mais assistée : « TRANSAC » et
             « TRANSACTION » feraient deux familles. */}
         <FormField
           label="Famille"
-          help="Regroupe les recettes qui se remplacent entre elles. Ex : TRANSACTION, COMMERCE."
+          help="Regroupe les recettes qui se remplacent entre elles — proposée comme un seul choix à la création. Ex : RAUTO, COMMERCE."
         >
           <Combobox
             value={v.family}

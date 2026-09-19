@@ -20,7 +20,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, Clock, Users, Plus, Lock, Pencil } from "lucide-react";
+import { AlertCircle, Clock, Users, Plus, Lock, Pencil, Shuffle } from "lucide-react";
 import type { PublicationSlot } from "@/types/calendar";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
@@ -28,12 +28,16 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Combobox } from "@/components/ui/Combobox";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { Chip } from "@/components/ui/Chip";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TimePicker } from "@/components/ui/TimePicker";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { toast } from "@/components/ui/Toast";
 import { EntityPicker } from "@/components/entities/EntityPicker";
 import { formatNextActionLine } from "@/lib/publications/nextActionLabel";
+import { localInputToIso } from "@/lib/date/formatFr";
+import { isSharedSentinel } from "@/lib/rotation/sentinels";
+import { MAX_SLOT_COLLABS } from "@/lib/publications/constants";
 import { SOURCE_LABELS_FR } from "@/lib/i18n/glossary";
 import { patternLabel } from "@/lib/services/pattern/resolveEffective";
 import { requiredEntityTypeId, requiresEntity } from "@/lib/publications/entityRequirement";
@@ -71,6 +75,31 @@ interface UserOption {
   role: string;
 }
 
+/**
+ * Le tourniquet, vu par la modale — cf. `GET /api/calendar/recipe-pick`.
+ *
+ * L'admin choisit une FAMILLE (« RAUTO ») et le serveur dit quel membre sortir,
+ * au lieu de lui faire trancher entre huit recettes interchangeables. Le
+ * classement complet suit, pour proposer « une autre » sans aller-retour.
+ */
+interface RecipePickOption {
+  patternBindingId: string;
+  patternTemplateId: string;
+  label: string;
+  publishTime: string;
+  /** Jours depuis la sortie la plus proche. null = jamais sortie dans la fenêtre. */
+  gapDays: number | null;
+}
+
+interface RecipePickGroup {
+  /** null = recettes pas encore rangées dans une famille. */
+  family: string | null;
+  /** Tous les membres, y compris celui qui vient de sortir — cf. le service. */
+  memberBindingIds: string[];
+  picked: RecipePickOption | null;
+  alternatives: RecipePickOption[];
+}
+
 interface AddSlotModalProps {
   accounts: Account[];
   defaultDate?: string;
@@ -99,6 +128,87 @@ const DESCRIPTION_OPTIONS = [
 // P0 — BOOL_OVERRIDE_OPTIONS retiré : OneOffToggle utilise maintenant un
 // segmented tri-état natif (Défaut / Oui / Non) au lieu d'un Combobox.
 
+/**
+ * Une carte cliquable du sélecteur de recette.
+ *
+ * Extrait parce que le sélecteur la rend à trois endroits (familles, recettes
+ * seules, liste complète dépliée) ; dupliquée, la sélection visuelle divergeait
+ * d'un bloc à l'autre au premier ajustement.
+ */
+function PickerCard({
+  selected,
+  onClick,
+  title,
+  badge,
+  meta,
+  disabled,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  title: string;
+  badge?: { label: string; tone: "source" | "family" };
+  meta: React.ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "w-full text-left p-3 rounded-lg border transition-colors",
+        disabled
+          ? "bg-muted border-border opacity-60 cursor-not-allowed"
+          : selected
+            ? "bg-accent border-primary ring-1 ring-primary"
+            : "bg-card border-border hover:bg-accent",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[13px] font-semibold text-foreground">{title}</span>
+        {badge && (
+          <span
+            className={[
+              "text-[10px] px-1.5 py-0.5 rounded border",
+              badge.tone === "family"
+                ? "bg-primary/10 text-primary border-primary/20"
+                : "bg-muted text-muted-foreground border-border",
+            ].join(" ")}
+          >
+            {badge.label}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">{meta}</div>
+    </button>
+  );
+}
+
+/** Planning et équipe d'une recette, sous son libellé. */
+function PatternMeta({ pattern }: { pattern: PatternOption }) {
+  const team = [
+    pattern.defaultAssigneeVideaste?.name,
+    pattern.defaultAssigneeMonteur?.name,
+    pattern.defaultAssigneeCm?.name,
+  ].filter(Boolean);
+  return (
+    <>
+      <span className="inline-flex items-center gap-1">
+        <Clock size={11} />
+        {pattern.dayOfWeek.length === 0
+          ? "Recette manuelle (pas de planning auto)"
+          : `${pattern.dayOfWeek.map((d) => DAYS[d] ?? `J${d}`).join("/")} · ${pattern.publishTime}`}
+      </span>
+      {team.length > 0 && (
+        <span className="inline-flex items-center gap-1">
+          <Users size={11} />
+          {team.join(" · ")}
+        </span>
+      )}
+    </>
+  );
+}
+
 export function AddSlotModal({
   accounts,
   defaultDate,
@@ -126,6 +236,29 @@ export function AddSlotModal({
   const [patterns, setPatterns] = useState<PatternOption[]>([]);
   const [selectedPatternId, setSelectedPatternId] = useState<string>("");
   const [loadingPatterns, setLoadingPatterns] = useState(false);
+
+  /**
+   * Familles proposables et choix du tourniquet, pour le compte et le jour visés.
+   *
+   * `selectedFamily` ne crée PAS un troisième mode : `selectedPatternId` reste
+   * la seule source de vérité (une famille sélectionnée en pose toujours un).
+   * Il ne sert qu'à savoir quelle carte surligner et si la ligne « le
+   * tourniquet a choisi X » a lieu d'être.
+   */
+  const [groups, setGroups] = useState<RecipePickGroup[]>([]);
+  const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
+  const [occupiedThisDay, setOccupiedThisDay] = useState(false);
+  /** Déplie la liste complète des recettes — le repli de secours. */
+  const [showAllRecipes, setShowAllRecipes] = useState(false);
+
+  /**
+   * Comptes à inviter en collaborateur.
+   *
+   * Posés ici et pas seulement dans le drawer : sur Instagram l'invitation se
+   * fait dans le composer, jamais après coup, et on sait le plus souvent dès la
+   * création qu'une publication part en collab.
+   */
+  const [collabIds, setCollabIds] = useState<string[]>([]);
 
   const [assigneeMonteurId, setAssigneeMonteurId] = useState<string>("");
   const [assigneeCmId, setAssigneeCmId] = useState<string>("");
@@ -202,6 +335,9 @@ export function AddSlotModal({
     let cancelled = false;
     setLoadingPatterns(true);
     setSelectedPatternId("");
+    setSelectedFamily(null);
+    setShowAllRecipes(false);
+    setCollabIds([]);
     setAssigneeMonteurId("");
     setAssigneeCmId("");
     setAssigneeVideasteId("");
@@ -275,6 +411,76 @@ export function AddSlotModal({
     };
   }, [accountId]);
 
+  const applyPattern = useCallback(
+    (patternId: string) => {
+      setSelectedPatternId(patternId);
+      const pattern = patterns.find((p) => p.id === patternId);
+      if (pattern) {
+        setAssigneeMonteurId(pattern.defaultAssigneeMonteur?.id ?? "");
+        setAssigneeCmId(pattern.defaultAssigneeCm?.id ?? "");
+        setAssigneeVideasteId(pattern.defaultAssigneeVideaste?.id ?? "");
+        if (pattern.publishTime) {
+          setTime(pattern.publishTime);
+          // Re-locker l'heure quand on change de pattern : la valeur revient à
+          // celle du pattern, l'admin doit re-cliquer "Modifier" pour la dévier.
+          setTimeUnlocked(false);
+        }
+      }
+    },
+    [patterns],
+  );
+
+  /** Choix direct d'une recette : sort du mode famille. */
+  function handlePatternSelect(patternId: string) {
+    setSelectedFamily(null);
+    applyPattern(patternId);
+  }
+
+  /** Choix d'une famille : c'est le tourniquet qui désigne le membre. */
+  function handleFamilySelect(family: string) {
+    setSelectedFamily(family);
+    const picked = groups.find((g) => g.family === family)?.picked;
+    if (picked) applyPattern(picked.patternBindingId);
+    else setSelectedPatternId("");
+  }
+
+  // ─── Le tourniquet : familles proposables pour ce compte, ce jour-là ─────
+  //
+  // Un seul aller-retour par (compte, date) : l'historique qui nourrit le
+  // classement coûte ±120 jours de publications, on ne le recharge pas à chaque
+  // clic de famille.
+  useEffect(() => {
+    if (!accountId || !date) {
+      setGroups([]);
+      setOccupiedThisDay(false);
+      return;
+    }
+    let cancelled = false;
+    void fetch(
+      `/api/calendar/recipe-pick?accountId=${encodeURIComponent(accountId)}&date=${encodeURIComponent(date)}`,
+    )
+      .then((r) => (r.ok ? (r.json() as Promise<{ groups: RecipePickGroup[]; occupiedThisDay: boolean }>) : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setGroups(data.groups);
+        setOccupiedThisDay(data.occupiedThisDay);
+      })
+      // Un tourniquet indisponible ne doit pas bloquer la création : la liste
+      // complète des recettes reste là, le formulaire fonctionne sans familles.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, date]);
+
+  // La date change → le tourniquet peut désigner un autre membre de la famille
+  // déjà choisie. Sans ça, l'admin garderait la recette calculée pour la veille.
+  useEffect(() => {
+    if (!selectedFamily) return;
+    const picked = groups.find((g) => g.family === selectedFamily)?.picked;
+    if (picked) applyPattern(picked.patternBindingId);
+  }, [groups, selectedFamily, applyPattern]);
+
   // ─── Cover presets ──────────────────────────────────────────────────────
   useEffect(() => {
     const tplId = patterns.find((p) => p.id === selectedPatternId)?.templateId ?? null;
@@ -296,22 +502,6 @@ export function AddSlotModal({
     };
   }, [patterns, selectedPatternId]);
 
-  function handlePatternSelect(patternId: string) {
-    setSelectedPatternId(patternId);
-    const pattern = patterns.find((p) => p.id === patternId);
-    if (pattern) {
-      setAssigneeMonteurId(pattern.defaultAssigneeMonteur?.id ?? "");
-      setAssigneeCmId(pattern.defaultAssigneeCm?.id ?? "");
-      setAssigneeVideasteId(pattern.defaultAssigneeVideaste?.id ?? "");
-      if (pattern.publishTime) {
-        setTime(pattern.publishTime);
-        // Re-locker l'heure quand on change de pattern : la valeur revient à
-        // celle du pattern, l'admin doit re-cliquer "Modifier" pour la dévier.
-        setTimeUnlocked(false);
-      }
-    }
-  }
-
   const monteurs = useMemo(
     () => users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN"),
     [users],
@@ -326,6 +516,43 @@ export function AddSlotModal({
   );
 
   const hasNoPatterns = !loadingPatterns && patterns.length === 0 && !!accountId;
+
+  // Une famille ne mérite une carte que si elle regroupe : à un seul membre,
+  // « choisir RAUTO » et « choisir RAUTO 7 » sont le même geste avec un mot de
+  // plus. Les recettes non rangées (family null) ne sont pas une famille non
+  // plus — un tourniquet sur un fourre-tout ne veut rien dire.
+  const familyGroups = useMemo(
+    () => groups.filter((g) => g.family !== null && g.memberBindingIds.length >= 2),
+    [groups],
+  );
+  const groupedBindingIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const g of familyGroups) for (const id of g.memberBindingIds) ids.add(id);
+    return ids;
+  }, [familyGroups]);
+  /** Ce qui reste à montrer à l'unité : tout ce qu'aucune carte de famille ne couvre. */
+  const standalonePatterns = useMemo(
+    () => patterns.filter((p) => !groupedBindingIds.has(p.id)),
+    [patterns, groupedBindingIds],
+  );
+  const coveredPatterns = useMemo(
+    () => patterns.filter((p) => groupedBindingIds.has(p.id)),
+    [patterns, groupedBindingIds],
+  );
+  /**
+   * Comptes invitables : tous sauf celui qui publie (il serait son propre
+   * collaborateur) et sauf les comptes sentinelles de la médiathèque, qui ne
+   * sont pas de vrais comptes.
+   */
+  const collabOptions = useMemo(
+    () => accounts.filter((a) => a.id !== accountId && !isSharedSentinel(a.id)),
+    [accounts, accountId],
+  );
+
+  const selectedGroup = useMemo(
+    () => (selectedFamily ? (groups.find((g) => g.family === selectedFamily) ?? null) : null),
+    [groups, selectedFamily],
+  );
   // Mode dérivé : recette sélectionnée = mode pattern, sinon mode libre.
   const isPatternMode = !!selectedPatternId;
 
@@ -372,7 +599,17 @@ export function AddSlotModal({
     setSaving(true);
     setError(null);
     try {
-      const scheduledAt = inBank ? null : new Date(`${date}T${time}:00`).toISOString();
+      // L'heure saisie est une heure de PARIS, pas celle du navigateur — même
+      // règle que partout ailleurs (`localInputToIso`). Avec `new Date(...)`,
+      // un poste réglé sur un autre fuseau créait la publication une à deux
+      // heures à côté, parfois la veille : la recette proposée pour le jour J
+      // ne tombait pas au jour J.
+      const scheduledAt = inBank ? null : localInputToIso(`${date}T${time}`);
+      if (!inBank && !scheduledAt) {
+        setError("Date ou heure illisible.");
+        setSaving(false);
+        return;
+      }
       const payload: Record<string, unknown> = {
         accountId,
         scheduledAt,
@@ -395,6 +632,7 @@ export function AddSlotModal({
         // P2 — selectedPatternId est désormais un id de PatternBinding.
         // createSlot l'accepte directement via patternBindingId.
         patternBindingId: isPatternMode ? selectedPatternId : null,
+        collabAccountIds: collabIds,
       };
 
       if (!isPatternMode) {
@@ -493,6 +731,52 @@ export function AddSlotModal({
             />
           </FormField>
 
+          {/* Collaboration — sous le compte, parce que c'est la question qui
+              suit immédiatement « quel compte ». Le CM lira la consigne au
+              moment de poster : l'invitation se fait dans le composer
+              Instagram, jamais après publication. */}
+          {collabOptions.length > 0 && (
+            <CollapsibleSection
+              title="Collaboration"
+              defaultOpen={false}
+              storageKey="add-slot-modal:collabs"
+            >
+              <div className="pt-1 space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {collabOptions.map((a) => {
+                    const selected = collabIds.includes(a.id);
+                    return (
+                      <Chip
+                        key={a.id}
+                        size="sm"
+                        selected={selected}
+                        variant={selected ? "sky" : "default"}
+                        onClick={() =>
+                          setCollabIds((prev) =>
+                            prev.includes(a.id)
+                              ? prev.filter((id) => id !== a.id)
+                              : prev.length >= MAX_SLOT_COLLABS
+                                ? prev
+                                : [...prev, a.id],
+                          )
+                        }
+                      >
+                        @{a.handle}
+                      </Chip>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  {collabIds.length >= MAX_SLOT_COLLABS
+                    ? `Maximum atteint — Instagram n'accepte pas plus de ${MAX_SLOT_COLLABS} collaborateurs.`
+                    : collabIds.length > 0
+                      ? "Le CM verra la consigne au moment de poster : inviter ces comptes en collaborateur."
+                      : "Comptes à inviter en collaborateur — la publication apparaîtra aussi sur leur profil."}
+                </p>
+              </div>
+            </CollapsibleSection>
+          )}
+
           {/* Toggle "Sans recette" — bascule entre flux pattern (recette
               sélectionnée + champs pré-remplis verrouillés) et flux libre
               (saisie complète avec overrides). Discret par défaut. */}
@@ -535,56 +819,115 @@ export function AddSlotModal({
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  {patterns.map((p) => {
-                    const isSelected = p.id === selectedPatternId;
+                  {/* Les familles d'abord : c'est le geste courant. */}
+                  {familyGroups.map((g) => {
+                    const family = g.family as string;
+                    const picked = g.picked;
                     return (
-                      <button
-                        type="button"
-                        key={p.id}
-                        onClick={() => handlePatternSelect(p.id)}
-                        className={[
-                          "w-full text-left p-3 rounded-xl transition-all",
-                          "bg-card border border-border",
-                          isSelected
-                            ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(77,150,191,0.5),0_4px_12px_-2px_rgba(125,180,210,0.25)]"
-                            : " hover:",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[13px] font-semibold text-foreground">
-                            {p.label}
-                          </span>
-                          {p.source && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-danger-50/70 text-danger-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.18)]">
-                              {SOURCE_LABELS_FR[p.source] ?? p.source}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                      <PickerCard
+                        key={`family:${family}`}
+                        selected={selectedFamily === family}
+                        disabled={!picked}
+                        onClick={() => handleFamilySelect(family)}
+                        title={family}
+                        badge={{
+                          label: `${g.memberBindingIds.length} recettes`,
+                          tone: "family",
+                        }}
+                        meta={
                           <span className="inline-flex items-center gap-1">
-                            <Clock size={11} />
-                            {p.dayOfWeek.length === 0
-                              ? "Pattern manuel (pas de planning auto)"
-                              : `${p.dayOfWeek.map((d) => DAYS[d] ?? `J${d}`).join("/")} · ${p.publishTime}`}
+                            <Shuffle size={11} />
+                            {picked
+                              ? `→ ${picked.label}${
+                                  picked.gapDays === null
+                                    ? " · jamais sortie"
+                                    : ` · sortie il y a ${picked.gapDays} j.`
+                                }`
+                              : "Toutes déjà sorties ce jour-là"}
                           </span>
-                          {(p.defaultAssigneeVideaste ||
-                            p.defaultAssigneeMonteur ||
-                            p.defaultAssigneeCm) && (
-                            <span className="inline-flex items-center gap-1">
-                              <Users size={11} />
-                              {[
-                                p.defaultAssigneeVideaste?.name,
-                                p.defaultAssigneeMonteur?.name,
-                                p.defaultAssigneeCm?.name,
-                              ]
-                                .filter(Boolean)
-                                .join(" · ") || "—"}
-                            </span>
-                          )}
-                        </div>
-                      </button>
+                        }
+                      />
                     );
                   })}
+
+                  {/* Puis ce qu'aucune famille ne couvre, à l'unité. */}
+                  {standalonePatterns.map((p) => (
+                    <PickerCard
+                      key={p.id}
+                      selected={!selectedFamily && p.id === selectedPatternId}
+                      onClick={() => handlePatternSelect(p.id)}
+                      title={p.label}
+                      badge={
+                        p.source
+                          ? { label: SOURCE_LABELS_FR[p.source] ?? p.source, tone: "source" }
+                          : undefined
+                      }
+                      meta={<PatternMeta pattern={p} />}
+                    />
+                  ))}
+
+                  {/* Le repli : choisir nommément un membre d'une famille. */}
+                  {coveredPatterns.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowAllRecipes((v) => !v)}
+                        className="text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                      >
+                        {showAllRecipes
+                          ? "← Masquer les recettes des familles"
+                          : `Choisir une recette précise (${coveredPatterns.length}) →`}
+                      </button>
+                      {showAllRecipes &&
+                        coveredPatterns.map((p) => (
+                          <PickerCard
+                            key={p.id}
+                            selected={!selectedFamily && p.id === selectedPatternId}
+                            onClick={() => handlePatternSelect(p.id)}
+                            title={p.label}
+                            badge={
+                              p.source
+                                ? { label: SOURCE_LABELS_FR[p.source] ?? p.source, tone: "source" }
+                                : undefined
+                            }
+                            meta={<PatternMeta pattern={p} />}
+                          />
+                        ))}
+                    </>
+                  )}
+
+                  {/* Ce que le tourniquet a retenu, et de quoi le dévier. */}
+                  {selectedGroup?.picked && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+                      <span>
+                        Le tourniquet a choisi{" "}
+                        <span className="font-semibold text-foreground">
+                          {selectedGroup.picked.label}
+                        </span>
+                        .
+                      </span>
+                      {selectedGroup.alternatives.length > 1 && (
+                        <span className="inline-flex flex-wrap items-center gap-1">
+                          Autre :
+                          {selectedGroup.alternatives.slice(1, 4).map((o) => (
+                            <button
+                              key={o.patternBindingId}
+                              type="button"
+                              onClick={() => applyPattern(o.patternBindingId)}
+                              className={[
+                                "rounded border px-1.5 py-0.5 transition-colors",
+                                o.patternBindingId === selectedPatternId
+                                  ? "border-primary bg-accent text-foreground"
+                                  : "border-border bg-card hover:bg-accent",
+                              ].join(" ")}
+                            >
+                              {o.label}
+                            </button>
+                          ))}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </FormField>
@@ -715,6 +1058,17 @@ export function AddSlotModal({
                 </p>
               </div>
             )}
+
+          {/* Le compte publie déjà ce jour-là — on signale, on ne refuse pas.
+              « Remplir la semaine » refusait durement, parce qu'un remplissage
+              automatique ne doit pas empiler ; un admin qui en ajoute une
+              deuxième le fait exprès. */}
+          {!inBank && occupiedThisDay && (
+            <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+              <AlertCircle size={12} className="mt-0.5 shrink-0" />
+              Ce compte a déjà une publication programmée ce jour-là.
+            </div>
+          )}
 
           {/* Titre */}
           <FormField

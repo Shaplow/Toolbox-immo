@@ -36,6 +36,7 @@ import { BANK_GROUP_BG, partitionBank } from "@/lib/slots/bankGroups";
 import { BulkScheduleModal } from "./BulkScheduleModal";
 import { useSlotDrag } from "./dnd/useSlotDrag";
 import { useBankDrop } from "./dnd/useDayDrop";
+import { AccountLabel, accountTitle } from "@/components/ui/AccountLabel";
 
 interface BankRailProps {
   slots: PublicationSlot[];
@@ -265,7 +266,7 @@ function BankRailItem({
           else onSchedule();
         }
       }}
-      title={`${title} · ${slot.account ? `@${slot.account.handle}` : "Sans compte"} — ${
+      title={`${title} · ${accountTitle(slot.account?.handle, slot.collabs)} — ${
         selectMode ? "cliquer pour sélectionner" : "glisser sur un jour ou cliquer pour programmer"
       }`}
       className={[
@@ -305,9 +306,11 @@ function BankRailItem({
         )}
       </div>
       <div className="mt-1 flex items-center justify-between gap-1.5 pl-[18px]">
-        <span className="text-[10.5px] text-muted-foreground truncate">
-          {slot.account ? `@${slot.account.handle}` : "Sans compte"}
-        </span>
+        <AccountLabel
+          handle={slot.account?.handle}
+          collabs={slot.collabs}
+          className="text-[10.5px] text-muted-foreground"
+        />
         <Chip className={`${PHASE_COLORS[phase]} text-[9.5px] shrink-0`}>
           {STATUS_LABELS[slot.status]}
         </Chip>

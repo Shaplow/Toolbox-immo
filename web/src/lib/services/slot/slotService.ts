@@ -38,10 +38,10 @@ import {
 // REEL_* : mêmes règles que la création d'un reel et que markEntityShot.
 import {
   BULK_PUBLISHABLE_STATUSES,
-  MAX_SLOT_COLLABS,
   REEL_ATTACHABLE_SOURCES,
   REEL_STATUSES_BUMPED_ON_SHOT,
 } from "@/lib/publications/constants";
+import { normalizeCollabAccountIds } from "@/lib/publications/collabs";
 import {
   resolveSlotEffectivePattern,
   slotEffectivePatternSelect,
@@ -115,6 +115,15 @@ export interface CreateSlotInput {
   eventId?: string | null;
   /** Bon de commande d'origine — posé par orderService à l'instanciation. */
   orderId?: string | null;
+  /**
+   * Comptes invités en collaborateur sur la publication (cf.
+   * `PublicationSlotCollab`). ADMIN uniquement, comme la route `PUT collabs` :
+   * le CM lit la consigne, il ne la pose pas.
+   *
+   * Posé dès la création parce que c'est là qu'on sait déjà qu'un post part en
+   * collab — l'attendre obligeait à rouvrir la publication après coup.
+   */
+  collabAccountIds?: string[];
 }
 
 // ─── Helpers privés ───────────────────────────────────────────────────────────
@@ -534,6 +543,29 @@ export async function createSlot(
     }
   }
 
+  // Collaborateurs — mêmes règles que `setSlotCollabs`, mêmes droits.
+  //
+  // `input.accountId` est ici le compte RÉSOLU : une fiche tournage a pu
+  // l'écraser plus haut. Passer celui du body laisserait passer « le compte du
+  // tournage est son propre collaborateur ».
+  //
+  // Réservé à l'admin : `createSlot` a des appelants en `requireAdmin: false`,
+  // et accepter le champ pour eux ouvrirait par la fenêtre la porte que la
+  // route `PUT /collabs` verrouille.
+  const collabAccountIds = ctx.canAdminBypass
+    ? normalizeCollabAccountIds(input.collabAccountIds, input.accountId ?? null)
+    : [];
+  if (collabAccountIds.length > 0) {
+    // Existence vérifiée AVANT le create : sans ça une FK invalide remonte en
+    // P2003 → 500, là où l'admin mérite un 400 qui nomme le problème.
+    const found = await prisma.instagramAccount.count({
+      where: { id: { in: collabAccountIds } },
+    });
+    if (found !== collabAccountIds.length) {
+      throw new ValidationError("Compte Instagram introuvable");
+    }
+  }
+
   const slot = await prisma.publicationSlot.create({
     data: {
       accountId: input.accountId ?? null,
@@ -547,7 +579,13 @@ export async function createSlot(
       notes: input.notes ?? null,
       // Status initial dérivé du pattern.source (cohérence calendarEngine).
       status: initialStatus,
-      templateId: input.templateId ?? null,
+      // Le gabarit builder de la recette suit sur le slot — c'est ce que fait
+      // déjà `generateCalendarSlots` (calendarEngine:320) et ce que
+      // `attachMissionsToEntity` pose explicitement. Sans lui, le drawer
+      // calendrier ne propose pas « Ouvrir le formulaire de génération » et un
+      // slot de recette auto n'est lançable depuis nulle part. La précédence
+      // reste à `input.templateId` : le chemin missions ne change pas.
+      templateId: input.templateId ?? resolvedPattern?.templateId ?? null,
       fields: input.fields ? JSON.stringify(input.fields) : "{}",
       // fieldSchema : la fiche porte la seule source de champs perso (via le
       // type). Le slot stocke toujours "[]" ; résolution live à la génération.
@@ -588,9 +626,21 @@ export async function createSlot(
       ...(input.descriptionPromptIdOverride !== undefined
         ? { descriptionPromptIdOverride: input.descriptionPromptIdOverride }
         : {}),
+      // Nested create : Prisma l'exécute dans la transaction implicite du
+      // parent, donc pas de slot créé sans ses collaborateurs.
+      ...(collabAccountIds.length > 0
+        ? { collabs: { create: collabAccountIds.map((accountId) => ({ accountId })) } }
+        : {}),
     },
     include: {
       account: { select: { id: true, name: true, handle: true } },
+      // Même forme que `getSlot` / `listSlots` : sans ça le POST renverrait un
+      // slot sans `collabs` là où tout le reste en renvoie, et comme le champ
+      // est optionnel côté type, la divergence passerait en silence.
+      collabs: {
+        select: { account: { select: { id: true, handle: true } } },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
 
@@ -614,6 +664,7 @@ export async function createSlot(
 
   return {
     ...slot,
+    collabs: flattenCollabs(slot),
     fields: safeJSON<Record<string, string>>(slot.fields, {}),
     fieldSchema: normalizeCustomFields(slot.fieldSchema),
     // Clé API `propertyId` = fiche liée (Entity) — cf. mapping de listSlots.
@@ -2355,20 +2406,10 @@ export async function setSlotCollabs(
   });
   if (!slot) throw new NotFoundError("Slot");
 
-  const wanted = [...new Set(accountIds.filter((id) => typeof id === "string" && id.trim()))];
-
-  if (wanted.length > MAX_SLOT_COLLABS) {
-    throw new ValidationError(
-      `Instagram n'accepte pas plus de ${MAX_SLOT_COLLABS} collaborateurs sur une publication.`,
-    );
-  }
-  // Se mettre en collab avec soi-même : la consigne afficherait deux fois le
-  // même compte au CM, qui chercherait ce qu'il a raté.
-  if (slot.accountId && wanted.includes(slot.accountId)) {
-    throw new ValidationError(
-      "Le compte qui publie ne peut pas être aussi son propre collaborateur.",
-    );
-  }
+  // Règles partagées avec la création (cf. `lib/publications/collabs`) :
+  // déduplication, plafond Instagram, refus de soi-même, retrait silencieux des
+  // comptes sentinelles.
+  const wanted = normalizeCollabAccountIds(accountIds, slot.accountId);
 
   const accounts = wanted.length
     ? await prisma.instagramAccount.findMany({
@@ -2513,18 +2554,32 @@ export async function assignSlotAccount(slotId: string, accountId: string, ctx: 
   const cmId =
     slot.assigneeCmId ?? binding?.defaultAssigneeCmId ?? account.defaultAssigneeCmId;
 
-  const updated = await prisma.publicationSlot.update({
-    where: { id: slotId },
-    data: {
-      accountId,
-      // Le binding EST la recette appliquée à ce compte : sans lui, le slot
-      // resterait piloté par la recette globale, donc sans horaire ni label
-      // propres au compte.
-      ...(binding ? { patternBindingId: binding.id } : {}),
-      assigneeVideasteId: videasteId,
-      assigneeMonteurId: monteurId,
-      assigneeCmId: cmId,
-    },
+  // Le nouveau compte était peut-être invité en collaborateur sur cette même
+  // publication. `setSlotCollabs` refuse d'écrire cet état — « le compte qui
+  // publie ne peut pas être aussi son propre collaborateur » — mais l'invariant
+  // n'était gardé que de ce côté-là : par ici, la ligne survivait et le CM
+  // lisait « poster depuis @B, et inviter @B en collaborateur ».
+  //
+  // D'où la transaction : le compte change et la ligne devenue fausse part
+  // ensemble, ou rien ne bouge.
+  const { updated, collabRemoved } = await prisma.$transaction(async (tx) => {
+    const removed = await tx.publicationSlotCollab.deleteMany({
+      where: { slotId, accountId },
+    });
+    const row = await tx.publicationSlot.update({
+      where: { id: slotId },
+      data: {
+        accountId,
+        // Le binding EST la recette appliquée à ce compte : sans lui, le slot
+        // resterait piloté par la recette globale, donc sans horaire ni label
+        // propres au compte.
+        ...(binding ? { patternBindingId: binding.id } : {}),
+        assigneeVideasteId: videasteId,
+        assigneeMonteurId: monteurId,
+        assigneeCmId: cmId,
+      },
+    });
+    return { updated: row, collabRemoved: removed.count > 0 };
   });
 
   await logActivity(prisma, {
@@ -2539,6 +2594,26 @@ export async function assignSlotAccount(slotId: string, accountId: string, ctx: 
       patternBindingId: binding?.id ?? null,
     },
   });
+
+  // Loggé seulement quand quelque chose a bougé : un fil qui annonce un
+  // changement de collaborateurs à chaque réassignation de compte devient du
+  // bruit qu'on cesse de lire.
+  if (collabRemoved) {
+    const remaining = await prisma.publicationSlotCollab.findMany({
+      where: { slotId },
+      select: { account: { select: { handle: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    await logActivity(prisma, {
+      slotId,
+      actorId: ctx.actualUser.id,
+      type: "COLLAB_ACCOUNTS_CHANGED",
+      payload: {
+        to: remaining.map((c) => c.account.handle),
+        reason: "account-changed",
+      },
+    });
+  }
 
   return updated;
 }

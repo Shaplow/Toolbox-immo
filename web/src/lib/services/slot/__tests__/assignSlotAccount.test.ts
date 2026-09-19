@@ -21,9 +21,11 @@ const mockSlotUpdate = vi.fn();
 const mockAccountFindUnique = vi.fn();
 const mockBindingFindFirst = vi.fn();
 const mockActivityCreate = vi.fn();
+const mockCollabDeleteMany = vi.fn(async () => ({ count: 0 }));
+const mockCollabFindMany = vi.fn(async () => [] as unknown[]);
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const client: Record<string, unknown> = {
     publicationSlot: {
       findUnique: (...a: unknown[]) => mockSlotFindUnique(...a),
       findUniqueOrThrow: (...a: unknown[]) => mockSlotFindUniqueOrThrow(...a),
@@ -32,8 +34,16 @@ vi.mock("@/lib/prisma", () => ({
     instagramAccount: { findUnique: (...a: unknown[]) => mockAccountFindUnique(...a) },
     patternBinding: { findFirst: (...a: unknown[]) => mockBindingFindFirst(...a) },
     publicationActivity: { create: (...a: unknown[]) => mockActivityCreate(...a) },
-  },
-}));
+    publicationSlotCollab: {
+      deleteMany: (...a: unknown[]) => mockCollabDeleteMany(...a),
+      findMany: (...a: unknown[]) => mockCollabFindMany(...a),
+    },
+  };
+  // La purge du collaborateur devenu faux et le changement de compte partagent
+  // une transaction : le mock la joue en passant le client lui-même.
+  client.$transaction = (fn: (tx: unknown) => unknown) => fn(client);
+  return { prisma: client };
+});
 
 vi.mock("@/lib/r2", () => ({ deleteR2Prefix: vi.fn(), r2Configured: () => false }));
 vi.mock("@/lib/publications/captionDataLibrary", () => ({
@@ -252,5 +262,48 @@ describe("gardes", () => {
   it("accepte un tournage rattaché sans compte", async () => {
     mockSlotFindUnique.mockResolvedValue({ ...SLOT, shootEntity: { accountId: null } });
     await expect(assignSlotAccount("slot-1", "acc-1", ctx())).resolves.toBeTruthy();
+  });
+});
+
+/**
+ * L'invariant « un compte n'est pas son propre collaborateur » était gardé
+ * d'un seul côté : `setSlotCollabs` refusait de l'écrire, mais une
+ * réassignation de compte pouvait le produire par la bande, et le CM lisait
+ * « poster depuis @B, et inviter @B en collaborateur ».
+ */
+describe("collaborateurs", () => {
+  it("le nouveau compte cesse d'être son propre collaborateur", async () => {
+    mockCollabDeleteMany.mockResolvedValue({ count: 1 });
+    mockCollabFindMany.mockResolvedValue([{ account: { handle: "autre_compte" } }]);
+
+    await assignSlotAccount("slot-1", "acc-1", ctx());
+
+    expect(mockCollabDeleteMany).toHaveBeenCalledWith({
+      where: { slotId: "slot-1", accountId: "acc-1" },
+    });
+  });
+
+  it("le retrait est consigné avec les collaborateurs restants", async () => {
+    mockCollabDeleteMany.mockResolvedValue({ count: 1 });
+    mockCollabFindMany.mockResolvedValue([{ account: { handle: "autre_compte" } }]);
+
+    await assignSlotAccount("slot-1", "acc-1", ctx());
+
+    const logged = mockActivityCreate.mock.calls.map(
+      (c) => (c[0] as { data: { type: string; payload?: { to?: string[] } } }).data,
+    );
+    const collabLog = logged.find((d) => d.type === "COLLAB_ACCOUNTS_CHANGED");
+    expect(collabLog?.payload?.to).toEqual(["autre_compte"]);
+  });
+
+  it("rien à retirer → pas de ligne de fil en plus", async () => {
+    mockCollabDeleteMany.mockResolvedValue({ count: 0 });
+
+    await assignSlotAccount("slot-1", "acc-1", ctx());
+
+    const types = mockActivityCreate.mock.calls.map(
+      (c) => (c[0] as { data: { type: string } }).data.type,
+    );
+    expect(types).not.toContain("COLLAB_ACCOUNTS_CHANGED");
   });
 });

@@ -26,6 +26,7 @@ import {
 } from "@/lib/slots/phase";
 import type { UserRole } from "@/types/roles";
 import { PARIS_TZ } from "@/lib/date/formatFr";
+import { AccountLabel, accountTitle } from "@/components/ui/AccountLabel";
 
 interface SlotCardProps {
   slot: PublicationSlot;
@@ -111,7 +112,7 @@ export function SlotCard({
       tabIndex={0}
       onClick={onClick}
       onKeyDown={handleKeyDown}
-      title={`${phaseLabel} · ${title} · ${slot.account ? `@${slot.account.handle}` : "Sans compte"}`}
+      title={`${phaseLabel} · ${title} · ${accountTitle(slot.account?.handle, slot.collabs)}`}
       className={[
         "group relative w-full text-left rounded-md px-2 py-1.5 cursor-pointer transition-colors",
         "bg-card border border-border hover:bg-muted hover:border-zinc-300",
@@ -167,9 +168,11 @@ export function SlotCard({
 
       {/* Ligne 3 : compte IG (gauche) + avatars assignés (droite) */}
       <div className="mt-1 flex items-center justify-between gap-1.5">
-        <span className="text-[10px] text-muted-foreground truncate min-w-0">
-          {slot.account ? `@${slot.account.handle}` : "Sans compte"}
-        </span>
+        <AccountLabel
+          handle={slot.account?.handle}
+          collabs={slot.collabs}
+          className="text-[10px] text-muted-foreground"
+        />
         {avatars.length > 0 && (
           <AvatarGroup avatars={avatars} max={3} size="xs" />
         )}

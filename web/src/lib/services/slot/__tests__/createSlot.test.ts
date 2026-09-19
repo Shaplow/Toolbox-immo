@@ -29,6 +29,9 @@ const mockPatternTemplateFindUnique = vi.fn().mockResolvedValue(null);
 // Fiche (Entity, Phase 5) — validation existence/archivage du propertyId (clé API).
 const mockEntityFindUnique = vi.fn().mockResolvedValue({ id: "prop-1", typeId: "etype_bien", isArchived: false, fields: "{}" });
 const mockActivityCreate = vi.fn();
+// Existence des comptes collaborateurs, vérifiée avant le create pour rendre
+// un 400 lisible au lieu d'une violation de clé étrangère.
+const mockAccountCount = vi.fn(async () => 0);
 // Légende bibliothèque de données (Phase 2) — orchestrateur + claim, mockés
 // directement (cf. skill : ce module ne fait aucune écriture, le claim est
 // à la charge de l'appelant). Passthrough par défaut vers l'implémentation
@@ -51,6 +54,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     instagramAccount: {
       findUnique: (...args: unknown[]) => mockAccountFindUnique(...args),
+      count: (...args: unknown[]) => mockAccountCount(...args),
     },
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
@@ -166,19 +170,26 @@ beforeEach(() => {
   mockPatternTemplateFindUnique.mockReset().mockResolvedValue(null);
   mockEntityFindUnique.mockReset().mockResolvedValue({ id: "prop-1", typeId: "etype_bien", isArchived: false, fields: "{}" });
   mockActivityCreate.mockReset();
+  mockAccountCount.mockReset().mockResolvedValue(0);
   // mockClear (pas mockReset) : garde le passthrough par défaut posé dans
   // vi.mock ci-dessus, ne vide que l'historique d'appels.
   mockResolveCaptionWithDataLibrary.mockClear();
   mockClaimDataEntryForCaption.mockReset().mockResolvedValue(true);
 
-  // Mock par défaut : create renvoie un objet stub plausible
-  mockSlotCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
-    Promise.resolve({
+  // Mock par défaut : create renvoie un objet stub plausible.
+  // `collabs` est écrasé : en entrée c'est un nested create
+  // (`{ create: [...] }`), en sortie Prisma renvoie les lignes de l'`include`.
+  mockSlotCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+    const nested = data.collabs as { create?: { accountId: string }[] } | undefined;
+    return Promise.resolve({
       id: "slot-new",
       ...data,
       account: { id: data.accountId, name: "Test", handle: "test" },
-    }),
-  );
+      collabs: (nested?.create ?? []).map((c) => ({
+        account: { id: c.accountId, handle: `h-${c.accountId}` },
+      })),
+    });
+  });
 
   // Compte par défaut
   mockAccountFindUnique.mockResolvedValue({ id: "account-A", name: "Test", handle: "test" });
@@ -553,6 +564,184 @@ describe("createSlot — status initial selon pattern.source", () => {
 
     const callArgs = mockSlotCreate.mock.calls[0][0] as { data: { status: string } };
     expect(callArgs.data.status).toBe("DRAFT");
+  });
+});
+
+// ─── Le gabarit builder suit la recette ────────────────────────────────────
+//
+// Sans ça, le drawer calendrier ne propose pas « Ouvrir le formulaire de
+// génération » et un slot de recette auto n'est lançable depuis nulle part.
+// `generateCalendarSlots` (cron) et `attachMissionsToEntity` le posaient déjà :
+// c'est ce chemin-ci qui était l'exception.
+
+describe("createSlot — gabarit builder hérité de la recette", () => {
+  it("binding auto_template avec un gabarit → le slot le porte", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({ source: "auto_template", templateId: "builder-tpl-1" }),
+    );
+
+    await createSlot(
+      {
+        accountId: "account-A",
+        scheduledAt: "2026-06-01T10:00:00Z",
+        patternBindingId: "binding-A",
+      },
+      makeAdminCtx(),
+    );
+
+    const callArgs = mockSlotCreate.mock.calls[0][0] as { data: { templateId: string | null } };
+    expect(callArgs.data.templateId).toBe("builder-tpl-1");
+  });
+
+  it("templateId explicite prime sur celui de la recette", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({ source: "auto_template", templateId: "builder-tpl-1" }),
+    );
+
+    await createSlot(
+      {
+        accountId: "account-A",
+        scheduledAt: "2026-06-01T10:00:00Z",
+        patternBindingId: "binding-A",
+        templateId: "builder-tpl-choisi",
+      },
+      makeAdminCtx(),
+    );
+
+    const callArgs = mockSlotCreate.mock.calls[0][0] as { data: { templateId: string | null } };
+    expect(callArgs.data.templateId).toBe("builder-tpl-choisi");
+  });
+
+  it("recette sans gabarit → null, comme avant", async () => {
+    mockBindingFindUnique.mockResolvedValueOnce(
+      makeBindingRow({ source: "manual_rushes", templateId: null }),
+    );
+
+    await createSlot(
+      {
+        accountId: "account-A",
+        scheduledAt: "2026-06-01T10:00:00Z",
+        patternBindingId: "binding-A",
+      },
+      makeAdminCtx(),
+    );
+
+    const callArgs = mockSlotCreate.mock.calls[0][0] as { data: { templateId: string | null } };
+    expect(callArgs.data.templateId).toBeNull();
+  });
+});
+
+// ─── Collaborateurs posés dès la création ──────────────────────────────────
+//
+// Sur Instagram, l'invitation se fait dans le composer, pas après coup : le CM
+// doit savoir AVANT de poster. Et on sait généralement dès la création qu'une
+// publication part en collab — l'attendre obligeait à rouvrir la fiche.
+
+describe("createSlot — collaborateurs", () => {
+  it("crée les lignes de collaboration avec le slot", async () => {
+    mockAccountCount.mockResolvedValue(2);
+
+    await createSlot(
+      {
+        accountId: "account-A",
+        scheduledAt: "2026-06-01T10:00:00Z",
+        title: "Visite",
+        collabAccountIds: ["acc-collab-1", "acc-collab-2"],
+      },
+      makeAdminCtx(),
+    );
+
+    const callArgs = mockSlotCreate.mock.calls[0][0] as {
+      data: { collabs?: { create: { accountId: string }[] } };
+    };
+    expect(callArgs.data.collabs?.create).toEqual([
+      { accountId: "acc-collab-1" },
+      { accountId: "acc-collab-2" },
+    ]);
+  });
+
+  it("aucun collaborateur → pas de relation dans le create", async () => {
+    await createSlot(
+      { accountId: "account-A", scheduledAt: "2026-06-01T10:00:00Z", title: "Visite" },
+      makeAdminCtx(),
+    );
+
+    const callArgs = mockSlotCreate.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(callArgs.data.collabs).toBeUndefined();
+  });
+
+  it("le slot renvoyé porte ses collaborateurs, comme getSlot et listSlots", async () => {
+    mockAccountCount.mockResolvedValue(1);
+
+    const slot = await createSlot(
+      {
+        accountId: "account-A",
+        scheduledAt: "2026-06-01T10:00:00Z",
+        title: "Visite",
+        collabAccountIds: ["acc-collab-1"],
+      },
+      makeAdminCtx(),
+    );
+
+    expect(slot.collabs).toEqual([{ id: "acc-collab-1", handle: "h-acc-collab-1" }]);
+  });
+
+  it("un compte collaborateur inexistant → ValidationError, pas une erreur de clé", async () => {
+    mockAccountCount.mockResolvedValue(0);
+
+    await expect(
+      createSlot(
+        {
+          accountId: "account-A",
+          scheduledAt: "2026-06-01T10:00:00Z",
+          title: "Visite",
+          collabAccountIds: ["acc-fantome"],
+        },
+        makeAdminCtx(),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(mockSlotCreate).not.toHaveBeenCalled();
+  });
+
+  it("un appelant non-admin (requireAdmin:false) ne pose pas de collaborateurs", async () => {
+    // La route `PUT /collabs` est ADMIN strict : accepter le champ ici pour un
+    // CM créant une mission ouvrirait la même porte par la fenêtre.
+    const cm = { id: "cm-1", role: "CM", name: null, email: null, permissions: "[]" };
+    await createSlot(
+      {
+        accountId: "account-A",
+        scheduledAt: "2026-06-01T10:00:00Z",
+        title: "Visite",
+        collabAccountIds: ["acc-collab-1"],
+      },
+      {
+        session: {} as unknown,
+        actualUser: cm,
+        effectiveUser: cm,
+        isAdmin: false,
+        isImpersonating: false,
+        isRoleOverride: false,
+        canAdminBypass: false,
+      } as Parameters<typeof createSlot>[1],
+      { requireAdmin: false },
+    );
+
+    const callArgs = mockSlotCreate.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(callArgs.data.collabs).toBeUndefined();
+  });
+
+  it("le compte qui publie ne peut pas être son propre collaborateur", async () => {
+    await expect(
+      createSlot(
+        {
+          accountId: "account-A",
+          scheduledAt: "2026-06-01T10:00:00Z",
+          title: "Visite",
+          collabAccountIds: ["account-A"],
+        },
+        makeAdminCtx(),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 });
 

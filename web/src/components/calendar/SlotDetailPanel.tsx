@@ -147,6 +147,11 @@ export function SlotDetailPanel({
   const isReelSource = (REEL_ATTACHABLE_SOURCES as readonly string[]).includes(
     slot.pattern?.source ?? "",
   );
+  // Le formulaire de génération ne produit un reel que pour les recettes auto.
+  // Une recette à rushs peut porter un gabarit builder sans que ça veuille dire
+  // qu'on doive générer : la vidéo vient d'un upload monteur. Même garde que la
+  // fiche publication (RenderSection).
+  const isAutoTemplate = slot.pattern?.source === "auto_template";
   const router = useRouter();
 
   // V8 Phase 5 — Auto-save sur le textarea Notes (cas le plus fréquent).
@@ -1068,8 +1073,8 @@ export function SlotDetailPanel({
                 </div>
               )}
 
-              {/* Lien rapide Générer pour slots one-off avec templateId */}
-              {!isRestricted && slot.templateId && (
+              {/* Lien rapide Générer — recettes auto uniquement. */}
+              {!isRestricted && isAutoTemplate && slot.templateId && (
                 <a
                   href={`/generate/${slot.templateId}?${slot.accountId ? `accountId=${slot.accountId}&` : ""}slotId=${slot.id}`}
                   target="_blank"

@@ -57,6 +57,10 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     },
     include: {
       account: { select: { id: true, handle: true, name: true } },
+      collabs: {
+        select: { account: { select: { id: true, handle: true } } },
+        orderBy: { createdAt: "asc" },
+      },
       patternBinding: {
         select: { customLabel: true, patternTemplate: { select: { label: true } } },
       },
@@ -74,6 +78,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     assigneeMonteurId: s.assigneeMonteurId,
     assigneeCmId: s.assigneeCmId,
     account: s.account,
+    collabs: s.collabs.map((c) => c.account),
     // Vue recette synthétisée (binding → template global → null).
     pattern: s.patternBinding?.patternTemplate
       ? { label: patternLabel(s.patternBinding) }

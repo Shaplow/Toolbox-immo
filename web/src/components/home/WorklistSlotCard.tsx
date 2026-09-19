@@ -18,6 +18,7 @@ import type { SlotDetailPanelMode } from "@/components/calendar/SlotDetailPanel"
 import type { WorklistSlot } from "@/types/worklist";
 import { isSlotOverdue } from "@/types/worklist";
 import { PARIS_TZ } from "@/lib/date/formatFr";
+import { AccountLabel } from "@/components/ui/AccountLabel";
 
 /**
  * Badges contextuels optionnels pour les monteurs.
@@ -125,7 +126,7 @@ export function WorklistSlotCard({ slot, monteurBadges, cmBadges }: WorklistSlot
           <p className="mt-0.5 text-[12px] text-muted-foreground truncate">
             {slot.account ? (
               <>
-                @{slot.account.handle}
+                <AccountLabel handle={slot.account.handle} collabs={slot.collabs} />
                 {slot.account.name !== slot.account.handle && (
                   <span className="text-muted-foreground/70"> · {slot.account.name}</span>
                 )}

@@ -43,6 +43,12 @@ export interface WorklistSlot {
   assigneeVideasteId?: string | null;
   /** null = mission sans compte Instagram (production stock). */
   account: WorklistAccount | null;
+  /**
+   * Comptes invités en collaborateur. Le CM doit le savoir AVANT d'ouvrir la
+   * publication : sur Instagram l'invitation se fait dans le composer, et sa
+   * worklist est l'écran depuis lequel il décide quoi poster.
+   */
+  collabs?: { id: string; handle: string }[];
   pattern: WorklistPattern | null;
 }
 
