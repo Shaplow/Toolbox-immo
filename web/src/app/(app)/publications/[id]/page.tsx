@@ -136,6 +136,15 @@ export default async function PublicationPage({ params }: PageProps) {
           listing: { select: { id: true } },
         },
       },
+      // Dernier Render créé, promu ou pas — `render` ci-dessus ne pointe que
+      // sur `currentRenderId` (promu à DONE seulement). Sans ce fetch séparé,
+      // un rendu PENDING/PROCESSING/ERROR pas encore promu reste invisible
+      // sur la fiche (cf. renderEligibility.ts, mêmes règles que listSlots).
+      renders: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, status: true, videoUrl: true, pngUrl: true, createdAt: true },
+      },
       // Fix bug 2026-05-30 : take: 5 (au lieu de 1) pour distinguer le dernier
       // captionJob (pour l'état UI CaptionsSection) du dernier COMPLETED (pour
       // déterminer la version sous-titrée à utiliser comme rendu final).
@@ -696,6 +705,16 @@ export default async function PublicationPage({ params }: PageProps) {
               status: slot.render.status,
               videoUrl: slot.render.videoUrl,
               pngUrl: slot.render.pngUrl,
+            }
+          : null
+      }
+      latestRender={
+        slot.renders[0]
+          ? {
+              id: slot.renders[0].id,
+              status: slot.renders[0].status,
+              videoUrl: slot.renders[0].videoUrl,
+              pngUrl: slot.renders[0].pngUrl,
             }
           : null
       }

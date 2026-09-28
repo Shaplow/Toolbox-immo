@@ -1898,6 +1898,17 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
           coverFramePack: { select: { status: true } },
         },
       },
+      // Dernier Render créé, promu ou pas — `render` ci-dessus ne pointe que
+      // sur `currentRenderId`, qui n'est promu qu'à DONE (pipelineHooks.ts).
+      // Un rendu PENDING/PROCESSING/ERROR est donc invisible sans ce fetch
+      // séparé. Exposé en `latestRender` (mapping ci-dessous) — jamais laissé
+      // fuiter tel quel (le nom `renders` au pluriel serait trompeur côté
+      // client, qui n'a besoin que du dernier).
+      renders: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, status: true, createdAt: true },
+      },
       // CoverFramePack côté manual_rushes / external_upload (Phase 5).
       currentVersion: {
         select: {
@@ -1957,18 +1968,30 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
   );
 
   return {
-    slots: slots.map((s) => ({
-      ...s,
-      collabs: flattenCollabs(s),
-      pattern: patternViewOf(s),
-      status: updates.get(s.id) ?? s.status,
-      fields: safeJSON<Record<string, string>>(s.fields, {}),
-      fieldSchema: safeJSON<string[]>(s.fieldSchema, []),
-      // Clé API `propertyId` = fiche liée (Entity). La colonne DB `propertyId`
-      // est morte (plus écrite depuis la Phase 5) — sans ce mapping le client
-      // lisait null et « perdait » la fiche au refetch.
-      propertyId: s.entityId,
-    })),
+    slots: slots.map((s) => {
+      // `renders` (le tableau brut, take:1) ne doit pas fuiter tel quel dans
+      // la réponse — seul `latestRender` (singulier, résolu) est exposé.
+      const { renders, ...rest } = s;
+      const latest = renders[0] ?? null;
+      return {
+        ...rest,
+        collabs: flattenCollabs(s),
+        pattern: patternViewOf(s),
+        status: updates.get(s.id) ?? s.status,
+        fields: safeJSON<Record<string, string>>(s.fields, {}),
+        fieldSchema: safeJSON<string[]>(s.fieldSchema, []),
+        // Clé API `propertyId` = fiche liée (Entity). La colonne DB `propertyId`
+        // est morte (plus écrite depuis la Phase 5) — sans ce mapping le client
+        // lisait null et « perdait » la fiche au refetch.
+        propertyId: s.entityId,
+        // Dernier rendu connu, promu ou pas — rend visible un rendu en vol ou
+        // en échec que `render` (currentRenderId) ne pointe pas encore (cf.
+        // renderEligibility.ts, chantier « rendre visible le rendu en cours »).
+        latestRender: latest
+          ? { id: latest.id, status: latest.status, createdAt: latest.createdAt.toISOString() }
+          : null,
+      };
+    }),
     hasMore: slots.length === 500,
   };
 }
@@ -2003,9 +2026,20 @@ export async function getSlot(id: string, ctx: UserContext) {
       collabs: { select: { account: { select: { id: true, handle: true } } }, orderBy: { createdAt: "asc" } },
       template: { select: { id: true, name: true } },
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
+      // Dernier Render créé, promu ou pas — même motif que `listSlots` :
+      // `render` ci-dessus ne pointe que sur `currentRenderId`, promu qu'à
+      // DONE, donc un rendu PENDING/PROCESSING/ERROR reste invisible sans ce
+      // fetch séparé. Exposé en `latestRender` (mapping ci-dessous).
+      renders: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, status: true, createdAt: true } },
       assigneeMonteur: { select: { id: true, name: true } },
       assigneeCm: { select: { id: true, name: true } },
       assigneeVideaste: { select: { id: true, name: true } },
+      // Recette effective (binding → template global → null) — sans elle,
+      // `SlotDetailPanel` ouvert depuis `SlotQuickEditButton` (fiche
+      // publication) ne peut jamais détecter un slot `auto_template` : le
+      // bouton « Lancer le rendu » et le lien « Formulaire complet » restent
+      // cachés (fix fiche-drawer-entry-dead). Même fragment que `listSlots`.
+      ...slotEffectivePatternSelect,
     },
   });
 
@@ -2013,13 +2047,22 @@ export async function getSlot(id: string, ctx: UserContext) {
     throw new NotFoundError("Slot");
   }
 
+  // `renders` (le tableau brut, take:1) ne doit pas fuiter tel quel — seul
+  // `latestRender` (singulier, résolu) est exposé, comme dans `listSlots`.
+  const { renders, ...rest } = slot;
+  const latest = renders[0] ?? null;
+
   return {
-    ...slot,
+    ...rest,
     collabs: flattenCollabs(slot),
     fields: safeJSON<Record<string, string>>(slot.fields, {}),
     fieldSchema: safeJSON<string[]>(slot.fieldSchema, []),
     // Clé API `propertyId` = fiche liée (Entity) — cf. mapping de listSlots.
     propertyId: slot.entityId,
+    pattern: resolveSlotEffectivePattern(slot),
+    latestRender: latest
+      ? { id: latest.id, status: latest.status, createdAt: latest.createdAt.toISOString() }
+      : null,
   };
 }
 

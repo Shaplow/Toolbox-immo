@@ -38,6 +38,13 @@ export interface PublicationSlot {
     /** CoverFramePack lié au render (auto_template). */
     coverFramePack?: { status: string } | null;
   } | null;
+  /**
+   * Dernier Render créé pour ce slot, promu ou pas — `render` ci-dessus ne
+   * pointe que sur `currentRenderId`, qui n'est promu qu'à DONE. Sans ce
+   * champ, un rendu PENDING/PROCESSING/ERROR est invisible côté calendrier
+   * et fiche (cf. `lib/slots/renderEligibility.ts`).
+   */
+  latestRender?: { id: string; status: string; createdAt: string } | null;
   /** CoverFramePack lié à la version courante (manual_rushes / external_upload). */
   currentVersion?: {
     id: string;
@@ -73,9 +80,13 @@ export interface PublicationSlot {
   shootEntityId?: string | null;
   currentVersionId?: string | null;
   pattern?: {
+    /** Id du PatternTemplate (jamais du binding) — présent au runtime via resolveSlotEffectivePattern. */
+    id?: string;
     label: string;
     /** Phase 2.x — source du pattern (auto_template | manual_rushes | external_upload) */
     source?: string;
+    /** Template builder associé — null si la recette n'en a pas. */
+    templateId?: string | null;
     // W2 — config validation client héritée du pattern (peut être null si pas chargé)
     needsClientValidation?: boolean;
     allowsClientRevision?: boolean;

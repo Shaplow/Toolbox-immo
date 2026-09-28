@@ -70,6 +70,7 @@ import { resolveNextActionInfo } from "@/lib/publications/nextActionLabel";
 import { requiredEntityTypeId } from "@/lib/publications/entityRequirement";
 import { needsMonteur, needsVideaste } from "@/lib/publications/roleNeeds";
 import { PARIS_TZ } from "@/lib/date/formatFr";
+import { BulkRenderModal } from "@/components/renders/BulkRenderModal";
 
 export type SlotDetailPanelMode = "admin" | "monteur" | "cm";
 
@@ -80,6 +81,8 @@ interface SlotDetailPanelProps {
   /** Phase 4 — duplication : clone créé via POST, remonté pour insertion locale. */
   onDuplicated?: (slot: PublicationSlot) => void;
   onClose: () => void;
+  /** Plan « Lancer les rendus » étape 8 — appelé après un lancement réussi. */
+  onRenderLaunched?: () => void;
   mode?: SlotDetailPanelMode;
   /**
    * V8 Phase 5 — Navigation cursor entre slots de la liste filtrée.
@@ -129,6 +132,7 @@ export function SlotDetailPanel({
   onDeleted,
   onDuplicated,
   onClose,
+  onRenderLaunched,
   mode = "admin",
   onPrev,
   onNext,
@@ -152,6 +156,9 @@ export function SlotDetailPanel({
   // qu'on doive générer : la vidéo vient d'un upload monteur. Même garde que la
   // fiche publication (RenderSection).
   const isAutoTemplate = slot.pattern?.source === "auto_template";
+  // `slot.pattern.templateId` prime : `slot.templateId` (override direct) est
+  // null sur la plupart des slots recette (cf. plan « Lancer les rendus »).
+  const effectiveTemplateId = slot.pattern?.templateId ?? slot.templateId ?? null;
   const router = useRouter();
 
   // V8 Phase 5 — Auto-save sur le textarea Notes (cas le plus fréquent).
@@ -174,17 +181,25 @@ export function SlotDetailPanel({
     },
   );
 
+  // Plan « Lancer les rendus » étape 8 — BulkRenderModal propre au panneau
+  // (une seule ligne, slot.id). Coupe la nav cursor pendant qu'elle est
+  // ouverte : sinon j/k/flèches changent de publication SOUS la modale.
+  const [renderModalOpen, setRenderModalOpen] = useState(false);
+
   // V8 Phase 5 — Raccourcis nav cursor + ⌘O.
-  useKeybindings([
-    { key: "ArrowDown", handler: () => onNext?.(), when: () => !!hasNext },
-    { key: "j", handler: () => onNext?.(), when: () => !!hasNext },
-    { key: "ArrowUp", handler: () => onPrev?.(), when: () => !!hasPrev },
-    { key: "k", handler: () => onPrev?.(), when: () => !!hasPrev },
-    {
-      key: "o+Meta",
-      handler: () => router.push(`/publications/${slot.id}`),
-    },
-  ]);
+  useKeybindings(
+    [
+      { key: "ArrowDown", handler: () => onNext?.(), when: () => !!hasNext },
+      { key: "j", handler: () => onNext?.(), when: () => !!hasNext },
+      { key: "ArrowUp", handler: () => onPrev?.(), when: () => !!hasPrev },
+      { key: "k", handler: () => onPrev?.(), when: () => !!hasPrev },
+      {
+        key: "o+Meta",
+        handler: () => router.push(`/publications/${slot.id}`),
+      },
+    ],
+    { enabled: !renderModalOpen },
+  );
 
   const [tab, setTab] = useState<TabKey>("status");
 
@@ -1073,17 +1088,28 @@ export function SlotDetailPanel({
                 </div>
               )}
 
-              {/* Lien rapide Générer — recettes auto uniquement. */}
-              {!isRestricted && isAutoTemplate && slot.templateId && (
-                <a
-                  href={`/generate/${slot.templateId}?${slot.accountId ? `accountId=${slot.accountId}&` : ""}slotId=${slot.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-[13px] text-info-700 rounded-md bg-info-50/60  hover:bg-info-50/85 transition-colors"
-                >
-                  <Clapperboard size={13} />
-                  Ouvrir le formulaire de génération
-                </a>
+              {/* Lancer le rendu — recettes auto uniquement. `pattern.templateId`
+                  d'abord : `slot.templateId` (override direct) est null sur la
+                  plupart des slots recette, ce qui cachait ce lien avant. */}
+              {!isRestricted && isAutoTemplate && effectiveTemplateId && (
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={Clapperboard}
+                    onClick={() => setRenderModalOpen(true)}
+                  >
+                    Lancer le rendu
+                  </Button>
+                  <a
+                    href={`/generate/${effectiveTemplateId}?${slot.accountId ? `accountId=${slot.accountId}&` : ""}slotId=${slot.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[12px] text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    Formulaire complet
+                  </a>
+                </div>
               )}
             </>
           )}
@@ -1421,6 +1447,16 @@ export function SlotDetailPanel({
           </Button>
         </footer>
       </Drawer>
+
+      <BulkRenderModal
+        slotIds={[slot.id]}
+        open={renderModalOpen}
+        onClose={() => setRenderModalOpen(false)}
+        onLaunched={() => {
+          setRenderModalOpen(false);
+          onRenderLaunched?.();
+        }}
+      />
     </>
   );
 }

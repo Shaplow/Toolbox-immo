@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -16,10 +16,14 @@ import {
   UserCheck,
   Ban,
   CheckCircle,
+  Clapperboard,
 } from "lucide-react";
 import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
 import { TERMINAL_STATUSES, type UserRole } from "@/types/roles";
+import { isRenderCandidate, isRenderInFlight } from "@/lib/slots/renderEligibility";
+import { BULK_RENDER_CAP } from "@/types/bulkRender";
+import { BulkRenderModal } from "@/components/renders/BulkRenderModal";
 import { SlotCard } from "./SlotCard";
 import { SlotDetailPanel, type SlotDetailPanelMode } from "./SlotDetailPanel";
 import { AddSlotModal } from "./AddSlotModal";
@@ -37,6 +41,7 @@ import { CalendarDndContext, type SlotDropPayload } from "./dnd/CalendarDndConte
 import { useSlotDrag } from "./dnd/useSlotDrag";
 import { useDayDrop } from "./dnd/useDayDrop";
 import { toast } from "@/components/ui/Toast";
+import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import {
   dayMonthLongFr,
   PARIS_TZ,
@@ -190,6 +195,10 @@ export function CalendarView({
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(
     () => new Set(),
   );
+  // Plan « Lancer les rendus » étape 8 — un seul état pour les 4 points
+  // d'entrée calendrier (en-tête, barre de sélection, survol carte) : la
+  // modale est montée une fois à la racine, `open` piloté par ceci.
+  const [renderTargets, setRenderTargets] = useState<string[] | null>(null);
   // Phase 7 V2 — split BulkPatchModal en actions focalisées.
   const [bulkAction, setBulkAction] = useState<
     "reassign" | "shift" | "cancel" | "publish" | "unschedule" | null
@@ -218,8 +227,20 @@ export function CalendarView({
   const dateFrom = weekStart;
   const dateTo = addDays(weekStart, 6);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  /**
+   * `silent` : rafraîchit sans passer par l'état `loading` (donc sans flash
+   * de la grille) — utilisé par le refresh SSE sur événement de rendu
+   * ci-dessous. Le chargement normal (changement de semaine/filtres) garde
+   * son `loading` habituel.
+   */
+  // Garde de séquence : une réponse plus ancienne ne doit jamais écraser une
+  // plus récente (course entre le reload silencieux SSE et un changement de
+  // semaine/filtres pendant que la requête précédente était encore en vol).
+  const loadSeqRef = useRef(0);
+
+  const load = useCallback(async (opts: { silent?: boolean } = {}) => {
+    const seq = ++loadSeqRef.current;
+    if (!opts.silent) setLoading(true);
     setLoadError(null);
     try {
       // La grille ne charge que la semaine : ce qui n'a pas de date vit dans
@@ -238,14 +259,16 @@ export function CalendarView({
       const res = await fetch(`/api/calendar/slots?${params.toString()}`);
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
       const data = (await res.json()) as { slots: PublicationSlot[]; hasMore: boolean };
+      if (seq !== loadSeqRef.current) return;
       setSlots(Array.isArray(data.slots) ? data.slots : []);
       if (data.hasMore) {
         toast.info("Résultat tronqué à 500 slots — affinez les filtres ou la plage de dates.");
       }
     } catch (err) {
+      if (seq !== loadSeqRef.current) return;
       setLoadError(err instanceof Error ? err.message : "Erreur de chargement");
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current && !opts.silent) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart, filters]);
@@ -253,6 +276,63 @@ export function CalendarView({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Toujours la dernière `load` en date, pour le timer de reload silencieux
+  // ci-dessous : un `setTimeout` qui capturerait `load` directement rejouerait
+  // la semaine/les filtres du moment où l'event SSE est arrivé, pas ceux
+  // affichés au moment où il se déclenche 800 ms plus tard.
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  });
+
+  // Rendu en cours/en échec suivi en direct : un event SSE "render" pour un
+  // rendu déjà affiché sur la grille (latestRender.id ou render.id d'un slot
+  // chargé) recharge la semaine en silence. Pas de polling — `failRender`
+  // notifie désormais (plan « Lancer les rendus » étape 2/7), donc le seul
+  // signal manquant était ce refresh côté calendrier.
+  const silentReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useAllJobEvents((evt) => {
+    if (evt.jobType !== "render") return;
+    const isVisible = slots.some(
+      (s) => s.latestRender?.id === evt.jobId || s.render?.id === evt.jobId,
+    );
+    if (!isVisible) return;
+    if (silentReloadTimerRef.current) clearTimeout(silentReloadTimerRef.current);
+    silentReloadTimerRef.current = setTimeout(() => {
+      void loadRef.current({ silent: true });
+    }, 800);
+  });
+  // Semaine/filtres changés pendant qu'un reload silencieux attendait son
+  // timer : on l'annule — `load()` tourne déjà pour la nouvelle semaine
+  // (effet ci-dessus), le garder rejouerait l'ancienne par-dessus (le seq
+  // guard protège déjà la donnée, ceci évite en plus le flash `loading`).
+  useEffect(() => {
+    if (silentReloadTimerRef.current) {
+      clearTimeout(silentReloadTimerRef.current);
+      silentReloadTimerRef.current = null;
+    }
+  }, [weekStart, filters]);
+  useEffect(() => {
+    return () => {
+      if (silentReloadTimerRef.current) clearTimeout(silentReloadTimerRef.current);
+    };
+  }, []);
+
+  // Filet de sécurité du SSE : un rendu qui échoue vite (avant même que le
+  // `load()` d'après-lancement ait ramené son id) émet son event alors que le
+  // calendrier ne le connaît pas encore — l'event est ignoré et la carte reste
+  // « Rendu en cours » jusqu'au prochain F5. Tant qu'un rendu est en vol sur la
+  // semaine chargée, on recharge donc en silence toutes les 30 s ; plus rien
+  // en vol → plus de timer.
+  const hasRenderInFlight = slots.some(isRenderInFlight);
+  useEffect(() => {
+    if (!hasRenderInFlight) return;
+    const interval = setInterval(() => {
+      void loadRef.current({ silent: true });
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [hasRenderInFlight]);
 
   function persistWeek(week: Date) {
     const iso = week.toISOString().slice(0, 10);
@@ -298,9 +378,9 @@ export function CalendarView({
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (isInTextField(e.target)) return;
-      // Ne pas intercepter quand une modal est ouverte (Drawer / AddSlot / Confirm)
-      // — sinon ← / → cassent la navigation dans les pickers du drawer.
-      if (selectedSlot || showAdd) return;
+      // Ne pas intercepter quand une modal est ouverte (Drawer / AddSlot / Confirm
+      // / BulkRenderModal) — sinon ← / → cassent la navigation dans les pickers.
+      if (selectedSlot || showAdd || renderTargets) return;
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         if (!isAdmin) return;
@@ -320,7 +400,7 @@ export function CalendarView({
     }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isAdmin, prevWeek, nextWeek, goToday, selectedSlot, showAdd]);
+  }, [isAdmin, prevWeek, nextWeek, goToday, selectedSlot, showAdd, renderTargets]);
 
   function isSlotMine(slot: PublicationSlot): boolean {
     const owner = resolveSlotOwner(slot);
@@ -375,6 +455,27 @@ export function CalendarView({
       s.accountId !== null &&
       BULK_PUBLISHABLE_STATUSES.has(s.status),
   ).length;
+  // Candidats au bouton « Lancer les rendus » de l'en-tête — mêmes règles que
+  // le service serveur (`previewBulkRenders`), voir `renderEligibility.ts`.
+  // Construits à partir des slots que la grille affiche RÉELLEMENT (7 jours),
+  // pas de `visibleSlots` : la plage chargée par `load()` (dateFrom..dateTo)
+  // peut inclure un slot dont la date, une fois reconvertie en jour Paris, ne
+  // correspond à aucune des 7 colonnes affichées (ex. un dimanche 31 mai
+  // compté alors que la semaine affichée va du lundi 1er au dimanche 7).
+  const gridSlots = weekDays.flatMap((day) => slotsForDay(day));
+  const renderCandidateIds = gridSlots.filter(isRenderCandidate).map((s) => s.id);
+
+  /**
+   * Callback partagé des 3 points d'entrée calendrier (en-tête, barre de
+   * sélection, survol carte) : la sélection multi n'est active que pour la
+   * barre, mais la vider/quitter le mode dans les deux autres cas est un
+   * no-op — pas besoin de 3 handlers qui divergeraient sans raison.
+   */
+  function handleRenderLaunched() {
+    setBulkSelectedIds(new Set());
+    setBulkSelectMode(false);
+    void load();
+  }
 
   function slotsForDay(day: Date) {
     return visibleSlots
@@ -748,6 +849,18 @@ export function CalendarView({
                 {isAdmin && (
                   <>
                     <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={Clapperboard}
+                      disabled={renderCandidateIds.length === 0}
+                      onClick={() => setRenderTargets(renderCandidateIds)}
+                      title="Lance l'aperçu des rendus pour les publications de la semaine affichée"
+                    >
+                      {renderCandidateIds.length > BULK_RENDER_CAP
+                        ? `Lancer les rendus (${BULK_RENDER_CAP}/${renderCandidateIds.length})`
+                        : `Lancer les rendus (${renderCandidateIds.length})`}
+                    </Button>
+                    <Button
                       variant="primary"
                       size="sm"
                       icon={Plus}
@@ -858,6 +971,7 @@ export function CalendarView({
                             }
                           }}
                           onSlotOpenDrawer={(slot) => setSelectedSlot(slot)}
+                          onSlotLaunchRender={(slot) => setRenderTargets([slot.id])}
                           onAddSlot={() => {
                             setAddDefaultDate(day.toISOString().slice(0, 10));
                             setShowAdd(true);
@@ -915,6 +1029,7 @@ export function CalendarView({
               }
             }}
             onClose={() => setSelectedSlot(null)}
+            onRenderLaunched={() => void load()}
             mode={detailMode}
             onPrev={goPrev}
             onNext={goNext}
@@ -993,6 +1108,15 @@ export function CalendarView({
             onClick={() => setBulkAction("shift")}
           >
             Décaler
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            icon={Clapperboard}
+            onClick={() => setRenderTargets([...bulkSelectedIds])}
+          >
+            Lancer les rendus
           </Button>
           <Button
             type="button"
@@ -1105,6 +1229,16 @@ export function CalendarView({
         />
       )}
 
+      {/* Modale « Lancer les rendus » — montée une fois, `open` piloté par
+          renderTargets. Les 3 points d'entrée (en-tête, barre de sélection,
+          survol carte) posent juste la liste d'ids ciblée. */}
+      <BulkRenderModal
+        slotIds={renderTargets ?? []}
+        open={renderTargets !== null}
+        onClose={() => setRenderTargets(null)}
+        onLaunched={handleRenderLaunched}
+      />
+
     </div>
   );
 }
@@ -1126,6 +1260,8 @@ interface DayCardProps {
   bulkSelectedIds: Set<string>;
   onSlotClick: (slot: PublicationSlot) => void;
   onSlotOpenDrawer: (slot: PublicationSlot) => void;
+  /** Plan « Lancer les rendus » étape 8 — icône Clapperboard au survol de la carte. */
+  onSlotLaunchRender: (slot: PublicationSlot) => void;
   onAddSlot: () => void;
 }
 
@@ -1142,6 +1278,7 @@ function DayCard({
   bulkSelectedIds,
   onSlotClick,
   onSlotOpenDrawer,
+  onSlotLaunchRender,
   onAddSlot,
 }: DayCardProps) {
   // Cible de drop = la colonne-jour entière. Désactivée quand le DnD est off
@@ -1200,6 +1337,11 @@ function DayCard({
               onOpenDrawer={
                 isAdmin && !bulkSelectMode ? () => onSlotOpenDrawer(slot) : undefined
               }
+              onLaunchRender={
+                isAdmin && !bulkSelectMode && isRenderCandidate(slot)
+                  ? () => onSlotLaunchRender(slot)
+                  : undefined
+              }
               currentUserRole={currentUserRole}
               currentUserId={currentUserId}
             />
@@ -1237,6 +1379,7 @@ interface DraggableSlotProps {
   isSelected: boolean;
   onClick: () => void;
   onOpenDrawer?: () => void;
+  onLaunchRender?: () => void;
   currentUserRole: UserRole;
   currentUserId: string;
 }
@@ -1248,6 +1391,7 @@ function DraggableSlot({
   isSelected,
   onClick,
   onOpenDrawer,
+  onLaunchRender,
   currentUserRole,
   currentUserId,
 }: DraggableSlotProps) {
@@ -1282,6 +1426,7 @@ function DraggableSlot({
         slot={slot}
         onClick={onClick}
         onOpenDrawer={onOpenDrawer}
+        onLaunchRender={onLaunchRender}
         currentUserRole={currentUserRole}
         currentUserId={currentUserId}
       />

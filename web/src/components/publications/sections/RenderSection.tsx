@@ -42,11 +42,24 @@ import { VideoPlayer } from "@/components/ui/molecules/VideoPlayer";
 import { toast } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { useJobEvent } from "@/lib/hooks/jobEventBus";
+import { BulkRenderModal } from "@/components/renders/BulkRenderModal";
 
 interface Props {
   slot: { id: string };
   pattern: { source: string; templateId: string | null } | null;
   render: {
+    id: string;
+    status: string;
+    videoUrl: string | null;
+    pngUrl: string | null;
+  } | null;
+  /**
+   * Dernier Render créé, promu ou pas — `render` ci-dessus ne pointe que sur
+   * `currentRenderId` (promu à DONE seulement). Affiché en repli quand
+   * `render` est absent, pour rendre visible un rendu en vol ou en échec
+   * (au lieu du EmptyState « Aucun rendu » trompeur).
+   */
+  latestRender?: {
     id: string;
     status: string;
     videoUrl: string | null;
@@ -90,6 +103,7 @@ export function RenderSection({
   slot,
   pattern,
   render,
+  latestRender,
   finalVideoUrl,
   isCaptioned,
   pendingCaptionsBurnIn = false,
@@ -105,22 +119,54 @@ export function RenderSection({
   const [reverting, setReverting] = useState(false);
   const [confirmForceFail, setConfirmForceFail] = useState(false);
   const [forceFailing, setForceFailing] = useState(false);
+  // Plan « Lancer les rendus » étape 8 — BulkRenderModal propre à la section
+  // (une seule ligne, slot.id), à la place de l'ancien lien direct vers le
+  // formulaire de génération.
+  const [renderModalOpen, setRenderModalOpen] = useState(false);
+
+  // `render` ne pointe que sur `currentRenderId` (promu à DONE seulement) —
+  // un rendu en vol ou en échec n'y apparaît jamais. `latestRender` est le
+  // repli qui le rend visible : mêmes états déjà gérés plus bas (Alert "en
+  // cours" + Force fail, EmptyState "en échec" + Relancer), juste nourris
+  // par la bonne source.
+  const effectiveRender = render ?? latestRender ?? null;
 
   // Polling SSE — quand le webhook RunPod termine le render, on rafraîchit
   // la fiche pour récupérer videoUrl + status. Sans ça, l'utilisateur reste
   // bloqué sur "Rendu en cours de traitement…" jusqu'à un F5 manuel.
-  const renderId = render?.id ?? null;
-  const renderStatus = render?.status ?? null;
+  const renderId = effectiveRender?.id ?? null;
+  const renderStatus = effectiveRender?.status ?? null;
   const renderEvent = useJobEvent(renderId ?? "");
   useEffect(() => {
     if (!renderEvent || !renderStatus) return;
     if (renderEvent.status !== renderStatus) router.refresh();
   }, [renderEvent, renderStatus, router]);
 
-  const displayVideoUrl = finalVideoUrl ?? render?.videoUrl ?? null;
+  // Filet de sécurité du SSE : un rendu lancé depuis la modale qui échoue en
+  // moins d'une seconde émet son event avant que le `router.refresh()`
+  // d'après-lancement ait monté cette section avec son id — l'event est perdu
+  // et la section resterait « en cours ». Tant que le rendu est en vol, on
+  // relit son statut toutes les 10 s et on rafraîchit la fiche s'il a bougé.
+  const renderInFlight = renderStatus === "PENDING" || renderStatus === "PROCESSING";
+  useEffect(() => {
+    if (!renderId || !renderInFlight) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/renders/${renderId}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { status?: string };
+        if (data.status && data.status !== renderStatus) router.refresh();
+      } catch {
+        // Réseau coupé : on retentera au tick suivant.
+      }
+    }, 10_000);
+    return () => clearInterval(interval);
+  }, [renderId, renderInFlight, renderStatus, router]);
+
+  const displayVideoUrl = finalVideoUrl ?? effectiveRender?.videoUrl ?? null;
 
   if (!pattern) return null;
-  if (pattern.source !== "auto_template" && !render) return null;
+  if (pattern.source !== "auto_template" && !effectiveRender) return null;
 
   const templateId = pattern?.templateId ?? null;
   // Fix bug 2026-05-30 : pointait sur /builder (éditeur template), mais le user
@@ -132,10 +178,10 @@ export function RenderSection({
     : null;
 
   async function handleForceFail() {
-    if (!render) return;
+    if (!effectiveRender) return;
     setForceFailing(true);
     try {
-      const res = await fetch(`/api/admin/renders/${render.id}/force-fail`, {
+      const res = await fetch(`/api/admin/renders/${effectiveRender.id}/force-fail`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -153,10 +199,10 @@ export function RenderSection({
   }
 
   async function handleRevertRotation() {
-    if (!render) return;
+    if (!effectiveRender) return;
     setReverting(true);
     try {
-      const res = await fetch(`/api/admin/renders/${render.id}/revert-usage`, {
+      const res = await fetch(`/api/admin/renders/${effectiveRender.id}/revert-usage`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -185,9 +231,10 @@ export function RenderSection({
     }
   }
 
-  const statusBadge = render ? getRenderStatusBadge(render.status) : null;
+  const statusBadge = effectiveRender ? getRenderStatusBadge(effectiveRender.status) : null;
 
   return (
+    <>
     <Section
       title="Rendu vidéo"
       icon={Film}
@@ -230,16 +277,28 @@ export function RenderSection({
       )}
 
       {/* Cas : source auto_template sans render lancé */}
-      {pattern?.source === "auto_template" && !render && (
+      {pattern?.source === "auto_template" && !effectiveRender && (
         canEdit && builderHref ? (
-          <EmptyState
-            icon={Film}
-            title="Aucun rendu"
-            cta={{
-              label: "Lancer le rendu",
-              onClick: () => window.open(builderHref, "_blank", "noopener,noreferrer"),
-            }}
-          />
+          <div className="space-y-2">
+            <EmptyState
+              icon={Film}
+              title="Aucun rendu"
+              cta={{
+                label: "Lancer le rendu",
+                onClick: () => setRenderModalOpen(true),
+              }}
+            />
+            <p className="text-center">
+              <Link
+                href={builderHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[12px] text-muted-foreground hover:text-foreground hover:underline"
+              >
+                Formulaire complet
+              </Link>
+            </p>
+          </div>
         ) : canEdit && !builderHref ? (
           <EmptyState
             icon={AlertCircle}
@@ -307,7 +366,7 @@ export function RenderSection({
                   </Button>
                 </Link>
               )}
-              {render?.status === "DONE" && (
+              {effectiveRender?.status === "DONE" && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -325,12 +384,12 @@ export function RenderSection({
       )}
 
       {/* Cas : render présent avec image uniquement */}
-      {render && !render.videoUrl && render.pngUrl && (
+      {effectiveRender && !effectiveRender.videoUrl && effectiveRender.pngUrl && (
         <div className="space-y-4">
           <div className="max-w-[280px] rounded-2xl overflow-hidden bg-gradient-to-b from-white to-white/80 ">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={render.pngUrl}
+              src={effectiveRender.pngUrl}
               alt="Rendu image"
               className="w-full object-contain"
             />
@@ -351,7 +410,7 @@ export function RenderSection({
       )}
 
       {/* Cas : render en cours — Alert glass uniforme (pattern P4 audit V1) */}
-      {render && !render.videoUrl && !render.pngUrl && render.status !== "ERROR" && (
+      {effectiveRender && !effectiveRender.videoUrl && !effectiveRender.pngUrl && effectiveRender.status !== "ERROR" && (
         <div className="space-y-3">
           <Alert variant="glass" icon={Loader2}>
             Rendu en cours de traitement…
@@ -372,16 +431,28 @@ export function RenderSection({
       )}
 
       {/* Cas : render en erreur — EmptyState rose + relance */}
-      {render && !render.videoUrl && !render.pngUrl && render.status === "ERROR" && (
+      {effectiveRender && !effectiveRender.videoUrl && !effectiveRender.pngUrl && effectiveRender.status === "ERROR" && (
         canEdit && builderHref ? (
-          <EmptyState
-            icon={AlertTriangle}
-            title="Rendu en échec"
-            cta={{
-              label: "Relancer le rendu",
-              onClick: () => window.open(builderHref, "_blank", "noopener,noreferrer"),
-            }}
-          />
+          <div className="space-y-2">
+            <EmptyState
+              icon={AlertTriangle}
+              title="Rendu en échec"
+              cta={{
+                label: "Relancer le rendu",
+                onClick: () => setRenderModalOpen(true),
+              }}
+            />
+            <p className="text-center">
+              <Link
+                href={builderHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[12px] text-muted-foreground hover:text-foreground hover:underline"
+              >
+                Formulaire complet
+              </Link>
+            </p>
+          </div>
         ) : (
           <EmptyState
             icon={AlertTriangle}
@@ -416,5 +487,16 @@ export function RenderSection({
         onCancel={() => setConfirmForceFail(false)}
       />
     </Section>
+
+    <BulkRenderModal
+      slotIds={[slot.id]}
+      open={renderModalOpen}
+      onClose={() => setRenderModalOpen(false)}
+      onLaunched={() => {
+        setRenderModalOpen(false);
+        router.refresh();
+      }}
+    />
+    </>
   );
 }

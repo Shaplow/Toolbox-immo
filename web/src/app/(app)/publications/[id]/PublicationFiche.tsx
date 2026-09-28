@@ -242,6 +242,13 @@ export interface PublicationFicheProps {
   /** Résumé lecture seule des fiches rattachées (data + tournage) — vide = section masquée. */
   entitySummaries: EntityFieldsSummary[];
   render: RenderInfo | null;
+  /**
+   * Dernier Render créé, promu ou pas — `render` ci-dessus ne pointe que sur
+   * `currentRenderId` (promu à DONE seulement). Traverse la fiche jusqu'à
+   * `RenderSection` SEULEMENT : les autres sections (Captions, Cover,
+   * Description, OneOff, steps) continuent de lire `render` tel quel.
+   */
+  latestRender: RenderInfo | null;
   coverPack: CoverPackInfo | null;
   coverConfigError: CoverConfigError | null;
   assigneeMonteur: AssigneeInfo | null;
@@ -354,6 +361,7 @@ export function PublicationFiche({
   requiredEntityTypeName,
   entitySummaries,
   render,
+  latestRender,
   coverPack,
   coverConfigError,
   assigneeMonteur,
@@ -475,6 +483,7 @@ export function PublicationFiche({
       <PublicationLiveRefresh
         knownJobIds={[
           render?.id,
+          latestRender?.id,
           coverPack?.id,
           latestCaptionJob?.id,
         ]}
@@ -707,6 +716,7 @@ export function PublicationFiche({
             slot={{ id: slot.id }}
             pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
             render={render}
+            latestRender={latestRender}
             /* Fix 2026-05-30 : on passe latestCompletedCaptionJob (dernier
                CaptionJob COMPLETED), pas latestCaptionJob (qui peut être
                PROCESSING/FAILED après retry et masquait la version finale). */

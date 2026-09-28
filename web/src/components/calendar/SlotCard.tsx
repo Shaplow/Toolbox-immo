@@ -14,11 +14,12 @@
  * isMine = border-l-2 primary (vs glass shadow inset complexe).
  */
 
-import { Link2 as LinkIcon, Settings2 } from "lucide-react";
+import { Link2 as LinkIcon, Settings2, Clapperboard, Loader2, AlertTriangle } from "lucide-react";
 import { AvatarGroup } from "@/components/ui/Avatar";
 import { type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner, STATUS_LABELS } from "@/lib/slots/statusLabels";
 import { isReadyToSchedule } from "@/lib/slots/bankReady";
+import { isRenderInFlight, hasRenderFailed } from "@/lib/slots/renderEligibility";
 import {
   getPublicationPhase,
   PHASE_DOT,
@@ -33,6 +34,12 @@ interface SlotCardProps {
   onClick: () => void;
   /** Optional : click sur la mini roue → ouvre le drawer d'édition rapide. */
   onOpenDrawer?: () => void;
+  /**
+   * Plan « Lancer les rendus » étape 8 — icône Clapperboard au survol :
+   * ouvre BulkRenderModal pour cette seule publication. Absent = candidat
+   * pas éligible (déjà rendu, en vol, recette non auto…) ou hors admin.
+   */
+  onLaunchRender?: () => void;
   currentUserRole?: UserRole;
   currentUserId?: string;
 }
@@ -41,6 +48,7 @@ export function SlotCard({
   slot,
   onClick,
   onOpenDrawer,
+  onLaunchRender,
   currentUserRole,
   currentUserId,
 }: SlotCardProps) {
@@ -131,6 +139,22 @@ export function SlotCard({
         <span className="text-[11px] font-mono text-foreground tabular-nums font-medium shrink-0">
           {time}
         </span>
+        {/* Rendu en cours/en échec — juste après l'heure, jamais masquée par
+            la case à cocher du mode sélection (qui vit ailleurs sur la carte). */}
+        {isRenderInFlight(slot) && (
+          <span title="Rendu en cours" className="shrink-0">
+            <Loader2
+              size={10}
+              className="animate-spin text-muted-foreground"
+              aria-label="Rendu en cours"
+            />
+          </span>
+        )}
+        {hasRenderFailed(slot) && (
+          <span title="Rendu en échec" className="shrink-0">
+            <AlertTriangle size={10} className="text-danger-600" aria-label="Rendu en échec" />
+          </span>
+        )}
         {/* `title` : « Rushes attendus » se tronque dans une carte de 56 px —
             le survol doit rendre le mot entier, sinon l'étiquette qu'on vient
             d'ajouter ne sert qu'à moitié. */}
@@ -144,20 +168,39 @@ export function SlotCard({
             aria-label="Lien Instagram manquant"
           />
         )}
-        {onOpenDrawer && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenDrawer();
-            }}
-            onKeyDown={(e) => e.stopPropagation()}
-            className="ml-auto p-0.5 text-muted-foreground hover:text-foreground transition-colors rounded opacity-0 group-hover:opacity-100"
-            aria-label="Édition rapide"
-            title="Édition rapide"
-          >
-            <Settings2 size={10} />
-          </button>
+        {(onLaunchRender || onOpenDrawer) && (
+          <span className="ml-auto inline-flex items-center gap-1">
+            {onLaunchRender && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLaunchRender();
+                }}
+                onKeyDown={(e) => e.stopPropagation()}
+                className="p-0.5 text-muted-foreground hover:text-foreground transition-colors rounded opacity-0 group-hover:opacity-100"
+                aria-label="Lancer le rendu"
+                title="Lancer le rendu"
+              >
+                <Clapperboard size={10} />
+              </button>
+            )}
+            {onOpenDrawer && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenDrawer();
+                }}
+                onKeyDown={(e) => e.stopPropagation()}
+                className="p-0.5 text-muted-foreground hover:text-foreground transition-colors rounded opacity-0 group-hover:opacity-100"
+                aria-label="Édition rapide"
+                title="Édition rapide"
+              >
+                <Settings2 size={10} />
+              </button>
+            )}
+          </span>
         )}
       </div>
 

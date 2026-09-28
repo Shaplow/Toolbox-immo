@@ -85,6 +85,7 @@ export function SlotQuickEditButton({
             router.push(redirectAfterDelete);
           }}
           onClose={() => setSlot(null)}
+          onRenderLaunched={() => router.refresh()}
         />
       )}
     </>
