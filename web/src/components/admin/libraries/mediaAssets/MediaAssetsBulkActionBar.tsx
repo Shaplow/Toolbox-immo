@@ -9,7 +9,8 @@
  * pour le "tout sélectionner".
  */
 
-import { Square, CheckSquare, X, Trash2, Download } from "lucide-react";
+import { Square, CheckSquare, X, Trash2, Download, Wand2 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import type { MediaAsset, InstagramAccount } from "./types";
 import type { UseBulkEditResult } from "./useBulkEdit";
 import { downloadAssets } from "./downloadAssets";
@@ -20,9 +21,11 @@ interface Props {
   /** Liste filtrée actuellement visible — utilisée pour "Tout sélectionner". */
   filtered: MediaAsset[];
   accounts: InstagramAccount[];
+  /** La relance d'analyse auto n'existe que pour les bibliothèques vidéo. */
+  isVideo: boolean;
 }
 
-export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
+export function MediaAssetsBulkActionBar({ bulk, filtered, accounts, isVideo }: Props) {
   const { canManageAssets } = useMediaLibraryPermissions();
   const {
     selectedIds,
@@ -37,6 +40,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
     handleBulkApplyTags,
     handleBulkApplyAccess,
     handleBulkDelete,
+    handleBulkRelaunchAutocut,
   } = bulk;
 
   const allSelected = selectedIds.size === filtered.length && filtered.length > 0;
@@ -147,6 +151,20 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
                 ))}
               </select>
             </div>
+          )}
+          {/* Relance d'analyse auto — vidéo seulement. Chemin « forcé » : contrairement
+              à l'atelier, il accepte aussi les médias déjà analysés ou coupés. */}
+          {isVideo && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={Wand2}
+              disabled={bulkApplying}
+              onClick={() => { void handleBulkRelaunchAutocut(); }}
+              title="Relancer l'analyse auto sur la sélection, même déjà analysée ou coupée"
+            >
+              Relancer l&apos;analyse
+            </Button>
           )}
           {/* Bulk delete */}
           <button

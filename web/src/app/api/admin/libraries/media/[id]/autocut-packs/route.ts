@@ -41,8 +41,12 @@ const EXECUTION_TIMEOUT_MS = (PACK_BUDGET_S + 300) * 1000;
  * Soumet un ou plusieurs packs Whisper à RunPod pour analyser des assets en lot.
  * 1 RunPod job = max 20 assets (Whisper chargé une seule fois par pack).
  *
- * Body : { assetIds: string[], language?: string, modelSize?: string }
+ * Body : { assetIds: string[], language?: string, modelSize?: string, force?: boolean }
+ *   force — relance : remplace aussi les analyses validées (`accepted`) et appliquées
+ *   (`applied`), jamais celles en cours. Point d'entrée : « Relancer l'analyse » de la
+ *   barre de sélection du panel médiathèque (l'atelier, lui, n'envoie jamais force).
  * Retourne : { batches: [{ batchId, assetCount, status }], skipped: string[] }
+ *   skipped — assets ignorés : analyse déjà en cours, ou job d'édition (trim) en cours.
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const auth = await requireUser();
@@ -76,6 +80,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const language = typeof body.language === "string" ? body.language : "fr";
   const modelSize = typeof body.modelSize === "string" ? body.modelSize : "large-v3-turbo";
+  const force = body.force === true;
 
   // ── Sécurité : vérifier que tous les assetIds appartiennent à cette lib et ne sont pas désactivés ──
   const validAssets = await prisma.mediaAsset.findMany({
@@ -114,6 +119,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     select: { assetId: true },
   });
   const busyIds = new Set(activeJobs.map((j) => j.assetId));
+  // Un trim (MediaEditJob) en cours réécrit le fichier : analyser maintenant, c'est
+  // timer un fichier qui n'existera plus au retour du worker. Même garde que le
+  // DELETE assets/bulk, en filtrage plutôt qu'en 409 — le reste du lot part.
+  const activeEditJobs = await prisma.mediaEditJob.findMany({
+    where: { assetId: { in: assetIds }, status: { in: ["pending", "processing"] } },
+    select: { assetId: true },
+  });
+  for (const j of activeEditJobs) busyIds.add(j.assetId);
   const toProcess = validAssets.filter((a) => !busyIds.has(a.id));
   const skipped = assetIds.filter((id) => busyIds.has(id));
 
@@ -140,13 +153,20 @@ export async function POST(req: NextRequest, { params }: Params) {
   // `accepted` est exclu comme `applied` : le job porte des timings validés par
   // un admin et attend son batch-apply. L'UI empêche déjà de le sélectionner,
   // mais l'API ne doit pas dépendre de ce garde-fou côté client.
+  //
+  // En `force` (relance explicite depuis la barre de sélection), ces deux états
+  // tombent aussi : l'admin demande une analyse neuve, et l'invariant ci-dessus
+  // vaut plus que l'historique du job — le MediaEditJob du trim reste sur l'asset
+  // (aucune FK ne part de lui vers le job d'analyse). Un trim encore en cours a
+  // déjà écarté l'asset via busyIds, donc `editJobId` pointe ici vers un job terminé.
   const targetIds = toProcess.map((a) => a.id);
   await prisma.mediaAutocutJob.deleteMany({
     where: {
       assetId: { in: targetIds },
       status: { in: ["done", "failed"] },
-      reviewStatus: { notIn: ["applied", "accepted"] },
-      editJobId: null,
+      ...(force
+        ? {}
+        : { reviewStatus: { notIn: ["applied", "accepted"] }, editJobId: null }),
     },
   });
   await prisma.mediaAutocutBatch.deleteMany({ where: { libraryId, jobs: { none: {} } } });

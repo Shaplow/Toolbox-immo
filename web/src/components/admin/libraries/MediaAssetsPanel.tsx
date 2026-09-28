@@ -111,10 +111,31 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
   const effectiveViewMode = isManualMode ? "grid" : isAdvanced ? viewMode : "grouped";
   // Phase 3 — drawer détail asset (ouvert en mode noob via click sur card).
   const [detailAsset, setDetailAsset] = useState<MediaAsset | null>(null);
+  // Job polling (spinner asset en cours d'édition) + badge autocut extraits
+  // dans useMediaAssetsPolling (split C1-v2). Le fetch du badge est gaté sur
+  // `canManageAssets` — même condition que la visibilité du bouton « Analyse
+  // auto » côté Toolbar, donc jamais de fetch pour un badge invisible.
+  // Déclaré avant useBulkEdit : la relance d'analyse en lot rejoue le badge.
+  const { autocutPendingCount, autocutFailedCount, refreshAutocutCounts } = useMediaAssetsPolling({
+    libraryId: library.id,
+    libraryType: library.type,
+    canManageAssets,
+    showAtelier,
+    assets,
+    setAssets,
+  });
+
   // D4 — bulk edit extrait dans useBulkEdit hook. La sticky bar D8
   // (MediaAssetsBulkActionBar) consomme l'objet `bulk` complet. Le panel
   // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
-  const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts, confirm });
+  const bulk = useBulkEdit({
+    libraryId: library.id,
+    assets,
+    setAssets,
+    accounts,
+    confirm,
+    onAutocutRelaunched: refreshAutocutCounts,
+  });
   const { selectMode, setSelectMode, selectedIds, toggleSelect, exitSelectMode } = bulk;
 
   const metadataSchema = useMemo<MetadataField[]>(() => {
@@ -163,19 +184,6 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
 
   // ─ Fetch des assets + accounts extrait dans les hooks
   //   useMediaAssetsLoader / useInstagramAccounts (D3 du split C1-v2).
-
-  // Job polling (spinner asset en cours d'édition) + badge autocut extraits
-  // dans useMediaAssetsPolling (split C1-v2). Le fetch du badge est gaté sur
-  // `canManageAssets` — même condition que la visibilité du bouton « Analyse
-  // auto » côté Toolbar, donc jamais de fetch pour un badge invisible.
-  const { autocutPendingCount, autocutFailedCount } = useMediaAssetsPolling({
-    libraryId: library.id,
-    libraryType: library.type,
-    canManageAssets,
-    showAtelier,
-    assets,
-    setAssets,
-  });
 
   // ESC handler géré dans MediaAssetsUploadModal (D7).
 
@@ -480,7 +488,9 @@ function MediaAssetsPanelInner({ library }: { library: MediaLibrary }) {
       {/* Phase α — espace toolbar ↔ contenu. */}
       <div className="mt-5">
         {/* D8 — bulk action bar extraite dans MediaAssetsBulkActionBar */}
-        {selectMode && <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} />}
+        {selectMode && (
+          <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} isVideo={isVideo} />
+        )}
       </div>
 
       {/* Vue principale pleine largeur (la sidebar catégories noob est remplacée

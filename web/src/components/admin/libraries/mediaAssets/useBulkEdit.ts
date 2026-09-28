@@ -32,11 +32,16 @@ export type ConfirmFn = (options: {
 
 interface UseBulkEditArgs {
   libraryId: string;
+  /** Liste courante — sert à écarter les assets désactivés d'une relance d'analyse. */
+  assets: MediaAsset[];
   setAssets: React.Dispatch<React.SetStateAction<MediaAsset[]>>;
   /** Pour afficher le @handle dans le toast après bulk apply access. */
   accounts: InstagramAccount[];
   /** Confirmation asynchrone (cf. useConfirm hook). */
   confirm: ConfirmFn;
+  /** Appelé après une relance d'analyse acceptée par l'API — rejoue le fetch du
+   *  badge « Analyse auto » (des analyses à valider ont pu être remplacées). */
+  onAutocutRelaunched?: () => void | Promise<void>;
 }
 
 export interface UseBulkEditResult {
@@ -57,9 +62,17 @@ export interface UseBulkEditResult {
   handleBulkApplyTags: () => Promise<void>;
   handleBulkApplyAccess: (action: "add" | "remove_all", accountId?: string) => Promise<void>;
   handleBulkDelete: () => Promise<void>;
+  handleBulkRelaunchAutocut: () => Promise<void>;
 }
 
-export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulkEditArgs): UseBulkEditResult {
+export function useBulkEdit({
+  libraryId,
+  assets,
+  setAssets,
+  accounts,
+  confirm,
+  onAutocutRelaunched,
+}: UseBulkEditArgs): UseBulkEditResult {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSetTagInput, setBulkSetTagInput] = useState("");
@@ -204,6 +217,74 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     exitSelectMode();
   }, [blocked, exitSelectMode, libraryId, selectedIds, setAssets, confirm]);
 
+  /**
+   * Relance forcée de l'analyse auto (autocut) sur la sélection.
+   *
+   * L'atelier « Analyse auto » ne propose que les assets sans analyse ou en
+   * échec — une fois coupé, un média n'y est plus cochable. Ce chemin est la
+   * porte de sortie : `force` remplace aussi les analyses à valider, validées ou
+   * déjà appliquées. Le trim étant destructif, une relance sur un média coupé
+   * analyse le fichier actuel, pas l'original.
+   *
+   * Les assets désactivés sont écartés ici (l'API les refuse en 403 pour tout le
+   * lot) ; ceux dont un traitement tourne sont ignorés par l'API et remontés dans
+   * `skipped`.
+   */
+  const handleBulkRelaunchAutocut = useCallback(async () => {
+    if (blocked()) return;
+    if (selectedIds.size === 0) return;
+    const eligible = assets.filter((a) => selectedIds.has(a.id) && !a.disabled);
+    const disabledCount = assets.filter((a) => selectedIds.has(a.id) && a.disabled).length;
+    if (eligible.length === 0) {
+      toast.error("Aucun média actif dans la sélection");
+      return;
+    }
+    const n = eligible.length;
+    const ok = await confirm({
+      title: `Relancer l'analyse sur ${n} média${n > 1 ? "s" : ""} ?`,
+      description:
+        "Les analyses existantes de ces médias (à valider, validées ou déjà appliquées) sont remplacées par une nouvelle analyse. " +
+        "Les fichiers déjà coupés ne sont pas modifiés : l'analyse repart du fichier actuel. " +
+        "Les médias en cours de traitement sont ignorés.",
+      confirmLabel: "Relancer",
+    });
+    if (!ok) return;
+    setBulkApplying(true);
+    let res: Response;
+    try {
+      res = await fetch(`/api/admin/libraries/media/${libraryId}/autocut-packs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: eligible.map((a) => a.id), force: true }),
+      });
+    } catch {
+      setBulkApplying(false);
+      toast.error("Erreur réseau lors de la relance de l'analyse");
+      return;
+    }
+    setBulkApplying(false);
+    const data = (await res.json().catch(() => ({}))) as { skipped?: string[]; error?: string };
+    if (!res.ok) {
+      toast.error(data.error ?? "Erreur lors de la relance de l'analyse");
+      return;
+    }
+    const skipped = data.skipped?.length ?? 0;
+    const launched = Math.max(0, n - skipped);
+    const parts: string[] = [
+      launched > 0
+        ? `Analyse relancée sur ${launched} média${launched > 1 ? "s" : ""}`
+        : "Aucune analyse relancée",
+    ];
+    if (skipped > 0) parts.push(`${skipped} ignoré${skipped > 1 ? "s" : ""} (traitement en cours)`);
+    if (disabledCount > 0) {
+      parts.push(`${disabledCount} désactivé${disabledCount > 1 ? "s" : ""} ignoré${disabledCount > 1 ? "s" : ""}`);
+    }
+    if (launched > 0) toast.success(parts.join(" · "));
+    else toast.info(parts.join(" · "));
+    void onAutocutRelaunched?.();
+    exitSelectMode();
+  }, [blocked, assets, selectedIds, confirm, libraryId, onAutocutRelaunched, exitSelectMode]);
+
   return {
     selectMode,
     setSelectMode,
@@ -220,5 +301,6 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     handleBulkApplyTags,
     handleBulkApplyAccess,
     handleBulkDelete,
+    handleBulkRelaunchAutocut,
   };
 }

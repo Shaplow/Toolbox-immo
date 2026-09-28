@@ -14,6 +14,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { MediaAsset } from "./types";
 
+type AutocutBadgeCounts = { reviewable: number; failed: number };
+
+/**
+ * Compteurs du badge « Analyse auto » — null si la route échoue, l'appelant garde
+ * alors l'état courant. La définition du « validable » (done + pending_review) vit
+ * côté serveur dans @/lib/mediaAutocut, partagée avec la file de review.
+ */
+async function fetchAutocutCounts(libraryId: string): Promise<AutocutBadgeCounts | null> {
+  try {
+    const res = await fetch(`/api/admin/libraries/media/${libraryId}/autocut-queue?summary=1`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { counts?: { reviewable?: number; failed?: number } };
+    return { reviewable: data.counts?.reviewable ?? 0, failed: data.counts?.failed ?? 0 };
+  } catch {
+    return null;
+  }
+}
+
 interface UseMediaAssetsPollingParams {
   libraryId: string;
   libraryType: "video" | "audio";
@@ -32,6 +50,9 @@ interface UseMediaAssetsPollingResult {
   autocutPendingCount: number;
   /** Jobs autocut en échec — affichés dans le title du badge, actionnables dans l'atelier. */
   autocutFailedCount: number;
+  /** Rejoue le fetch du badge — la barre de sélection l'appelle après une relance
+   *  d'analyse en lot (des analyses à valider ont pu être remplacées). */
+  refreshAutocutCounts: () => Promise<void>;
 }
 
 export function useMediaAssetsPolling({
@@ -118,33 +139,29 @@ export function useMediaAssetsPolling({
   // (done + pending_review) vit côté serveur dans @/lib/mediaAutocut, partagée
   // avec la file de review. L'ancien appel filtrait sur reviewStatus seul et
   // comptait donc aussi les jobs en cours et en échec — d'où le « 99+ » permanent.
-  const [counts, setCounts] = useState<{ reviewable: number; failed: number }>({
-    reviewable: 0,
-    failed: 0,
-  });
+  const [counts, setCounts] = useState<AutocutBadgeCounts>({ reviewable: 0, failed: 0 });
+  const badgeEnabled = libraryType === "video" && canManageAssets;
   useEffect(() => {
-    if (libraryType !== "video") return;
-    if (!canManageAssets) return;
+    if (!badgeEnabled) return;
     let cancelled = false;
     void (async () => {
-      try {
-        const res = await fetch(
-          `/api/admin/libraries/media/${libraryId}/autocut-queue?summary=1`,
-        );
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { counts?: { reviewable?: number; failed?: number } };
-        if (!cancelled) {
-          setCounts({
-            reviewable: data.counts?.reviewable ?? 0,
-            failed: data.counts?.failed ?? 0,
-          });
-        }
-      } catch {
-        // silent
-      }
+      const next = await fetchAutocutCounts(libraryId);
+      if (next && !cancelled) setCounts(next);
     })();
     return () => { cancelled = true; };
-  }, [libraryId, libraryType, showAtelier, canManageAssets]);
+  }, [libraryId, badgeEnabled, showAtelier]);
 
-  return { autocutPendingCount: counts.reviewable, autocutFailedCount: counts.failed };
+  // Même fetch, à la demande : la barre de sélection le rejoue après une relance
+  // d'analyse en lot (des analyses à valider ont pu être remplacées).
+  const refreshAutocutCounts = useCallback(async () => {
+    if (!badgeEnabled) return;
+    const next = await fetchAutocutCounts(libraryId);
+    if (next) setCounts(next);
+  }, [libraryId, badgeEnabled]);
+
+  return {
+    autocutPendingCount: counts.reviewable,
+    autocutFailedCount: counts.failed,
+    refreshAutocutCounts,
+  };
 }
