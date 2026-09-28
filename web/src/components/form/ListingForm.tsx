@@ -10,6 +10,7 @@ import { canOverride, PROVENANCE_KEY, type ProvenanceMap, type ValueProvenance }
 import { buildTrackedInitialValues } from "@/lib/generate/buildPrefillRequestPayload";
 import { valuesEqualIgnoringEmpty } from "@/lib/generate/formValuesEqual";
 import { resolveTagConditionsForForm } from "@/lib/generate/libraryAssetsQuery";
+import { resolveInitialFieldValue, initFieldProvenance } from "@/lib/generate/generationFormModel";
 import { LibraryFieldInput } from "@/components/form/LibraryPicker";
 import { FieldInput } from "@/components/form/FieldInputs";
 import { ListingFormVariantCard } from "@/components/form/ListingFormVariantCard";
@@ -69,12 +70,6 @@ function isFilledValue(value: unknown): boolean {
   return !(value === undefined || value === null || value === "");
 }
 
-function resolveInitialFieldValue(field: SchemaField, initialValue: unknown): unknown {
-  if (initialValue !== undefined && initialValue !== null) return initialValue;
-  if (field.default !== undefined && field.default !== null) return field.default;
-  return "";
-}
-
 export function ListingForm({ templateId, currentUserId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, initialProvenance, libraryPrefillContext: initialLibraryPrefillContext, autoSubmit, instagramAccounts = [], templateNeedsAccount = false, accountId: accountIdProp, slotId: slotIdProp }: Props) {
   // Phase 2.3 : prefill contexte — peut être chargé côté client après sélection IG.
   const [libraryPrefillContext, setLibraryPrefillContext] = useState<LibraryPrefillContext | undefined>(
@@ -92,15 +87,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   // `initialProvenance` (posé côté serveur) puis étendue pour les champs
   // `metadataSource` (résolus depuis un asset au submit) qui n'ont pas déjà
   // une provenance plus forte.
-  const [provenance, setProvenance] = useState<ProvenanceMap>(() => {
-    const base: ProvenanceMap = { ...(initialProvenance ?? {}) };
-    for (const field of schema) {
-      if (!field.metadataSource) continue;
-      if (!canOverride(base[field.key], "assetMetadata")) continue;
-      base[field.key] = "assetMetadata";
-    }
-    return base;
-  });
+  const [provenance, setProvenance] = useState<ProvenanceMap>(() => initFieldProvenance(schema, initialProvenance));
 
   /** Toute édition (utilisateur ou auto-résolution) passe par ici pour garder
    *  `provenance` synchronisée — respecte la précédence (`canOverride`). */

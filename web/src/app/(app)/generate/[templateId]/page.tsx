@@ -6,13 +6,10 @@ import { Clapperboard, Info, RotateCcw } from "lucide-react";
 import { ListingForm } from "@/components/form/ListingForm";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
-import type { TemplateJSON, VideoBlock } from "@/types/template";
+import type { TemplateJSON } from "@/types/template";
 import { getUserContext } from "@/lib/userContext";
-import { buildLibraryPrefillContext } from "@/lib/generate/buildLibraryPrefillContext";
-import { buildSlotPrefill } from "@/lib/generate/buildSlotPrefill";
+import { buildGenerationFormModel } from "@/lib/generate/generationFormModel";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
-import { buildMergedSchema } from "@/lib/generate/buildMergedSchema";
-import { customFieldToSchemaField } from "@/lib/customFields";
 import { readProvenance, stripProvenance, type ProvenanceMap } from "@/lib/generate/provenance";
 
 function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number> {
@@ -34,16 +31,6 @@ function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number>
   }
 
   return Object.fromEntries(Array.from(ratios.entries()).map(([key, value]) => [key, value.ratio]));
-}
-
-/** Vrai si le template lie au moins un bloc (vidéo ou musique) ou une DataLibrary. */
-function templateUsesLibrary(json: TemplateJSON): boolean {
-  return (
-    json.blocks.some((b) => (b.type === "video" || b.type === "music") && !!(b as { libraryId?: string }).libraryId) ||
-    (json.videoSequence ?? []).some((s) => !!(s as { libraryId?: string }).libraryId) ||
-    !!json.contentLibrary?.dataLibraryId ||
-    !!json.contentLibrary?.dataCampaignId
-  );
 }
 
 type Props = {
@@ -91,74 +78,28 @@ export default async function GeneratePage({ params, searchParams }: Props) {
 
   const json = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
 
-  const mergedSchema = buildMergedSchema(json);
-
-  // Phase 5 (métaobjet) + Phase 3 (socle prefill) — fiche data (Entity),
-  // fiche tournage (shootEntity) et overrides mission (slot.fields), avec
-  // provenance explicite par clé. `mergedSchema` (pré-customFormFields) sert
-  // de cible au matching case-insensitive des clés de fiche — voir
-  // `buildSlotPrefill`/`matchFieldValue`.
-  const slotPrefill = await buildSlotPrefill({
+  // Modèle de formulaire partagé page ↔ lot (garantie de parité, plan
+  // « lancer les rendus depuis le calendrier », étape 4) — reprend TEL QUEL
+  // l'enchaînement buildMergedSchema → buildSlotPrefill → customFormFields →
+  // relaxation vidéos metadata-driven → ig_account → buildLibraryPrefillContext
+  // → finalSchema (auto-mode).
+  const model = await buildGenerationFormModel({
+    json,
     slotId: slotId ?? null,
-    schema: mergedSchema,
+    accountId: accountId ?? null,
+    listingId: listingId ?? null,
     existingValues: existingListingValues,
     existingProvenance: existingListingProvenance,
   });
-  if (!accountId) accountId = slotPrefill.accountId;
-  let initialValues: Record<string, unknown> | undefined = slotPrefill.initialValues;
-  let provenance: ProvenanceMap = slotPrefill.provenance;
-  const slotBannerContext = slotPrefill.slotBannerContext;
-
-  // Phase 4 — fusionne les champs perso typés de la fiche absents du template
-  // (le template reste prioritaire sur conflit de clé).
-  for (const cf of slotPrefill.customFormFields) {
-    if (!mergedSchema.some((f) => f.key === cf.key)) {
-      mergedSchema.push(customFieldToSchemaField(cf));
-    }
-  }
-
-  // For video fields that will be auto-resolved from a metadata-values-from-library
-  // select field at render time, remove the required constraint.
-  // The video is always resolved server-side from the linked select field value;
-  // blocking the form when the field is empty would be incorrect.
-  for (const slot of (json.videoSequence ?? [])) {
-    if (!slot.videoBlockId) continue;
-    const isMetadataDriven = json.schema.some(
-      (f) =>
-        f.type === "select" &&
-        f.optionsSource?.type === "metadata-values-from-library" &&
-        f.optionsSource.blockId === slot.videoBlockId,
-    );
-    if (!isMetadataDriven) continue;
-    const linkedBlock = json.blocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined;
-    if (!linkedBlock?.binding) continue;
-    const field = mergedSchema.find((f) => f.key === linkedBlock.binding);
-    if (field) field.required = false;
-  }
+  accountId = model.accountId ?? undefined;
+  const initialValues: Record<string, unknown> | undefined = model.initialValues;
+  const provenance: ProvenanceMap = model.provenance;
+  const slotBannerContext = model.slotBannerContext;
+  const templateNeedsAccount = model.templateNeedsAccount;
+  const libraryPrefillContext = model.context;
+  const finalSchema = model.finalSchema;
 
   const mediaFieldAspectRatios = buildMediaFieldAspectRatios(json);
-
-  // ─── Resolve ig_account handle BEFORE library prefill ────────────────────
-  // Auto-injecte le handle IG dans formData["ig_account"] si le template
-  // déclare ce champ. Utile pour les conditions de tag fromParam=true qui
-  // pointent sur ig_account, ou pour un usage textuel direct dans le rendu.
-  if (accountId && !initialValues?.ig_account) {
-    const hasIgField = json.schema.some((f) => f.key === "ig_account");
-    if (hasIgField) {
-      const igAccount = await prisma.instagramAccount.findUnique({
-        where: { id: accountId },
-        select: { handle: true },
-      });
-      if (igAccount) initialValues = { ...initialValues, ig_account: igAccount.handle };
-    }
-  }
-
-  // ─── Content Library pre-fill (extrait dans le helper Phase 1.9 C2) ────────
-  // Phase 2.2 : si pas d'accountId ET le template utilise une bibliothèque
-  // (MediaLibrary ou DataLibrary), on bloque le prefill SSR ici. Le form
-  // affichera un sélecteur compte IG et chargera le prefill côté client via
-  // POST /api/templates/[id]/prefill une fois le compte choisi.
-  const templateNeedsAccount = templateUsesLibrary(json) && !accountId;
 
   // Charge la liste des comptes IG pour le dropdown du sélecteur (toujours,
   // même si accountId est déjà connu — permet de changer de compte après coup).
@@ -170,45 +111,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
     select: { id: true, name: true, handle: true },
   });
 
-  let libraryPrefillContext: import("@/types/libraryPrefill").LibraryPrefillContext | undefined;
-  if (!templateNeedsAccount) {
-    // accountId connu (ou template sans lib) : prefill SSR normal.
-    const { context, updatedInitialValues } = await buildLibraryPrefillContext({
-      json,
-      mergedSchema,
-      initialValues,
-      accountId: accountId ?? null,
-      slotId: slotId ?? null,
-      listingId: listingId ?? null,
-      provenance,
-    });
-    libraryPrefillContext = context;
-    initialValues = updatedInitialValues;
-    // La boucle DataEntry étend `provenance` (dataEntry) — c'est la map
-    // complète qui part au client, pas seulement les couches fiche/mission.
-    if (context) provenance = context.prefilledKeys;
-  }
-  // Sinon : prefill différé côté client après sélection du compte IG.
-
-  // For "auto" mode: filter out video schema fields covered by videoSequence libraryId slots
   const autoMode = json.generationMode === "auto";
-  // Collect the bindings of sequence slots that are manually fed from form fields.
-  // Video schema fields whose key matches one of these bindings are kept even in
-  // auto mode. Video fields that would feed a library-resolved slot (or are
-  // completely orphaned) are removed so the form isn't cluttered.
-  const sequenceManualSlotBindings = new Set(
-    (json.videoSequence ?? [])
-      .filter((s) => s.binding && !s.libraryId) // explicit binding, no library
-      .map((s) => s.binding as string),
-  );
-  // When generationMode is "auto" and videoSequence handles videos, remove orphan video fields
-  const finalSchema = autoMode && (json.videoSequence?.length ?? 0) > 0
-    ? mergedSchema.filter((f) => {
-        if (f.type !== "video") return true;
-        // Keep only video fields that feed a manual sequence slot
-        return sequenceManualSlotBindings.has(f.key);
-      })
-    : mergedSchema;
 
   const subtitleParts: string[] = [`Template : ${template.name}`];
   if (template.client) subtitleParts.push(template.client);
