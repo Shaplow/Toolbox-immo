@@ -94,7 +94,9 @@ describe("selectMediaAssetFromFolder — flux de tirage", () => {
   it("pinnedSetTag → pioche directe dans le dossier, sans découverte", async () => {
     mockQueryRaw.mockResolvedValueOnce([makeAssetRow("a-intro")]);
     const r = await selectMediaAssetFromFolder("lib-1", "acc-1", undefined, "tournage-03");
-    expect(r).toEqual({ ...makeAssetRow("a-intro"), resolvedSetTag: "tournage-03" });
+    // usageKey (étape 3, tirage en lot) : clé d'usage effective renvoyée par
+    // TOUTE sélection, avec ou sans vue batch — voir contentLibraryResolver.batchUsage.test.ts.
+    expect(r).toEqual({ ...makeAssetRow("a-intro"), resolvedSetTag: "tournage-03", usageKey: "acc-1" });
     // Une seule query (pick) — pas de découverte de dossiers.
     expect(mockQueryRaw).toHaveBeenCalledTimes(1);
     expect(sqlTextOfCall(0)).toContain('ma."setTag" =');
@@ -112,7 +114,7 @@ describe("selectMediaAssetFromFolder — flux de tirage", () => {
       .mockResolvedValueOnce([{ setTag: "B" }, { setTag: "A" }]) // ordre du SQL = ancienneté
       .mockResolvedValueOnce([makeAssetRow("b1")]);
     const r = await selectMediaAssetFromFolder("lib-1", "acc-1");
-    expect(r).toEqual({ ...makeAssetRow("b1"), resolvedSetTag: "B" });
+    expect(r).toEqual({ ...makeAssetRow("b1"), resolvedSetTag: "B", usageKey: "acc-1" });
   });
 
   it("dossier en tête sans asset éligible → passe au suivant", async () => {
@@ -121,7 +123,7 @@ describe("selectMediaAssetFromFolder — flux de tirage", () => {
       .mockResolvedValueOnce([]) // B vide (course avec un claim concurrent)
       .mockResolvedValueOnce([makeAssetRow("a1")]);
     const r = await selectMediaAssetFromFolder("lib-1", "acc-1");
-    expect(r).toEqual({ ...makeAssetRow("a1"), resolvedSetTag: "A" });
+    expect(r).toEqual({ ...makeAssetRow("a1"), resolvedSetTag: "A", usageKey: "acc-1" });
   });
 
   it("aucun dossier éligible → null", async () => {

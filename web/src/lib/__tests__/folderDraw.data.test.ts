@@ -83,10 +83,13 @@ describe("selectDataEntry — tirage dossier", () => {
       .mockResolvedValueOnce([{ setTag: "quartiers" }, { setTag: null }])
       .mockResolvedValueOnce([{ id: "e1", fields: '{"quartier":"Marais"}' }]);
     const r = await selectDataEntry("lib-1", "not_used_in_cycle", "acc-1");
+    // usageKey (étape 3, tirage en lot) : clé d'usage effective renvoyée par
+    // TOUTE sélection, avec ou sans vue batch — voir contentLibraryResolver.batchUsage.test.ts.
     expect(r).toEqual({
       entryId: "e1",
       fields: { quartier: "Marais" },
       resolvedSetTag: "quartiers",
+      usageKey: "acc-1",
     });
   });
 
@@ -177,6 +180,7 @@ describe("selectDataEntry — dossier épinglé", () => {
       entryId: "e-pin",
       fields: { texte: "RTEXT12 #1" },
       resolvedSetTag: "RTEXT12",
+      usageKey: "acc-1",
     });
     expect(mockQueryRaw).toHaveBeenCalledTimes(1);
     const sql = sqlTextOfCall(0);

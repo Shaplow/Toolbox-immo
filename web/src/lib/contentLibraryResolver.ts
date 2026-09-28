@@ -25,6 +25,14 @@ import {
   estimateSingleVideoDuration,
   resolveRequiredAudioDuration,
 } from "@/lib/generate/estimateOutputDuration";
+import type { BatchUsageEntries, BatchUsageView } from "@/lib/rotation/batchUsage";
+import {
+  buildBatchUsageJoin,
+  buildEffectiveLastUsedExpr,
+  buildEffectiveUnusedExpr,
+  buildEffectiveUsageCountExpr,
+  buildVirtualBurnFilter,
+} from "@/lib/rotation/batchUsage";
 
 /** Minimal Prisma client interface accepted by selectMediaAsset — satisfied by both the
  *  module-level `prisma` instance and the `tx` callback client from $transaction. */
@@ -106,8 +114,16 @@ function buildFolderDiscoveryQuery(opts: {
   accessFilter: Prisma.Sql;
   burnFilter: Prisma.Sql;
   tagFrag: Prisma.Sql;
+  /**
+   * Tirage en lot — branche à PART ENTIÈRE, jamais un fragment interpolé dans
+   * le template ci-dessous : ce paramètre n'est passé par AUCUN appelant
+   * render-time (`selectAndClaimMediaAsset` → `selectMediaAssetWithLock`),
+   * qui continue donc d'exécuter exactement le même template qu'avant ce
+   * paramètre, au caractère près.
+   */
+  batchUsage?: BatchUsageEntries | null;
 }): Prisma.Sql {
-  const { libraryId, usageAccountId, accessFilter, burnFilter, tagFrag } = opts;
+  const { libraryId, usageAccountId, accessFilter, burnFilter, tagFrag, batchUsage } = opts;
   const lastUsedExpr = usageAccountId
     ? Prisma.sql`MAX(mau."lastUsedAt")`
     : Prisma.sql`MAX(ma."lastUsedAt")`;
@@ -119,6 +135,35 @@ function buildFolderDiscoveryQuery(opts: {
   const unusedExpr = usageAccountId
     ? Prisma.sql`mau."lastUsedAt" IS NULL`
     : Prisma.sql`ma."lastUsedAt" IS NULL`;
+
+  if (batchUsage) {
+    const batchJoin = buildBatchUsageJoin(batchUsage, Prisma.sql`ma.id`);
+    const effectiveLastUsedExpr = usageAccountId
+      ? Prisma.sql`MAX(${buildEffectiveLastUsedExpr(Prisma.sql`mau."lastUsedAt"`)})`
+      : Prisma.sql`MAX(${buildEffectiveLastUsedExpr(Prisma.sql`ma."lastUsedAt"`)})`;
+    const effectiveUnusedExpr = buildEffectiveUnusedExpr(unusedExpr);
+    return Prisma.sql`
+      SELECT sub."setTag"
+      FROM (
+        SELECT ma."setTag",
+               ${effectiveLastUsedExpr} AS last_used,
+               MIN(ma."createdAt") AS folder_created_at,
+               COUNT(*) FILTER (WHERE ${effectiveUnusedExpr}) > 0 AS has_unused
+        FROM "MediaAsset" ma
+        ${usageJoin}
+        ${batchJoin}
+        WHERE ma."libraryId" = ${libraryId}
+          ${tagFrag}
+          ${accessFilter}
+          ${burnFilter}
+        GROUP BY ma."setTag"
+        HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
+      ) sub
+      ORDER BY sub.has_unused DESC,
+               sub.last_used ASC NULLS FIRST,
+               sub.folder_created_at ASC NULLS LAST,
+               CASE WHEN sub."setTag" ~ '^[0-9]+$' THEN LPAD(sub."setTag", 20, '0') ELSE sub."setTag" END ASC NULLS LAST`;
+  }
 
   return Prisma.sql`
     SELECT sub."setTag"
@@ -533,6 +578,19 @@ export function buildBurnFilter(maxUsageCount: number | null, accountId?: string
   return Prisma.sql`AND ma."usageCount" < ${maxUsageCount} ${durationClause}`;
 }
 
+/**
+ * Expression du compteur d'usage RÉEL d'un MediaAsset — même formule que
+ * l'intérieur de `buildBurnFilter`, MAIS sans le `< max` : sert uniquement à
+ * composer `buildVirtualBurnFilter` (tirage en lot, `lib/rotation/batchUsage.ts`).
+ * Volontairement dupliquée plutôt que d'exposer/refactorer `buildBurnFilter` —
+ * ce dernier reste inchangé au caractère près (chemin render-time compris).
+ */
+function buildRealMediaUsageCountExpr(accountId?: string): Prisma.Sql {
+  return accountId
+    ? Prisma.sql`COALESCE((SELECT mau2."usageCount" FROM "MediaAssetUsage" mau2 WHERE mau2."assetId" = ma.id AND mau2."accountId" = ${accountId}), 0)`
+    : Prisma.sql`ma."usageCount"`;
+}
+
 /** Select the best asset from a MediaLibrary according to rule.
  * Respects MediaAssetAccess: with accountId → global OR accessible; without → global only.
  * Ordering uses per-account MediaAssetUsage when accountId is provided,
@@ -552,7 +610,14 @@ export async function selectMediaAsset(
   db?: PrismaQueryClient,
   /** Voir UsageScopeMode. Défaut "library" (scope-aware) ; l'audio passe "account". */
   usageScope: UsageScopeMode = "library",
-): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null> } | null> {
+  /**
+   * Tirage en lot (`lib/rotation/batchUsage.ts`) — jamais passé par les
+   * chemins render-time (`selectAndClaimMediaAsset`). Sans `opts.batchUsage`,
+   * ou si rien n'a été enregistré pour cette bibliothèque+clé, le SQL émis
+   * est identique au caractère près à avant ce paramètre.
+   */
+  opts?: { batchUsage?: BatchUsageView },
+): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null>; usageKey: string | null } | null> {
   const config = normalizeRule(rule);
   const { strategy } = config;
 
@@ -578,7 +643,8 @@ export async function selectMediaAsset(
   // advanceMediaUsageOnSubmit claimait sous __shared__ : la pile ne bougeait pas
   // entre le submit et la fin du render.
   const usageAccountId = resolveUsageAccountId(usageScope, lib?.rotationScope, accountId);
-  const burnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, resolveBurnAccountId(usageScope, lib?.rotationScope, accountId));
+  const burnAccountId = resolveBurnAccountId(usageScope, lib?.rotationScope, accountId);
+  const burnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, burnAccountId);
 
   // Access filter: toujours le compte RÉEL (droits de visibilité), jamais la sentinelle.
   const accessFilter = buildAccessFilter(accountId);
@@ -597,14 +663,64 @@ export async function selectMediaAsset(
       ? Prisma.sql`AND ma.duration >= ${minDuration}`
       : Prisma.sql``;
 
+  // Tirage en lot : clé d'usage effective de CETTE bibliothèque (même valeur
+  // que celle sur laquelle le tri/claim porte), et vue du registre pour cette
+  // clé. `entries` reste `null` sans `opts.batchUsage` OU si rien n'a encore
+  // été enregistré pour cette clé — dans les deux cas, chaque branche
+  // ci-dessous retombe sur SA requête d'origine, inchangée au caractère près.
+  const usageKeyValue: string | null = usageAccountId ?? null;
+  const entries: BatchUsageEntries | null = opts?.batchUsage?.entriesFor(libraryId, usageKeyValue) ?? null;
+
   type AssetRow = { id: string; url: string; filename: string; metadata: string };
   function parseAssetRow(row: AssetRow) {
     let metadata: Record<string, string | number | null> = {};
     try { metadata = JSON.parse(row.metadata ?? "{}") as Record<string, string | number | null>; } catch { /* keep empty */ }
-    return { ...row, metadata };
+    return { ...row, metadata, usageKey: usageKeyValue };
   }
 
   if (strategy === "random") {
+    // Pas d'ordre naturel à ajuster : on exclut d'abord les picks déjà
+    // retenus par le lot (NOT IN), avec repli SANS cette exclusion si elle
+    // viderait le pool — les `excludeAssetIds` des blocs frères de la même
+    // génération, eux, restent posés dans les deux tentatives.
+    if (entries) {
+      const batchExcludeFrag = Prisma.sql`AND ma.id NOT IN (${Prisma.join(entries.ids.map((id) => Prisma.sql`${id}`), ", ")})`;
+      const batchRows = await client.$queryRaw<AssetRow[]>(
+        Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
+          WHERE ma."libraryId" = ${libraryId}
+          ${accessFilter}
+          ${burnFilter}
+          ${tagFrag}
+          ${excludeFrag}
+          ${durationFrag}
+          ${batchExcludeFrag}
+          ORDER BY RANDOM() LIMIT 1`
+      );
+      if (batchRows[0]) return parseAssetRow(batchRows[0]);
+
+      // Le NOT IN a vidé le pool (tout a déjà été retenu par le lot) : on
+      // replie SANS cette exclusion, mais JAMAIS sans la garde burn-once
+      // virtuelle — sinon un pool de 2 assets à maxUsageCount=1 ressert le
+      // même asset à la 3e ligne du lot (real usageCount reste à 0 jusqu'au
+      // DONE). Un stock épuisé doit renvoyer null, jamais un dépassement
+      // (cf. batchUsage.ts, buildVirtualBurnFilter) — comme les branches
+      // oldest_used/least_used ci-dessous.
+      const batchJoin = buildBatchUsageJoin(entries, Prisma.sql`ma.id`);
+      const virtualBurn = buildVirtualBurnFilter(buildRealMediaUsageCountExpr(burnAccountId), lib?.maxUsageCount ?? null);
+      const fallbackRows = await client.$queryRaw<AssetRow[]>(
+        Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
+          ${batchJoin}
+          WHERE ma."libraryId" = ${libraryId}
+          ${accessFilter}
+          ${burnFilter}
+          ${tagFrag}
+          ${excludeFrag}
+          ${durationFrag}
+          ${virtualBurn}
+          ORDER BY RANDOM() LIMIT 1`
+      );
+      return fallbackRows[0] ? parseAssetRow(fallbackRows[0]) : null;
+    }
     const rows = await client.$queryRaw<AssetRow[]>(
       Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
         WHERE ma."libraryId" = ${libraryId}
@@ -620,6 +736,25 @@ export async function selectMediaAsset(
 
   if (strategy === "oldest_used") {
     if (usageAccountId) {
+      if (entries) {
+        const batchJoin = buildBatchUsageJoin(entries, Prisma.sql`ma.id`);
+        const effectiveLastUsed = buildEffectiveLastUsedExpr(Prisma.sql`mau."lastUsedAt"`);
+        const virtualBurn = buildVirtualBurnFilter(buildRealMediaUsageCountExpr(burnAccountId), lib?.maxUsageCount ?? null);
+        const rows = await client.$queryRaw<AssetRow[]>(
+          Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
+            LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}
+            ${batchJoin}
+            WHERE ma."libraryId" = ${libraryId}
+            ${accessFilter}
+            ${burnFilter}
+            ${tagFrag}
+            ${excludeFrag}
+            ${durationFrag}
+            ${virtualBurn}
+            ORDER BY ${effectiveLastUsed} ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
+        );
+        return rows[0] ? parseAssetRow(rows[0]) : null;
+      }
       const rows = await client.$queryRaw<AssetRow[]>(
         Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
           LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}
@@ -630,6 +765,24 @@ export async function selectMediaAsset(
           ${excludeFrag}
           ${durationFrag}
           ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
+      );
+      return rows[0] ? parseAssetRow(rows[0]) : null;
+    }
+    if (entries) {
+      const batchJoin = buildBatchUsageJoin(entries, Prisma.sql`ma.id`);
+      const effectiveLastUsed = buildEffectiveLastUsedExpr(Prisma.sql`ma."lastUsedAt"`);
+      const virtualBurn = buildVirtualBurnFilter(buildRealMediaUsageCountExpr(burnAccountId), lib?.maxUsageCount ?? null);
+      const rows = await client.$queryRaw<AssetRow[]>(
+        Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
+          ${batchJoin}
+          WHERE ma."libraryId" = ${libraryId}
+          ${accessFilter}
+          ${burnFilter}
+          ${tagFrag}
+          ${excludeFrag}
+          ${durationFrag}
+          ${virtualBurn}
+          ORDER BY ${effectiveLastUsed} ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
       );
       return rows[0] ? parseAssetRow(rows[0]) : null;
     }
@@ -651,6 +804,26 @@ export async function selectMediaAsset(
     console.warn(`[selectMediaAsset] stratégie inconnue "${strategy}" — fallback sur least_used`);
   }
   if (usageAccountId) {
+    if (entries) {
+      const batchJoin = buildBatchUsageJoin(entries, Prisma.sql`ma.id`);
+      const effectiveLastUsed = buildEffectiveLastUsedExpr(Prisma.sql`mau."lastUsedAt"`);
+      const effectiveCount = buildEffectiveUsageCountExpr(Prisma.sql`mau."usageCount"`);
+      const virtualBurn = buildVirtualBurnFilter(buildRealMediaUsageCountExpr(burnAccountId), lib?.maxUsageCount ?? null);
+      const rows = await client.$queryRaw<AssetRow[]>(
+        Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
+          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}
+          ${batchJoin}
+          WHERE ma."libraryId" = ${libraryId}
+          ${accessFilter}
+          ${burnFilter}
+          ${tagFrag}
+          ${excludeFrag}
+          ${durationFrag}
+          ${virtualBurn}
+          ORDER BY ${effectiveCount} ASC, ${effectiveLastUsed} ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
+      );
+      return rows[0] ? parseAssetRow(rows[0]) : null;
+    }
     const rows = await client.$queryRaw<AssetRow[]>(
       Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
         LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${usageAccountId}
@@ -661,6 +834,25 @@ export async function selectMediaAsset(
         ${excludeFrag}
         ${durationFrag}
         ORDER BY COALESCE(mau."usageCount", 0) ASC, mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
+    );
+    return rows[0] ? parseAssetRow(rows[0]) : null;
+  }
+  if (entries) {
+    const batchJoin = buildBatchUsageJoin(entries, Prisma.sql`ma.id`);
+    const effectiveLastUsed = buildEffectiveLastUsedExpr(Prisma.sql`ma."lastUsedAt"`);
+    const effectiveCount = buildEffectiveUsageCountExpr(Prisma.sql`ma."usageCount"`);
+    const virtualBurn = buildVirtualBurnFilter(buildRealMediaUsageCountExpr(burnAccountId), lib?.maxUsageCount ?? null);
+    const rows = await client.$queryRaw<AssetRow[]>(
+      Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
+        ${batchJoin}
+        WHERE ma."libraryId" = ${libraryId}
+        ${accessFilter}
+        ${burnFilter}
+        ${tagFrag}
+        ${excludeFrag}
+        ${durationFrag}
+        ${virtualBurn}
+        ORDER BY ${effectiveCount} ASC, ${effectiveLastUsed} ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
     );
     return rows[0] ? parseAssetRow(rows[0]) : null;
   }
@@ -744,7 +936,14 @@ export async function selectMediaAssetFromFolder(
   usageAccountId?: string,
   /** Filtre les assets dont la durée est inférieure à minDuration (NULL permis). */
   minDuration?: number,
-): Promise<{ id: string; url: string; filename: string; resolvedSetTag: string | null } | null> {
+  /**
+   * Tirage en lot (`lib/rotation/batchUsage.ts`) — jamais passé par le
+   * chemin render-time (`generateRender.ts`). Sans `opts.batchUsage`, ou si
+   * rien n'a été enregistré pour cette bibliothèque+clé, le SQL émis reste
+   * identique au caractère près à avant ce paramètre.
+   */
+  opts?: { batchUsage?: BatchUsageView },
+): Promise<{ id: string; url: string; filename: string; resolvedSetTag: string | null; usageKey: string | null } | null> {
   const library = await prisma.mediaLibrary.findUnique({
     where: { id: libraryId },
     select: { maxUsageCount: true, rotationScope: true, rotationMode: true },
@@ -767,7 +966,10 @@ export async function selectMediaAssetFromFolder(
 
   // Burn-once — per_account : par compte réel ; shared : global (ma.usageCount).
   const burnAccountId = isSharedScope ? undefined : accountId;
-  const burnFilter = buildBurnFilter(library.maxUsageCount ?? null, burnAccountId, minDuration);
+  // Capturée en dehors de `pickFromFolder` : `library` (nullable) n'est pas
+  // re-narrowée par TS à l'intérieur d'une fonction imbriquée.
+  const maxUsageCount = library.maxUsageCount ?? null;
+  const burnFilter = buildBurnFilter(maxUsageCount, burnAccountId, minDuration);
 
   const tagFrag: Prisma.Sql = ruleConfig
     ? buildTagFragment(ruleConfig)
@@ -778,6 +980,13 @@ export async function selectMediaAssetFromFolder(
   // Visibilité : toujours le compte réel (jamais la clé d'usage shared).
   const accessFilter: Prisma.Sql = buildAccessFilter(accountId);
 
+  // Tirage en lot : clé d'usage effective de CETTE bibliothèque, et vue du
+  // registre pour cette clé. `entries` reste `null` sans `opts.batchUsage` OU
+  // si rien n'a encore été enregistré pour cette clé — dans les deux cas la
+  // découverte et la pioche retombent sur leur requête d'origine, inchangée.
+  const usageKeyValue: string | null = effectiveUsageId ?? null;
+  const entries: BatchUsageEntries | null = opts?.batchUsage?.entriesFor(libraryId, usageKeyValue) ?? null;
+
   type AssetRow = { id: string; url: string; filename: string };
 
   // Pioche least-recently-used dans un dossier donné (setTag null = « (sans dossier) »).
@@ -787,6 +996,23 @@ export async function selectMediaAssetFromFolder(
       : Prisma.sql`AND ma."setTag" IS NULL`;
 
     if (effectiveUsageId) {
+      if (entries) {
+        const batchJoin = buildBatchUsageJoin(entries, Prisma.sql`ma.id`);
+        const effectiveLastUsed = buildEffectiveLastUsedExpr(Prisma.sql`mau."lastUsedAt"`);
+        const virtualBurn = buildVirtualBurnFilter(buildRealMediaUsageCountExpr(burnAccountId), maxUsageCount);
+        const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
+          SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveUsageId}
+          ${batchJoin}
+          WHERE ma."libraryId" = ${libraryId}
+            ${setTagClause}
+            ${tagFrag}
+            ${accessFilter}
+            ${burnFilter}
+            ${virtualBurn}
+          ORDER BY ${effectiveLastUsed} ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
+        return rows[0] ?? null;
+      }
       const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
         SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
         LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveUsageId}
@@ -796,6 +1022,22 @@ export async function selectMediaAssetFromFolder(
           ${accessFilter}
           ${burnFilter}
         ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
+      return rows[0] ?? null;
+    }
+    if (entries) {
+      const batchJoin = buildBatchUsageJoin(entries, Prisma.sql`ma.id`);
+      const effectiveLastUsed = buildEffectiveLastUsedExpr(Prisma.sql`ma."lastUsedAt"`);
+      const virtualBurn = buildVirtualBurnFilter(buildRealMediaUsageCountExpr(burnAccountId), maxUsageCount);
+      const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
+        SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+        ${batchJoin}
+        WHERE ma."libraryId" = ${libraryId}
+          ${setTagClause}
+          ${tagFrag}
+          ${accessFilter}
+          ${burnFilter}
+          ${virtualBurn}
+        ORDER BY ${effectiveLastUsed} ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
       return rows[0] ?? null;
     }
     const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
@@ -812,16 +1054,16 @@ export async function selectMediaAssetFromFolder(
   // --- Dossier épinglé (2e+ bloc de la même lib dans une génération) ---
   if (pinnedSetTag !== undefined) {
     const row = await pickFromFolder(pinnedSetTag);
-    return row ? { ...row, resolvedSetTag: pinnedSetTag } : null;
+    return row ? { ...row, resolvedSetTag: pinnedSetTag, usageKey: usageKeyValue } : null;
   }
 
   // --- Découverte + pioche dans le dossier le moins récemment servi ---
   const folders = await prisma.$queryRaw<{ setTag: string | null }[]>(
-    buildFolderDiscoveryQuery({ libraryId, usageAccountId: effectiveUsageId, accessFilter, burnFilter, tagFrag }),
+    buildFolderDiscoveryQuery({ libraryId, usageAccountId: effectiveUsageId, accessFilter, burnFilter, tagFrag, batchUsage: entries }),
   );
   for (const folder of folders) {
     const row = await pickFromFolder(folder.setTag);
-    if (row) return { ...row, resolvedSetTag: folder.setTag };
+    if (row) return { ...row, resolvedSetTag: folder.setTag, usageKey: usageKeyValue };
   }
   return null;
 }
@@ -832,11 +1074,16 @@ export async function selectMediaAssetFromFolder(
  * @param template   The parsed TemplateJSON.
  * @param formData   Optional: already-known form values. Used to resolve tagFilterParam rules.
  * @param accountId  Optional: Instagram account ID — required for set_sequence blocks.
+ * @param opts.batchUsage  Tirage en lot (`lib/rotation/batchUsage.ts`) — transmis
+ *   TEL QUEL à chacun des 6 appels de sélection ci-dessous ; jamais écrit ici
+ *   (c'est au service de lot d'enregistrer les picks une fois leur ligne
+ *   `ready`). Omis, le comportement de cette fonction est inchangé.
  */
 export async function resolveLibraryPrefill(
   template: TemplateJSON,
   formData?: Record<string, unknown>,
   accountId?: string,
+  opts?: { batchUsage?: BatchUsageView },
 ): Promise<LibraryPrefill> {
   const result: LibraryPrefill = {
     videoSuggestions: {},
@@ -845,6 +1092,10 @@ export async function resolveLibraryPrefill(
     setSequencedLibraryIds: [],
     usedSetTagByLibrary: {},
     prevAudioUsageState: undefined,
+  };
+  const usageKeyByPick: NonNullable<LibraryPrefill["usageKeyByPick"]> = {};
+  const noteUsageKey = (pickKey: string, libraryId: string, usageKey: string | null) => {
+    usageKeyByPick[pickKey] = { libraryId, usageKey };
   };
 
   // --- Video blocks ---
@@ -927,10 +1178,15 @@ export async function resolveLibraryPrefill(
           // scope de la bibliothèque (sentinelle __shared__ en shared).
           accountId,
           pickedIds.length > 0 ? pickedIds : undefined,
+          undefined,
+          undefined,
+          "library",
+          opts,
         );
         if (suggestion) {
           result.videoSuggestions[b.id] = suggestion;
           pickedIds.push(suggestion.id);
+          noteUsageKey(`video:${b.id}`, b.libraryId!, suggestion.usageKey);
         }
       }
     }),
@@ -970,6 +1226,7 @@ export async function resolveLibraryPrefill(
             rule,
             effectiveCursorAccountId(libId),
             (b as { minDuration?: number }).minDuration,
+            opts,
           );
           if (suggestion) {
             result.videoSuggestions[b.id] = {
@@ -977,6 +1234,7 @@ export async function resolveLibraryPrefill(
               url: suggestion.url,
               filename: suggestion.filename,
             };
+            noteUsageKey(`video:${b.id}`, libId, suggestion.usageKey);
             if (pinnedSetTag === undefined) {
               pinnedSetTag = suggestion.resolvedSetTag;
               if (suggestion.resolvedSetTag) {
@@ -1007,10 +1265,15 @@ export async function resolveLibraryPrefill(
             formData,
             accountId,
             pickedIds.length > 0 ? pickedIds : undefined,
+            undefined,
+            undefined,
+            "library",
+            opts,
           );
           if (suggestion) {
             result.videoSuggestions[s.id] = suggestion;
             pickedIds.push(suggestion.id);
+            noteUsageKey(`video:${s.id}`, s.libraryId!, suggestion.usageKey);
           }
         }
       }),
@@ -1044,6 +1307,7 @@ export async function resolveLibraryPrefill(
             rule,
             effectiveCursorAccountId(libId),
             slotMinDuration,
+            opts,
           );
           if (suggestion) {
             result.videoSuggestions[s.id] = {
@@ -1051,6 +1315,7 @@ export async function resolveLibraryPrefill(
               url: suggestion.url,
               filename: suggestion.filename,
             };
+            noteUsageKey(`video:${s.id}`, libId, suggestion.usageKey);
             if (pinnedSetTag === undefined) {
               pinnedSetTag = suggestion.resolvedSetTag;
               if (suggestion.resolvedSetTag) {
@@ -1110,6 +1375,7 @@ export async function resolveLibraryPrefill(
     // alors que le builder le documente comme excluant les assets trop courts
     // « en AUTO et MANUEL ».
     const audioMinDuration = resolveRequiredAudioDuration(musicBlock, estimate);
+    result.audioMinDuration = audioMinDuration;
     if (estimate.partial && audioMinDuration) {
       console.warn(
         `[resolveLibraryPrefill] durée estimée partielle (${estimate.seconds.toFixed(1)}s) — ` +
@@ -1138,7 +1404,7 @@ export async function resolveLibraryPrefill(
     // Read-only: just pick the best audio asset without stamping lastUsedAt.
     // The actual usage claim (MediaAssetUsage.lastUsedAt) is written at submission time
     // via advanceAudioUsageOnSubmit called from POST /api/renders.
-    result.audioSuggestion = await selectMediaAsset(
+    const audioSuggestion = await selectMediaAsset(
       audioLibraryId,
       musicBlock.audioSelectionRule,
       formData,
@@ -1147,7 +1413,12 @@ export async function resolveLibraryPrefill(
       audioMinDuration,
       undefined,
       audioUsageScope,
+      opts,
     );
+    result.audioSuggestion = audioSuggestion;
+    if (audioSuggestion) {
+      noteUsageKey("audio", audioLibraryId, audioSuggestion.usageKey);
+    }
     } // end audioLibraryExists guard
   }
 
@@ -1172,6 +1443,7 @@ export async function resolveLibraryPrefill(
         dataLibraryId,
         template.contentLibrary.dataSelectionRule,
         accountId,
+        { batchUsage: opts?.batchUsage },
       );
       if (dataSuggestion) {
         result.dataSuggestion = {
@@ -1179,8 +1451,13 @@ export async function resolveLibraryPrefill(
           fields: dataSuggestion.fields,
           resolvedSetTag: dataSuggestion.resolvedSetTag,
         };
+        noteUsageKey("data", dataLibraryId, dataSuggestion.usageKey);
       }
     }
+  }
+
+  if (Object.keys(usageKeyByPick).length > 0) {
+    result.usageKeyByPick = usageKeyByPick;
   }
 
   return result;
@@ -1460,6 +1737,26 @@ export interface LibraryPrefill {
     /** lastUsedAt value we wrote — revert condition: row still has this value */
     claimedLastUsedAt: string;
   };
+  /**
+   * Tirage en lot (`lib/rotation/batchUsage.ts`) — clé `"video:<block.id ou
+   * slot.id>"` / `"audio"` / `"data"` → clé d'usage effectivement utilisée par
+   * CE pick (compte réel, sentinelle partagée, ou `null`). Un pick manquant
+   * (suggestion `null`) n'a pas d'entrée. C'est ce que `bulkRenderService`
+   * (hors périmètre ici) enregistre dans le registre une fois la ligne
+   * `ready` — jamais cette fonction elle-même, qui reste read-only.
+   */
+  usageKeyByPick?: Record<string, { libraryId: string; usageKey: string | null }>;
+  /**
+   * Plancher de durée (secondes) appliqué au tirage de `audioSuggestion` —
+   * `max(musicBlock.minDuration, durée vidéo estimée)`, cf.
+   * `resolveRequiredAudioDuration`. Exposé pour que les appelants qui ne
+   * peuvent pas juste consommer `audioSuggestion` tel quel (ex.
+   * `bulkRenderService` sur une musique SANS binding, où `audioSuggestion`
+   * n'est appliqué nulle part par `buildLibraryPrefillContext`) puissent
+   * quand même poser le même plancher sur le picker « Changer ». `undefined`
+   * quand la piste boucle ou qu'aucun plancher ne s'applique.
+   */
+  audioMinDuration?: number;
 }
 
 /**
@@ -1484,8 +1781,17 @@ export async function selectDataEntry(
   libraryId: string,
   rule: string | undefined,
   accountId: string | undefined,
-  options?: { pinnedSetTag?: string | null },
-): Promise<{ entryId: string; fields: Record<string, string>; resolvedSetTag: string | null } | null> {
+  options?: {
+    pinnedSetTag?: string | null;
+    /**
+     * Tirage en lot (`lib/rotation/batchUsage.ts`) — jamais passé par
+     * `claimDataEntryForCaption` / `captionDataLibrary.ts`. Sans elle, ou si
+     * rien n'a été enregistré pour cette bibliothèque+clé, le SQL émis reste
+     * identique au caractère près à avant ce paramètre.
+     */
+    batchUsage?: BatchUsageView;
+  },
+): Promise<{ entryId: string; fields: Record<string, string>; resolvedSetTag: string | null; usageKey: string | null } | null> {
   if (rule === "manual") return null;
 
   const library = await prisma.dataLibrary.findUnique({
@@ -1509,6 +1815,24 @@ export async function selectDataEntry(
           : Prisma.sql``)
     : Prisma.sql``;
 
+  // Tirage en lot : clé d'usage effective de CETTE bibliothèque, et vue du
+  // registre pour cette clé (voir même garantie que côté média : `entries`
+  // reste `null` sans vue OU sans rien d'enregistré pour cette clé).
+  const usageKeyValue: string | null = usageAccountId ?? null;
+  const entries: BatchUsageEntries | null = options?.batchUsage?.entriesFor(libraryId, usageKeyValue) ?? null;
+  // Même formule que `burnFilter` ci-dessus, SANS le `< max` — sert
+  // uniquement à composer le burn-once virtuel. `null` = pas de compteur réel
+  // disponible (per_account sans compte) : le burn-once réel ne filtre déjà
+  // rien dans ce cas, la garde virtuelle ne doit pas faire exception.
+  const realDataUsageCountExpr: Prisma.Sql | null = isShared
+    ? Prisma.sql`de."usageCount"`
+    : accountId
+      ? Prisma.sql`COALESCE((SELECT deu2."usageCount" FROM "DataEntryUsage" deu2 WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}), 0)`
+      : null;
+  const virtualBurn = entries && realDataUsageCountExpr
+    ? buildVirtualBurnFilter(realDataUsageCountExpr, maxUsage)
+    : Prisma.empty;
+
   type EntryRow = { id: string; fields: string };
 
   /** Parse tolérant de la colonne `fields` (JSON corrompu → objet vide). */
@@ -1525,6 +1849,21 @@ export async function selectDataEntry(
       ? Prisma.sql`AND de."setTag" = ${setTag}`
       : Prisma.sql`AND de."setTag" IS NULL`;
     if (usageAccountId) {
+      if (entries) {
+        const batchJoin = buildBatchUsageJoin(entries, Prisma.sql`de.id`);
+        const effectiveLastUsed = buildEffectiveLastUsedExpr(Prisma.sql`deu."lastUsedAt"`);
+        const rows = await prisma.$queryRaw<EntryRow[]>(Prisma.sql`
+          SELECT de.id, de.fields FROM "DataEntry" de
+          LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${usageAccountId}
+          ${batchJoin}
+          WHERE de."libraryId" = ${libraryId}
+            ${setTagClause}
+            ${accessFilter}
+            ${burnFilter}
+            ${virtualBurn}
+          ORDER BY ${effectiveLastUsed} ASC NULLS FIRST, de."createdAt" ASC LIMIT 1`);
+        return rows[0] ?? null;
+      }
       const rows = await prisma.$queryRaw<EntryRow[]>(Prisma.sql`
         SELECT de.id, de.fields FROM "DataEntry" de
         LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${usageAccountId}
@@ -1533,6 +1872,20 @@ export async function selectDataEntry(
           ${accessFilter}
           ${burnFilter}
         ORDER BY deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC LIMIT 1`);
+      return rows[0] ?? null;
+    }
+    if (entries) {
+      const batchJoin = buildBatchUsageJoin(entries, Prisma.sql`de.id`);
+      const effectiveLastUsed = buildEffectiveLastUsedExpr(Prisma.sql`de."lastUsedAt"`);
+      const rows = await prisma.$queryRaw<EntryRow[]>(Prisma.sql`
+        SELECT de.id, de.fields FROM "DataEntry" de
+        ${batchJoin}
+        WHERE de."libraryId" = ${libraryId}
+          ${setTagClause}
+          ${accessFilter}
+          ${burnFilter}
+          ${virtualBurn}
+        ORDER BY ${effectiveLastUsed} ASC NULLS FIRST, de."createdAt" ASC LIMIT 1`);
       return rows[0] ?? null;
     }
     const rows = await prisma.$queryRaw<EntryRow[]>(Prisma.sql`
@@ -1558,7 +1911,7 @@ export async function selectDataEntry(
       );
       return null;
     }
-    return { entryId: row.id, fields: parseRowFields(row.fields), resolvedSetTag: pinnedSetTag };
+    return { entryId: row.id, fields: parseRowFields(row.fields), resolvedSetTag: pinnedSetTag, usageKey: usageKeyValue };
   }
 
   // Découverte des dossiers, du moins récemment servi au plus récent (même
@@ -1575,30 +1928,53 @@ export async function selectDataEntry(
   const unusedExpr = usageAccountId
     ? Prisma.sql`deu."lastUsedAt" IS NULL`
     : Prisma.sql`de."lastUsedAt" IS NULL`;
-  const folders = await prisma.$queryRaw<{ setTag: string | null }[]>(Prisma.sql`
-    SELECT sub."setTag"
-    FROM (
-      SELECT de."setTag",
-             ${lastUsedExpr} AS last_used,
-             MIN(de."createdAt") AS folder_created_at,
-             COUNT(*) FILTER (WHERE ${unusedExpr}) > 0 AS has_unused
-      FROM "DataEntry" de
-      ${usageJoin}
-      WHERE de."libraryId" = ${libraryId}
-        ${accessFilter}
-        ${burnFilter}
-      GROUP BY de."setTag"
-      HAVING COUNT(*) > 0
-    ) sub
-    ORDER BY sub.has_unused DESC,
-             sub.last_used ASC NULLS FIRST,
-             sub.folder_created_at ASC NULLS LAST,
-             CASE WHEN sub."setTag" ~ '^[0-9]+$' THEN LPAD(sub."setTag", 20, '0') ELSE sub."setTag" END ASC NULLS LAST`);
+  const folders = entries
+    ? await prisma.$queryRaw<{ setTag: string | null }[]>(Prisma.sql`
+        SELECT sub."setTag"
+        FROM (
+          SELECT de."setTag",
+                 ${usageAccountId
+                   ? Prisma.sql`MAX(${buildEffectiveLastUsedExpr(Prisma.sql`deu."lastUsedAt"`)})`
+                   : Prisma.sql`MAX(${buildEffectiveLastUsedExpr(Prisma.sql`de."lastUsedAt"`)})`} AS last_used,
+                 MIN(de."createdAt") AS folder_created_at,
+                 COUNT(*) FILTER (WHERE ${buildEffectiveUnusedExpr(unusedExpr)}) > 0 AS has_unused
+          FROM "DataEntry" de
+          ${usageJoin}
+          ${buildBatchUsageJoin(entries, Prisma.sql`de.id`)}
+          WHERE de."libraryId" = ${libraryId}
+            ${accessFilter}
+            ${burnFilter}
+          GROUP BY de."setTag"
+          HAVING COUNT(*) > 0
+        ) sub
+        ORDER BY sub.has_unused DESC,
+                 sub.last_used ASC NULLS FIRST,
+                 sub.folder_created_at ASC NULLS LAST,
+                 CASE WHEN sub."setTag" ~ '^[0-9]+$' THEN LPAD(sub."setTag", 20, '0') ELSE sub."setTag" END ASC NULLS LAST`)
+    : await prisma.$queryRaw<{ setTag: string | null }[]>(Prisma.sql`
+        SELECT sub."setTag"
+        FROM (
+          SELECT de."setTag",
+                 ${lastUsedExpr} AS last_used,
+                 MIN(de."createdAt") AS folder_created_at,
+                 COUNT(*) FILTER (WHERE ${unusedExpr}) > 0 AS has_unused
+          FROM "DataEntry" de
+          ${usageJoin}
+          WHERE de."libraryId" = ${libraryId}
+            ${accessFilter}
+            ${burnFilter}
+          GROUP BY de."setTag"
+          HAVING COUNT(*) > 0
+        ) sub
+        ORDER BY sub.has_unused DESC,
+                 sub.last_used ASC NULLS FIRST,
+                 sub.folder_created_at ASC NULLS LAST,
+                 CASE WHEN sub."setTag" ~ '^[0-9]+$' THEN LPAD(sub."setTag", 20, '0') ELSE sub."setTag" END ASC NULLS LAST`);
 
   for (const folder of folders) {
     const row = await pickFromFolder(folder.setTag);
     if (row) {
-      return { entryId: row.id, fields: parseRowFields(row.fields), resolvedSetTag: folder.setTag };
+      return { entryId: row.id, fields: parseRowFields(row.fields), resolvedSetTag: folder.setTag, usageKey: usageKeyValue };
     }
   }
   return null;

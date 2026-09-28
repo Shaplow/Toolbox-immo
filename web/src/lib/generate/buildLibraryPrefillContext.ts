@@ -21,9 +21,11 @@
 
 import { prisma } from "@/lib/prisma";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
+import type { BatchUsageView } from "@/lib/rotation/batchUsage";
 import {
   resolveLibraryPrefill,
   selectMediaAssetByMetadataValue,
+  type LibraryPrefill,
 } from "@/lib/contentLibraryResolver";
 import type {
   TemplateJSON,
@@ -73,11 +75,49 @@ interface BuildArgs {
    * doit malgré tout filtrer.
    */
   tagFormData?: Record<string, unknown>;
+  /**
+   * Tirage en lot (`lib/rotation/batchUsage.ts`) — transmis à
+   * `resolveLibraryPrefill` quand `resolvedPrefill` n'est pas fourni. Sans
+   * elle (formulaire normal, une publication à la fois), le comportement de
+   * cette fonction est inchangé.
+   */
+  batchUsage?: BatchUsageView;
+  /**
+   * Mode validation du lot : les picks sont déjà connus (aperçu validé par
+   * l'admin, éventuellement modifiés via « Changer ») — on les applique
+   * TELS QUELS aux mêmes boucles que le tirage frais, sans jamais rappeler
+   * `resolveLibraryPrefill` (le serveur ne re-tire jamais au lancement,
+   * sinon décocher une ligne décalerait toutes les suivantes). Prioritaire
+   * sur le mode « régénération par URL » (`listingId` sans `forceRedraw`).
+   */
+  resolvedPrefill?: LibraryPrefill;
 }
 
 interface BuildResult {
   context: LibraryPrefillContext | undefined;
   updatedInitialValues: Record<string, unknown> | undefined;
+  /** Tirage en lot — propagé depuis `resolveLibraryPrefill`/`resolvedPrefill`. */
+  usageKeyByPick?: LibraryPrefill["usageKeyByPick"];
+  /**
+   * Pick de musique SANS binding (`musicBlock.libraryId` posé, pas de
+   * `musicBlock.binding`) — cas qui n'a AUCUN champ de formulaire, donc
+   * aucune entrée dans `fieldLibraryMap`/`initialSuggestions` : la boucle
+   * plus bas n'applique `prefill.audioSuggestion` que quand `musicBlock.binding`
+   * est posé (ligne ~456), donc le pick du résolveur — tiré avec la BONNE borne
+   * de durée (`audioMinDuration` ci-dessous) — repartait silencieusement à la
+   * poubelle. `bulkRenderService` (hors périmètre ici) le récupère au lieu de
+   * re-tirer lui-même avec une borne incomplète. `undefined` hors du cas
+   * unbound (jamais calculé), `null` si le résolveur n'a rien trouvé.
+   */
+  unboundAudioSuggestion?: { id: string; url: string; filename: string } | null;
+  /**
+   * Plancher de durée appliqué par le résolveur au pick musique (bound ou
+   * non) — cf. `LibraryPrefill.audioMinDuration`. Permet à un appelant qui
+   * construit lui-même le `picker.minDuration` d'une cellule audio (« Changer »)
+   * de ne jamais proposer une piste plus courte que ce que le tirage
+   * automatique aurait accepté.
+   */
+  audioMinDuration?: number;
 }
 
 /**
@@ -181,9 +221,14 @@ export async function buildLibraryPrefillContext({
   provenance: provenanceIn,
   forceRedraw = false,
   tagFormData,
+  batchUsage,
+  resolvedPrefill,
 }: BuildArgs): Promise<BuildResult> {
   let initialValues = initialValuesIn;
   const provenance: ProvenanceMap = { ...(provenanceIn ?? {}) };
+  let usageKeyByPick: LibraryPrefill["usageKeyByPick"];
+  let unboundAudioSuggestion: BuildResult["unboundAudioSuggestion"];
+  let audioMinDuration: BuildResult["audioMinDuration"];
 
   const hasLibraryBindings =
     json.blocks.some((b) => (b.type === "video" || b.type === "music") && b.libraryId) ||
@@ -308,7 +353,12 @@ export async function buildLibraryPrefillContext({
     resolvedSetTag?: string | null;
   } | null = null;
 
-  if (listingId && !forceRedraw) {
+  // `resolvedPrefill` (mode validation du lot) est prioritaire sur la
+  // régénération par URL : au lancement en lot, `listingId` est toujours
+  // null (le listing n'existe pas encore, cf. `bulkRenderService`) — cette
+  // priorité couvre malgré tout le cas où un appelant futur fournirait les
+  // deux, pour ne jamais retomber silencieusement sur le mauvais mode.
+  if (!resolvedPrefill && listingId && !forceRedraw) {
     // Regenerating from an existing listing: try to match stored URLs back to
     // library assets so the picker shows the previously used asset as the
     // current selection.
@@ -328,14 +378,27 @@ export async function buildLibraryPrefillContext({
     // from listing.
   } else {
     // Fresh generation: use resolveLibraryPrefill (pass accountId if a
-    // theme_sequence block exists).
-    const prefill = await resolveLibraryPrefill(
+    // theme_sequence block exists) — sauf en mode validation du lot, où les
+    // picks sont déjà connus (aperçu validé, éventuellement modifiés via
+    // « Changer ») : on les applique tels quels, sans jamais re-tirer.
+    const prefill = resolvedPrefill ?? await resolveLibraryPrefill(
       json,
       // formData de résolution des tags : les valeurs complètes quand elles sont
       // fournies, sinon les valeurs tracées (comportement historique).
       tagFormData ?? initialValues ?? undefined,
       accountId ?? undefined,
+      batchUsage ? { batchUsage } : undefined,
     );
+    usageKeyByPick = prefill.usageKeyByPick;
+    audioMinDuration = prefill.audioMinDuration;
+    // Musique SANS binding : aucun champ de formulaire ne la porte, donc la
+    // boucle plus bas (`if (musicBlock?.binding && ...)`) n'applique jamais
+    // `prefill.audioSuggestion` — sans cette copie, le pick du résolveur (avec
+    // la bonne borne de durée) serait perdu pour tout appelant qui ne
+    // consomme pas `initialSuggestions`.
+    if (musicBlock?.libraryId && !musicBlock.binding) {
+      unboundAudioSuggestion = prefill.audioSuggestion ?? null;
+    }
     setSequencedLibraryIds = prefill.setSequencedLibraryIds ?? [];
     usedSetTagByLibrary =
       prefill.usedSetTagByLibrary && Object.keys(prefill.usedSetTagByLibrary).length > 0
@@ -469,5 +532,5 @@ export async function buildLibraryPrefillContext({
     metadataDrivenLinks: buildMetadataDrivenLinks(json),
   };
 
-  return { context, updatedInitialValues: initialValues };
+  return { context, updatedInitialValues: initialValues, usageKeyByPick, unboundAudioSuggestion, audioMinDuration };
 }
