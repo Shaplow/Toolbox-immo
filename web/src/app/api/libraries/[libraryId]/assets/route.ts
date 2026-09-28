@@ -77,6 +77,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         duration: true,
         usageCount: true,
         lastUsedAt: true,
+        posterUrl: true,
+        setTag: true,
         usages: {
           where: { accountId: usageKey },
           select: { usageCount: true, lastUsedAt: true },
@@ -92,6 +94,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         url: a.url,
         mimeType: a.mimeType,
         duration: a.duration,
+        posterUrl: a.posterUrl,
+        setTag: a.setTag,
         // Prefer per-account (or shared) stats; fall back to global when no usage row exists yet
         usageCount: a.usages[0]?.usageCount ?? 0,
         lastUsedAt: a.usages[0]?.lastUsedAt ?? null,
@@ -118,6 +122,8 @@ export async function GET(req: NextRequest, { params }: Params) {
       duration: true,
       usageCount: true,
       lastUsedAt: true,
+      posterUrl: true,
+      setTag: true,
     },
   });
 

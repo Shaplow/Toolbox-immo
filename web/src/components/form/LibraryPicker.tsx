@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Music2, Check, X } from "lucide-react";
+import { Music2, Check } from "lucide-react";
 import type { LibraryAssetOption } from "@/types/libraryPrefill";
 import type { TagCondition } from "@/types/template";
 import { serializeTagRuleParams } from "@/lib/generate/libraryAssetsQuery";
+import { isReservedSetTag } from "@/lib/rotation/sentinels";
+import { Modal } from "@/components/ui/Modal";
 
 interface Asset {
   id: string;
@@ -14,6 +16,8 @@ interface Asset {
   duration: number | null;
   usageCount: number;
   lastUsedAt: string | null;
+  posterUrl: string | null;
+  setTag: string | null;
 }
 
 function fmtDuration(s: number | null): string {
@@ -21,6 +25,18 @@ function fmtDuration(s: number | null): string {
   const m = Math.floor(s / 60);
   const sec = Math.round(s % 60);
   return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+/** `onSelect` — masque le dossier réservé (`pack_*`) avant de le transmettre. */
+function toOption(asset: Asset): LibraryAssetOption {
+  return {
+    id: asset.id,
+    url: asset.url,
+    filename: asset.filename,
+    posterUrl: asset.posterUrl,
+    setTag: isReservedSetTag(asset.setTag) ? null : asset.setTag,
+    duration: asset.duration,
+  };
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
@@ -105,133 +121,39 @@ export function LibraryPickerModal({
     };
   }, [isOpen, libraryId, tagFilter, tagRulesParam, accountId]);
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[88vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <div>
-            <p className="font-semibold text-foreground text-base">
-              {isVideo ? "Choisir une vidéo" : "Choisir une musique"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {loading ? "Chargement…" : `${(assets ?? []).length} fichier${(assets ?? []).length !== 1 ? "s" : ""} disponibles`}
-              {currentAssetId && !loading ? " · 1 sélectionné" : ""}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
+    <Modal open={isOpen} onClose={onClose} size="xl" className="max-w-5xl flex flex-col max-h-[85vh]">
+      <Modal.Header onClose={onClose}>
+        <span className="flex flex-col gap-0.5 min-w-0">
+          <span>{isVideo ? "Choisir une vidéo" : "Choisir une musique"}</span>
+          <span className="text-xs font-normal text-muted-foreground">
+            {loading
+              ? "Chargement…"
+              : `${(assets ?? []).length} fichier${(assets ?? []).length !== 1 ? "s" : ""} disponibles`}
+            {currentAssetId && !loading ? " · 1 sélectionné" : ""}
+          </span>
+        </span>
+      </Modal.Header>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-6 h-6 border-2 border-info-200 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : (assets ?? []).length === 0 ? (
-            <div className="text-center py-20 text-muted-foreground">
-              <p className="font-medium">Aucun fichier dans cette bibliothèque</p>
-            </div>
-          ) : isVideo ? (
-            <div className="space-y-4">
-              {minDuration != null && minDuration > 0 && (assets ?? []).some((a) => a.duration !== null && a.duration < minDuration) && (
-                <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+      <Modal.Body className="overflow-y-auto flex-1 min-h-0">
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-6 h-6 border-2 border-info-200 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (assets ?? []).length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground">
+            <p className="font-medium">Aucun fichier dans cette bibliothèque</p>
+          </div>
+        ) : isVideo ? (
+          <div className="space-y-4">
+            {minDuration != null &&
+              minDuration > 0 &&
+              (assets ?? []).some((a) => a.duration !== null && a.duration < minDuration) && (
+                <div className="px-3 py-2 bg-warning-50 border border-warning-200 rounded-lg text-xs text-warning-700">
                   Les vidéos en gris ne répondent pas à la durée requise ({fmtDuration(minDuration)})
                 </div>
               )}
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                {(assets ?? []).map((asset) => {
-                  const tooShort = minDuration != null && minDuration > 0 && asset.duration !== null && asset.duration < minDuration;
-                  return (
-                    <button
-                      key={asset.id}
-                      disabled={tooShort}
-                      title={tooShort ? `Durée insuffisante : ${fmtDuration(asset.duration)} disponible, ${fmtDuration(minDuration)} requis` : undefined}
-                      onClick={() => {
-                        if (tooShort) return;
-                        onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
-                        onClose();
-                      }}
-                      className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-info-200 ${
-                        tooShort
-                          ? "opacity-50 cursor-not-allowed border-transparent"
-                          : currentAssetId === asset.id
-                            ? "border-info-600 shadow-md shadow-indigo-200/60"
-                            : "border-transparent hover:border-info-200"
-                      }`}
-                      onMouseEnter={() => !tooShort && setHoverPlayId(asset.id)}
-                      onMouseLeave={() => setHoverPlayId(null)}
-                    >
-                      <div className="relative aspect-[9/16] bg-gray-200">
-                        {hoverPlayId === asset.id ? (
-                          <video
-                            src={asset.url}
-                            autoPlay
-                            muted
-                            loop
-                            playsInline
-                            className="absolute inset-0 w-full h-full object-cover"
-                          />
-                        ) : (
-                          <video
-                            src={`${asset.url}#t=0.5`}
-                            muted
-                            preload="metadata"
-                            className="absolute inset-0 w-full h-full object-cover"
-                          />
-                        )}
-                        {asset.duration && (
-                          <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded leading-none">
-                            {fmtDuration(asset.duration)}
-                          </span>
-                        )}
-                        {currentAssetId === asset.id && (
-                          <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-info-600 rounded-full flex items-center justify-center shadow">
-                            <Check size={11} className="text-white" />
-                          </div>
-                        )}
-                        {hoverPlayId === asset.id && currentAssetId !== asset.id && (
-                          <div className="absolute inset-0 bg-info-600/10 pointer-events-none" />
-                        )}
-                      </div>
-                      <div className="px-2 py-1.5 bg-white">
-                        <p
-                          className="text-[10px] font-medium text-foreground truncate leading-tight"
-                          title={asset.filename}
-                        >
-                          {asset.filename.replace(/\.[^.]+$/, "")}
-                        </p>
-                        <p className="text-[9px] text-muted-foreground mt-0.5">
-                          {asset.usageCount} usage{asset.usageCount !== 1 ? "s" : ""}
-                          {asset.duration ? ` · ${fmtDuration(asset.duration)}` : ""}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            /* Audio list */
-            <div className="space-y-1.5">
-              {minDuration != null && minDuration > 0 && (assets ?? []).some((a) => a.duration !== null && a.duration < minDuration) && (
-                <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                  Les musiques en gris ne répondent pas à la durée requise ({fmtDuration(minDuration)})
-                </div>
-              )}
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
               {(assets ?? []).map((asset) => {
                 const tooShort = minDuration != null && minDuration > 0 && asset.duration !== null && asset.duration < minDuration;
                 return (
@@ -241,46 +163,133 @@ export function LibraryPickerModal({
                     title={tooShort ? `Durée insuffisante : ${fmtDuration(asset.duration)} disponible, ${fmtDuration(minDuration)} requis` : undefined}
                     onClick={() => {
                       if (tooShort) return;
-                      onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
+                      onSelect(toOption(asset));
                       onClose();
                     }}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-info-200 ${
+                    className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-info-200 ${
                       tooShort
-                        ? "opacity-50 cursor-not-allowed border-border bg-muted"
+                        ? "opacity-50 cursor-not-allowed border-transparent"
                         : currentAssetId === asset.id
-                          ? "border-info-600 bg-info-50"
-                          : "border-border bg-muted hover:border-info-200 hover:bg-info-50/50"
+                          ? "border-info-600 shadow-sm"
+                          : "border-transparent hover:border-info-200"
                     }`}
+                    onMouseEnter={() => !tooShort && setHoverPlayId(asset.id)}
+                    onMouseLeave={() => setHoverPlayId(null)}
                   >
-                    <div
-                      className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                        currentAssetId === asset.id ? "bg-info-100" : "bg-white border border-border"
-                      }`}
-                    >
-                      {currentAssetId === asset.id ? (
-                        <Check size={14} className="text-info-700" />
+                    <div className="relative aspect-[9/16] bg-muted">
+                      {hoverPlayId === asset.id ? (
+                        // Survol = aperçu MOUVANT (lecture complète en boucle), pas
+                        // juste une frame — c'est le point du hover preview.
+                        <video
+                          src={asset.url}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                      ) : asset.posterUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={asset.posterUrl}
+                          loading="lazy"
+                          alt=""
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
                       ) : (
-                        <Music2 size={14} className="text-muted-foreground" />
+                        <video
+                          src={`${asset.url}#t=0.5`}
+                          muted
+                          preload="metadata"
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                      )}
+                      {asset.duration && (
+                        <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded leading-none">
+                          {fmtDuration(asset.duration)}
+                        </span>
+                      )}
+                      {currentAssetId === asset.id && (
+                        <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-info-600 rounded-full flex items-center justify-center shadow">
+                          <Check size={11} className="text-white" />
+                        </div>
+                      )}
+                      {hoverPlayId === asset.id && currentAssetId !== asset.id && (
+                        <div className="absolute inset-0 bg-info-600/10 pointer-events-none" />
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{asset.filename}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {asset.duration ? fmtDuration(asset.duration) : ""}
-                        {asset.duration && asset.usageCount > 0 ? " · " : ""}
-                        {asset.usageCount > 0
-                          ? `${asset.usageCount} usage${asset.usageCount !== 1 ? "s" : ""}`
-                          : "Non encore utilisé"}
+                    <div className="px-2 py-1.5 bg-card">
+                      <p className="text-[10px] font-medium text-foreground truncate leading-tight" title={asset.filename}>
+                        {asset.filename.replace(/\.[^.]+$/, "")}
+                      </p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">
+                        {asset.usageCount} usage{asset.usageCount !== 1 ? "s" : ""}
+                        {asset.duration ? ` · ${fmtDuration(asset.duration)}` : ""}
                       </p>
                     </div>
                   </button>
                 );
               })}
             </div>
-          )}
-        </div>
-      </div>
-    </div>
+          </div>
+        ) : (
+          /* Audio list */
+          <div className="space-y-1.5">
+            {minDuration != null &&
+              minDuration > 0 &&
+              (assets ?? []).some((a) => a.duration !== null && a.duration < minDuration) && (
+                <div className="mb-3 px-3 py-2 bg-warning-50 border border-warning-200 rounded-lg text-xs text-warning-700">
+                  Les musiques en gris ne répondent pas à la durée requise ({fmtDuration(minDuration)})
+                </div>
+              )}
+            {(assets ?? []).map((asset) => {
+              const tooShort = minDuration != null && minDuration > 0 && asset.duration !== null && asset.duration < minDuration;
+              return (
+                <button
+                  key={asset.id}
+                  disabled={tooShort}
+                  title={tooShort ? `Durée insuffisante : ${fmtDuration(asset.duration)} disponible, ${fmtDuration(minDuration)} requis` : undefined}
+                  onClick={() => {
+                    if (tooShort) return;
+                    onSelect(toOption(asset));
+                    onClose();
+                  }}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-info-200 ${
+                    tooShort
+                      ? "opacity-50 cursor-not-allowed border-border bg-muted"
+                      : currentAssetId === asset.id
+                        ? "border-info-600 bg-info-50"
+                        : "border-border bg-muted hover:border-info-200 hover:bg-info-50/50"
+                  }`}
+                >
+                  <div
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                      currentAssetId === asset.id ? "bg-info-100" : "bg-card border border-border"
+                    }`}
+                  >
+                    {currentAssetId === asset.id ? (
+                      <Check size={14} className="text-info-700" />
+                    ) : (
+                      <Music2 size={14} className="text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{asset.filename}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {asset.duration ? fmtDuration(asset.duration) : ""}
+                      {asset.duration && asset.usageCount > 0 ? " · " : ""}
+                      {asset.usageCount > 0
+                        ? `${asset.usageCount} usage${asset.usageCount !== 1 ? "s" : ""}`
+                        : "Non encore utilisé"}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Modal.Body>
+    </Modal>
   );
 }
 
@@ -349,7 +358,7 @@ export function LibraryFieldInput({
       {currentSelection ? (
         libraryMeta.type === "video" ? (
           <div className="flex items-start gap-3 p-3 bg-muted border border-border rounded-xl">
-            <div className="relative w-16 shrink-0 aspect-[9/16] rounded-lg overflow-hidden bg-gray-200">
+            <div className="relative w-16 shrink-0 aspect-[9/16] rounded-lg overflow-hidden bg-muted">
               <video
                 src={`${currentSelection.url}#t=0.5`}
                 muted

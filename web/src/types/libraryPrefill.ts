@@ -10,6 +10,14 @@ export interface LibraryAssetOption {
   id: string;
   url: string;
   filename: string;
+  /** Poster léger (extraction RunPod) — absent sur les anciens assets. */
+  posterUrl?: string | null;
+  /**
+   * Dossier (`MediaAsset.setTag`) — masqué à `null` quand réservé
+   * (`isReservedSetTag`, préfixe `pack_`), voir `lib/rotation/sentinels.ts`.
+   */
+  setTag?: string | null;
+  duration?: number | null;
 }
 
 export interface LibraryFieldMeta {
