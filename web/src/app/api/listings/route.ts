@@ -1,79 +1,37 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
-import { normalizeTemplateJSON } from "@/lib/templateNormalization";
-import { isSchemaFieldVisible } from "@/lib/templateConditions";
-import type { TemplateJSON, SchemaField } from "@/types/template";
+import { createListingForRender } from "@/lib/services/render/renderLaunchService";
+import { ServiceError } from "@/lib/services/_runtime/errors";
+import { mapServiceError } from "@/lib/services/_runtime/mapServiceError";
 
 // POST /api/listings
+//
+// Wrapper mince (plan « Lancer les rendus », étape 1) : la logique vit dans
+// `renderLaunchService.createListingForRender`. Contrat HTTP identique à la
+// route inline historique — `ListingForm` ne lit que `listing.id` /
+// `listing.missing` / `listing.error`.
 export async function POST(req: NextRequest) {
   const auth = await requireUser();
   if (auth.response) return auth.response;
-  const userContext = auth.ctx;
 
   try {
     const body = await req.json();
-    const { templateId, data } = body;
-
+    const { templateId, data } = body ?? {};
     if (!templateId) {
       return NextResponse.json({ error: "templateId requis" }, { status: 400 });
     }
-
-    // Fetch template to get its schema
-    const template = await prisma.template.findFirst({
-      where: { id: templateId },
-    });
-    if (!template) {
-      return NextResponse.json({ error: "Template introuvable" }, { status: 404 });
-    }
-
-    // Check access: owner, granted, or admin
-    const { canAccessTemplate } = await import("@/lib/permissions");
-    const ok = userContext.canAdminBypass
-      ? true
-      : await canAccessTemplate(
-          userContext.effectiveUser.id,
-          templateId as string,
-          userContext.effectiveUser.role
-        );
-    if (!ok) {
-      return NextResponse.json({ error: "Accès refusé à ce template" }, { status: 403 });
-    }
-
-    const json = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
-    const schema: SchemaField[] = json.schema ?? [];
-
-    // Validate required fields as defined in the template schema
-    const missing: string[] = [];
-    for (const field of schema) {
-      if (!field.required) continue;
-      if (!isSchemaFieldVisible(field, (data as Record<string, unknown>) ?? {})) continue;
-      const val = (data as Record<string, unknown>)?.[field.key];
-      if (val === undefined || val === null || val === "") {
-        missing.push(field.label || field.key);
-      }
-    }
-    if (missing.length > 0) {
-      return NextResponse.json(
-        { error: "Champs obligatoires manquants", missing },
-        { status: 422 }
-      );
-    }
-
-    const listing = await prisma.listing.create({
-      data: {
-        templateId,
-        jsonData: JSON.stringify(data),
-        userId: userContext.effectiveUser.id,
-      },
-    });
-
+    const listing = await createListingForRender(
+      { templateId, data: data as Record<string, unknown> },
+      auth.ctx,
+    );
     return NextResponse.json(listing, { status: 201 });
   } catch (err) {
+    if (err instanceof ServiceError) return mapServiceError(err);
     console.error("[POST /api/listings]", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Erreur serveur" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

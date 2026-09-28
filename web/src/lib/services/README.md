@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 |---------|--------|
 | `_runtime/` | ✅ S1 |
 | `slot/` | 🚧 S1 |
-| `render/` | ⏳ S2 |
+| `render/` | 🚧 S2 — `renderLaunchService.ts` (lancement unitaire + lot) |
 | `captions/` | ⏳ S3 |
 | `transcription/` | ⏳ S3 |
 | `cover/` | ⏳ S3 |

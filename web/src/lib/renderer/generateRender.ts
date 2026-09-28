@@ -28,6 +28,8 @@ import { triggerAutoTranscriptionLocal } from "@/lib/triggerAutoTranscriptionLoc
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 import { onRenderCompleted } from "@/lib/services/slot/pipelineHooks";
 import { enrichListingWithEntityFields, loadRenderEntityContext } from "./enrichListingWithEntityFields";
+import { notifyUser } from "@/lib/sseStore";
+import { createLimiter } from "@/lib/concurrency";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
 const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -137,6 +139,29 @@ async function failRender(renderId: string, message: string, pipeline?: string, 
   revertLibraryCursors(renderId).catch((err) => {
     console.error(`[failRender] revertLibraryCursors failed for render=${renderId}:`, err);
   });
+  // Plan « Lancer les rendus », étape 2 : les échecs pré-RunPod (image,
+  // validation, kickoff) ne notifiaient jamais l'owner du listing — seul le
+  // webhook RunPod le faisait (webhooks/runpod/renders/route.ts). Sans ce SSE,
+  // le formulaire/la modale lot devait poller pour détecter un échec. Même
+  // forme de payload que le webhook, pour que le client les traite pareil.
+  // Best-effort dans un try/catch dédié : une notification ratée ne doit
+  // jamais masquer l'échec déjà écrit en DB ci-dessus.
+  try {
+    const render = await prisma.render.findUnique({
+      where: { id: renderId },
+      select: { listing: { select: { userId: true } } },
+    });
+    if (render?.listing?.userId) {
+      notifyUser(render.listing.userId, {
+        jobType: "render",
+        jobId: renderId,
+        status: "ERROR",
+        errorMsg: message,
+      });
+    }
+  } catch (err) {
+    console.error(`[failRender] notifyUser failed for render=${renderId}:`, err);
+  }
 }
 
 function getActiveVideoBlocks(
@@ -1802,6 +1827,60 @@ async function renderSlotOverlay(
   return { buffers, plan };
 }
 
+// ─── Limiteur de la phase overlays (rendus séquence RunPod) ─────────────────
+// Plan « Lancer les rendus », étape 5 : le lot déclenche plusieurs rendus à la
+// suite — sans borne, la phase overlay (Chromium/PNG, polices en base64,
+// buffers) de chaque rendu tournerait en parallèle et referait le freeze/OOM
+// que la Phase 1-2 de la refonte concurrence a déjà corrigé pour renderPNG.
+// On borne donc CETTE phase, pas tout le pipeline : le submit RunPod / réveil
+// du pod (`ensurePodReady`) tourne HORS du limiteur pour ne jamais bloquer la
+// file sur un démarrage à froid.
+// Sur `globalThis` pour survivre au HMR en dev (process PM2 unique en prod,
+// même motif que `renderPNG.ts` / `prisma.ts`).
+const globalForOverlayLimiter = globalThis as unknown as {
+  __renderOverlayPhaseLimiter?: <T>(fn: () => Promise<T>) => Promise<T>;
+};
+/**
+ * Nom exporté avec le préfixe `__test__` : ce n'est pas une réimplémentation
+ * pour les tests, c'est LA fonction de production (single source of truth),
+ * exposée pour que les tests puissent vérifier la borne de concurrence sur le
+ * singleton réel plutôt que sur une copie. `generateSequenceRender` l'appelle
+ * exactement comme un test le ferait.
+ */
+export function __test__getOverlayPhaseLimiter(): <T>(fn: () => Promise<T>) => Promise<T> {
+  if (!globalForOverlayLimiter.__renderOverlayPhaseLimiter) {
+    const max = Number(process.env.RENDER_OVERLAY_CONCURRENCY) || 3;
+    globalForOverlayLimiter.__renderOverlayPhaseLimiter = createLimiter(max);
+  }
+  return globalForOverlayLimiter.__renderOverlayPhaseLimiter;
+}
+
+/**
+ * CAS de sortie de file (étape 5) : le rendu doit rester PROCESSING pour être
+ * dequeue — sinon (force-fail manuel, récupération d'orphelin par
+ * `findInFlightRender`, annulation du slot, sweep admin), on ne fait AUCUN
+ * travail (pas de PNG, pas d'upload R2, pas de soumission RunPod).
+ *
+ * Le where-clause ne filtre PAS sur `stage: QUEUED` : `status` seul est la
+ * bonne garde. Si l'écriture QUEUED plus haut (`updateRenderTracking`) a
+ * échoué (erreur DB transitoire, avalée par ce helper), le rendu reste
+ * PROCESSING avec un stage antérieur — filtrer sur `stage` ferait alors
+ * échouer le CAS pour de mauvaises raisons et laisserait le rendu PROCESSING
+ * pour toujours (bloqué à 409 jusqu'au prochain redémarrage ou force-fail).
+ * Tout terminateur externe (force-fail, orphelin, annulation, sweep) pose
+ * déjà `status: ERROR`, donc `status` seul suffit à détecter un CAS miss.
+ * Exporté (préfixe `__test__`) pour un test unitaire ciblé sans mocker tout
+ * le pipeline de rendu.
+ */
+export async function __test__attemptOverlayDequeue(renderId: string): Promise<boolean> {
+  const dequeuedAt = new Date();
+  const claimed = await prisma.render.updateMany({
+    where: { id: renderId, status: "PROCESSING" },
+    data: { startedAt: dequeuedAt, lastHeartbeatAt: dequeuedAt },
+  });
+  return claimed.count > 0;
+}
+
 async function generateSequenceRender(
   renderId: string,
   templateJson: TemplateJSON,
@@ -1834,6 +1913,10 @@ async function generateSequenceRender(
   const setSequencedLibraryIds: string[] = [];
   const usedSetTagByLibrary: Record<string, string> = {};
   const sequenceSlotAssets: Record<string, string> = {};
+  // Claims posés pour les slots effectivement REDÉCOUVERTS pendant la phase
+  // overlay (aucun claim n'avait été posé au submit pour eux) — déclaré ici,
+  // hors du limiteur, car lu à l'étape 7 (persist usedAssets) plus bas.
+  const rediscoveryClaims: MediaUsageClaimState[] = [];
 
   try {
     // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
@@ -1846,101 +1929,131 @@ async function generateSequenceRender(
       claimedSetTagByLibrary,
     } = await loadPrefillAssets(renderId);
 
-    // 1. Résoudre les URLs vidéo de chaque slot
+    // Avant d'attendre un créneau du limiteur overlay (rafale de rendus
+    // PNG/Chromium sur le process unique) : signale explicitement l'attente,
+    // distincte du "Job accepté" initial posé par startRenderGeneration.
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
-      stage: RENDER_STAGE.SEQ_RESOLVE_SLOTS,
-      statusDetail: "Résolution des clips de la séquence",
-      progress: 0.08,
+      stage: RENDER_STAGE.QUEUED,
+      statusDetail: "En file d'attente",
+      progress: 0.06,
     });
 
-    // Résolution séquentielle pour propager le pinnedSetTag entre slots d'une même bibliothèque
-    // (ex : intro → outro dans la même prise doivent rester dans le même set).
-    // Amorcés avec les groupes DÉJÀ réclamés au submit : le rendu reste dans le
-    // groupe réservé et le resolver prend sa branche pinned, qui ne touche pas
-    // au curseur (sinon il avancerait une seconde fois).
-    const localPinnedSetTagByLibrary: Record<string, string> = { ...claimedSetTagByLibrary };
-    const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
-    // Claims posés pour les slots effectivement REDÉCOUVERTS ici (aucun claim
-    // n'avait été posé au submit pour eux).
-    const rediscoveryClaims: MediaUsageClaimState[] = [];
-    const allBlocks = templateJson.blocks ?? [];
-    for (const slot of slots) {
-      const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
-      // Resolve minDuration from the linked VideoBlock (by videoBlockId or binding),
-      // falling back to slot.maxDuration so that the asset covers at least the slot's required duration.
-      const linkedVideoBlock = slot.videoBlockId
-        ? allBlocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined
-        : slot.binding
-          ? allBlocks.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined
-          : undefined;
-      const slotMinDuration: number | undefined = linkedVideoBlock?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
-      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDuration, manualVideoBlockIds.includes(slot.id));
-      // Claim immédiat, dans la boucle : le slot suivant qui partage la même
-      // bibliothèque doit voir cet asset comme « déjà servi ».
-      await claimRediscoveredSlotAsset(resolved, accountId, rediscoveryClaims);
-      accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, sequenceSlotAssets);
-      // Track pinned set for subsequent slots sharing the same library
-      if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
-        if (resolved.resolvedSetTag && !localPinnedSetTagByLibrary[slot.libraryId]) {
-          localPinnedSetTagByLibrary[slot.libraryId] = resolved.resolvedSetTag;
-        }
-      }
-      resolvedSlots.push({ slot, videoUrl: resolved.url, metadata: resolved.metadata });
-    }
-
-    // Collect metadata by library for libraryMetadataRef substitution + variable injection
-    const seqMetadataByLibrary = new Map<string, Record<string, string | number | null>>();
-    for (const { slot, metadata } of resolvedSlots) {
-      if (slot.libraryId && Object.keys(metadata).length > 0) {
-        seqMetadataByLibrary.set(slot.libraryId, metadata);
-      }
-    }
-    const patchedTemplateForSeq = applyAssetMetadata(templateJson, seqMetadataByLibrary);
-    const enrichedListingData = enrichListingWithAssetMetadata(listingData, templateJson.schema, seqMetadataByLibrary);
-
-    // 2. Rendre les overlays PNG par slot (avec support timed overlays)
-    await updateRenderTracking(renderId, {
-      pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
-      stage: RENDER_STAGE.SEQ_RENDER_OVERLAYS,
-      statusDetail: "Rendu des overlays de séquence",
-      progress: 0.18,
-    });
-
-    const slotOverlays = await Promise.all(
-      resolvedSlots.map(({ slot }) => renderSlotOverlay(patchedTemplateForSeq, enrichedListingData, slot, width, height))
-    );
-
-    // 3. Uploader les overlays vers R2
-    await updateRenderTracking(renderId, {
-      pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
-      stage: RENDER_STAGE.SEQ_UPLOAD_OVERLAYS,
-      statusDetail: "Upload des overlays de séquence",
-      progress: 0.32,
-    });
-
-    // For each slot, upload all non-null overlay buffers and build the slot overlay descriptor
-    const slotOverlayDescriptors = await Promise.all(
-      slotOverlays.map(async (result, i) => {
-        const uploaded: (string | null)[] = await Promise.all(
-          result.buffers.map(async (buf, j) => {
-            if (!buf) return null;
-            const key = `overlays/${renderId}_seq${i}_${j}.png`;
-            overlayKeys.push(key);
-            return (await uploadToR2(key, buf, "image/png")).url;
-          })
+    // ── Phase overlay bornée (étape 5) : résolution des slots + rendu PNG +
+    // upload R2. Le submit RunPod (plus bas) tourne HORS de cette section.
+    const dequeueResult = await __test__getOverlayPhaseLimiter()(async () => {
+      // Sortie de file (CAS) : si le render n'est plus PROCESSING/QUEUED —
+      // force-fail manuel ou récupération d'orphelin pendant l'attente
+      // (`findInFlightRender`) — on abandonne SANS rendre le moindre PNG ni
+      // rien soumettre à RunPod.
+      const dequeued = await __test__attemptOverlayDequeue(renderId);
+      if (!dequeued) {
+        console.warn(
+          `[generateSequenceRender] render=${renderId} n'est plus PROCESSING/QUEUED à la sortie de file (force-fail ou orphelin récupéré) — abandon sans soumission RunPod.`,
         );
-        // Single overlay: use legacy overlay_url field for backward compat
-        // Timed: use overlay_urls + overlay_segments per slot
-        if (result.plan === null) {
-          return { overlay_url: uploaded[0] ?? null };
+        return null;
+      }
+
+      // 1. Résoudre les URLs vidéo de chaque slot
+      await updateRenderTracking(renderId, {
+        pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
+        stage: RENDER_STAGE.SEQ_RESOLVE_SLOTS,
+        statusDetail: "Résolution des clips de la séquence",
+        progress: 0.08,
+      });
+
+      // Résolution séquentielle pour propager le pinnedSetTag entre slots d'une même bibliothèque
+      // (ex : intro → outro dans la même prise doivent rester dans le même set).
+      // Amorcés avec les groupes DÉJÀ réclamés au submit : le rendu reste dans le
+      // groupe réservé et le resolver prend sa branche pinned, qui ne touche pas
+      // au curseur (sinon il avancerait une seconde fois).
+      const localPinnedSetTagByLibrary: Record<string, string> = { ...claimedSetTagByLibrary };
+      const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
+      const allBlocks = templateJson.blocks ?? [];
+      for (const slot of slots) {
+        const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
+        // Resolve minDuration from the linked VideoBlock (by videoBlockId or binding),
+        // falling back to slot.maxDuration so that the asset covers at least the slot's required duration.
+        const linkedVideoBlock = slot.videoBlockId
+          ? allBlocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined
+          : slot.binding
+            ? allBlocks.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined
+            : undefined;
+        const slotMinDuration: number | undefined = linkedVideoBlock?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
+        const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, prefillVideoAssets[slot.id], slotMinDuration, manualVideoBlockIds.includes(slot.id));
+        // Claim immédiat, dans la boucle : le slot suivant qui partage la même
+        // bibliothèque doit voir cet asset comme « déjà servi ».
+        await claimRediscoveredSlotAsset(resolved, accountId, rediscoveryClaims);
+        accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, sequenceSlotAssets);
+        // Track pinned set for subsequent slots sharing the same library
+        if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
+          if (resolved.resolvedSetTag && !localPinnedSetTagByLibrary[slot.libraryId]) {
+            localPinnedSetTagByLibrary[slot.libraryId] = resolved.resolvedSetTag;
+          }
         }
-        return {
-          overlay_urls: uploaded,
-          overlay_segments: result.plan.segments,
-        };
-      })
-    );
+        resolvedSlots.push({ slot, videoUrl: resolved.url, metadata: resolved.metadata });
+      }
+
+      // Collect metadata by library for libraryMetadataRef substitution + variable injection
+      const seqMetadataByLibrary = new Map<string, Record<string, string | number | null>>();
+      for (const { slot, metadata } of resolvedSlots) {
+        if (slot.libraryId && Object.keys(metadata).length > 0) {
+          seqMetadataByLibrary.set(slot.libraryId, metadata);
+        }
+      }
+      const patchedTemplateForSeq = applyAssetMetadata(templateJson, seqMetadataByLibrary);
+      const enrichedListingData = enrichListingWithAssetMetadata(listingData, templateJson.schema, seqMetadataByLibrary);
+
+      // 2. Rendre les overlays PNG par slot (avec support timed overlays)
+      await updateRenderTracking(renderId, {
+        pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
+        stage: RENDER_STAGE.SEQ_RENDER_OVERLAYS,
+        statusDetail: "Rendu des overlays de séquence",
+        progress: 0.18,
+      });
+
+      const slotOverlays = await Promise.all(
+        resolvedSlots.map(({ slot }) => renderSlotOverlay(patchedTemplateForSeq, enrichedListingData, slot, width, height))
+      );
+
+      // 3. Uploader les overlays vers R2
+      await updateRenderTracking(renderId, {
+        pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
+        stage: RENDER_STAGE.SEQ_UPLOAD_OVERLAYS,
+        statusDetail: "Upload des overlays de séquence",
+        progress: 0.32,
+      });
+
+      // For each slot, upload all non-null overlay buffers and build the slot overlay descriptor
+      const slotOverlayDescriptors = await Promise.all(
+        slotOverlays.map(async (result, i) => {
+          const uploaded: (string | null)[] = await Promise.all(
+            result.buffers.map(async (buf, j) => {
+              if (!buf) return null;
+              const key = `overlays/${renderId}_seq${i}_${j}.png`;
+              overlayKeys.push(key);
+              return (await uploadToR2(key, buf, "image/png")).url;
+            })
+          );
+          // Single overlay: use legacy overlay_url field for backward compat
+          // Timed: use overlay_urls + overlay_segments per slot
+          if (result.plan === null) {
+            return { overlay_url: uploaded[0] ?? null };
+          }
+          return {
+            overlay_urls: uploaded,
+            overlay_segments: result.plan.segments,
+          };
+        })
+      );
+
+      return { resolvedSlots, slotOverlayDescriptors };
+    });
+
+    // Libéré : la file overlay ne bloque plus rien pour ce rendu — le submit
+    // RunPod / réveil de pod qui suit tourne hors limiteur.
+    if (dequeueResult === null) return;
+    const { resolvedSlots, slotOverlayDescriptors } = dequeueResult;
 
     // 4. Résoudre la musique (MusicBlock du template)
     const music = await resolveMusicConfig(
