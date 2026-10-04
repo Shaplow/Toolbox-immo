@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
 import { isSafeRelativePath } from "@/lib/safeUrl";
-import { TranscriptionList } from "@/components/transcription/TranscriptionList";
+import { listTranscriptionWorkspace } from "@/lib/services/transcription/workspace";
+import { TranscriptionWorkspace } from "@/components/transcription/TranscriptionWorkspace";
 
 export default async function TranscriptionPage({
   searchParams,
@@ -60,32 +61,14 @@ export default async function TranscriptionPage({
       ? `/publications/${slotContext.id}`
       : null;
 
-  const jobs = await prisma.transcriptionJob.findMany({
-    where: { userId: userContext.effectiveUser.id },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    select: {
-      id: true,
-      status: true,
-      inputFilename: true,
-      model: true,
-      language: true,
-      enableDiarization: true,
-      hasDiarization: true,
-      segmentCount: true,
-      duration: true,
-      createdAt: true,
-      errorMsg: true,
-    },
-  });
+  // Même source que GET /api/transcription/batches : lots complets + jobs actifs.
+  const page = await listTranscriptionWorkspace(userContext.effectiveUser.id);
 
   return (
-    <TranscriptionList
-      initialJobs={jobs.map((j) => ({
-        ...j,
-        status: j.status as "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED",
-        createdAt: j.createdAt.toISOString(),
-      }))}
+    <TranscriptionWorkspace
+      initialJobs={page.jobs}
+      initialNextCursor={page.nextCursor}
+      diarizationAvailable={Boolean(process.env.HF_TOKEN)}
       slotContext={slotContext}
       returnTo={safeReturnTo}
     />

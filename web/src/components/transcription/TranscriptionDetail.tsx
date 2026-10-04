@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { useJobPolling } from "@/lib/hooks/useJobPolling";
 import { useJobEvent } from "@/lib/hooks/jobEventBus";
+import { toast } from "@/components/ui/Toast";
+import { downloadFromApi } from "@/lib/triggerDownloads";
 
 type JobDetail = {
   id: string;
@@ -24,6 +26,8 @@ type JobDetail = {
   createdAt: string;
   errorMsg: string | null;
   hasOutput: boolean;
+  /** Upload confirmé : une vidéo QUEUED est alors prête, en attente de lancement. */
+  uploadedAt?: string | null;
 };
 
 function fmtDuration(seconds: number | null): string {
@@ -64,7 +68,16 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
 
   // Polling fallback (5 s interval, stops automatically on terminal state)
   const { data: pollData } = useJobPolling<JobDetail>({
-    fetchFn: () => fetch(`/api/transcription/${job.id}`, { signal: AbortSignal.timeout(10_000) }).then((r) => r.json()),
+    fetchFn: async () => {
+      const res = await fetch(`/api/transcription/${job.id}`, { signal: AbortSignal.timeout(10_000) });
+      // Envoi annulé ou échoué : la ligne a été supprimée. État terminal, le
+      // polling s'arrête (sinon il tournait indéfiniment sur un 404).
+      if (res.status === 404) {
+        return { ...job, status: "FAILED", errorMsg: "Cette transcription n'existe plus : l'envoi du fichier a été annulé." };
+      }
+      if (!res.ok) throw new Error(`Erreur ${res.status}`);
+      return (await res.json()) as JobDetail;
+    },
     isTerminal: (d) => d.status === "COMPLETED" || d.status === "FAILED",
     intervalMs: 5000,
     enabled: job.status !== "COMPLETED" && job.status !== "FAILED",
@@ -103,23 +116,12 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
   const download = useCallback(async (format: "srt" | "json" | "chunks") => {
     setDownloading(format);
     try {
-      const res = await fetch(`/api/transcription/${job.id}/download?format=${format}`);
-      if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        throw new Error(err.error ?? `Erreur ${res.status}`);
-      }
-      const blob = await res.blob();
-      const disposition = res.headers.get("content-disposition") ?? "";
-      const match = disposition.match(/filename="([^"]+)"/);
-      const filename = match?.[1] ?? `transcription.${format === "chunks" ? "zip" : format}`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadFromApi(
+        `/api/transcription/${job.id}/download?format=${format}`,
+        `transcription.${format === "chunks" ? "zip" : format}`,
+      );
     } catch (err) {
-      alert(`Erreur download : ${String(err instanceof Error ? err.message : err)}`);
+      toast.error(`Téléchargement impossible : ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setDownloading(null);
     }
@@ -201,7 +203,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           </span>
           {job.hasDiarization && (
             <span className="px-2.5 py-1 rounded-full bg-info-50 text-info-700 text-xs">
-              Diarisé
+              Intervenants identifiés
             </span>
           )}          {qualityScore !== null && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
@@ -215,14 +217,26 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           )}        </div>
       </div>
 
-      {/* Processing state */}
-      {(job.status === "QUEUED" || job.status === "PROCESSING") && (
+      {/* Vidéo pas encore lancée : rien ne se passera sans action — pas de spinner. */}
+      {job.status === "QUEUED" && (
+        <div className="rounded-xl border border-border bg-muted/40 px-4 py-4 text-sm text-foreground space-y-1">
+          <p className="font-semibold">
+            {job.uploadedAt ? "Vidéo prête, pas encore lancée" : "Envoi du fichier en cours ou inachevé"}
+          </p>
+          <p className="text-muted-foreground">
+            {job.uploadedAt
+              ? "Lancez-la depuis la page Transcription, seule ou avec son lot."
+              : "Suivez l'envoi depuis la page Transcription, dans l'onglet où il a été lancé."}
+          </p>
+          {job.errorMsg && <p className="text-xs text-warning-700">{job.errorMsg}</p>}
+        </div>
+      )}
+
+      {job.status === "PROCESSING" && (
         <div className="flex flex-col items-center gap-4 py-12 text-muted-foreground">
           <Loader2 className="w-10 h-10 animate-spin text-info-600" />
           <div className="text-center">
-            <p className="font-medium text-muted-foreground">
-              {job.status === "QUEUED" ? "En file d'attente…" : "Transcription en cours…"}
-            </p>
+            <p className="font-medium text-muted-foreground">Transcription en cours…</p>
             <p className="text-sm mt-1">Cette page se met à jour automatiquement</p>
           </div>
           <button

@@ -66,35 +66,52 @@ Browser polls
 ### Transcription Flow
 
 ```
-Browser (RunPod mode — standard path)
-  → POST /api/transcription (JSON body: filename, ext, model, language, enable_diarization)
+Browser (RunPod mode — standard path, outil /transcriptions organisé en LOTS)
+  → POST /api/transcription (JSON: filename, ext, size, language|languages,
+                             enable_diarization, slotId?, batchId?)
       → auth + permissions (TOOLS.TRANSCRIPTION)
-      → createPresignedUploadUrl()       R2 presigned PUT URL (1h TTL)
-      → TranscriptionJob created (status: QUEUED, inputKey set)
-      → 202 { jobId, uploadUrl }
+      → batchId = UUID généré par le navigateur au dépôt (un dépôt = un lot)
+      → clés R2 uniques transcription/{userId}/{ts}-{rand}/…
+      → ≤ 100 Mo : presigned PUT (1h) + `contentType` signé, à renvoyer tel quel
+        > 100 Mo : multipart (partUrls)
+      → TranscriptionJob QUEUED (uploadedAt null) → 202 { jobId, uploadUrl, contentType } | { jobId, multipart }
 
-Browser uploads file directly to R2 via uploadUrl (bypasses Next.js)
+Browser uploads (file d'upload de module, 3 fichiers en parallèle, prepare au
+moment de l'upload — components/transcription/useTranscriptionUploads.ts)
+  → POST /api/transcription/[id]/upload-complete   ({uploadId, parts} ou {} pour un PUT unique)
+      → finalise le multipart OU vérifie par HEAD → pose `uploadedAt` (idempotent)
+      (mode local : PUT /upload-local pose uploadedAt lui-même)
 
-Browser
-  → POST /api/transcription/[id]/submit
-      → ownership + status QUEUED check
-      → submitRunpodJob()               job_type: "transcribe"
-          input: audio_url (R2 public), output_key, model_size, language,
-                 enable_diarization, hf_token (if diarization)
-      → TranscriptionJob updated to PROCESSING + runpodJobId
+Lancement (toujours manuel)
+  → POST /api/transcription/[id]/submit                 (une vidéo)
+  → POST /api/transcription/batches/[batchId]/launch     (QUEUED + uploadedAt du lot)
+      → claimTranscriptionForSubmit (lib/services/transcription/submitTranscription.ts) :
+        vérifications AVANT toute écriture (source absente + uploadedAt null →
+        409 UPLOAD_PENDING, job intact), claim atomique QUEUED→PROCESSING, relecture
+      → dispatchTranscription en fond (lot : serverlessOnly, 4 envois simultanés)
+        → runpodJobId écrit gardé ; échec → applyTranscriptionOutcome(failed)
 
-Browser polls
-  → GET /api/transcription/[id]
-      → if PROCESSING + runpodJobId: fetchRunpodStatus()
-          → COMPLETED: update outputJsonKey, segmentCount, duration, hasDiarization
-                       delete inputKey from R2 (audio cleaned up)
-          → FAILED/CANCELLED/TIMED_OUT: mark FAILED, delete inputKey
-      → returns { id, status, inputFilename, model, language, ... }
+Issue du job (webhook OU polling GET /api/transcription/[id])
+  → applyTranscriptionOutcome (lib/services/transcription/applyOutcome.ts) :
+    transition gardée sur le statut (le premier chemin gagne), releaseJobSource
+    (gardes pipeline auto), SSE, traduction auto, captions/description auto
 
-Browser
-  → GET /api/transcription/[id]/download  (download segments JSON from R2)
-  → GET /api/transcription/[id]/audit     (admin audit info)
+Jobs immobiles sans runpodJobId (GET [id] + sweep admin)
+  → lib/transcription/staleRules.ts + lib/services/transcription/expireStale.ts
+    upload non confirmé 15 min (sweep 10) → HEAD : présent = guéri, absent = FAILED
+    vidéo PRÊTE (uploadedAt) → n'expire qu'après 7 j
+    PROCESSING sans runpodJobId 30 min → standalone uploadé : remis QUEUED ; auto : FAILED
+
+Téléchargements
+  → GET /api/transcription/[id]/download?format=srt|json|chunks   (SRT en 1 clic par ligne)
+  → GET /api/transcription/batches/[batchId]/download?format=srt|json   (ZIP du lot,
+    noms dédoublonnés « nom (2).srt », ERREURS.txt + X-Transcription-Errors)
+  Chargeur unique de segments : lib/transcription/segments.ts (local/, R2, segmentsJson)
 ```
+
+Vue de la page : `GET /api/transcription/batches?cursor=` (service `listTranscriptionWorkspace` :
+100 jobs + tous les actifs + lots complétés). `GET /api/transcription?status=COMPLETED` sert
+les sélecteurs Captions / Description / Brief. DELETE d'un upload jamais confirmé SUPPRIME la ligne.
 
 **Local/compat path**: `POST /api/transcription` with multipart form → forwards directly to render-engine `/api/transcribe` (1h timeout). No presigned URL step.
 
@@ -119,12 +136,13 @@ Browser
 |---|---|
 | Job stuck in PROCESSING | RunPod job may have failed but status poll wasn't called / RunPod env vars missing |
 | Missing output video | `output_key` vs `video_url` mismatch in RunPod response; check `getR2PublicUrl(outputKey)` |
-| Audio source not cleaned up after COMPLETED | `deleteFromR2(job.inputKey)` is fire-and-forget; check R2 directly |
+| Audio source not cleaned up after COMPLETED | `releaseJobSource` (via applyTranscriptionOutcome) is best-effort on R2 and skips auto-pipeline jobs by design |
 | Presigned upload URL error | R2 not configured or `createPresignedUploadUrl()` threw; check R2 env vars |
 | Diarization not working | `HF_TOKEN` env var may be missing; check `enable_diarization` flag in payload |
 | Font not applied in captions | `attachCaptionFontAssets()` returned empty (font not in DB or `isCaptionCompatibleFontAsset()` returned false) |
 | `USE_RUNPOD=false` job not completing | Local render-engine must be running; check `CAPTIONS_API_URL` and `http://localhost:8000` connectivity |
-| Job created but never submitted (QUEUED forever) | Browser may have failed to call `/submit` after uploading to R2 |
+| Job created but never submitted (QUEUED forever) | Normal pour une vidéo prête d'un lot (lancement manuel) ; `uploadedAt` null = upload jamais confirmé (cf. staleRules) |
+| « Lancer » renvoie 409 UPLOAD_PENDING | Upload encore en cours ou jamais arrivé : le job reste QUEUED (plus de FAILED destructeur) |
 
 ## Key Files
 
@@ -135,7 +153,9 @@ Browser
 | Web API | `web/src/app/api/transcription/route.ts` | Start transcription (QUEUED + presigned URL) |
 | Web API | `web/src/app/api/transcription/[id]/submit/route.ts` | Submit QUEUED job to RunPod |
 | Web API | `web/src/app/api/transcription/[id]/route.ts` | Poll transcription status |
-| Web API | `web/src/app/api/transcription/[id]/download/route.ts` | Download segments JSON |
+| Web API | `web/src/app/api/transcription/[id]/download/route.ts` | Download SRT / JSON / chunks |
+| Web API | `web/src/app/api/transcription/batches/**` | Lots : vue, intervenants du lot, lancement, ZIP |
+| Service | `web/src/lib/services/transcription/` | submit (claim + dispatch), applyOutcome, expireStale, workspace |
 | Lib | `web/src/lib/captionsEngine.ts` | Config normalization |
 | Lib | `web/src/lib/transcriptionProcess.ts` | **Primary**: `buildSubtitlesFromWords()` — phrase grouping from JSON word data |
 | Lib | `web/src/lib/captionWordTiming.ts` | `buildTimedSegmentsFromSegments()`, `buildWordTimestampsForSubmission()` |

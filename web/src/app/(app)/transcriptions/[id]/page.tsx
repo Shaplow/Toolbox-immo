@@ -36,6 +36,7 @@ export default async function TranscriptionJobPage({
       createdAt: true,
       errorMsg: true,
       outputJsonKey: true,
+      uploadedAt: true,
       userId: true,
       render: {
         select: {
@@ -119,6 +120,7 @@ export default async function TranscriptionJobPage({
           createdAt: job.createdAt.toISOString(),
           errorMsg: job.errorMsg,
           hasOutput: !!job.outputJsonKey,
+          uploadedAt: job.uploadedAt?.toISOString() ?? null,
         }}
       />
 

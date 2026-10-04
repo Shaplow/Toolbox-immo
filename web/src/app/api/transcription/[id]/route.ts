@@ -13,10 +13,17 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
 import { resolveRunpodJobPhase, isPodJobId } from "@/lib/runpod";
+import { notifyUser } from "@/lib/sseStore";
+import { isSourceReleasable, releaseJobSource } from "@/lib/upload/releaseJobSource";
+import { isAutoPipelineJob } from "@/lib/transcription/staleRules";
+import { CANCELLED_ERROR_MSG } from "@/lib/transcription/batches";
+import { applyTranscriptionOutcome } from "@/lib/services/transcription/applyOutcome";
+import { expireStaleTranscriptionJobs } from "@/lib/services/transcription/expireStale";
 import { sanitizeLanguage, sanitizeLanguages } from "@/lib/transcriptionLanguages";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
@@ -34,8 +41,6 @@ const HF_TOKEN           = process.env.HF_TOKEN;
  * PROCESSING_STALL_MS du sweep et STALE_JOB_HOURS de podOrchestrator.
  */
 const STALL_MS = 6 * 60 * 60 * 1000; // 6 hours
-/** Jobs QUEUED without a runpodJobId for longer than this are considered abandoned. */
-const PRE_SUBMIT_STALL_MS = 15 * 60 * 1000; // 15 minutes
 
 const ALLOWED_MODELS = new Set([
   "turbo", "large-v3", "large-v3-turbo", "medium", "small", "base", "tiny",
@@ -83,20 +88,24 @@ export async function GET(
     return NextResponse.json(formatJob(job));
   }
   // ─── Pre-submit stall (QUEUED / PROCESSING without runpodJobId) ──────────
+  // Règles : lib/transcription/staleRules.ts ; traitement (guérison d'un upload
+  // fini sans confirmation, remise en attente d'un envoi interrompu, FAILED
+  // sinon) : lib/services/transcription/expireStale.ts. Une vidéo PRÊTE n'expire
+  // plus pendant qu'on prépare un lot.
   if ((job.status === "QUEUED" || job.status === "PROCESSING") && !job.runpodJobId) {
-    const ageMs = Date.now() - job.updatedAt.getTime();
-    if (ageMs > PRE_SUBMIT_STALL_MS) {
-      const errorMsg = "Job abandonné : le fichier source n'a jamais été uploadé";
-      const updated = await prisma.transcriptionJob.update({
-        where: { id: job.id },
-        data: { status: "FAILED", errorMsg },
-      });
-      console.warn(`[transcription/status] job ${job.id} stalled (unsubmitted) after ${Math.round(ageMs / 60_000)} min — marked FAILED`);
-      return NextResponse.json(formatJob(updated));
-    }
-    return NextResponse.json(formatJob(job));
+    const summary = await expireStaleTranscriptionJobs([job]);
+    const changed =
+      summary.healed + summary.requeued +
+      summary.failed.upload_abandoned + summary.failed.never_launched + summary.failed.dispatch_interrupted;
+    if (changed === 0) return NextResponse.json(formatJob(job));
+    console.warn(`[transcription/status] job ${job.id} expiré`, summary);
+    const current = await prisma.transcriptionJob.findUniqueOrThrow({ where: { id: job.id } });
+    return NextResponse.json(formatJob(current));
   }
   // ─── Si PROCESSING avec runpodJobId, déléguer à resolveRunpodJobPhase ─────
+  // L'issue est appliquée par applyTranscriptionOutcome, comme pour le webhook :
+  // une seule transition, source libérée avec ses gardes (jamais la vidéo d'un
+  // render ou d'une version montée), SSE et chaîne aval (traduction, etc.).
   if (job.status === "PROCESSING" && job.runpodJobId && RUNPOD_API_KEY && RUNPOD_ENDPOINT_ID) {
     const resolved = await resolveRunpodJobPhase<RunpodOutput>(
       RUNPOD_ENDPOINT_ID,
@@ -107,44 +116,22 @@ export async function GET(
     );
 
     if (resolved.phase === "completed") {
-      const out = resolved.output;
-      const updated = await prisma.transcriptionJob.update({
-        where: { id: job.id },
-        data: {
-          status: "COMPLETED",
-          outputJsonKey: out?.output_key ?? job.outputJsonKey,
-          segmentCount: out?.segment_count ?? null,
-          duration: out?.duration ?? null,
-          hasDiarization: out?.has_diarization ?? false,
-          inputKey: null,
-        },
-      });
-      if (job.inputKey && r2Configured()) {
-        deleteFromR2(job.inputKey).catch((err) =>
-          console.warn(`[transcription/status] R2 cleanup failed for key=${job.inputKey}:`, err)
-        );
-      }
-      return NextResponse.json(formatJob(updated));
+      await applyTranscriptionOutcome(job, { kind: "completed", output: resolved.output ?? {} });
+      const current = await prisma.transcriptionJob.findUniqueOrThrow({ where: { id: job.id } });
+      return NextResponse.json(formatJob(current));
     }
 
     if (resolved.phase === "failed" || resolved.phase === "stalled") {
       const errorMsg =
         resolved.phase === "stalled"
-          ? "Job bloqué : pas de réponse depuis plus de 2 heures"
+          ? "Job bloqué : pas de réponse depuis plus de 6 heures"
           : (resolved as { phase: "failed"; error: string }).error;
-      const updated = await prisma.transcriptionJob.update({
-        where: { id: job.id },
-        data: { status: "FAILED", errorMsg, inputKey: null },
-      });
-      if (job.inputKey && r2Configured()) {
-        deleteFromR2(job.inputKey).catch((err) =>
-          console.warn(`[transcription/status] R2 cleanup failed for key=${job.inputKey}:`, err)
-        );
-      }
-      if (resolved.phase === "stalled") {
+      const applied = await applyTranscriptionOutcome(job, { kind: "failed", errorMsg });
+      if (applied && resolved.phase === "stalled") {
         console.warn(`[transcription/status] job ${job.id} stalled (runpodJobId=${job.runpodJobId}) — marked FAILED`);
       }
-      return NextResponse.json(formatJob(updated));
+      const current = await prisma.transcriptionJob.findUniqueOrThrow({ where: { id: job.id } });
+      return NextResponse.json(formatJob(current));
     }
 
     if (resolved.phase === "unreachable") {
@@ -196,20 +183,26 @@ export async function PATCH(
     return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
   }
 
-  const model = sanitizeModel(body.model);
-  const enableDiarization = toBoolean(body.enable_diarization);
+  // PATCH partiel : seuls les champs présents dans le corps changent. L'UI
+  // enregistre chaque réglage au fil de l'eau (la case « intervenants » seule,
+  // ou la langue seule) ; un champ omis ne doit jamais être réinitialisé —
+  // `enable_diarization` absent repassait à false, `model` absent à « turbo »,
+  // et un job multi-langue repassait en mono (bug data-loss d'origine).
+  const has = (field: string) => Object.prototype.hasOwnProperty.call(body, field);
+  const data: Prisma.TranscriptionJobUpdateManyMutationInput = { errorMsg: null };
 
-  // Le PATCH ne doit JAMAIS écraser silencieusement le champ `languages` :
-  // l'UI saveQueuedJobConfig n'envoie que { language, enable_diarization }
-  // (cf. TranscriptionList.tsx). Sans ce sentinel, un job multi-langue serait
-  // repassé en mono à chaque save de la config (bug critique data-loss).
-  const hasLanguagesField = Object.prototype.hasOwnProperty.call(body, "languages");
-  const languages = hasLanguagesField ? sanitizeLanguages(body.languages) : null;
-  const language = languages && languages.length > 0
-    ? languages[0]
-    : sanitizeLanguage(body.language ?? job.language);
+  if (has("model")) data.model = sanitizeModel(body.model);
+  if (has("enable_diarization")) data.enableDiarization = toBoolean(body.enable_diarization);
 
-  if (enableDiarization && !HF_TOKEN) {
+  const languages = has("languages") ? sanitizeLanguages(body.languages) : null;
+  if (languages !== null) data.languages = languages;
+  if (languages && languages.length > 0) {
+    data.language = languages[0];
+  } else if (has("language")) {
+    data.language = sanitizeLanguage(body.language, job.language);
+  }
+
+  if (data.enableDiarization && !HF_TOKEN) {
     return NextResponse.json(
       { error: "La diarisation n'est pas disponible sur ce serveur (HF_TOKEN non configuré)." },
       { status: 503 }
@@ -218,13 +211,7 @@ export async function PATCH(
 
   const patchResult = await prisma.transcriptionJob.updateMany({
     where: { id: job.id, status: "QUEUED" },
-    data: {
-      model,
-      language,
-      enableDiarization,
-      errorMsg: null,
-      ...(languages !== null ? { languages } : {}),
-    },
+    data,
   });
 
   if (patchResult.count === 0) {
@@ -243,8 +230,14 @@ export async function PATCH(
  * DELETE /api/transcription/[id]
  *
  * Annule un job de transcription qui est encore QUEUED ou PROCESSING.
- * Le job est marqué FAILED avec errorMsg "Annulé".
- * Le fichier audio R2 est supprimé si présent.
+ *
+ * - Upload jamais confirmé (QUEUED, `uploadedAt` nul, hors pipeline auto) : la
+ *   ligne est SUPPRIMÉE — c'est un upload annulé ou échoué côté navigateur, pas
+ *   une transcription ; la garder gonflerait les « échecs » du lot à chaque
+ *   réessai. Réponse `{ id, deleted: true }`.
+ * - Sinon : FAILED « Annulé », source libérée via releaseJobSource — dont les
+ *   gardes protègent la vidéo d'un render OU d'une version montée (l'ancien code
+ *   ne testait que `renderId` et effaçait la vidéo de la version).
  */
 export async function DELETE(
   _req: NextRequest,
@@ -266,18 +259,35 @@ export async function DELETE(
     return NextResponse.json({ error: "Ce job ne peut plus être annulé." }, { status: 409 });
   }
 
-  const isAutoPipeline = Boolean(job.renderId);
-  const updated = await prisma.transcriptionJob.update({
-    where: { id: job.id },
-    data: { status: "FAILED", errorMsg: "Annulé", ...(isAutoPipeline ? {} : { inputKey: null }) },
-  });
-
-  if (!isAutoPipeline && job.inputKey && r2Configured()) {
-    deleteFromR2(job.inputKey).catch((err) =>
-      console.warn(`[transcription/cancel] R2 cleanup failed for key=${job.inputKey}:`, err)
-    );
+  if (job.status === "QUEUED" && !job.uploadedAt && !isAutoPipelineJob(job)) {
+    const removed = await prisma.transcriptionJob.deleteMany({
+      where: { id: job.id, status: "QUEUED", uploadedAt: null },
+    });
+    if (removed.count > 0) {
+      // Upload multipart abandonné : ses parties sont libérées par /upload-abort
+      // (client) et par le nettoyage des multiparts orphelins.
+      if (job.inputKey && isSourceReleasable("transcription", job) && r2Configured()) {
+        deleteFromR2(job.inputKey).catch((err) =>
+          console.warn(`[transcription/cancel] R2 cleanup failed for key=${job.inputKey}:`, err)
+        );
+      }
+      return NextResponse.json({ id: job.id, deleted: true });
+    }
   }
 
+  const cancelled = await prisma.transcriptionJob.updateMany({
+    where: { id: job.id, status: { in: ["QUEUED", "PROCESSING"] } },
+    data: { status: "FAILED", errorMsg: CANCELLED_ERROR_MSG },
+  });
+  if (cancelled.count === 0) {
+    return NextResponse.json({ error: "Ce job ne peut plus être annulé." }, { status: 409 });
+  }
+  await releaseJobSource(prisma, "transcription", job).catch((err) =>
+    console.warn(`[transcription/cancel] libération source échouée job=${job.id}:`, err)
+  );
+  notifyUser(job.userId, { jobType: "transcription", jobId: job.id, status: "FAILED", errorMsg: CANCELLED_ERROR_MSG });
+
+  const updated = await prisma.transcriptionJob.findUniqueOrThrow({ where: { id: job.id } });
   return NextResponse.json(formatJob(updated));
 }
 
@@ -295,6 +305,8 @@ function formatJob(job: {
   createdAt: Date;
   errorMsg: string | null;
   outputJsonKey?: string | null;
+  batchId?: string | null;
+  uploadedAt?: Date | null;
 }) {
   return {
     id: job.id,
@@ -309,6 +321,8 @@ function formatJob(job: {
     duration: job.duration,
     createdAt: job.createdAt,
     errorMsg: job.errorMsg,
+    batchId: job.batchId ?? null,
+    uploadedAt: job.uploadedAt ?? null,
     hasOutput: !!job.outputJsonKey,
   };
 }

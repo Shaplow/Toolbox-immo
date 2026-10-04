@@ -213,7 +213,7 @@ export function DescriptionTool({
   useEffect(() => {
     if (inputTab === "transcription" && transcriptions.length === 0) {
       setLoadingTranscriptions(true);
-      fetch("/api/transcription")
+      fetch("/api/transcription?status=COMPLETED")
         .then((r) => r.json())
         .then((data: unknown) => {
           const list: TranscriptionItem[] = Array.isArray(data)

@@ -1,5 +1,7 @@
 /**
- * Déclenchement de téléchargements navigateur depuis des URLs pré-signées R2.
+ * Déclenchement de téléchargements navigateur : URLs pré-signées R2
+ * (`triggerDownloads`, `triggerDownload`) et fichiers générés à la volée par une
+ * route API (`downloadFromApi`).
  *
  * Extrait de `components/publications/sections/RushesSection.tsx`, où le
  * mécanisme a été mis au point, pour être partagé avec la médiathèque.
@@ -63,4 +65,56 @@ export function triggerDownload(url: string, filename: string): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+}
+
+/**
+ * Nom de fichier annoncé par un en-tête Content-Disposition. Préfère
+ * `filename*` (RFC 5987, UTF-8 — accents conservés) à `filename` (repli ASCII).
+ */
+export function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const encoded = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1].trim());
+    } catch {
+      // Encodage invalide : on retombe sur le nom ASCII.
+    }
+  }
+  return header.match(/filename="([^"]+)"/i)?.[1] ?? null;
+}
+
+/**
+ * Télécharge un fichier généré par une route API same-origin (SRT, ZIP…).
+ *
+ * Passe par `fetch` + Blob plutôt que par une navigation : une route qui
+ * répond en erreur renvoie du JSON, qu'on remonte en exception (message de la
+ * route) pour l'afficher dans un toast, au lieu d'ouvrir une page d'erreur.
+ *
+ * @returns La réponse, pour lire d'éventuels en-têtes métier.
+ */
+export async function downloadFromApi(url: string, fallbackFilename: string): Promise<Response> {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    let message = `Erreur ${res.status}`;
+    try {
+      const data = (await res.json()) as { error?: string };
+      if (data.error) message = data.error;
+    } catch {
+      // Corps non JSON : on garde le statut.
+    }
+    throw new Error(message);
+  }
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filenameFromDisposition(res.headers.get("content-disposition")) ?? fallbackFilename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Révocation différée : une révocation immédiate peut couper le
+  // téléchargement avant que le navigateur ait lu le Blob (Firefox).
+  setTimeout(() => URL.revokeObjectURL(objectUrl), CLEANUP_MS);
+  return res;
 }

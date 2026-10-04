@@ -45,7 +45,10 @@ export default defineConfig({
   webServer: {
     // Lance next dev avec DATABASE_URL pointant vers la DB de test.
     // `-p 3100` évite la collision avec un éventuel dev server sur 3000.
-    command: `DATABASE_URL="${TEST_DB_URL}" NEXTAUTH_URL="http://localhost:${TEST_PORT}" next dev -p ${TEST_PORT}`,
+    // HF_TOKEN factice : la diarisation (« Identifier les intervenants ») n'est
+    // proposée que si la variable existe ; sa valeur n'est lue que par le moteur,
+    // jamais appelé en e2e (pas de RunPod, pas de render-engine).
+    command: `DATABASE_URL="${TEST_DB_URL}" NEXTAUTH_URL="http://localhost:${TEST_PORT}" HF_TOKEN="${process.env.HF_TOKEN ?? "e2e-dummy"}" next dev -p ${TEST_PORT}`,
     url: `http://localhost:${TEST_PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

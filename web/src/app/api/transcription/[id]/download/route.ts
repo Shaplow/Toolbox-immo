@@ -15,14 +15,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
-import { getFromR2 } from "@/lib/r2";
-import path from "path";
-import { readFile } from "fs/promises";
 import {
   generateSrt,
   generateChunks,
   type Segment,
 } from "@/lib/transcriptionProcess";
+import { hasSegmentSource, loadTranscriptionSegments } from "@/lib/transcription/segments";
+import { attachmentDisposition, sanitizeFileStem, sanitizeZipStem } from "@/lib/transcription/batches";
 import JSZip from "jszip";
 
 export async function GET(
@@ -47,29 +46,26 @@ export async function GET(
   if (job.status !== "COMPLETED") {
     return NextResponse.json({ error: "Transcription non terminée" }, { status: 409 });
   }
-  if (!job.outputJsonKey) {
+  if (!hasSegmentSource(job)) {
     return NextResponse.json({ error: "Fichier de sortie introuvable" }, { status: 404 });
   }
 
-  // ─── Charger les segments (local ou R2) ─────────────────────────────────
+  // ─── Charger les segments (local, R2 ou copie inline) ───────────────────
+  // Chargeur partagé avec le ZIP de lot (lib/transcription/segments.ts).
   let segments: Segment[];
   try {
-    let buf: Buffer;
-    if (job.outputJsonKey.startsWith("local/")) {
-      const localPath = path.join(process.cwd(), "public", job.outputJsonKey.replace(/^local\//, ""));
-      buf = await readFile(localPath);
-    } else {
-      buf = await getFromR2(job.outputJsonKey);
-    }
-    segments = JSON.parse(buf.toString("utf-8")) as Segment[];
+    segments = await loadTranscriptionSegments(job);
   } catch (err) {
     console.error("[transcription/download] Erreur lecture segments:", err);
     return NextResponse.json({ error: "Impossible de lire les données de transcription" }, { status: 500 });
   }
 
-  const stem = (url.searchParams.get("stem") ?? job.inputFilename?.replace(/\.[^.]+$/, "") ?? "transcription")
-    .replace(/[^\w\-. ]/g, "_")
-    .trim();
+  // Accents conservés (Content-Disposition RFC 5987) : « Visite été.mp4 » donne
+  // « Visite été.srt », plus « Visite_t_.srt ».
+  const stemParam = url.searchParams.get("stem");
+  const stem = stemParam
+    ? sanitizeFileStem(stemParam, "transcription")
+    : sanitizeZipStem(job.inputFilename, "transcription");
 
   // ─── SRT (défaut) ─────────────────────────────────────────────────────────
   if (format === "srt") {
@@ -77,7 +73,7 @@ export async function GET(
     return new NextResponse(srtContent, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${stem}.srt"`,
+        "Content-Disposition": attachmentDisposition(`${stem}.srt`),
       },
     });
   }
@@ -88,7 +84,7 @@ export async function GET(
     return new NextResponse(jsonContent, {
       headers: {
         "Content-Type": "application/json; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${stem}_segments.json"`,
+        "Content-Disposition": attachmentDisposition(`${stem}_segments.json`),
       },
     });
   }
@@ -113,7 +109,7 @@ export async function GET(
     return new NextResponse(new Uint8Array(zipBuffer), {
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${stem}_chunks.zip"`,
+        "Content-Disposition": attachmentDisposition(`${stem}_chunks.zip`),
       },
     });
   }

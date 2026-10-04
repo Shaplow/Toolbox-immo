@@ -10,9 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
-import { getFromR2 } from "@/lib/r2";
-import path from "path";
-import { readFile } from "fs/promises";
+import { hasSegmentSource, loadTranscriptionSegments } from "@/lib/transcription/segments";
 import {
   buildSubtitlesFromWords,
   auditSRT,
@@ -40,20 +38,14 @@ export async function GET(
   if (job.status !== "COMPLETED") {
     return NextResponse.json({ error: "Transcription non terminée" }, { status: 409 });
   }
-  if (!job.outputJsonKey) {
+  if (!hasSegmentSource(job)) {
     return NextResponse.json({ error: "Fichier de sortie introuvable" }, { status: 404 });
   }
 
+  // Chargeur partagé avec les téléchargements (local, R2 ou copie inline).
   let segments: Segment[];
   try {
-    let buf: Buffer;
-    if (job.outputJsonKey.startsWith("local/")) {
-      const localPath = path.join(process.cwd(), "public", job.outputJsonKey.replace(/^local\//, ""));
-      buf = await readFile(localPath);
-    } else {
-      buf = await getFromR2(job.outputJsonKey);
-    }
-    segments = JSON.parse(buf.toString("utf-8")) as Segment[];
+    segments = await loadTranscriptionSegments(job);
   } catch (err) {
     console.error("[transcription/audit] Erreur lecture segments:", err);
     return NextResponse.json({ error: "Impossible de lire les données de transcription" }, { status: 500 });

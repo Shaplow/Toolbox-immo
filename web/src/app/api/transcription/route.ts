@@ -15,13 +15,21 @@
  *                        Whisper forcées + fusion). Pas d'"auto" autorisé ici.
  *   enable_diarization : "true" | "false" (défaut: "false")
  *
+ * Corps JSON (upload direct navigateur → R2, chemin de l'outil /transcriptions) :
+ *   mêmes champs + filename, ext, size, slotId?, batchId? (UUID du lot de dépôt)
+ *
  * Réponse 202 :
  *   { jobId: string }
  *
- * GET /api/transcription
- * Liste les jobs de l'utilisateur connecté (50 derniers).
+ * GET /api/transcription?status=COMPLETED&cursor=<jobId>
+ * Liste les jobs de l'utilisateur connecté (50 par page, plus récents d'abord).
+ * `status` filtre côté serveur : les sélecteurs Captions / Description / Brief
+ * ne veulent que les transcriptions terminées, et un lot de 50 vidéos en cours
+ * les aurait sinon évincées de la première page.
+ * Réponse : { jobs }. La page /transcriptions passe par /api/transcription/batches.
  */
 
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/requireAuth";
 import { hasTool, TOOLS } from "@/lib/permissions";
@@ -34,6 +42,7 @@ import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
 import { sanitizeLanguage, sanitizeLanguages } from "@/lib/transcriptionLanguages";
+import { isTranscriptionStatus, isValidBatchId } from "@/lib/transcription/batches";
 
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -70,6 +79,19 @@ function toBoolean(value: FormDataEntryValue | null, def = false): boolean {
   return s === "true" || s === "1" || s === "yes";
 }
 
+/**
+ * Segment unique du préfixe de stockage d'un job. `Date.now()` seul ne suffit
+ * plus : l'outil prépare plusieurs fichiers en parallèle, et deux prepare dans la
+ * même milliseconde partageaient la même source et le même segments.json. Le
+ * préfixe `transcription/` (seul contrôlé par releaseJobSource et r2Cleanup)
+ * est inchangé.
+ */
+function jobStorageSegment(): string {
+  return `${Date.now()}-${randomUUID().slice(0, 8)}`;
+}
+
+const LIST_PAGE_SIZE = 50;
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -85,7 +107,7 @@ export async function POST(req: NextRequest) {
   // ─── Mode RunPod via JSON (presigned URL — pas de fichier dans Next.js) ──
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    let body: { filename?: unknown; ext?: unknown; size?: unknown; model?: unknown; language?: unknown; languages?: unknown; enable_diarization?: unknown; slotId?: unknown };
+    let body: { filename?: unknown; ext?: unknown; size?: unknown; model?: unknown; language?: unknown; languages?: unknown; enable_diarization?: unknown; slotId?: unknown; batchId?: unknown };
     try {
       body = await req.json();
     } catch {
@@ -114,6 +136,16 @@ export async function POST(req: NextRequest) {
     const language         = languages.length > 0 ? languages[0] : sanitizeLanguage(body.language);
     const enableDiarization = String(body.enable_diarization ?? "false").toLowerCase() === "true";
 
+    // Lot de dépôt : UUID généré par le navigateur. Toujours relu avec userId,
+    // donc un identifiant forgé ne regroupe que les propres jobs de l'appelant.
+    let batchId: string | null = null;
+    if (body.batchId != null && body.batchId !== "") {
+      if (!isValidBatchId(body.batchId)) {
+        return NextResponse.json({ error: "Identifiant de lot invalide" }, { status: 400 });
+      }
+      batchId = body.batchId.toLowerCase();
+    }
+
     // V2 friction MED-2 du audit 2026-05-31 : si un slotId est fourni, on
     // valide l'accès et on rattache le job au slot pour qu'il apparaisse
     // dans la ProductionChain. Sans cette FK, la transcription standalone
@@ -139,12 +171,12 @@ export async function POST(req: NextRequest) {
       );
     }
     const userId = userContext.effectiveUser.id;
-    const jobTimestamp = Date.now();
+    const storageSegment = jobStorageSegment();
 
     // ── Mode local dev : R2 non configuré → stockage local ─────────────────
     if (!r2Configured()) {
-      const inputKey      = `local/transcription/${userId}/${jobTimestamp}/source.${ext}`;
-      const outputJsonKey = `local/transcription/${userId}/${jobTimestamp}/segments.json`;
+      const inputKey      = `local/transcription/${userId}/${storageSegment}/source.${ext}`;
+      const outputJsonKey = `local/transcription/${userId}/${storageSegment}/segments.json`;
       const job = await prisma.transcriptionJob.create({
         data: {
           userId,
@@ -157,6 +189,7 @@ export async function POST(req: NextRequest) {
           enableDiarization,
           outputJsonKey,
           slotId: resolvedSlotId,
+          batchId,
         },
       });
       return NextResponse.json(
@@ -172,8 +205,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const inputKey     = `transcription/${userId}/${jobTimestamp}/source.${ext}`;
-    const outputJsonKey = `transcription/${userId}/${jobTimestamp}/segments.json`;
+    const inputKey     = `transcription/${userId}/${storageSegment}/source.${ext}`;
+    const outputJsonKey = `transcription/${userId}/${storageSegment}/segments.json`;
 
     const mimeByExt: Record<string, string> = {
       mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska",
@@ -186,7 +219,7 @@ export async function POST(req: NextRequest) {
     // obligatoire au-delà de 5 Go — limite dure R2 sur un PUT unique. Le client
     // finalise via /upload-complete après avoir uploadé toutes les parties.
     let uploadResponse:
-      | { uploadUrl: string }
+      | { uploadUrl: string; contentType: string }
       | { multipart: { uploadId: string; partSize: number; partUrls: { partNumber: number; url: string }[] } };
     try {
       if (size > MULTIPART_THRESHOLD) {
@@ -199,8 +232,15 @@ export async function POST(req: NextRequest) {
         }
         uploadResponse = { multipart: { uploadId, partSize: PART_SIZE, partUrls } };
       } else {
-        const uploadUrl = await createPresignedUploadUrl(inputKey, contentTypeForUpload, 3600);
-        uploadResponse = { uploadUrl };
+        const uploadUrl = await createPresignedUploadUrl(
+          inputKey,
+          contentTypeForUpload,
+          MULTIPART.SINGLE_PUT_EXPIRY_SECONDS,
+        );
+        // Le Content-Type fait partie de la signature : le client doit envoyer
+        // exactement celui-ci (et non `file.type`, qui diffère selon le
+        // navigateur pour .m4a, .wav, .mkv… → 403).
+        uploadResponse = { uploadUrl, contentType: contentTypeForUpload };
       }
     } catch (err) {
       console.error("[transcription/prepare] Presigned URL failed:", err);
@@ -219,6 +259,7 @@ export async function POST(req: NextRequest) {
         enableDiarization,
         outputJsonKey,
         slotId: resolvedSlotId,
+        batchId,
       },
     });
 
@@ -297,7 +338,7 @@ export async function POST(req: NextRequest) {
     formResolvedSlotId = slot.id;
   }
 
-  const jobTimestamp = Date.now();
+  const storageSegment = jobStorageSegment();
   const userId = userContext.effectiveUser.id;
 
   // ─── Mode local (USE_RUNPOD=false) ────────────────────────────────────────
@@ -363,7 +404,7 @@ export async function POST(req: NextRequest) {
       let outputJsonKey: string | undefined;
       if (r2Configured()) {
         const jsonBuffer = Buffer.from(JSON.stringify(data.segments, null, 2), "utf-8");
-        const key = `transcription/${userId}/${jobTimestamp}/segments.json`;
+        const key = `transcription/${userId}/${storageSegment}/segments.json`;
         await uploadToR2(key, jsonBuffer, "application/json");
         outputJsonKey = key;
       }
@@ -419,7 +460,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ─── Upload audio source vers R2 ─────────────────────────────────────────
-  const inputKey = `transcription/${userId}/${jobTimestamp}/source.${ext}`;
+  const inputKey = `transcription/${userId}/${storageSegment}/source.${ext}`;
   let audioUrl: string;
   try {
     const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
@@ -430,7 +471,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Échec upload audio vers R2" }, { status: 500 });
   }
 
-  const outputJsonKey = `transcription/${userId}/${jobTimestamp}/segments.json`;
+  const outputJsonKey = `transcription/${userId}/${storageSegment}/segments.json`;
 
   // ─── Créer TranscriptionJob en DB ────────────────────────────────────────
   // V6.7 — slotId résolu plus haut depuis form-data pour rattacher au slot.
@@ -503,11 +544,20 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const cursorParam = url.searchParams.get("cursor");
+  const statusParam = url.searchParams.get("status");
+  if (statusParam !== null && !isTranscriptionStatus(statusParam)) {
+    return NextResponse.json({ error: `Statut inconnu : ${statusParam}` }, { status: 400 });
+  }
 
   const jobs = await prisma.transcriptionJob.findMany({
-    where: { userId: userContext.effectiveUser.id },
-    orderBy: { createdAt: "desc" },
-    take: 50,
+    where: {
+      userId: userContext.effectiveUser.id,
+      ...(statusParam ? { status: statusParam } : {}),
+    },
+    // `id` départage les jobs créés dans la même milliseconde (prepare en
+    // parallèle) : sans lui, l'ordre — donc la pagination — n'est pas stable.
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: LIST_PAGE_SIZE,
     ...(cursorParam ? { cursor: { id: cursorParam }, skip: 1 } : {}),
     select: {
       id: true,

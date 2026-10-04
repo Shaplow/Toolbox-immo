@@ -135,7 +135,7 @@ export function BriefTool({
   const loadTranscriptions = useCallback(async () => {
     setLoadingTranscriptions(true);
     try {
-      const res = await fetch("/api/transcription", { cache: "no-store" });
+      const res = await fetch("/api/transcription?status=COMPLETED", { cache: "no-store" });
       const payload = (await res.json()) as { jobs?: (TranscriptionOption & { status: string })[] };
       setTranscriptions((payload.jobs ?? []).filter((j) => j.status === "COMPLETED"));
     } catch {

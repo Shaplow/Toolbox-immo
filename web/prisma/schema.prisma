@@ -337,6 +337,17 @@ model TranscriptionJob {
   /// version promue, par exemple).
   staleSince           DateTime?
   staleReason          String? // "version_promoted" | "render_replaced"
+  /// Lot de dépôt de l'outil standalone /transcriptions : tous les fichiers
+  /// déposés d'un coup partagent cet identifiant (UUID généré par le navigateur
+  /// au dépôt, validé côté serveur). Null pour les jobs du pipeline auto et les
+  /// jobs antérieurs aux lots. Toujours lu avec `userId` : un batchId ne regroupe
+  /// que les jobs de son propriétaire.
+  batchId              String?
+  /// Upload du média source confirmé (multipart finalisé, PUT unique vérifié par
+  /// HEAD R2, ou écriture locale terminée). Null tant que l'upload est en cours :
+  /// c'est ce qui distingue un job QUEUED « prêt à lancer » d'un upload en vol
+  /// ou abandonné (cf. lib/transcription/staleRules.ts).
+  uploadedAt           DateTime?
   /// V6 — Relation inverse : ce job est-il la "transcription courante" du slot ?
   activeForSlot        PublicationSlot?    @relation("SlotActiveTranscription")
   createdAt            DateTime            @default(now())
@@ -344,6 +355,8 @@ model TranscriptionJob {
   descriptionJobs      DescriptionJob[]
 
   @@index([slotId, createdAt])
+  @@index([userId, createdAt])
+  @@index([userId, batchId])
 }
 
 model CoverFramePack {

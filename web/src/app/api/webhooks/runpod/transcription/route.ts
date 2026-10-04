@@ -2,32 +2,30 @@
  * POST /api/webhooks/runpod/transcription
  *
  * Reçoit la callback RunPod quand un job transcription termine.
- * Met à jour TranscriptionJob et nettoie le fichier audio source en R2.
+ * L'issue (statut, libération de la source, SSE, chaîne aval) est appliquée par
+ * `applyTranscriptionOutcome`, partagé avec le polling de GET
+ * /api/transcription/[id] : le premier des deux qui la découvre l'applique,
+ * l'autre ne fait rien.
  * Sécurité : voir verifyAndParseRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { releaseJobSource } from "@/lib/upload/releaseJobSource";
 import { verifyAndParseRunpodWebhook } from "@/lib/webhooks/runpod";
-import { notifyUser } from "@/lib/sseStore";
-import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
-import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
-import { triggerAutoTranslationForTranscription } from "@/lib/triggerAutoTranslationFromTranscription";
+import {
+  applyTranscriptionOutcome,
+  type TranscriptionOutput,
+} from "@/lib/services/transcription/applyOutcome";
 
-type TranscriptionOutput = {
-  output_key?: string;
-  segment_count?: number;
-  duration?: number;
+type WebhookOutput = TranscriptionOutput & {
   language?: string;
-  has_diarization?: boolean;
   error?: string;
   job_id?: string;
 };
 
 export async function POST(req: NextRequest) {
   // Security-auditor Critical-1 — auth HMAC body-signed.
-  const parsed = await verifyAndParseRunpodWebhook<TranscriptionOutput>(req);
+  const parsed = await verifyAndParseRunpodWebhook<WebhookOutput>(req);
   if (!parsed.ok) return parsed.response;
 
   const { id: runpodJobId, status, output, error } = parsed.body;
@@ -45,88 +43,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // Idempotent — webhook peut être rejoué
+  // Idempotent — webhook peut être rejoué (et la transition reste gardée).
   if (job.status === "COMPLETED" || job.status === "FAILED") {
     return NextResponse.json({ ok: true });
   }
 
   if (status === "COMPLETED" && output && !output.error) {
-    await prisma.transcriptionJob.update({
-      where: { id: job.id },
-      data: {
-        status: "COMPLETED",
-        outputJsonKey: output.output_key ?? job.outputJsonKey,
-        segmentCount: output.segment_count ?? null,
-        duration: output.duration ?? null,
-        hasDiarization: output.has_diarization ?? false,
-      },
-    });
-
-    // Libère la source uploadée. Le helper porte les gardes : pour un job du
-    // pipeline auto (renderId / publicationVersionId), `inputKey` pointe vers la
-    // vidéo d'un render ou d'une version montée et n'est donc PAS supprimée.
-    await releaseJobSource(prisma, "transcription", job);
-
-    notifyUser(job.userId, {
-      jobType: "transcription",
-      jobId: job.id,
-      status: "COMPLETED",
-      segmentCount: output.segment_count ?? null,
-      duration: output.duration ?? null,
-      hasDiarization: output.has_diarization ?? false,
-    });
-    console.info(`[webhook/transcription] job=${job.id} done`);
-
-    // Mode multi-langue : déclenche la traduction inverse auto sur les
-    // segments (gating interne — skip pour les jobs mono). Doit s'exécuter
-    // AVANT triggerAutoCaptionForTranscription pour que les CaptionJob auto
-    // voient les segments déjà enrichis avec `translation`.
-    void (async () => {
-      try {
-        await triggerAutoTranslationForTranscription(job.id);
-      } catch (err) {
-        console.error(`[webhook/transcription] triggerAutoTranslation threw: ${String(err)}`);
-      }
-      if (job.renderId) {
-        try {
-          await triggerAutoCaptionForTranscription(job.id);
-        } catch (err) {
-          console.error(`[webhook/transcription] triggerAutoCaption threw: ${String(err)}`);
-        }
-      }
-    })();
-
-    // ── Pipeline description IA automatique ────────────────────────────────
-    // Marche pour les deux paths : render-based ET version-based. Le trigger
-    // résout le slot via render.publicationSlotId OU
-    // publicationVersion.slotId selon ce qui est disponible (Phase 2.4).
-    //
-    // Note : ce flag ne sert QUE de garde au déclenchement de la description. La
-    // décision de supprimer ou non la source R2 est portée par
-    // `releaseJobSource`, qui applique ses propres gardes.
-    const isAutoPipeline = Boolean(job.renderId || job.publicationVersionId);
-    if (isAutoPipeline) {
-      void triggerAutoDescriptionForTranscription(job.id).catch((err) =>
-        console.error(`[webhook/transcription] triggerAutoDescription threw: ${String(err)}`),
-      );
-    }
+    const applied = await applyTranscriptionOutcome(job, { kind: "completed", output });
+    if (applied) console.info(`[webhook/transcription] job=${job.id} done`);
   } else {
     const errorMsg = output?.error ?? error ?? `RunPod status: ${status}`;
-
-    await prisma.transcriptionJob.update({
-      where: { id: job.id },
-      data: { status: "FAILED", errorMsg },
-    });
-
-    // Correctif : cette branche ne testait que `renderId` et OUBLIAIT
-    // `publicationVersionId` (contrairement à la branche COMPLETED). Une
-    // transcription échouée sur un pattern manual_rushes / external_upload
-    // supprimait donc la vidéo de la version montée. Le helper teste les deux,
-    // plus le préfixe de la clé.
-    await releaseJobSource(prisma, "transcription", job);
-
-    notifyUser(job.userId, { jobType: "transcription", jobId: job.id, status: "FAILED", errorMsg });
-    console.error(`[webhook/transcription] job=${job.id} failed: ${errorMsg}`);
+    const applied = await applyTranscriptionOutcome(job, { kind: "failed", errorMsg });
+    if (applied) console.error(`[webhook/transcription] job=${job.id} failed: ${errorMsg}`);
   }
 
   return NextResponse.json({ ok: true });

@@ -68,5 +68,13 @@ export async function PUT(
     return NextResponse.json({ error: "Échec de l'écriture locale" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  // Équivalent local de /upload-complete : le fichier est arrivé, la vidéo est
+  // prête à être lancée. Gardé par le statut (annulation concurrente).
+  const uploadedAt = new Date();
+  await prisma.transcriptionJob.updateMany({
+    where: { id: job.id, status: "QUEUED" },
+    data: { uploadedAt },
+  });
+
+  return NextResponse.json({ ok: true, uploadedAt: uploadedAt.toISOString() });
 }

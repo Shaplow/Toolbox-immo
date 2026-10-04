@@ -420,7 +420,7 @@ export default function CaptionsGenerateForm({
     if (sourceTab !== "transcription") return;
     if (transcriptions.length > 0) return;
     setLoadingTranscriptions(true);
-    fetch("/api/transcription")
+    fetch("/api/transcription?status=COMPLETED")
       .then((r) => r.json())
       .then((data: unknown) => {
         const raw = (

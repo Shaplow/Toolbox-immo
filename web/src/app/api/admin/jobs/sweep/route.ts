@@ -7,9 +7,11 @@
  * Utile pour récupérer des jobs bloqués après une coupure RunPod, un redémarrage
  * du serveur sans webhook, ou un upload client qui n'a jamais appelé /submit.
  *
- * Seuils par défaut :
- *   PROCESSING  > 2 h  → RunPod webhook jamais reçu (coupure, NEXTAUTH_URL absent…)
- *   QUEUED      > 30 min → upload client jamais finalisé (/submit jamais appelé)
+ * Seuils par défaut (cf. constantes plus bas) :
+ *   PROCESSING  > 30 min (6 h pour une transcription) → webhook RunPod jamais reçu
+ *   QUEUED      > 10 min → upload client jamais finalisé
+ *   Transcription QUEUED dont l'upload est confirmé (`uploadedAt`) : vidéo prête
+ *   qui attend son lancement → seulement au-delà de 7 jours (staleRules.ts).
  *
  * Retourne le décompte de jobs marqués FAILED par type.
  *
@@ -22,6 +24,8 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/slot/activity";
 import { releaseJobSources } from "@/lib/upload/releaseJobSource";
 import { AUTOCUT_FAILED_RETENTION_MS, reconcileAutocutJobs } from "@/lib/mediaAutocutServer";
+import { SWEEP_UPLOAD_STALL_MS } from "@/lib/transcription/staleRules";
+import { STALE_JOB_SELECT, expireStaleTranscriptionJobs } from "@/lib/services/transcription/expireStale";
 
 // Fix bug 2026-05-30 : seuils réduits — l'UI alerte déjà dès 30min, et les
 // jobs PROCESSING > 30min sont en pratique morts (Next hot-reload, render-engine
@@ -99,37 +103,54 @@ export async function POST() {
   const transcriptionProcessingCutoff = new Date(
     now.getTime() - TRANSCRIPTION_PROCESSING_STALL_MS,
   );
-  const transcriptionsToFail = await prisma.transcriptionJob.findMany({
-    where: {
-      OR: [
-        { status: "PROCESSING", updatedAt: { lt: transcriptionProcessingCutoff } },
-        { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
-      ],
-    },
-    select: {
-      id: true,
-      inputKey: true,
-      renderId: true,
-      publicationVersionId: true,
-    },
+  // 1. Jobs confiés à RunPod (runpodJobId posé) sans webhook depuis 6 h.
+  const transcriptionsStalledProcessing = await prisma.transcriptionJob.findMany({
+    where: { status: "PROCESSING", runpodJobId: { not: null }, updatedAt: { lt: transcriptionProcessingCutoff } },
+    select: { id: true, inputKey: true, renderId: true, publicationVersionId: true },
   });
+  const transcriptionProcessing = await prisma.transcriptionJob.updateMany({
+    where: { id: { in: transcriptionsStalledProcessing.map((j) => j.id) }, status: "PROCESSING" },
+    data:  { status: "FAILED", errorMsg: "Job bloqué en PROCESSING — webhook RunPod jamais reçu (sweep automatique)" },
+  });
+  // On ne libère que les sources des jobs effectivement passés FAILED : un job
+  // terminé entre la lecture et l'écriture a déjà été traité par son webhook.
+  const transcriptionsFailed = transcriptionsStalledProcessing.length
+    ? await prisma.transcriptionJob.findMany({
+        where: {
+          id: { in: transcriptionsStalledProcessing.map((j) => j.id) },
+          status: "FAILED",
+        },
+        select: { id: true, inputKey: true, renderId: true, publicationVersionId: true },
+      })
+    : [];
 
-  const [transcriptionProcessing, transcriptionQueued] = await Promise.all([
-    prisma.transcriptionJob.updateMany({
-      where: { status: "PROCESSING", updatedAt: { lt: transcriptionProcessingCutoff } },
-      data:  { status: "FAILED", errorMsg: "Job bloqué en PROCESSING — webhook RunPod jamais reçu (sweep automatique)" },
-    }),
-    prisma.transcriptionJob.updateMany({
-      where: { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
-      data:  { status: "FAILED", errorMsg: "Job bloqué en QUEUED — upload ou submit jamais finalisé (sweep automatique)" },
-    }),
-  ]);
+  // 2. Jobs jamais confiés à RunPod : mêmes règles que GET /api/transcription/[id]
+  //    (lib/transcription/staleRules.ts). Un upload abandonné est vérifié avant
+  //    d'être tué (guéri si la source est là), une vidéo PRÊTE qui attend son
+  //    lancement n'expire qu'au bout de 7 jours, un envoi interrompu d'un dépôt
+  //    standalone est remis en attente. Libération des sources incluse.
+  const preSubmitCandidates = await prisma.transcriptionJob.findMany({
+    where: {
+      status: { in: ["QUEUED", "PROCESSING"] },
+      runpodJobId: null,
+      updatedAt: { lt: new Date(now.getTime() - SWEEP_UPLOAD_STALL_MS) },
+    },
+    select: STALE_JOB_SELECT,
+  });
+  const expired = await expireStaleTranscriptionJobs(preSubmitCandidates, {
+    now,
+    uploadStallMs: SWEEP_UPLOAD_STALL_MS,
+  });
+  const transcriptionQueued = {
+    count: expired.failed.upload_abandoned + expired.failed.never_launched,
+  };
+  const transcriptionDispatchFailed = expired.failed.dispatch_interrupted;
 
   // Libération des médias sources des jobs qu'on vient d'abandonner. Le helper
   // porte les gardes : rien n'est supprimé pour un job du pipeline auto, ni pour
   // une clé hors du préfixe d'upload dédié (un render, une version montée…).
   const releasedSources =
-    (await releaseJobSources(prisma, "transcription", transcriptionsToFail)) +
+    (await releaseJobSources(prisma, "transcription", transcriptionsFailed)) +
     (await releaseJobSources(prisma, "caption", [
       ...captionsToFailProcessing,
       ...captionsToFailQueued,
@@ -264,8 +285,12 @@ export async function POST() {
       queued:     captionQueued.count,
     },
     transcription: {
-      processing: transcriptionProcessing.count,
+      processing: transcriptionProcessing.count + transcriptionDispatchFailed,
       queued:     transcriptionQueued.count,
+      /** Envois RunPod interrompus remis en attente (vidéo déjà uploadée). */
+      requeued:   expired.requeued,
+      /** Uploads non confirmés dont la source était bien arrivée. */
+      healed:     expired.healed,
     },
     renders: {
       processing: renderProcessing.count,
@@ -296,7 +321,7 @@ export async function POST() {
     },
     total:
       captionProcessing.count + captionQueued.count +
-      transcriptionProcessing.count + transcriptionQueued.count +
+      transcriptionProcessing.count + transcriptionDispatchFailed + transcriptionQueued.count +
       renderProcessing.count + renderPending.count +
       mediaEditProcessing.count + mediaEditPending.count +
       autocutBatchProcessing.count + autocutBatchPending.count +

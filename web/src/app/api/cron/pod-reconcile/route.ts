@@ -22,6 +22,11 @@ import { prisma } from "@/lib/prisma";
 import { timingSafeEqualStrings } from "@/lib/utils";
 import { reconcileDispatchedCoverPacks } from "@/lib/coverAuto";
 import { AUTOCUT_FAILED_RETENTION_MS, reconcileAutocutJobs } from "@/lib/mediaAutocutServer";
+import { SWEEP_UPLOAD_STALL_MS } from "@/lib/transcription/staleRules";
+import { STALE_JOB_SELECT, expireStaleTranscriptionJobs } from "@/lib/services/transcription/expireStale";
+
+/** Transcriptions immobiles traitées par passage (le reste au passage suivant). */
+const TRANSCRIPTION_EXPIRE_BATCH = 200;
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -65,10 +70,33 @@ export async function GET(req: NextRequest) {
     return null;
   });
 
+  // Transcriptions immobiles avant leur envoi à RunPod : upload abandonné
+  // (vérifié par HEAD, guéri si le fichier est là), vidéo prête jamais lancée
+  // depuis 7 jours (stockage libéré), envoi interrompu par un redémarrage (remis
+  // en attente). Mêmes règles que le sweep admin et GET /api/transcription/[id] ;
+  // sans ce passage, ce ménage n'arrivait que sur un clic admin.
+  const transcriptions = await prisma.transcriptionJob
+    .findMany({
+      where: {
+        status: { in: ["QUEUED", "PROCESSING"] },
+        runpodJobId: null,
+        updatedAt: { lt: new Date(now.getTime() - SWEEP_UPLOAD_STALL_MS) },
+      },
+      orderBy: { updatedAt: "asc" },
+      take: TRANSCRIPTION_EXPIRE_BATCH,
+      select: STALE_JOB_SELECT,
+    })
+    .then((jobs) => expireStaleTranscriptionJobs(jobs, { now, uploadStallMs: SWEEP_UPLOAD_STALL_MS }))
+    .catch((err) => {
+      console.warn("[cron/pod-reconcile] expiration transcriptions échouée:", err);
+      return null;
+    });
+
   return NextResponse.json({
     ok: true,
     covers,
     autocut,
+    transcriptions,
     before: before
       ? { status: before.status, activeJobCount: before.activeJobCount, podId: before.podId }
       : null,
