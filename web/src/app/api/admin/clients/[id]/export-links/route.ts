@@ -5,40 +5,16 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
 import { validateBody } from "@/lib/validation/apiSchemas";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 import { createExportLink, listExportLinks } from "@/lib/services/clientExport/exportLinks";
-import { EXPORT_LINK_DURATIONS_DAYS, type ExportLinkDurationDays } from "@/lib/clientExport/types";
+import { createExportLinkSchema } from "@/lib/clientExport/schemas";
 
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
-
-const durationSchema = z
-  .number()
-  .int()
-  .refine((d): d is ExportLinkDurationDays => (EXPORT_LINK_DURATIONS_DAYS as readonly number[]).includes(d), {
-    message: "Durée non proposée",
-  });
-
-const ids = (max: number) => z.array(z.string().min(1).max(64)).max(max);
-
-const createSchema = z
-  .object({
-    label: z.string().trim().max(120).nullable().optional(),
-    expiresInDays: durationSchema,
-    accountIds: ids(200).min(1, "Coche au moins un compte"),
-    mediaLibraryIds: ids(500),
-    dataLibraryIds: ids(500),
-    includePublications: z.boolean(),
-  })
-  .strict()
-  .refine((b) => b.mediaLibraryIds.length + b.dataLibraryIds.length > 0 || b.includePublications, {
-    message: "Coche au moins un contenu",
-  });
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const auth = await requireAdmin();
@@ -56,7 +32,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (auth.response) return auth.response;
 
   const { id } = await params;
-  const parsed = await validateBody(req, createSchema);
+  const parsed = await validateBody(req, createExportLinkSchema);
   if (!parsed.success) return NextResponse.json({ error: parsed.error }, { status: 400 });
   const body = parsed.data;
 

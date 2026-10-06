@@ -9,36 +9,22 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { requireAdmin } from "@/lib/api/requireAuth";
 import { validateBody } from "@/lib/validation/apiSchemas";
 import { mutateExportLink } from "@/lib/services/clientExport/exportLinks";
 import { invalidateExportManifest } from "@/lib/services/clientExport/exportManifest";
-import { EXPORT_LINK_DURATIONS_DAYS, type ExportLinkDurationDays } from "@/lib/clientExport/types";
+import { exportLinkActionSchema } from "@/lib/clientExport/schemas";
 
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string; linkId: string }> };
-
-const durationSchema = z
-  .number()
-  .int()
-  .refine((d): d is ExportLinkDurationDays => (EXPORT_LINK_DURATIONS_DAYS as readonly number[]).includes(d), {
-    message: "Durée non proposée",
-  });
-
-const actionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("revoke") }).strict(),
-  z.object({ action: z.literal("rotate") }).strict(),
-  z.object({ action: z.literal("extend"), days: durationSchema }).strict(),
-]);
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const auth = await requireAdmin();
   if (auth.response) return auth.response;
 
   const { id, linkId } = await params;
-  const parsed = await validateBody(req, actionSchema);
+  const parsed = await validateBody(req, exportLinkActionSchema);
   if (!parsed.success) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   try {

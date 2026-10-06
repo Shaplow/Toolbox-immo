@@ -10,8 +10,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { validateBody } from "@/lib/validation/apiSchemas";
+import { exportUrlsSchema } from "@/lib/clientExport/schemas";
 import { signExportRefs } from "@/lib/services/clientExport/exportManifest";
 import { createPublicExportGuard, NO_STORE_HEADERS } from "@/lib/services/clientExport/publicGuard";
 
@@ -22,12 +22,6 @@ export const dynamic = "force-dynamic";
 // manifeste en cache : la limite ne sert qu'à freiner un script.
 const guard = createPublicExportGuard({ windowMs: 60_000, max: 600 });
 
-const bodySchema = z
-  .object({
-    refs: z.array(z.string().min(1).max(200)).min(1).max(20),
-  })
-  .strict();
-
 type Params = { params: Promise<{ token: string }> };
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -35,7 +29,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const auth = await guard(req, token);
   if (auth.response) return auth.response;
 
-  const parsed = await validateBody(req, bodySchema);
+  const parsed = await validateBody(req, exportUrlsSchema);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error }, { status: 400, headers: NO_STORE_HEADERS });
   }
