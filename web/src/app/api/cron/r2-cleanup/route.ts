@@ -7,12 +7,18 @@
  *        Si CRON_SECRET non configuré → 503 (config manquante).
  *
  * Query params :
- *   ?dryRun=true  — liste les orphelins sans les supprimer (safe par défaut en prod)
+ *   (aucun)        — DRY-RUN : liste les orphelins sans rien supprimer (défaut)
+ *   ?apply=1       — passage réel : supprime les orphelins…
+ *   &maxDeletes=N  — …tant qu'il y en a au plus N (500 par défaut) ; au-delà,
+ *                    rien n'est supprimé et la réponse porte `refused`
+ *   ?dryRun=true   — ancienne forme, reste un dry-run
  *
  * Body : vide (POST uniquement — pas de GET pour réduire la surface en prod)
  *
  * Réponse :
- *   200 { scanned, orphans, deleted, dryRun, multipart: { found, aborted, bytesFreed } }
+ *   200 { scanned, orphans, deleted, dryRun, refused, byPrefix, multipart: { found, aborted, bytesFreed } }
+ *   `byPrefix[prefix] = { orphans, bytes, samples }` : relire les échantillons
+ *   d'un dry-run avant le premier passage réel.
  *
  * Deux nettoyages distincts sont exécutés :
  *   1. Objets orphelins (ListObjectsV2 + cross-check DB) — cf. lib/r2Cleanup.ts
@@ -21,19 +27,20 @@
  *      que R2 facture les parties déjà poussées. Un onglet fermé pendant un
  *      upload de 100 Go coûte 100 Go permanents sans ce nettoyage.
  *
- * Câblage externe (Vercel cron, cron-job.org, etc.) :
+ * Câblage externe (crontab, cron-job.org, etc.) :
  *   - Méthode : POST
- *   - URL     : https://<votre-domaine>/api/cron/r2-cleanup
+ *   - URL     : https://<votre-domaine>/api/cron/r2-cleanup?apply=1
  *   - Header  : x-cron-secret: <valeur de CRON_SECRET>
  *   - Schedule: 0 4 * * * (chaque nuit à 4h00 UTC)
+ *   Ne câbler `apply=1` qu'après avoir relu un dry-run en prod.
  *
  * Pour un dry-run manuel :
- *   curl -X POST https://<domaine>/api/cron/r2-cleanup?dryRun=true \
+ *   curl -X POST https://<domaine>/api/cron/r2-cleanup \
  *        -H "x-cron-secret: <secret>"
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { cleanupOrphanR2Objects } from "@/lib/r2Cleanup";
+import { cleanupOrphanR2Objects, parseCleanupParams } from "@/lib/r2Cleanup";
 import { abortStaleMultipartUploads } from "@/lib/r2Multipart";
 import { MULTIPART } from "@/lib/upload/limits";
 import { timingSafeEqualStrings } from "@/lib/utils";
@@ -56,14 +63,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 3. Paramètre dryRun
-  const url = new URL(req.url);
-  const dryRun = url.searchParams.get("dryRun") === "true";
+  // 3. Paramètres : dry-run sauf `apply=1`, plafond de suppressions
+  const { dryRun, maxDeletes } = parseCleanupParams(new URL(req.url).searchParams);
 
   // 4. Exécution du nettoyage
   try {
-    const result = await cleanupOrphanR2Objects({ dryRun });
-    console.log(`[cron/r2-cleanup] Orphelins — scanned=${result.scanned}, orphans=${result.orphans}, deleted=${result.deleted}, dryRun=${result.dryRun}`);
+    const result = await cleanupOrphanR2Objects({ dryRun, maxDeletes });
+    console.log(
+      `[cron/r2-cleanup] Orphelins — scanned=${result.scanned}, orphans=${result.orphans}, ` +
+        `deleted=${result.deleted}, dryRun=${result.dryRun}` +
+        (result.refused ? `, REFUSÉ (plus de ${result.refused.maxDeletes} orphelins)` : ""),
+    );
 
     // Uploads multipart inachevés. Best-effort et isolé du bloc précédent : un
     // échec ici ne doit pas masquer le résultat du nettoyage d'orphelins, qui a

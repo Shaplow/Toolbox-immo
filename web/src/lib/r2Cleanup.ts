@@ -2,14 +2,21 @@
  * r2Cleanup — nettoyage des objets R2 orphelins sous les prefixes scannés.
  *
  * Un objet est considéré orphelin si :
- * - Il se trouve sous l'un des SCAN_PREFIXES ("publications/" ou "content-library/")
+ * - Il se trouve sous l'un des SCAN_PREFIXES
  * - Il a été créé (LastModified) il y a plus de 24h
- * - Son r2Key n'apparaît dans aucune des tables PublicationRush,
- *   PublicationVersion, PublicationBriefAttachment, MediaAsset ni
- *   CoverFramePack (finalCoverKey — cover monteur sous publications/)
+ * - Sa clé n'apparaît dans aucune source DB (cf. collectReferencedKeys) :
+ *   PublicationRush, PublicationVersion, PublicationBriefAttachment, MediaAsset
+ *   (fichier ET vignette), CoverFramePack (finalCoverKey), TranscriptionJob,
+ *   CaptionJob.
  *
  * Pagination : ListObjectsV2 (1000 objets max par page, toutes pages parcourues).
  * Cross-check DB : collecte les r2Keys existants une seule fois (pas de N requêtes).
+ *
+ * Garde-fous — la route cron est restée inaccessible en prod jusqu'au 06/10/2026
+ * (proxy.ts), le premier passage réel balaie donc des mois d'orphelins d'un coup :
+ * - dry-run par défaut (il faut le demander explicitement pour supprimer) ;
+ * - disjoncteur `maxDeletes` : au-delà, rien n'est supprimé et le résultat le dit ;
+ * - détail par préfixe (volume + échantillons de clés) pour juger un dry-run.
  *
  * Usage :
  *   import { cleanupOrphanR2Objects } from "@/lib/r2Cleanup"
@@ -26,21 +33,56 @@ import { prisma } from "@/lib/prisma";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface PrefixReport {
+  /** Orphelins trouvés sous ce préfixe. */
+  orphans: number;
+  /** Volume cumulé de ces orphelins, en octets. */
+  bytes: number;
+  /** Premières clés orphelines (au plus SAMPLE_SIZE) — de quoi relire un dry-run à l'œil. */
+  samples: string[];
+}
+
 export interface CleanupResult {
   /** Nombre total d'objets scannés sous SCAN_PREFIXES. */
   scanned: number;
   /** Nombre d'objets identifiés comme orphelins (anciens + non référencés en DB). */
   orphans: number;
-  /** Nombre d'objets effectivement supprimés (0 si dryRun=true). */
+  /** Nombre d'objets effectivement supprimés (0 si dryRun=true ou si refusé). */
   deleted: number;
   /** Si true, aucune suppression n'a été effectuée. */
   dryRun: boolean;
+  /** Détail par préfixe scanné. */
+  byPrefix: Record<string, PrefixReport>;
+  /** Passage réel refusé par le disjoncteur : rien n'a été supprimé. */
+  refused: { reason: "too_many_orphans"; maxDeletes: number } | null;
+}
+
+/** Lignes DB qui référencent des clés R2, une entrée par source. */
+export interface ReferencedKeyRows {
+  rushes: { r2Key: string }[];
+  versions: { r2Key: string }[];
+  attachments: { r2Key: string }[];
+  mediaAssets: { id: string; r2Key: string; posterUrl: string | null }[];
+  covers: { finalCoverKey: string | null }[];
+  transcriptions: { inputKey: string | null; outputJsonKey: string | null }[];
+  captions: { inputKey: string | null; outputKey: string | null }[];
+}
+
+export interface CleanupParams {
+  dryRun: boolean;
+  maxDeletes: number;
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 /** Durée minimale en ms avant qu'un objet soit candidat à la suppression. */
 const CUTOFF_MS = 24 * 60 * 60 * 1000; // 24h
+
+/** Plafond de suppressions d'un passage réel, sauf surcharge explicite. */
+export const DEFAULT_MAX_DELETES = 500;
+
+/** Clés orphelines rapportées par préfixe. */
+const SAMPLE_SIZE = 20;
 
 /** Prefixes R2 scannés. Chaque prefix a son propre cross-check DB.
  *  Ajouter un prefix ici sans étendre loadReferencedKeys → faux positifs
@@ -82,83 +124,121 @@ function getBucket(): string | null {
   return process.env.R2_BUCKET ?? null;
 }
 
-// ─── Helper DB ────────────────────────────────────────────────────────────────
+// ─── Helpers purs ─────────────────────────────────────────────────────────────
 
 /**
- * Récupère l'ensemble des r2Keys référencés en DB (7 sources).
- * Chargement en une seule passe pour éviter les N requêtes par objet.
- *
- * Toute clé absente de ce set et plus vieille que CUTOFF_MS sera SUPPRIMÉE.
- * Ajouter un prefix à SCAN_PREFIXES sans ajouter ici la source DB
- * correspondante détruit donc des données. Vérifier en dryRun d'abord.
+ * Paramètres de la route cron. Dry-run par défaut : seul `?apply=1` supprime.
+ * L'ancienne forme documentée `?dryRun=true` reste un dry-run, même combinée à
+ * `apply=1` — en cas de doute, on ne supprime pas.
  */
-async function loadReferencedKeys(): Promise<Set<string>> {
-  const [
-    rushKeys,
-    versionKeys,
-    attachmentKeys,
-    mediaAssetKeys,
-    coverKeys,
-    transcriptionKeys,
-    captionKeys,
-  ] = await Promise.all([
-    prisma.publicationRush.findMany({ select: { r2Key: true } }),
-    prisma.publicationVersion.findMany({ select: { r2Key: true } }),
-    prisma.publicationBriefAttachment.findMany({ select: { r2Key: true } }),
+export function parseCleanupParams(searchParams: URLSearchParams): CleanupParams {
+  const apply = searchParams.get("apply") === "1" && searchParams.get("dryRun") !== "true";
+  const raw = Number(searchParams.get("maxDeletes"));
+  const maxDeletes = Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_MAX_DELETES;
+  return { dryRun: !apply, maxDeletes };
+}
+
+/**
+ * Clé R2 de la vignette d'un asset. Les routes poster et backfill-posters
+ * l'écrivent toujours à cet emplacement, sous "content-library/" (préfixe
+ * scanné), alors que l'asset ne la référence que par son URL (posterUrl).
+ */
+export function posterKeyForAsset(assetId: string): string {
+  return `content-library/posters/${assetId}.jpg`;
+}
+
+/**
+ * Clé R2 d'une URL publique du bucket (préfixe strict R2_PUBLIC_URL, query et
+ * fragment retirés), ou null si l'URL pointe ailleurs (/uploads en local…).
+ */
+export function keyFromPublicUrl(
+  url: string | null | undefined,
+  publicUrl: string | null | undefined,
+): string | null {
+  if (!url || !publicUrl) return null;
+  const base = `${publicUrl.replace(/\/+$/, "")}/`;
+  if (!url.startsWith(base)) return null;
+  const key = url.slice(base.length).split(/[?#]/)[0];
+  return key || null;
+}
+
+/**
+ * Ensemble des clés R2 référencées en DB. Toute clé absente de ce set et plus
+ * vieille que CUTOFF_MS sera SUPPRIMÉE : ajouter une source ici avant d'ajouter
+ * un préfixe à SCAN_PREFIXES, jamais l'inverse.
+ */
+export function collectReferencedKeys(
+  rows: ReferencedKeyRows,
+  publicUrl: string | null | undefined,
+): Set<string> {
+  const set = new Set<string>();
+  for (const r of rows.rushes) set.add(r.r2Key);
+  for (const v of rows.versions) set.add(v.r2Key);
+  for (const a of rows.attachments) set.add(a.r2Key);
+  for (const m of rows.mediaAssets) {
     // MediaAsset référence des objets sous "content-library/" (Phase library).
     // Sans cette source, le sweep supprimerait des assets actifs au prochain
     // run (faux positif catastrophique pour la rotation).
-    prisma.mediaAsset.findMany({ select: { r2Key: true } }),
-    // CoverFramePack.finalCoverKey : les covers monteur sont stockées sous
-    // "publications/<slotId>/cover-monteur/..." (préfixe scanné). Sans cette
-    // source, le sweep supprimait des covers valides de +24h (faux positif,
-    // perte de données même sur des slots actifs).
-    prisma.coverFramePack.findMany({
-      where: { finalCoverKey: { not: null } },
-      select: { finalCoverKey: true },
-    }),
-    // TranscriptionJob : `inputKey` (source, nullée par le webhook après
-    // traitement) ET `outputJsonKey` (les segments, PERSISTANTS).
-    // Omettre outputJsonKey supprimerait tous les transcripts de plus de 24 h —
-    // perte de données irréversible sur toute la base.
-    prisma.transcriptionJob.findMany({
-      select: { inputKey: true, outputJsonKey: true },
-    }),
-    // CaptionJob : source sous "inputs/captions/" + output.
-    prisma.captionJob.findMany({
-      select: { inputKey: true, outputKey: true },
-    }),
-  ]);
-
-  const set = new Set<string>();
-  for (const r of rushKeys) set.add(r.r2Key);
-  for (const v of versionKeys) set.add(v.r2Key);
-  for (const a of attachmentKeys) set.add(a.r2Key);
-  for (const m of mediaAssetKeys) set.add(m.r2Key);
-  for (const c of coverKeys) if (c.finalCoverKey) set.add(c.finalCoverKey);
-  for (const t of transcriptionKeys) {
+    set.add(m.r2Key);
+    // Vignettes : même préfixe, mais référencées par posterUrl seulement. Sans
+    // elles, le premier passage réel supprimait toutes les vignettes de +24 h.
+    set.add(posterKeyForAsset(m.id));
+    const posterKey = keyFromPublicUrl(m.posterUrl, publicUrl);
+    if (posterKey) set.add(posterKey);
+  }
+  // CoverFramePack.finalCoverKey : les covers monteur sont stockées sous
+  // "publications/<slotId>/cover-monteur/..." (préfixe scanné).
+  for (const c of rows.covers) if (c.finalCoverKey) set.add(c.finalCoverKey);
+  // TranscriptionJob : `inputKey` (source, nullée par le webhook après
+  // traitement) ET `outputJsonKey` (les segments, PERSISTANTS).
+  for (const t of rows.transcriptions) {
     if (t.inputKey) set.add(t.inputKey);
     if (t.outputJsonKey) set.add(t.outputJsonKey);
   }
-  for (const c of captionKeys) {
+  // CaptionJob : source sous "inputs/captions/" + output.
+  for (const c of rows.captions) {
     if (c.inputKey) set.add(c.inputKey);
     if (c.outputKey) set.add(c.outputKey);
   }
   return set;
 }
 
+// ─── Helper DB ────────────────────────────────────────────────────────────────
+
+/** Charge toutes les sources de clés en une passe (pas de N requêtes). */
+async function loadReferencedKeys(): Promise<Set<string>> {
+  const [rushes, versions, attachments, mediaAssets, covers, transcriptions, captions] =
+    await Promise.all([
+      prisma.publicationRush.findMany({ select: { r2Key: true } }),
+      prisma.publicationVersion.findMany({ select: { r2Key: true } }),
+      prisma.publicationBriefAttachment.findMany({ select: { r2Key: true } }),
+      prisma.mediaAsset.findMany({ select: { id: true, r2Key: true, posterUrl: true } }),
+      prisma.coverFramePack.findMany({
+        where: { finalCoverKey: { not: null } },
+        select: { finalCoverKey: true },
+      }),
+      prisma.transcriptionJob.findMany({ select: { inputKey: true, outputJsonKey: true } }),
+      prisma.captionJob.findMany({ select: { inputKey: true, outputKey: true } }),
+    ]);
+
+  return collectReferencedKeys(
+    { rushes, versions, attachments, mediaAssets, covers, transcriptions, captions },
+    process.env.R2_PUBLIC_URL,
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 /**
- * Liste les objets R2 orphelins sous "publications/" créés il y a >24h
- * et non référencés en DB. Supprime les orphelins (sauf si dryRun=true).
- *
- * @returns CleanupResult — statistiques de l'opération.
+ * Liste les objets R2 orphelins créés il y a >24h et non référencés en DB.
+ * Ne supprime que sur demande explicite (`dryRun: false`) et tant que le nombre
+ * d'orphelins reste sous `maxDeletes`.
  */
 export async function cleanupOrphanR2Objects(
-  opts?: { dryRun?: boolean }
+  opts?: { dryRun?: boolean; maxDeletes?: number }
 ): Promise<CleanupResult> {
-  const dryRun = opts?.dryRun ?? false;
+  const dryRun = opts?.dryRun ?? true;
+  const maxDeletes = opts?.maxDeletes ?? DEFAULT_MAX_DELETES;
 
   const client = getR2Client();
   const bucket = getBucket();
@@ -177,8 +257,12 @@ export async function cleanupOrphanR2Objects(
   // 2. Paginer ListObjectsV2 sur chaque prefix scanné
   let scanned = 0;
   const orphanKeys: string[] = [];
+  const byPrefix: Record<string, PrefixReport> = {};
 
   for (const prefix of SCAN_PREFIXES) {
+    const report: PrefixReport = { orphans: 0, bytes: 0, samples: [] };
+    byPrefix[prefix] = report;
+
     let continuationToken: string | undefined = undefined;
     do {
       const command = new ListObjectsV2Command({
@@ -201,6 +285,9 @@ export async function cleanupOrphanR2Objects(
 
         if (isOld && isOrphan) {
           orphanKeys.push(obj.Key);
+          report.orphans++;
+          report.bytes += obj.Size ?? 0;
+          if (report.samples.length < SAMPLE_SIZE) report.samples.push(obj.Key);
         }
       }
 
@@ -208,9 +295,12 @@ export async function cleanupOrphanR2Objects(
     } while (continuationToken);
   }
 
-  // 3. Supprimer les orphelins (si pas en dryRun)
+  // 3. Supprimer les orphelins (si pas en dryRun et sous le plafond)
   let deleted = 0;
-  if (!dryRun && orphanKeys.length > 0) {
+  let refused: CleanupResult["refused"] = null;
+  if (!dryRun && orphanKeys.length > maxDeletes) {
+    refused = { reason: "too_many_orphans", maxDeletes };
+  } else if (!dryRun) {
     for (const key of orphanKeys) {
       try {
         await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
@@ -226,5 +316,7 @@ export async function cleanupOrphanR2Objects(
     orphans: orphanKeys.length,
     deleted,
     dryRun,
+    byPrefix,
+    refused,
   };
 }
