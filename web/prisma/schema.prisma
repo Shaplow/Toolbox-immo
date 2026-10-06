@@ -46,6 +46,7 @@ model User {
   briefsUpdated                 PublicationBrief[]      @relation("BriefUpdatedBy")
   rushesUploaded                PublicationRush[]       @relation("RushUploadedBy")
   clientValidationTokensCreated ClientValidationToken[] @relation("ClientValidationTokenCreator")
+  clientExportLinksCreated      ClientExportLink[]      @relation("ClientExportLinkCreator")
   assignedAsVideaste            PublicationSlot[]       @relation("SlotVideaste")
   defaultVideasteForPatterns    AccountPattern[]        @relation("PatternDefaultVideaste")
   patternTemplatesUpdated       PatternTemplate[]       @relation("PatternTemplateUpdatedBy")
@@ -1415,6 +1416,8 @@ model Client {
   orders                 Order[]
   orderTemplateAccesses  OrderTemplateAccess[]
   patternAutoActivations PatternTemplateAutoActivation[]
+  /// Liens de téléchargement de ses données (fiche client admin).
+  exportLinks            ClientExportLink[]
 }
 
 // ─── Bons de commande (Order) ────────────────────────────────────────────────
@@ -1941,6 +1944,50 @@ model ClientValidationToken {
   createdBy       User            @relation("ClientValidationTokenCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
 
   @@index([slotId, revokedAt])
+}
+
+/// Lien public de téléchargement des données d'un client, créé depuis la fiche
+/// client admin. Le client l'ouvre sans compte (Chrome/Edge desktop) et la page
+/// écrit l'arborescence <Client>/<Compte>/<Bibliothèque>/<Dossier>/<fichier>
+/// directement depuis R2 (lib/clientExport, services/clientExport).
+///
+/// La sélection est figée à la création ; le périmètre est re-résolu à chaque
+/// accès (compte toujours rattaché au client, média toujours réservé au compte…).
+/// Plusieurs liens peuvent coexister pour un même client.
+model ClientExportLink {
+  id                  String    @id @default(cuid())
+  clientId            String
+  client              Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// sha256(rawToken) — le jeton brut n'est jamais stocké (cf. ClientValidationToken).
+  tokenHash           String    @unique
+  /// Libellé libre (« Fin de contrat », « Rushs septembre »…).
+  label               String?
+  accountIds          String[]  @default([])
+  /// MediaLibrary cochées (vidéo et son).
+  mediaLibraryIds     String[]  @default([])
+  /// DataLibrary cochées.
+  dataLibraryIds      String[]  @default([])
+  includePublications Boolean   @default(false)
+  expiresAt           DateTime
+  revokedAt           DateTime?
+  /// Activité côté client, posée par l'API publique (jamais par le GET de la page :
+  /// les robots d'aperçu de lien ne doivent rien compter).
+  firstOpenedAt       DateTime?
+  lastOpenedAt        DateTime?
+  downloadStartedAt   DateTime?
+  downloadCompletedAt DateTime?
+  /// Lancements de téléchargement, reprises comprises.
+  startCount          Int       @default(0)
+  /// Dernier rapport de la page publique : { files, bytes, skipped, failed, missing }.
+  lastReport          Json?
+  /// Admin qui a créé le lien (audit). SetNull : la suppression d'un admin ne
+  /// doit pas buter sur ses liens.
+  createdByUserId     String?
+  createdBy           User?     @relation("ClientExportLinkCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([clientId, createdAt])
 }
 
 /// Round de validation client : une action (approve/reject/cancel) effectuée par le client
