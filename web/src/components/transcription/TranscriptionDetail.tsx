@@ -10,6 +10,7 @@ import { useJobPolling } from "@/lib/hooks/useJobPolling";
 import { useJobEvent } from "@/lib/hooks/jobEventBus";
 import { toast } from "@/components/ui/Toast";
 import { downloadFromApi } from "@/lib/triggerDownloads";
+import { CANCELLED_ERROR_MSG } from "@/lib/transcription/batches";
 
 type JobDetail = {
   id: string;
@@ -65,6 +66,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [qualityScore, setQualityScore] = useState<number | null>(null);
   const [qualityWarningCount, setQualityWarningCount] = useState(0);
+  const isCancelled = job.status === "FAILED" && job.errorMsg === CANCELLED_ERROR_MSG;
 
   // Polling fallback (5 s interval, stops automatically on terminal state)
   const { data: pollData } = useJobPolling<JobDetail>({
@@ -161,18 +163,19 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
               {new Date(job.createdAt).toLocaleString("fr-FR")}
             </p>
           </div>
-          {/* Status badge */}
+          {/* Status badge — une annulation volontaire n'est pas un échec. */}
           <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
             job.status === "COMPLETED" ? "bg-green-50 text-green-700" :
+            isCancelled ? "bg-muted text-muted-foreground" :
             job.status === "FAILED"    ? "bg-red-50 text-red-700" :
             job.status === "PROCESSING" ? "bg-info-50 text-info-700" :
             "bg-muted text-muted-foreground"
           }`}>
             {job.status === "COMPLETED" && <CheckCircle className="w-3.5 h-3.5" />}
-            {job.status === "FAILED"    && <XCircle className="w-3.5 h-3.5" />}
+            {job.status === "FAILED" && !isCancelled && <XCircle className="w-3.5 h-3.5" />}
             {job.status === "PROCESSING" && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {job.status === "QUEUED"    && <Clock className="w-3.5 h-3.5" />}
-            {{
+            {isCancelled ? "Annulée" : {
               COMPLETED: "Terminé", FAILED: "Échec",
               PROCESSING: "En cours…", QUEUED: "En attente",
             }[job.status]}
@@ -251,7 +254,13 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
       )}
 
       {/* Error */}
-      {job.status === "FAILED" && (
+      {isCancelled && (
+        <div className="rounded-xl border border-border bg-muted/40 px-4 py-4 text-sm text-muted-foreground">
+          Transcription annulée.
+        </div>
+      )}
+
+      {job.status === "FAILED" && !isCancelled && (
         <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-4 text-sm text-red-700 space-y-1">
           <p className="font-semibold">La transcription a échoué</p>
           {job.errorMsg && <p className="text-xs text-red-500 font-mono">{job.errorMsg}</p>}

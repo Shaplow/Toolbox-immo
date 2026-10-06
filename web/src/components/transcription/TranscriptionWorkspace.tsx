@@ -76,8 +76,15 @@ const REFRESH_INTERVAL_MS = 15_000;
 /** Filet sans webhook : interroge RunPod pour quelques jobs à la fois. */
 const RESOLVE_INTERVAL_MS = 60_000;
 const RESOLVE_PER_TICK = 3;
-/** « Actualiser » : jobs en cours interrogés auprès de RunPod. */
-const MANUAL_RESOLVE_MAX = 10;
+/**
+ * Aucun événement SSE depuis ce délai alors que des jobs tournent : les
+ * webhooks n'arrivent probablement pas (serveur redémarré, tunnel absent en
+ * dev). Le filet accélère, sinon un lot de 50 resterait « En cours » 17 min.
+ */
+const SSE_SILENCE_MS = 120_000;
+const RESOLVE_PER_TICK_WITHOUT_SSE = 10;
+/** « Actualiser » : tous les jobs en cours sont interrogés (plafond de sécurité). */
+const MANUAL_RESOLVE_MAX = 60;
 
 type SlotContext = { id: string; title: string | null; accountHandle: string };
 
@@ -118,12 +125,15 @@ function settingsFromBatch(batch: WorkspaceBatch, fallback: UploadSettings): Upl
 }
 
 export function TranscriptionWorkspace({
+  userId,
   initialJobs,
   initialNextCursor,
   diarizationAvailable,
   slotContext = null,
   returnTo = null,
 }: {
+  /** Compte effectif (impersonation comprise) : propriétaire des fichiers déposés. */
+  userId: string;
   initialJobs: TranscriptionJobSummary[];
   initialNextCursor: string | null;
   /** HF_TOKEN configuré côté serveur : sans lui, la diarisation est refusée. */
@@ -156,6 +166,17 @@ export function TranscriptionWorkspace({
   });
   /** Instant de réception des événements SSE terminaux, par job (cf. refresh). */
   const terminalEventAtRef = useRef(new Map<string, number>());
+  /** Dernier événement SSE de transcription reçu (0 : aucun depuis l'ouverture). */
+  const lastSseAtRef = useRef(0);
+  /**
+   * Jobs supprimés côté serveur depuis l'ouverture. Une réponse de liste partie
+   * avant la suppression ne doit pas les réinsérer (mergeJobs ne retire rien).
+   */
+  const removedJobIdsRef = useRef(new Set<string>());
+  const forgetJob = useCallback((jobId: string) => {
+    removedJobIdsRef.current.add(jobId);
+    setJobs((list) => list.filter((job) => job.id !== jobId));
+  }, []);
   const addFilesInputRef = useRef<HTMLInputElement>(null);
   const addFilesTargetRef = useRef<{ batchId: string; settings: UploadSettings } | null>(null);
 
@@ -210,6 +231,7 @@ export function TranscriptionWorkspace({
       // (« Terminée » qui redeviendrait « En cours » jusqu'au rafraîchissement
       // suivant). Une remise à zéro légitime arrive dans une réponse ultérieure.
       const incoming = page.jobs.filter((job) => {
+        if (removedJobIdsRef.current.has(job.id)) return false;
         const previous = byId.get(job.id);
         const terminalAt = terminalEventAtRef.current.get(job.id);
         return !(
@@ -247,14 +269,22 @@ export function TranscriptionWorkspace({
     () =>
       onUploadServerEvent((event) => {
         // Upload échoué ou annulé : le job a été supprimé côté serveur.
-        if (event.type === "removed") setJobs((list) => list.filter((job) => job.id !== event.jobId));
+        if (event.type === "removed") forgetJob(event.jobId);
         scheduleRefresh();
       }),
-    [scheduleRefresh],
+    [forgetJob, scheduleRefresh],
   );
 
   const handleFiles = useCallback(
-    (files: File[], target?: { batchId: string; settings: UploadSettings }) => {
+    (dropped: File[], target?: { batchId: string; settings: UploadSettings }) => {
+      // Depuis une publication : une seule vidéo (un lot rattacherait N
+      // transcriptions au même slot). Le glisser-déposer peut en apporter plus.
+      const files = slotContext ? dropped.slice(0, 1) : dropped;
+      if (files.length < dropped.length) {
+        toast.info(
+          `Une seule vidéo par publication : ${plural(dropped.length - files.length, "fichier ignoré", "fichiers ignorés")}.`,
+        );
+      }
       const batchId = target?.batchId ?? newBatchId();
       if (!getBatchSettings(batchId)) {
         setBatchSettings(
@@ -262,7 +292,7 @@ export function TranscriptionWorkspace({
           target?.settings ?? { languages, enableDiarization: diarizationAvailable && diarization },
         );
       }
-      const { accepted, rejected } = enqueueUploads(files, batchId, slotContext?.id ?? null);
+      const { accepted, rejected } = enqueueUploads(files, batchId, slotContext?.id ?? null, userId);
       if (rejected.length > 0) {
         toast.error(
           rejected.length === 1
@@ -272,12 +302,13 @@ export function TranscriptionWorkspace({
       }
       if (accepted > 0) setExpanded((current) => ({ ...current, [batchId]: true }));
     },
-    [diarization, diarizationAvailable, languages, slotContext],
+    [diarization, diarizationAvailable, languages, slotContext, userId],
   );
 
   // ── SSE : statut des jobs en temps réel ─────────────────────────────────────
   useAllJobEvents((event) => {
     if (event.jobType !== "transcription" || !isTranscriptionStatus(event.status)) return;
+    lastSseAtRef.current = Date.now();
     const status = event.status;
     if (status === "COMPLETED" || status === "FAILED") terminalEventAtRef.current.set(event.jobId, Date.now());
     if (!jobsRef.current.some((job) => job.id === event.jobId)) {
@@ -339,12 +370,16 @@ export function TranscriptionWorkspace({
 
   useEffect(() => {
     if (!hasProcessing) return;
+    const watchStartedAt = Date.now();
     const refreshId = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh().catch(() => undefined);
     }, REFRESH_INTERVAL_MS);
     const resolveId = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void resolveProcessing(RESOLVE_PER_TICK).then((changed) => {
+      const sseSilentSince = Math.max(lastSseAtRef.current, watchStartedAt);
+      const perTick =
+        Date.now() - sseSilentSince > SSE_SILENCE_MS ? RESOLVE_PER_TICK_WITHOUT_SSE : RESOLVE_PER_TICK;
+      void resolveProcessing(perTick).then((changed) => {
         if (changed) scheduleRefresh();
       });
     }, RESOLVE_INTERVAL_MS);
@@ -375,7 +410,7 @@ export function TranscriptionWorkspace({
       });
       if (!res.ok) throw new Error(await readError(res));
       const page = (await res.json()) as { jobs: TranscriptionJobSummary[]; nextCursor: string | null };
-      setJobs((current) => mergeJobs(current, page.jobs));
+      setJobs((current) => mergeJobs(current, page.jobs.filter((job) => !removedJobIdsRef.current.has(job.id))));
       setNextCursor(page.nextCursor);
     } catch (error) {
       toast.error(`Chargement impossible : ${errorMessage(error)}`);
@@ -568,12 +603,19 @@ export function TranscriptionWorkspace({
       setBusy(row.key, "cancel");
       try {
         const res = await fetch(`/api/transcription/${job.id}`, { method: "DELETE" });
+        // 404 : déjà supprimé ailleurs (autre onglet, envoi échoué) → on l'oublie.
+        if (res.status === 404) {
+          forgetJob(job.id);
+          return;
+        }
         if (!res.ok) throw new Error(await readError(res));
         const data = (await res.json().catch(() => ({}))) as { deleted?: boolean };
+        if (data.deleted) {
+          forgetJob(job.id);
+          return;
+        }
         setJobs((list) =>
-          data.deleted
-            ? list.filter((candidate) => candidate.id !== job.id)
-            : list.map((candidate) =>
+          list.map((candidate) =>
                 candidate.id === job.id
                   ? { ...candidate, status: "FAILED", errorMsg: CANCELLED_ERROR_MSG }
                   : candidate,
@@ -585,7 +627,7 @@ export function TranscriptionWorkspace({
         setBusy(row.key, null);
       }
     },
-    [confirm, setBusy],
+    [confirm, forgetJob, setBusy],
   );
 
   const downloadRowSrt = useCallback(
@@ -650,6 +692,7 @@ export function TranscriptionWorkspace({
         onRetryFailedUploads={() => {
           for (const row of batch.rows) if (row.upload?.phase === "error") retryUpload(row.upload.key);
         }}
+        canAddFiles={!slotContext}
       />
     );
   };

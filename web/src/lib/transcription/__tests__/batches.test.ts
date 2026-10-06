@@ -193,6 +193,15 @@ describe("noms de fichiers", () => {
     expect(sanitizeZipStem("Console.mp4", "x")).toBe("Console");
   });
 
+  it("reste linéaire sur un nom pathologique (pas de ReDoS)", () => {
+    const hostile = `a${".".repeat(1_000_000)}b/`;
+    const started = performance.now();
+    expect(sanitizeZipStem(hostile, "x").length).toBeLessThanOrEqual(120);
+    // Tronqué avant traitement : ne restent que des points et espaces → repli.
+    expect(sanitizeZipStem(`${" .".repeat(500_000)}z`, "x")).toBe("x");
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+
   it("dédoublonne les homonymes sans tenir compte de la casse", () => {
     expect(buildZipEntryNames(["IMG_0001.MOV", "img_0001.mp4", "IMG_0001.MOV", null], "srt")).toEqual([
       "IMG_0001.srt",

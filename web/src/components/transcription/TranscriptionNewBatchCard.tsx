@@ -96,7 +96,7 @@ export function TranscriptionNewBatchCard({
       <FileDropzone
         accept={TRANSCRIPTION_ACCEPT}
         multiple={multiple}
-        onFiles={(files) => onFiles(multiple ? files : files.slice(0, 1))}
+        onFiles={onFiles}
         ariaLabel="Déposer des vidéos à transcrire"
         title={
           multiple

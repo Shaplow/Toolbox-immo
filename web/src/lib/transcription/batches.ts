@@ -284,27 +284,51 @@ export function jobStatusDisplay(job: Pick<TranscriptionJobSummary, "status" | "
 const MAX_STEM_LENGTH = 120;
 
 /**
+ * Le nom vient du client (inputFilename, `?stem=`) : il est tronqué AVANT tout
+ * traitement, pour que le coût reste borné quelle que soit sa longueur.
+ */
+const MAX_RAW_NAME_LENGTH = 4 * MAX_STEM_LENGTH;
+
+/** Noms que Windows refuse comme nom de fichier, quelle que soit l'extension. */
+const WINDOWS_RESERVED_STEM = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
+
+/**
+ * Retire points et espaces en tête et en queue, en temps linéaire. Une regex
+ * `[\s.]+$` revient en arrière sur chaque suite de points : quadratique, et un
+ * nom de 80 000 points figeait le process (ReDoS).
+ */
+function trimDotsAndSpaces(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && (value[start] === "." || value[start] === " ")) start += 1;
+  while (end > start && (value[end - 1] === "." || value[end - 1] === " ")) end -= 1;
+  return value.slice(start, end);
+}
+
+/**
  * Nom de fichier sûr, accents conservés : retire les séparateurs de chemin et
  * les caractères interdits par Windows/macOS, qui casseraient l'extraction d'un
  * ZIP ou créeraient des sous-dossiers.
  */
-/** Noms que Windows refuse comme nom de fichier, quelle que soit l'extension. */
-const WINDOWS_RESERVED_STEM = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
-
 export function sanitizeFileStem(raw: string | null | undefined, fallback: string): string {
-  const cleaned = (raw ?? "")
+  const collapsed = (raw ?? "")
+    .slice(0, MAX_RAW_NAME_LENGTH)
     .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, "_")
-    .replace(/\s+/g, " ")
-    .replace(/^[\s.]+|[\s.]+$/g, "")
-    .slice(0, MAX_STEM_LENGTH)
-    .trim();
+    .replace(/\s+/g, " ");
+  const cleaned = trimDotsAndSpaces(trimDotsAndSpaces(collapsed).slice(0, MAX_STEM_LENGTH));
   if (!cleaned) return fallback;
   return WINDOWS_RESERVED_STEM.test(cleaned) ? `_${cleaned}` : cleaned;
 }
 
 /** Nom de base (sans extension) d'une sortie à partir du nom de la vidéo source. */
 export function sanitizeZipStem(filename: string | null | undefined, fallback: string): string {
-  return sanitizeFileStem((filename ?? "").replace(/\.[^./\\]+$/, ""), fallback);
+  const name = filename ?? "";
+  // Extension = après le dernier point, s'il n'est suivi d'aucun séparateur
+  // de chemin (lastIndexOf : linéaire, sans regex).
+  const lastDot = name.lastIndexOf(".");
+  const lastSeparator = Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\"));
+  const stem = lastDot > lastSeparator && lastDot < name.length - 1 ? name.slice(0, lastDot) : name;
+  return sanitizeFileStem(stem, fallback);
 }
 
 /**

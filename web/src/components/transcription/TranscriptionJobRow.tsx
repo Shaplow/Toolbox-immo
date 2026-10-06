@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Progress } from "@/components/ui/Progress";
 import { Select } from "@/components/ui/Select";
 import { fmtDuration } from "@/lib/jobUtils";
+import { shortDateTimeFr } from "@/lib/date/formatFr";
 import { LANGUAGE_CHOICES } from "./TranscriptionNewBatchCard";
 import { canLaunchRow, isUploadActive, rowDisplay, type BatchRow } from "./workspaceModel";
 
@@ -27,6 +28,7 @@ export type RowBusy = "launch" | "cancel" | "download" | "patch" | null;
 export function TranscriptionJobRow({
   row,
   busy,
+  showDate = false,
   diarizationAvailable,
   onPatch,
   onLaunch,
@@ -37,6 +39,8 @@ export function TranscriptionJobRow({
 }: {
   row: BatchRow;
   busy: RowBusy;
+  /** Date de création dans la méta : pour un job hors lot, sans en-tête daté. */
+  showDate?: boolean;
   diarizationAvailable: boolean;
   onPatch: (patch: { language?: string; enable_diarization?: boolean }) => void;
   onLaunch: () => void;
@@ -54,6 +58,7 @@ export function TranscriptionJobRow({
 
   const meta: string[] = [];
   if (job) {
+    if (showDate) meta.push(shortDateTimeFr(job.createdAt));
     meta.push(multilingual ? `Multi ${job.languages.join("/").toUpperCase()}` : job.language.toUpperCase());
     if (job.duration != null) meta.push(fmtDuration(job.duration));
     if (job.status === "COMPLETED" && job.hasDiarization) meta.push("Intervenants identifiés");
@@ -82,13 +87,19 @@ export function TranscriptionJobRow({
       {queued && job && (
         <div className="flex items-center gap-3">
           {!multilingual && (
-            <Select
-              value={job.language}
-              onChange={(language) => onPatch({ language })}
-              options={ROW_LANGUAGE_OPTIONS}
-              disabled={busy !== null}
-              className="w-36"
-            />
+            <>
+              <label htmlFor={`transcription-language-${job.id}`} className="sr-only">
+                {`Langue : ${fileName}`}
+              </label>
+              <Select
+                id={`transcription-language-${job.id}`}
+                value={job.language}
+                onChange={(language) => onPatch({ language })}
+                options={ROW_LANGUAGE_OPTIONS}
+                disabled={busy !== null}
+                className="w-36"
+              />
+            </>
           )}
           <label className="inline-flex items-center gap-2 text-xs text-foreground">
             <Checkbox

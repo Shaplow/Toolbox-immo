@@ -23,7 +23,6 @@
  *   job côté serveur (DELETE) pour ne pas laisser de ligne fantôme.
  */
 
-import { useEffect } from "react";
 import { create } from "zustand";
 import { createUploadHeartbeat, uploadFileInParts } from "@/lib/upload/multipartClient";
 import { UPLOAD_LIMITS, tooLargeMessage } from "@/lib/upload/limits";
@@ -46,6 +45,12 @@ const DONE_RETENTION_MS = 60_000;
  */
 const RETRY_DELAYS_MS = [2_000, 5_000, 15_000];
 
+/**
+ * Parties d'un gros fichier : délais plus longs (≈ 2 min cumulées). Une partie
+ * en échec ferait repartir tout le fichier de zéro.
+ */
+const PART_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
+
 export const TRANSCRIPTION_EXTENSIONS = ["mp3", "wav", "m4a", "flac", "ogg", "aac", "mp4", "mov", "mkv", "webm"];
 export const TRANSCRIPTION_ACCEPT = TRANSCRIPTION_EXTENSIONS.map((ext) => `.${ext}`).join(",");
 
@@ -62,6 +67,7 @@ export type UploadServerEvent =
   | { type: "removed"; jobId: string };
 
 type PrepareResponse = {
+  code?: string;
   jobId?: string;
   uploadUrl?: string;
   /** Content-Type signé dans l'URL pré-signée : à renvoyer tel quel. */
@@ -82,6 +88,8 @@ const useUploadStore = create<StoreState>()(() => ({ uploads: [], batchSettings:
 
 const files = new Map<string, File>();
 const slotIds = new Map<string, string | null>();
+/** Compte qui a déposé chaque fichier (le serveur refuse si le compte actif a changé). */
+const ownerIds = new Map<string, string>();
 const controllers = new Map<string, AbortController>();
 const reportedProgress = new Map<string, number>();
 const queue: string[] = [];
@@ -104,6 +112,7 @@ function update(key: string, patch: Partial<TranscriptionUpload>) {
 function remove(key: string) {
   files.delete(key);
   slotIds.delete(key);
+  ownerIds.delete(key);
   reportedProgress.delete(key);
   useUploadStore.setState((state) => ({ uploads: state.uploads.filter((upload) => upload.key !== key) }));
 }
@@ -137,6 +146,7 @@ class HttpError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
   }
@@ -251,8 +261,14 @@ async function discardJob(jobId: string, multipartUploadId: string | null) {
     }).catch(() => undefined);
   }
   try {
-    const res = await fetch(`/api/transcription/${jobId}`, { method: "DELETE" });
-    const data = (await res.json().catch(() => ({}))) as { deleted?: boolean };
+    // Réessayé : l'échec d'envoi vient souvent d'une coupure réseau, et un job
+    // non supprimé resterait « Envoi incomplet » à côté de la ligne en échec.
+    const data = await withRetry(new AbortController().signal, async () => {
+      const res = await fetch(`/api/transcription/${jobId}`, { method: "DELETE" });
+      if (res.status === 404) return { deleted: true }; // déjà supprimé
+      if (!res.ok && res.status !== 409) throw new HttpError(await readError(res), res.status);
+      return (await res.json().catch(() => ({}))) as { deleted?: boolean };
+    });
     emit(data.deleted ? { type: "removed", jobId } : { type: "changed" });
   } catch {
     emit({ type: "changed" });
@@ -295,10 +311,13 @@ async function runUpload(key: string) {
             enable_diarization: settings.enableDiarization,
             batchId: upload.batchId,
             ...(slotId ? { slotId } : {}),
+            ...(ownerIds.has(key) ? { ownerId: ownerIds.get(key) } : {}),
           }),
         });
         const body = (await prepareRes.json().catch(() => ({}))) as PrepareResponse;
-        if (!prepareRes.ok) throw new HttpError(body.error ?? `Erreur ${prepareRes.status}`, prepareRes.status);
+        if (!prepareRes.ok) {
+          throw new HttpError(body.error ?? `Erreur ${prepareRes.status}`, prepareRes.status, body.code);
+        }
         return body;
       },
       { retryNetwork: false },
@@ -332,6 +351,7 @@ async function runUpload(key: string) {
       multipartUploadId = uploadId;
       const parts = await uploadFileInParts(file, partUrls, partSize, {
         signal: controller.signal,
+        retryDelaysMs: PART_RETRY_DELAYS_MS,
         onProgress: (fraction) => {
           heartbeat();
           reportProgress(key, fraction);
@@ -365,15 +385,30 @@ async function runUpload(key: string) {
     window.setTimeout(() => remove(key), DONE_RETENTION_MS);
   } catch (error) {
     const cancelled = controller.signal.aborted || isAbort(error);
+    // Arrête les envois encore en vol (autres parties d'un multipart).
+    controller.abort();
     if (jobId) void discardJob(jobId, multipartUploadId);
     if (cancelled) {
       remove(key);
     } else {
-      update(key, { phase: "error", error: errorMessage(error), jobId: null });
+      // jobId conservé : si la suppression du job échoue (hors ligne), la ligne
+      // en échec et le job ne font qu'une ligne au lieu de deux.
+      update(key, { phase: "error", error: errorMessage(error) });
+      if (error instanceof HttpError && error.code === "OWNER_CHANGED") failQueuedOf(ownerIds.get(key), errorMessage(error));
     }
   } finally {
     if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
     controllers.delete(key);
+  }
+}
+
+/** Compte actif changé : les fichiers encore en file de ce compte ne partiront pas. */
+function failQueuedOf(ownerId: string | undefined, message: string) {
+  if (!ownerId) return;
+  for (const key of [...queue]) {
+    if (ownerIds.get(key) !== ownerId) continue;
+    queue.splice(queue.indexOf(key), 1);
+    update(key, { phase: "error", error: message });
   }
 }
 
@@ -398,6 +433,7 @@ export function enqueueUploads(
   list: File[],
   batchId: string,
   slotId: string | null,
+  ownerId: string,
 ): { accepted: number; rejected: string[] } {
   const rejected: string[] = [];
   const droppedAt = new Date().toISOString();
@@ -419,6 +455,7 @@ export function enqueueUploads(
     const key = newBatchId();
     files.set(key, file);
     slotIds.set(key, slotId);
+    ownerIds.set(key, ownerId);
     order += 1;
     added.push({
       key,
@@ -456,6 +493,9 @@ export function cancelUpload(key: string) {
 /** Relance un upload échoué depuis le début (nouveau job). */
 export function retryUpload(key: string) {
   if (!files.has(key)) return;
+  // L'ancien job a pu survivre à l'échec (suppression impossible hors ligne).
+  const previousJobId = useUploadStore.getState().uploads.find((upload) => upload.key === key)?.jobId;
+  if (previousJobId) void discardJob(previousJobId, null);
   update(key, { phase: "pending", progress: 0, error: null, jobId: null });
   queue.push(key);
   pump();
@@ -483,24 +523,36 @@ export function isSessionJob(jobId: string): boolean {
   return sessionJobIds.has(jobId);
 }
 
+// ─── Garde de fermeture ─────────────────────────────────────────────────────
+
+function preventUnload(event: BeforeUnloadEvent) {
+  event.preventDefault();
+  event.returnValue = "";
+}
+
+/**
+ * Fermer ou recharger l'onglet pendant un envoi demande confirmation. Posée au
+ * niveau du MODULE, comme la file : elle reste active quand on a quitté la
+ * page Transcription (les envois continuent en arrière-plan).
+ */
+if (typeof window !== "undefined") {
+  let guarded = false;
+  useUploadStore.subscribe((state) => {
+    const active = state.uploads.some((upload) => isUploadActive(upload));
+    if (active === guarded) return;
+    guarded = active;
+    if (active) window.addEventListener("beforeunload", preventUnload);
+    else window.removeEventListener("beforeunload", preventUnload);
+  });
+}
+
 // ─── Hook ───────────────────────────────────────────────────────────────────
 
-/** État de la file pour le rendu + garde `beforeunload` tant qu'un upload tourne. */
+/** État de la file pour le rendu. */
 export function useTranscriptionUploads() {
   const uploads = useUploadStore((state) => state.uploads);
   const batchSettings = useUploadStore((state) => state.batchSettings);
   const hasActiveUploads = uploads.some((upload) => isUploadActive(upload));
-
-  useEffect(() => {
-    if (!hasActiveUploads) return;
-    const handler = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [hasActiveUploads]);
-
   return { uploads, batchSettings, hasActiveUploads };
 }
 

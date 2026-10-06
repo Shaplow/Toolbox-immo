@@ -66,6 +66,7 @@ export default async function TranscriptionPage({
 
   return (
     <TranscriptionWorkspace
+      userId={userContext.effectiveUser.id}
       initialJobs={page.jobs}
       initialNextCursor={page.nextCursor}
       diarizationAvailable={Boolean(process.env.HF_TOKEN)}

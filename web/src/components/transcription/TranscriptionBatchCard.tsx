@@ -47,6 +47,7 @@ export function TranscriptionBatchCard({
   onRetryRow,
   onDismissRow,
   onRetryFailedUploads,
+  canAddFiles = true,
 }: {
   batch: WorkspaceBatch;
   summary: WorkspaceBatchSummary;
@@ -67,9 +68,12 @@ export function TranscriptionBatchCard({
   onRetryRow: (row: BatchRow) => void;
   onDismissRow: (row: BatchRow) => void;
   onRetryFailedUploads: () => void;
+  /** « Ajouter des vidéos au lot » : masqué depuis une publication (une seule vidéo). */
+  canAddFiles?: boolean;
 }) {
   const isBatch = batch.batchId !== null;
   const finished = summary.completed + summary.failed;
+  const toTranscribe = summary.total - summary.cancelled;
   const title = isBatch
     ? batchLabel(batch.createdAt)
     : (batch.rows[0]?.job?.inputFilename ?? "Transcription");
@@ -81,6 +85,7 @@ export function TranscriptionBatchCard({
           key={row.key}
           row={row}
           busy={rowBusy(row)}
+          showDate={!isBatch}
           diarizationAvailable={diarizationAvailable}
           onPatch={(patch) => onPatchRow(row, patch)}
           onLaunch={() => onLaunchRow(row)}
@@ -137,6 +142,9 @@ export function TranscriptionBatchCard({
               <Badge variant="danger" size="sm">
                 {plural(summary.failed, "échec", "échecs")}
               </Badge>
+            )}
+            {summary.cancelled > 0 && (
+              <Badge size="sm">{plural(summary.cancelled, "annulée", "annulées")}</Badge>
             )}
           </div>
         </div>
@@ -200,21 +208,23 @@ export function TranscriptionBatchCard({
                 disabled: summary.completed === 0 || downloading !== null,
                 onClick: () => onDownload("json"),
               },
-              { label: "Ajouter des vidéos au lot", icon: Plus, onClick: onAddFiles },
+              ...(canAddFiles ? [{ label: "Ajouter des vidéos au lot", icon: Plus, onClick: onAddFiles }] : []),
             ]}
           />
           <ButtonIcon
             icon={ChevronDown}
             size="sm"
             label={expanded ? "Replier le lot" : "Déplier le lot"}
+            aria-expanded={expanded}
             onClick={onToggleExpanded}
             className={expanded ? "rotate-180 transition-transform" : "transition-transform"}
           />
         </div>
       </div>
 
-      {(summary.processing > 0 || (finished > 0 && finished < summary.total)) && (
-        <Progress value={finished} max={summary.total} size="sm" className="rounded-none" />
+      {/* Avancement des transcriptions, tant qu'il en tourne (les annulées ne comptent pas). */}
+      {summary.processing > 0 && toTranscribe > 0 && (
+        <Progress value={finished} max={toTranscribe} size="sm" className="rounded-none" />
       )}
 
       {expanded && rows}

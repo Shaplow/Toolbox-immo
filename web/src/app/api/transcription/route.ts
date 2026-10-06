@@ -92,6 +92,13 @@ function jobStorageSegment(): string {
 
 const LIST_PAGE_SIZE = 50;
 
+/**
+ * Longueur maximale conservée d'un nom de fichier client (limite usuelle des
+ * systèmes de fichiers). Au-delà, tronqué : le nom ne sert qu'à l'affichage et
+ * aux noms d'export, et un nom démesuré n'a rien à faire en base.
+ */
+const MAX_FILENAME_LENGTH = 255;
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -107,14 +114,28 @@ export async function POST(req: NextRequest) {
   // ─── Mode RunPod via JSON (presigned URL — pas de fichier dans Next.js) ──
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    let body: { filename?: unknown; ext?: unknown; size?: unknown; model?: unknown; language?: unknown; languages?: unknown; enable_diarization?: unknown; slotId?: unknown; batchId?: unknown };
+    let body: { filename?: unknown; ext?: unknown; size?: unknown; model?: unknown; language?: unknown; languages?: unknown; enable_diarization?: unknown; slotId?: unknown; batchId?: unknown; ownerId?: unknown };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
     }
 
-    const filename = String(body.filename ?? "").trim();
+    // File d'upload du navigateur : chaque fichier porte le compte qui l'a
+    // déposé. Si le compte actif a changé depuis (« Voir comme » démarré ou
+    // arrêté pendant un lot), on refuse plutôt que de créer le job sous un
+    // autre compte.
+    if (body.ownerId != null && body.ownerId !== userContext.effectiveUser.id) {
+      return NextResponse.json(
+        {
+          error: "Le compte actif a changé pendant l'envoi : rechargez la page Transcription.",
+          code: "OWNER_CHANGED",
+        },
+        { status: 409 }
+      );
+    }
+
+    const filename = String(body.filename ?? "").trim().slice(0, MAX_FILENAME_LENGTH);
     const ext = String(body.ext ?? "").toLowerCase().trim();
     if (!filename || !AUDIO_EXTENSIONS.has(ext)) {
       return NextResponse.json(
@@ -348,7 +369,7 @@ export async function POST(req: NextRequest) {
       data: {
         userId,
         status: "PROCESSING",
-        inputFilename: audioFile.name,
+        inputFilename: audioFile.name.slice(0, MAX_FILENAME_LENGTH),
         model,
         language,
         languages,
@@ -480,7 +501,7 @@ export async function POST(req: NextRequest) {
       userId,
       status: "QUEUED",
       inputKey,
-      inputFilename: audioFile.name,
+      inputFilename: audioFile.name.slice(0, MAX_FILENAME_LENGTH),
       model,
       language,
       languages,

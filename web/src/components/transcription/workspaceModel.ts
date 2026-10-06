@@ -207,6 +207,8 @@ export type WorkspaceBatchSummary = {
   processing: number;
   completed: number;
   failed: number;
+  /** Annulées volontairement (ni terminées ni en échec). */
+  cancelled: number;
   /** Envois échoués dans ce navigateur (réessayables en un clic). */
   uploadErrors: number;
   /** État de la case « Identifier les intervenants » du lot. */
@@ -228,6 +230,7 @@ export function summarizeWorkspaceBatch(batch: WorkspaceBatch, pendingDiarizatio
     processing: 0,
     completed: 0,
     failed: 0,
+    cancelled: 0,
     uploadErrors: 0,
     diarization: false,
     configurable: false,
@@ -253,8 +256,9 @@ export function summarizeWorkspaceBatch(batch: WorkspaceBatch, pendingDiarizatio
         summary.processing += 1;
       } else if (job.status === "COMPLETED") {
         summary.completed += 1;
-      } else if (job.status === "FAILED" && jobStatusDisplay(job).variant === "danger") {
-        summary.failed += 1;
+      } else if (job.status === "FAILED") {
+        if (jobStatusDisplay(job).variant === "danger") summary.failed += 1;
+        else summary.cancelled += 1;
       }
     } else if (isUploadActive(upload)) {
       if (pendingDiarization) diarizationOn += 1;

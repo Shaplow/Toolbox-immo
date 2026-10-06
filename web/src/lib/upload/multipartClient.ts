@@ -13,7 +13,9 @@
  */
 
 const DEFAULT_CONCURRENCY = 4;
-const MAX_RETRIES = 3;
+
+/** Délais entre tentatives d'une partie (3 tentatives au total par défaut). */
+const DEFAULT_PART_RETRY_DELAYS_MS: readonly number[] = [500, 1000];
 
 /**
  * Intervalle entre deux signes de vie envoyés au serveur pendant un upload long.
@@ -80,26 +82,27 @@ export function createUploadHeartbeat(
   };
 }
 
-/** PUT d'une partie avec retries (backoff exponentiel). */
+/** PUT d'une partie, retentée après chacun des délais de `retryDelaysMs`. */
 async function uploadPartWithRetry(
   url: string,
   chunk: Blob,
   signal: AbortSignal,
-  attempt = 0,
+  retryDelaysMs: readonly number[],
 ): Promise<void> {
-  try {
-    const res = await fetch(url, {
-      method: "PUT",
-      body: chunk,
-      signal,
-      headers: { "Content-Type": "application/octet-stream" },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  } catch (err) {
-    if (attempt >= MAX_RETRIES - 1) throw err;
-    if (signal.aborted) throw err;
-    await delay(Math.pow(2, attempt) * 500);
-    return uploadPartWithRetry(url, chunk, signal, attempt + 1);
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const res = await fetch(url, {
+        method: "PUT",
+        body: chunk,
+        signal,
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return;
+    } catch (err) {
+      if (attempt >= retryDelaysMs.length || signal.aborted) throw err;
+      await delay(retryDelaysMs[attempt]);
+    }
   }
 }
 
@@ -110,7 +113,9 @@ async function uploadPartWithRetry(
  * @param partUrls   URLs pré-signées, une par partie (1-based, ordre quelconque).
  * @param partSize   Taille d'une partie en octets (la dernière est tronquée).
  * @param opts       signal d'annulation, callback de progression (fraction 0→1),
- *                   concurrence max (défaut 4).
+ *                   concurrence max (défaut 4), délais entre tentatives d'une
+ *                   partie (défaut 0,5 s puis 1 s ; plus longs pour survivre à
+ *                   une coupure réseau).
  * @returns Les parties uploadées, triées par numéro — à passer au serveur pour
  *          le CompleteMultipartUpload.
  */
@@ -118,9 +123,19 @@ export async function uploadFileInParts(
   file: Blob,
   partUrls: { partNumber: number; url: string }[],
   partSize: number,
-  opts: { signal: AbortSignal; onProgress?: (fraction: number) => void; concurrency?: number },
+  opts: {
+    signal: AbortSignal;
+    onProgress?: (fraction: number) => void;
+    concurrency?: number;
+    retryDelaysMs?: readonly number[];
+  },
 ): Promise<{ partNumber: number }[]> {
-  const { signal, onProgress, concurrency = DEFAULT_CONCURRENCY } = opts;
+  const {
+    signal,
+    onProgress,
+    concurrency = DEFAULT_CONCURRENCY,
+    retryDelaysMs = DEFAULT_PART_RETRY_DELAYS_MS,
+  } = opts;
   const total = partUrls.length;
   const done: { partNumber: number }[] = [];
   let completed = 0;
@@ -133,7 +148,7 @@ export async function uploadFileInParts(
       const end = Math.min(start + partSize, file.size);
       const chunk = file.slice(start, end);
 
-      await uploadPartWithRetry(part.url, chunk, signal);
+      await uploadPartWithRetry(part.url, chunk, signal, retryDelaysMs);
 
       done.push({ partNumber: part.partNumber });
       completed += 1;

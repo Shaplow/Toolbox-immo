@@ -22,7 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { timingSafeEqualStrings } from "@/lib/utils";
 import { reconcileDispatchedCoverPacks } from "@/lib/coverAuto";
 import { AUTOCUT_FAILED_RETENTION_MS, reconcileAutocutJobs } from "@/lib/mediaAutocutServer";
-import { SWEEP_UPLOAD_STALL_MS } from "@/lib/transcription/staleRules";
+import { READY_JOB_TTL_MS, SWEEP_UPLOAD_STALL_MS } from "@/lib/transcription/staleRules";
 import { STALE_JOB_SELECT, expireStaleTranscriptionJobs } from "@/lib/services/transcription/expireStale";
 
 /** Transcriptions immobiles traitées par passage (le reste au passage suivant). */
@@ -81,6 +81,16 @@ export async function GET(req: NextRequest) {
         status: { in: ["QUEUED", "PROCESSING"] },
         runpodJobId: null,
         updatedAt: { lt: new Date(now.getTime() - SWEEP_UPLOAD_STALL_MS) },
+        // Vidéos prêtes pas encore expirables (< 7 j) : exclues, sinon elles
+        // occuperaient toute la fenêtre de 200 à chaque passage et les jobs
+        // réellement périmés ne seraient jamais atteints.
+        NOT: {
+          status: "QUEUED",
+          uploadedAt: { not: null },
+          renderId: null,
+          publicationVersionId: null,
+          updatedAt: { gte: new Date(now.getTime() - READY_JOB_TTL_MS) },
+        },
       },
       orderBy: { updatedAt: "asc" },
       take: TRANSCRIPTION_EXPIRE_BATCH,
