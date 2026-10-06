@@ -22,6 +22,9 @@ const PUBLIC_PATTERNS: readonly RegExp[] = [
   /^\/api\/data-fill\/[^/]+$/,
   // Crons — CRON_SECRET vérifié en temps constant dans chaque handler
   /^\/api\/cron\/(?:r2-cleanup|pod-reconcile|calendar)$/,
+  // Lien de téléchargement des données d'un client — services/clientExport/exportLinks.ts
+  /^\/export\/[^/]+$/,
+  /^\/api\/export\/[^/]+\/(?:manifest|urls|events|data\/[^/]+)$/,
 ];
 
 export function isPublicPath(pathname: string): boolean {

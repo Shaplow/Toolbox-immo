@@ -10,6 +10,11 @@ describe("isPublicPath", () => {
     "/api/cron/r2-cleanup",
     "/api/cron/pod-reconcile",
     "/api/cron/calendar",
+    "/export/9f2c",
+    "/api/export/9f2c/manifest",
+    "/api/export/9f2c/urls",
+    "/api/export/9f2c/events",
+    "/api/export/9f2c/data/cklib123",
   ])("laisse passer %s", (pathname) => {
     expect(isPublicPath(pathname)).toBe(true);
   });
@@ -30,6 +35,14 @@ describe("isPublicPath", () => {
     "/api/cron/autre",
     "/api/cron/r2-cleanup/extra",
     "/api/cron/r2-cleanupx",
+    // export : jeton seul, sous-routes listées seulement
+    "/export",
+    "/export/9f2c/extra",
+    "/api/export/9f2c",
+    "/api/export/9f2c/autre",
+    "/api/export/9f2c/data",
+    "/api/export/9f2c/data/a/b",
+    "/api/admin/clients/c1/export-links",
     // tout le reste de l'app
     "/",
     "/home",
