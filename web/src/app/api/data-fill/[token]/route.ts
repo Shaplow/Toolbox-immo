@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getClientIp } from "@/lib/http/rateLimit";
+import { createRateLimiter, getClientIp } from "@/lib/http/rateLimit";
 
 /**
  * Route publique de remplissage de DataLibrary (Phase 1.x Vague 3).
@@ -27,26 +27,16 @@ type Params = { params: Promise<{ token: string }> };
 const MAX_FIELD_VALUE_LENGTH = 2000;
 
 /**
- * Rate limit best-effort par IP : N requêtes par fenêtre de M secondes.
+ * Rate limit best-effort par IP : 10 requêtes par fenêtre glissante de 60 s.
  * In-memory uniquement → reset à chaque redéploiement, comme la magic-link.
  * Suffit à freiner un script automatisé sans nécessiter Redis (acceptable
  * vu la criticité moyenne de l'endpoint).
+ *
+ * Helper partagé plutôt qu'une Map locale : la route est publique (la clé IP est
+ * insérée AVANT toute vérification de jeton), il faut donc une table purgée et
+ * plafonnée, sinon un balayage d'IP la fait grossir sans fin.
  */
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX_REQUESTS = 10;
-const rateLimits = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimits.get(ip);
-  if (!entry || entry.resetAt < now) {
-    rateLimits.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) return false;
-  entry.count++;
-  return true;
-}
+const rateLimiter = createRateLimiter({ windowMs: 60_000, max: 10 });
 
 async function loadLibraryByToken(token: string) {
   if (!token || token.length < 16) return null;
@@ -77,7 +67,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   // Rate limit avant toute lecture DB pour ne pas amplifier l'attaque.
   const ip = getClientIp(req);
-  if (!checkRateLimit(ip)) {
+  if (!rateLimiter.check(ip)) {
     return NextResponse.json(
       { error: "Trop de requêtes, réessayez dans une minute" },
       { status: 429 },

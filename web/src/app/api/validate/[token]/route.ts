@@ -33,7 +33,7 @@ import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscriptio
 import { transcribeRenderLocal } from "@/lib/transcribeRenderLocal";
 import { runpodConfigured } from "@/lib/runpod";
 import { r2Configured } from "@/lib/r2";
-import { getClientIp } from "@/lib/http/rateLimit";
+import { createRateLimiter, getClientIp } from "@/lib/http/rateLimit";
 
 type RouteContext = { params: Promise<{ token: string }> };
 
@@ -42,39 +42,24 @@ type Action = (typeof VALID_ACTIONS)[number];
 
 const MAX_COMMENT_LENGTH = 2000;
 
-// ─── Rate-limit sliding window in-memory ──────────────────────────────────────
-// Best-effort : reset à chaque redémarrage du process. Acceptable pour MVP
-// car le token magic-link a 256 bits d'entropie (brute-force impractical
-// même sans rate-limit). Sur déploiements multi-instance ou si analytics
-// remontent > 100 req/min, migrer vers Upstash Redis (TODO).
+// ─── Rate-limit ───────────────────────────────────────────────────────────────
+// Best-effort : fenêtre glissante en mémoire, reset à chaque redémarrage du
+// process. Acceptable car le token magic-link a 256 bits d'entropie
+// (brute-force impractical même sans rate-limit). Sur déploiements
+// multi-instance ou si analytics remontent > 100 req/min, migrer vers Upstash
+// Redis (TODO).
 //
-// W5.16 : passage à sliding window (timestamps array) plutôt que fixed
-// window — évite le burst possible au reset (jusqu'à 2× MAX dans la même
-// seconde à cheval sur la fenêtre).
-
-const rateLimits = new Map<string, number[]>();
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 10;
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const cutoff = now - RATE_LIMIT_WINDOW_MS;
-  const timestamps = (rateLimits.get(ip) ?? []).filter((t) => t > cutoff);
-  if (timestamps.length >= RATE_LIMIT_MAX) {
-    rateLimits.set(ip, timestamps); // garde l'historique pour les prochains checks
-    return false;
-  }
-  timestamps.push(now);
-  rateLimits.set(ip, timestamps);
-  return true;
-}
+// Helper partagé plutôt qu'une Map locale : la route est publique (la clé IP est
+// insérée AVANT toute vérification de jeton), il faut donc une table purgée et
+// plafonnée, sinon un balayage d'IP la fait grossir sans fin.
+const rateLimiter = createRateLimiter({ windowMs: 60_000, max: 10 });
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
   // Rate-limit
   const ip = getClientIp(req);
-  if (!checkRateLimit(ip)) {
+  if (!rateLimiter.check(ip)) {
     return NextResponse.json({ error: "Trop de requêtes" }, { status: 429 });
   }
 
