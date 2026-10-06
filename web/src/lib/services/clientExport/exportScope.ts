@@ -21,7 +21,7 @@
  * client après la création du lien sort du périmètre.
  */
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { SHARED_SENTINEL_IDS, isReservedSetTag } from "@/lib/rotation/sentinels";
 import { isLocalStorage } from "@/lib/storage";
@@ -190,39 +190,38 @@ export async function resolveExportScope(selection: ExportSelection): Promise<Re
   }
 
   // ── Fiches de données : réservées par compte, communes une fois ───────────
+  // Comptées en base, sans charger les fiches : l'aperçu passe toutes les
+  // bibliothèques de données, et un import CSV peut en créer des dizaines de milliers.
   if (dataLibraries.length > 0) {
-    const entries = await prisma.dataEntry.findMany({
-      where: { libraryId: { in: dataLibraries.map((l) => l.id) } },
-      select: {
-        libraryId: true,
-        accesses: { where: { accountId: { in: accountIds } }, select: { accountId: true } },
-        _count: { select: { accesses: true } },
-      },
-    });
-    // libraryId → (accountId | "") → nombre de fiches
-    const counts = new Map<string, Map<string, number>>();
-    const bump = (libraryId: string, key: string) => {
-      const perLib = counts.get(libraryId) ?? new Map<string, number>();
-      perLib.set(key, (perLib.get(key) ?? 0) + 1);
-      counts.set(libraryId, perLib);
+    const dataLibraryIds = dataLibraries.map((l) => l.id);
+    const [common, reserved] = await Promise.all([
+      prisma.dataEntry.groupBy({
+        by: ["libraryId"],
+        where: { libraryId: { in: dataLibraryIds }, accesses: { none: {} } },
+        _count: { _all: true },
+      }),
+      prisma.$queryRaw<Array<{ libraryId: string; accountId: string; count: bigint | number }>>`
+        SELECT de."libraryId" AS "libraryId", dea."accountId" AS "accountId", COUNT(*) AS "count"
+        FROM "DataEntryAccess" dea
+        JOIN "DataEntry" de ON de.id = dea."entryId"
+        WHERE de."libraryId" IN (${Prisma.join(dataLibraryIds)})
+          AND dea."accountId" IN (${Prisma.join(accountIds)})
+        GROUP BY de."libraryId", dea."accountId"`,
+    ]);
+
+    const pushData = (libraryId: string, accountId: string | null, entryCount: number) => {
+      if (entryCount <= 0) return;
+      const item: DataExportItem = {
+        kind: "data",
+        ref: dataRef(libraryId, accountId),
+        accountId,
+        libraryId,
+        entryCount,
+      };
+      items.push(item);
     };
-    for (const entry of entries) {
-      if (entry._count.accesses === 0) bump(entry.libraryId, "");
-      else for (const access of entry.accesses) bump(entry.libraryId, access.accountId);
-    }
-    for (const [libraryId, perKey] of counts) {
-      for (const [key, entryCount] of perKey) {
-        const accountId = key === "" ? null : key;
-        const item: DataExportItem = {
-          kind: "data",
-          ref: dataRef(libraryId, accountId),
-          accountId,
-          libraryId,
-          entryCount,
-        };
-        items.push(item);
-      }
-    }
+    for (const row of reserved) pushData(row.libraryId, row.accountId, Number(row.count));
+    for (const row of common) pushData(row.libraryId, null, row._count._all);
   }
 
   // ── Vidéos publiées ────────────────────────────────────────────────────────
@@ -317,14 +316,31 @@ export async function resolveExportScope(selection: ExportSelection): Promise<Re
   return { accounts, libraries, items, skipped };
 }
 
-/** Fiches d'un fichier de données : réservées au compte, ou communes (accountId null). */
-export async function loadDataEntriesForExport(libraryId: string, accountId: string | null) {
-  return prisma.dataEntry.findMany({
-    where: {
-      libraryId,
-      accesses: accountId ? { some: { accountId } } : { none: {} },
-    },
-    select: { fields: true, setTag: true },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-  });
+const DATA_ENTRY_PAGE_SIZE = 2000;
+
+/**
+ * Fiches d'un fichier de données — réservées au compte, ou communes (accountId
+ * null) — par pages, pour écrire le .xlsx en flux sans tout charger.
+ */
+export async function* iterateDataEntriesForExport(
+  libraryId: string,
+  accountId: string | null,
+): AsyncGenerator<Array<{ fields: string; setTag: string | null }>> {
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await prisma.dataEntry.findMany({
+      where: {
+        libraryId,
+        accesses: accountId ? { some: { accountId } } : { none: {} },
+      },
+      select: { id: true, fields: true, setTag: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: DATA_ENTRY_PAGE_SIZE,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    });
+    if (page.length === 0) return;
+    yield page;
+    if (page.length < DATA_ENTRY_PAGE_SIZE) return;
+    cursor = page[page.length - 1].id;
+  }
 }

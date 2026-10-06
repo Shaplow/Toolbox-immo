@@ -5,7 +5,8 @@ const mockAccounts = vi.fn();
 const mockMediaLibraries = vi.fn();
 const mockDataLibraries = vi.fn();
 const mockMediaAssets = vi.fn();
-const mockDataEntries = vi.fn();
+const mockCommonEntries = vi.fn();
+const mockReservedEntries = vi.fn();
 const mockSlots = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
@@ -14,7 +15,9 @@ vi.mock("@/lib/prisma", () => ({
     mediaLibrary: { findMany: (...a: unknown[]) => mockMediaLibraries(...a) },
     dataLibrary: { findMany: (...a: unknown[]) => mockDataLibraries(...a) },
     mediaAsset: { findMany: (...a: unknown[]) => mockMediaAssets(...a) },
-    dataEntry: { findMany: (...a: unknown[]) => mockDataEntries(...a) },
+    dataEntry: { groupBy: (...a: unknown[]) => mockCommonEntries(...a) },
+    // $queryRaw est appelé en gabarit : (strings, ...valeurs interpolées).
+    $queryRaw: (...a: unknown[]) => mockReservedEntries(...a),
     publicationSlot: { findMany: (...a: unknown[]) => mockSlots(...a) },
   },
 }));
@@ -50,7 +53,7 @@ function asset(id: string, libraryId: string, accesses: string[], extra: Record<
 
 beforeEach(() => {
   vi.stubEnv("R2_PUBLIC_URL", "https://cdn.toolboximmo.com");
-  for (const m of [mockAccounts, mockMediaLibraries, mockDataLibraries, mockMediaAssets, mockDataEntries, mockSlots]) {
+  for (const m of [mockAccounts, mockMediaLibraries, mockDataLibraries, mockMediaAssets, mockCommonEntries, mockReservedEntries, mockSlots]) {
     m.mockReset();
   }
   // La base ne renvoie que les comptes du client : « intrus » appartient à un autre.
@@ -64,7 +67,8 @@ beforeEach(() => {
   ]);
   mockDataLibraries.mockResolvedValue([{ id: "data", name: "Chiffres marché" }]);
   mockMediaAssets.mockResolvedValue([]);
-  mockDataEntries.mockResolvedValue([]);
+  mockCommonEntries.mockResolvedValue([]);
+  mockReservedEntries.mockResolvedValue([]);
   mockSlots.mockResolvedValue([]);
 });
 
@@ -147,22 +151,31 @@ describe("resolveExportScope — médias", () => {
 });
 
 describe("resolveExportScope — données", () => {
-  it("sépare fiches réservées et communes, ignore celles des autres comptes", async () => {
-    mockDataEntries.mockResolvedValue([
-      { libraryId: "data", accesses: [], _count: { accesses: 0 } }, // commune
-      { libraryId: "data", accesses: [], _count: { accesses: 0 } }, // commune
-      { libraryId: "data", accesses: [{ accountId: "acc1" }], _count: { accesses: 1 } }, // Sarah
-      { libraryId: "data", accesses: [], _count: { accesses: 1 } }, // réservée à un autre compte
-    ]);
+  it("compte en base les fiches communes et celles réservées aux seuls comptes retenus", async () => {
+    mockCommonEntries.mockResolvedValue([{ libraryId: "data", _count: { _all: 2 } }]);
+    mockReservedEntries.mockResolvedValue([{ libraryId: "data", accountId: "acc1", count: BigInt(1) }]);
+
     const scope = await resolveExportScope(SELECTION);
+
+    const commonWhere = mockCommonEntries.mock.calls[0][0].where;
+    expect(commonWhere).toEqual({ libraryId: { in: ["data"] }, accesses: { none: {} } });
+    // Les comptes passés au SQL sont ceux du client retenus, jamais l'intrus.
+    const sqlValues = mockReservedEntries.mock.calls[0].slice(1) as Array<{ values: unknown[] }>;
+    expect(sqlValues.map((v) => v.values)).toEqual([["data"], ["acc1", "acc2"]]);
+
     const data = scope.items.filter((i) => i.kind === "data");
     expect(data).toHaveLength(2);
     expect(data).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ accountId: null, entryCount: 2 }),
-        expect.objectContaining({ accountId: "acc1", entryCount: 1 }),
+        expect.objectContaining({ accountId: null, entryCount: 2, ref: "d.data.c" }),
+        expect.objectContaining({ accountId: "acc1", entryCount: 1, ref: "d.data.acc1" }),
       ]),
     );
+  });
+
+  it("garde toutes les bibliothèques sélectionnées dans l'arbre, même vides (noms stables)", async () => {
+    const scope = await resolveExportScope(SELECTION);
+    expect(scope.libraries.map((l) => l.id).sort()).toEqual(["aud", "data", "vid"]);
   });
 });
 

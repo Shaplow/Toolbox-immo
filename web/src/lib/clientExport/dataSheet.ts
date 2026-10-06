@@ -68,49 +68,70 @@ function cellValue(value: unknown): string {
 }
 
 /**
- * Colonnes : « Dossier », puis les champs du schéma de la bibliothèque (dans
- * l'ordre déclaré, avec leur libellé) ; sans schéma, l'union des clés des fiches
- * dans l'ordre d'apparition. Lignes : une par fiche, dans l'ordre reçu, toujours
- * aussi longues que les colonnes. Une fiche dont `fields` est illisible garde
- * son Dossier et donne des cellules vides : un export ne s'arrête pas pour une
- * ligne cassée.
+ * Colonnes de champs déclarées par le schéma de la bibliothèque (ordre déclaré,
+ * libellés) ; null si la bibliothèque n'a pas de schéma — les colonnes sont
+ * alors l'union des clés des fiches, à collecter avec collectFieldKeys.
+ */
+export function declaredFieldColumns(fieldsSchema: string): DataSheetColumn[] | null {
+  const declared = normalizeCustomFields(fieldsSchema);
+  return declared.length > 0 ? declared.map((field) => ({ key: field.key, label: field.label })) : null;
+}
+
+/**
+ * Bibliothèque sans schéma (héritage, ou jamais configuré) : ajoute à `keys` les
+ * clés d'une fiche, dans l'ordre où elles apparaissent. Appelée fiche par fiche,
+ * elle permet un premier passage en flux sur une très grosse bibliothèque.
+ */
+export function collectFieldKeys(keys: Set<string>, fieldsJson: string): void {
+  const fields = parseFields(fieldsJson);
+  if (!fields) return;
+  for (const key of Object.keys(fields)) if (!RESERVED_FIELD_KEYS.has(key)) keys.add(key);
+}
+
+/** Colonnes complètes : « Dossier » puis les champs. */
+export function sheetColumns(fieldColumns: DataSheetColumn[]): DataSheetColumn[] {
+  return [{ key: DOSSIER_COLUMN_KEY, label: "Dossier" }, ...fieldColumns];
+}
+
+/**
+ * Cellules d'une fiche, aussi nombreuses que sheetColumns(fieldColumns). Une
+ * fiche dont `fields` est illisible garde son Dossier et donne des cellules
+ * vides : un export ne s'arrête pas pour une ligne cassée.
+ */
+export function dataSheetRow(
+  fieldColumns: DataSheetColumn[],
+  entry: { fields: string; setTag: string | null },
+): string[] {
+  const fields = parseFields(entry.fields);
+  // Les anciens dossiers auto-générés (pack_*) sont masqués partout dans l'UI.
+  const dossier = entry.setTag && !isReservedSetTag(entry.setTag) ? cellText(entry.setTag.trim()) : "";
+  return [
+    dossier,
+    // Propriétés propres seulement : un champ « constructor » ne doit pas remonter le prototype.
+    ...fieldColumns.map((column) =>
+      fields && Object.prototype.hasOwnProperty.call(fields, column.key) ? cellValue(fields[column.key]) : "",
+    ),
+  ];
+}
+
+/**
+ * Feuille complète en mémoire (petites bibliothèques, tests) : colonnes
+ * « Dossier » + champs du schéma, ou union des clés des fiches ; une ligne par
+ * fiche, dans l'ordre reçu. La route publique `data` écrit, elle, en flux avec
+ * les helpers ci-dessus.
  */
 export function buildDataSheet(input: {
   fieldsSchema: string;
   entries: Array<{ fields: string; setTag: string | null }>;
 }): { columns: DataSheetColumn[]; rows: string[][] } {
-  const parsed = input.entries.map((entry) => parseFields(entry.fields));
-
-  const declared = normalizeCustomFields(input.fieldsSchema);
-  let fieldColumns: DataSheetColumn[];
-  if (declared.length > 0) {
-    fieldColumns = declared.map((field) => ({ key: field.key, label: field.label }));
-  } else {
-    // Bibliothèque sans schéma (héritage, ou jamais configuré) : les clés des
-    // fiches, dans l'ordre où elles apparaissent.
+  let fieldColumns = declaredFieldColumns(input.fieldsSchema);
+  if (!fieldColumns) {
     const keys = new Set<string>();
-    for (const fields of parsed) {
-      if (!fields) continue;
-      for (const key of Object.keys(fields)) if (!RESERVED_FIELD_KEYS.has(key)) keys.add(key);
-    }
+    for (const entry of input.entries) collectFieldKeys(keys, entry.fields);
     fieldColumns = [...keys].map((key) => ({ key, label: key }));
   }
-
-  const columns: DataSheetColumn[] = [{ key: DOSSIER_COLUMN_KEY, label: "Dossier" }, ...fieldColumns];
-
-  const rows = input.entries.map((entry, index) => {
-    const fields = parsed[index];
-    // Les anciens dossiers auto-générés (pack_*) sont masqués partout dans l'UI.
-    const dossier = entry.setTag && !isReservedSetTag(entry.setTag) ? cellText(entry.setTag.trim()) : "";
-    return [
-      dossier,
-      // Propriétés propres seulement : un champ « constructor » ne doit pas remonter le prototype.
-      ...fieldColumns.map((column) =>
-        fields && Object.prototype.hasOwnProperty.call(fields, column.key) ? cellValue(fields[column.key]) : "",
-      ),
-    ];
-  });
-
+  const columns = sheetColumns(fieldColumns);
+  const rows = input.entries.map((entry) => dataSheetRow(fieldColumns, entry));
   return { columns, rows };
 }
 

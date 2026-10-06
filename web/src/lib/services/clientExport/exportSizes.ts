@@ -62,11 +62,47 @@ function rememberSize(key: string, size: number | null, now: number) {
 
 type SizeOutcome = { kind: "size"; size: number } | { kind: "missing" } | { kind: "unknown" };
 
+/**
+ * Médias absents du stockage, mémorisés 1 h : sans ça, chaque reconstruction du
+ * manifeste (toutes les 5 min pendant un téléchargement, sur le chemin de `urls`)
+ * et chaque ouverture du tiroir relançaient un listing complet du bucket ou un
+ * HEAD par ligne fantôme. Sans risque : une taille enregistrée plus tard en base
+ * (confirm, media_edit) court-circuite ce cache, qui ne voit que les sizeBytes null.
+ */
+const MEDIA_MISSING_TTL_MS = 60 * 60 * 1000;
+const globalMissing = globalThis as unknown as { __clientExportMissingMedia?: Map<string, number> };
+const missingMedia = (globalMissing.__clientExportMissingMedia ??= new Map<string, number>());
+
+function isKnownMissingMedia(r2Key: string, now: number): boolean {
+  const at = missingMedia.get(r2Key);
+  if (at === undefined) return false;
+  if (now - at > MEDIA_MISSING_TTL_MS) {
+    missingMedia.delete(r2Key);
+    return false;
+  }
+  return true;
+}
+
+function rememberMissingMedia(r2Key: string, now: number) {
+  if (missingMedia.size >= MAX_CACHED_KEYS) {
+    let drop = Math.ceil(MAX_CACHED_KEYS / 4);
+    for (const k of missingMedia.keys()) {
+      missingMedia.delete(k);
+      if (--drop === 0) break;
+    }
+  }
+  missingMedia.set(r2Key, now);
+}
+
 /** Tailles des médias sans sizeBytes, par assetId (dédoublonnés : un asset peut servir deux comptes). */
 async function resolveMediaSizes(missing: MediaExportItem[]): Promise<Map<string, SizeOutcome>> {
-  const byAsset = new Map<string, MediaExportItem>();
-  for (const item of missing) byAsset.set(item.assetId, item);
+  const now = Date.now();
   const outcomes = new Map<string, SizeOutcome>();
+  const byAsset = new Map<string, MediaExportItem>();
+  for (const item of missing) {
+    if (isKnownMissingMedia(item.r2Key, now)) outcomes.set(item.assetId, { kind: "missing" });
+    else byAsset.set(item.assetId, item);
+  }
   if (byAsset.size === 0) return outcomes;
 
   const assets = [...byAsset.values()];
@@ -93,13 +129,26 @@ async function resolveMediaSizes(missing: MediaExportItem[]): Promise<Map<string
     });
   }
 
+  for (const asset of assets) {
+    if (outcomes.get(asset.assetId)?.kind === "missing") rememberMissingMedia(asset.r2Key, now);
+  }
+
   // Persister ce qui a été trouvé : le prochain aperçu n'aura plus à le chercher.
+  // Seulement là où la taille est ENCORE inconnue : un media_edit (ou un confirm)
+  // a pu écrire entre-temps la taille du nouveau fichier, qu'une mesure plus
+  // ancienne ne doit pas écraser — le moteur refuserait sinon ce fichier.
   const found = [...outcomes].filter(
     (entry): entry is [string, { kind: "size"; size: number }] => entry[1].kind === "size",
   );
-  await mapWithConcurrencySettled(found, HEAD_CONCURRENCY, ([assetId, outcome]) =>
-    prisma.mediaAsset.update({ where: { id: assetId }, data: { sizeBytes: BigInt(outcome.size) } }),
+  const persisted = await mapWithConcurrencySettled(found, HEAD_CONCURRENCY, ([assetId, outcome]) =>
+    prisma.mediaAsset.updateMany({
+      where: { id: assetId, sizeBytes: null },
+      data: { sizeBytes: BigInt(outcome.size) },
+    }),
   );
+  persisted.forEach((result, index) => {
+    if (!result.ok) console.warn(`[clientExport] taille non enregistrée (asset=${found[index][0]}) :`, result.error);
+  });
   return outcomes;
 }
 
