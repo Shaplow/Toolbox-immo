@@ -2,12 +2,13 @@
 
 /**
  * Hooks de la page publique /export/[token] : prise en charge du navigateur,
- * chargement du manifeste, dossier mémorisé, et les deux garde-fous d'un
- * téléchargement long (écran qui ne s'éteint pas, avertissement à la fermeture).
+ * chargement du manifeste, dossier mémorisé, et les garde-fous d'un
+ * téléchargement long (écran qui ne s'éteint pas, avertissement à la fermeture,
+ * nettoyage des fichiers vides quand l'onglet se ferme).
  */
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { LinkGoneError } from "@/lib/clientExport/downloadEngine";
+import { LinkGoneError, abandonInFlightWrites } from "@/lib/clientExport/downloadEngine";
 import { clearRootHandle, loadRootHandle } from "@/lib/clientExport/handleStore";
 import type { ExportManifest } from "@/lib/clientExport/types";
 import { ExportApiError, fetchManifest } from "./exportApi";
@@ -192,5 +193,31 @@ export function useBeforeUnloadGuard(active: boolean): void {
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [active]);
+}
+
+/**
+ * Fermeture ou rechargement confirmé en plein téléchargement : abandonne les
+ * écritures en cours pour ne pas laisser de fichiers vides au nom final.
+ *
+ * Le moteur crée chaque fichier (vide) dès la réponse reçue, et ne le retire
+ * que dans le `finally` d'une session encore vivante : à la fermeture de
+ * l'onglet, ce nettoyage ne tourne jamais. Aborter le signal du moteur n'y
+ * change rien (la chaîne async ne se termine pas pendant le déchargement) :
+ * seul un abandon lancé SANS attendre, depuis `pagehide`, aboutit. D'où
+ * `abandonInFlightWrites`, volontairement synchrone.
+ *
+ * `pagehide` plutôt que `beforeunload` : ce dernier part aussi quand le
+ * visiteur annule la fermeture, et le téléchargement doit alors continuer.
+ *
+ * Le run n'est pas stoppé pour autant : si la page survit (restauration depuis
+ * le bfcache), chaque fichier abandonné repart de zéro à l'essai suivant.
+ */
+export function useAbandonWritesOnPageHide(active: boolean): void {
+  useEffect(() => {
+    if (!active) return;
+    const onPageHide = () => abandonInFlightWrites();
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
   }, [active]);
 }

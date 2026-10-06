@@ -7,6 +7,10 @@
  * (`bg-muted`), les surfaces sont des `Card`. La colonne est ramenée à 2xl : le
  * variant `narrow` (4xl) est trop large pour une barre de progression et une
  * liste de fichiers.
+ *
+ * La colonne est un `<main>` : /export est hors du layout (app), seul porteur
+ * du `<main>` de l'app, et PageShell ne rend que des `div`. Sans lui la page
+ * n'aurait aucun repère « contenu principal » pour un lecteur d'écran.
  */
 
 import type { ReactNode } from "react";
@@ -21,9 +25,9 @@ interface ExportPageFrameProps {
 export function ExportPageFrame({ children, centered = false }: ExportPageFrameProps) {
   return (
     <PageShell variant="narrow">
-      <div className={["mx-auto max-w-2xl", centered ? "flex min-h-[70vh] flex-col justify-center" : ""].join(" ").trim()}>
+      <main className={["mx-auto max-w-2xl", centered ? "flex min-h-[70vh] flex-col justify-center" : ""].join(" ").trim()}>
         {children}
-      </div>
+      </main>
     </PageShell>
   );
 }

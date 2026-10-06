@@ -76,7 +76,12 @@ export function ExportProgressCard({
 
       <div role="group" aria-label="Progression du téléchargement" className="space-y-1.5">
         {/* Valeur non arrondie : sur 150 Go, un pour cent vaut 1,5 Go et la barre resterait figée des minutes. */}
-        <Progress size="lg" value={view ? view.fraction * 100 : 0} indeterminate={!progress} />
+        <Progress
+          size="lg"
+          label="Progression globale"
+          value={view ? view.fraction * 100 : 0}
+          indeterminate={!progress}
+        />
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[13px]">
           <span className="font-medium tabular-nums text-foreground">
             {bytes > 0 ? `${formatMaxSize(view?.doneBytes ?? 0)} / ${formatMaxSize(bytes)} · ` : ""}
@@ -107,8 +112,10 @@ export function ExportProgressCard({
                   </span>
                   <span className="shrink-0 tabular-nums text-muted-foreground">{activeFileStatus(file)}</span>
                 </div>
+                {/* Sans nom, quatre barres identiques seraient annoncées « barre de progression » : le chemin court dit laquelle. */}
                 <Progress
                   size="sm"
+                  label={shortPath(file.path)}
                   value={file.phase === "finalizing" ? 100 : file.size ? (file.received / file.size) * 100 : 0}
                   indeterminate={file.size === null && file.phase !== "finalizing"}
                 />

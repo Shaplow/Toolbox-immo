@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LinkGoneError } from "@/lib/clientExport/downloadEngine";
 import type { ExportEventRequest, ExportManifest } from "@/lib/clientExport/types";
-import { ExportApiError, RETRY_DELAYS_MS, fetchManifest, isAbortError, postEvent, signUrls } from "../exportApi";
+import {
+  ExportApiError,
+  RETRY_DELAYS_MS,
+  fetchManifest,
+  isAbortError,
+  postEvent,
+  signUrls,
+  startSessionEvents,
+} from "../exportApi";
 
 const TOKEN = "a".repeat(64);
 
@@ -349,5 +357,90 @@ describe("postEvent", () => {
 
     expect(outcome).toEqual({ ok: true, value: undefined });
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("startSessionEvents", () => {
+  const COMPLETED: ExportEventRequest = { ...EVENT, type: "completed", files: 3, bytes: 30 };
+  const NO_CONTENT = () => new Response(null, { status: 204 });
+
+  /** Types d'événements dans l'ordre où le serveur les reçoit ; `failStarted` = nombre de « started » refusés (503). */
+  function serverLog(failStarted = 0) {
+    const received: string[] = [];
+    fetchMock.mockImplementation(async (_input, init) => {
+      const { type } = JSON.parse(String(init?.body)) as ExportEventRequest;
+      received.push(type);
+      const startedTries = received.filter((t) => t === "started").length;
+      if (type === "started" && startedTries <= failStarted) return json({ error: "occupé" }, 503);
+      return NO_CONTENT();
+    });
+    return received;
+  }
+
+  it("envoie « started » tout de suite et le bilan juste après", async () => {
+    const received = serverLog();
+
+    const events = startSessionEvents(TOKEN, EVENT, { fetchImpl: fetchMock });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await events.finish(COMPLETED);
+
+    expect(received).toEqual(["started", "completed"]);
+    const [url, init] = fetchMock.mock.calls[1];
+    expect(url).toBe(`/api/export/${TOKEN}/events`);
+    expect(JSON.parse(String(init?.body))).toEqual(COMPLETED);
+  });
+
+  it("retient le bilan tant que « started » est réessayé : jamais de « started » après le « completed »", async () => {
+    // Le serveur est occupé pour les deux premiers « started » (réessais à +2 s puis +10 s).
+    const received = serverLog(2);
+
+    const events = startSessionEvents(TOKEN, EVENT, { fetchImpl: fetchMock });
+    // Session très courte (tout était déjà présent) : le bilan est prêt avant même le premier réessai.
+    const finished = events.finish(COMPLETED);
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(received).toEqual(["started"]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(received).toEqual(["started", "started"]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await finished;
+
+    expect(received).toEqual(["started", "started", "started", "completed"]);
+  });
+
+  it("envoie quand même le bilan quand « started » est définitivement perdu", async () => {
+    fetchMock.mockImplementation(async (_input, init) => {
+      const { type } = JSON.parse(String(init?.body)) as ExportEventRequest;
+      if (type === "started") throw new TypeError("Failed to fetch");
+      return NO_CONTENT();
+    });
+
+    const events = startSessionEvents(TOKEN, EVENT, { fetchImpl: fetchMock });
+    const finished = settle(events.finish(COMPLETED));
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(await finished).toEqual({ ok: true, value: undefined });
+    const types = fetchMock.mock.calls.map(([, init]) => (JSON.parse(String(init?.body)) as ExportEventRequest).type);
+    // 1 essai + 2 réessais pour « started », puis le bilan.
+    expect(types).toEqual(["started", "started", "started", "completed"]);
+  });
+
+  it("ne rejette jamais, même si le lien est révoqué (404 sur « started »)", async () => {
+    fetchMock.mockResolvedValue(json({ error: "Lien invalide ou expiré" }, 404));
+
+    const events = startSessionEvents(TOKEN, EVENT, { fetchImpl: fetchMock });
+
+    await expect(events.finish(COMPLETED)).resolves.toBeUndefined();
+  });
+
+  it("garde chaque session indépendante : le bilan d'une reprise n'attend pas le « started » d'une autre", async () => {
+    const received = serverLog();
+
+    const first = startSessionEvents(TOKEN, EVENT, { fetchImpl: fetchMock });
+    await first.finish(COMPLETED);
+    const second = startSessionEvents(TOKEN, EVENT, { fetchImpl: fetchMock });
+    await second.finish({ ...COMPLETED, type: "stopped" });
+
+    expect(received).toEqual(["started", "completed", "started", "stopped"]);
   });
 });

@@ -8,6 +8,11 @@
  *
  * Sizes : sm (h-1 / 24px circ) | md (h-1.5 / 32px circ) | lg (h-2 / 48px circ).
  * La prop `accent` est legacy et mappée vers primary.
+ *
+ * `label` : nom accessible (aria-label) du role=progressbar. À renseigner dès
+ * que le texte voisin ne suffit pas à dire de QUOI la barre mesure l'avancement
+ * (plusieurs barres sur un écran) : une barre sans nom est annoncée « barre de
+ * progression » tout court par les lecteurs d'écran.
  */
 
 import type { CSSProperties } from "react";
@@ -24,6 +29,8 @@ interface ProgressProps {
   accent?: Accent;
   indeterminate?: boolean;
   showValue?: boolean;
+  /** Nom accessible de la barre (aria-label). Absent : aucun attribut n'est rendu. */
+  label?: string;
   className?: string;
 }
 
@@ -53,6 +60,7 @@ export function Progress({
   accent: _accent = "default",
   indeterminate = false,
   showValue = false,
+  label,
   className,
 }: ProgressProps) {
   void _accent;
@@ -65,6 +73,7 @@ export function Progress({
         size={size}
         indeterminate={indeterminate}
         showValue={showValue}
+        label={label}
         className={className}
       />
     );
@@ -79,6 +88,7 @@ export function Progress({
       <div
         className={["flex-1 rounded-full overflow-hidden bg-muted", LINEAR_HEIGHT[size]].join(" ")}
         role="progressbar"
+        aria-label={label}
         aria-valuenow={indeterminate ? undefined : value}
         aria-valuemin={0}
         aria-valuemax={max}
@@ -105,12 +115,14 @@ function CircularProgress({
   size,
   indeterminate,
   showValue,
+  label,
   className,
 }: {
   pct: number;
   size: Size;
   indeterminate: boolean;
   showValue: boolean;
+  label?: string;
   className?: string;
 }) {
   const px = CIRCULAR_PX[size];
@@ -124,6 +136,7 @@ function CircularProgress({
       className={["relative inline-flex items-center justify-center", className ?? ""].filter(Boolean).join(" ")}
       style={{ width: px, height: px }}
       role="progressbar"
+      aria-label={label}
       aria-valuenow={indeterminate ? undefined : pct}
       aria-valuemin={0}
       aria-valuemax={100}

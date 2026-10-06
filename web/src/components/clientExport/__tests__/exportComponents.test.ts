@@ -5,13 +5,17 @@
  * Wake Lock — n'est donc pas couvert.
  */
 
-import { createElement, type ReactElement } from "react";
+import { createElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { Button } from "@/components/ui/Button";
+import { Progress } from "@/components/ui/Progress";
 import type { EngineProgress, EngineResult } from "@/lib/clientExport/downloadEngine";
 import type { ExportManifest, ExportReport } from "@/lib/clientExport/types";
 import { ExportAdvice } from "../ExportAdvice";
 import { ExportDownloader } from "../ExportDownloader";
+import { ExportLaunchPanel } from "../ExportLaunchPanel";
+import { ExportPageFrame } from "../ExportPageFrame";
 import { ExportProgressCard } from "../ExportProgressCard";
 import { AccountDetailCard, ExportRecap, ExportSkippedList, SkippedDetailCard } from "../ExportRecap";
 import { ExportResultCard } from "../ExportResultCard";
@@ -39,6 +43,28 @@ function textOf(html: string): string {
 
 function render(element: ReactElement): string {
   return textOf(renderToStaticMarkup(element));
+}
+
+/**
+ * Éléments d'un type donné dans l'arbre rendu par un composant SANS hook
+ * (appelé comme une simple fonction), dans l'ordre du document. Permet de lire
+ * les props d'un bouton (variant, onClick…) sans DOM : une classe CSS est un
+ * témoin plus fragile que la prop elle-même.
+ */
+function findAll(node: ReactNode, type: unknown): ReactElement<Record<string, unknown>>[] {
+  const found: ReactElement<Record<string, unknown>>[] = [];
+  const walk = (child: ReactNode): void => {
+    if (Array.isArray(child)) {
+      child.forEach(walk);
+      return;
+    }
+    if (!isValidElement(child)) return;
+    const element = child as ReactElement<{ children?: ReactNode }>;
+    if (element.type === type) found.push(element as ReactElement<Record<string, unknown>>);
+    walk(element.props.children);
+  };
+  walk(node);
+  return found;
 }
 
 const MANIFEST: ExportManifest = {
@@ -216,24 +242,119 @@ describe("ExportSkippedList / SkippedDetailCard", () => {
 });
 
 describe("ExportAdvice", () => {
-  it("donne les quatre conseils, avec le volume réel", () => {
-    const text = render(createElement(ExportAdvice, { totalBytes: 162 * GIB }));
+  const advice = (props: Partial<Parameters<typeof ExportAdvice>[0]> = {}) =>
+    render(createElement(ExportAdvice, { totalBytes: 162 * GIB, rootName: "Agence Dupont", ...props }));
+
+  it("premier lancement : consigne guidée avec le nom du dossier, chemins Windows, cloud, disque, relance", () => {
+    const text = advice();
     expect(text).toContain(
-      "Crée un nouveau dossier (par exemple dans Téléchargements) et sélectionne-le : Chrome refuse Téléchargements, Bureau et Documents eux-mêmes.",
+      "Clique sur « Nouveau dossier », nomme-le « Agence Dupont » et sélectionne-le (Chrome refuse Téléchargements, Bureau et Documents eux-mêmes).",
+    );
+    expect(text).toContain(
+      "Sur Windows, crée-le près de la racine du disque (par exemple C:\\Exports), pas dans OneDrive ni dans un dossier profond : les chemins trop longs font échouer des fichiers.",
     );
     expect(text).toContain("Évite un dossier synchronisé (OneDrive, iCloud) : 162 Go partiraient dans le cloud.");
     expect(text).toContain("Prévois 162 Go libres sur ton disque.");
     expect(text).toContain(
-      "Laisse cette page ouverte et visible, ordinateur branché. Si le téléchargement s'interrompt, relance-le : les fichiers déjà téléchargés ne sont pas refaits.",
+      "Laisse cette page ouverte et visible, ordinateur branché. Si le téléchargement s'interrompt, relance-le dans le même dossier : les fichiers déjà téléchargés ne sont pas refaits.",
     );
+    expect(text).not.toContain("Tu as déjà commencé");
+  });
+
+  it("reprend le nom du dossier racine du manifeste, tel quel", () => {
+    expect(advice({ rootName: "Agence Dupont (2)" })).toContain("nomme-le « Agence Dupont (2) » et sélectionne-le");
+  });
+
+  it("reprise : la première puce dit de reprendre dans le même dossier, sans consigne de création", () => {
+    const text = advice({ resuming: true });
+    expect(text).toContain("Tu as déjà commencé : reprends dans le même dossier — un nouveau dossier repart de zéro");
+    // Créer un dossier (et le placer près de la racine) n'a plus de sens : on retourne dans celui qui existe.
+    expect(text).not.toContain("Clique sur « Nouveau dossier »");
+    expect(text).not.toContain("Sur Windows");
+    // Le reste des conseils vaut toujours, et la puce de fin garde « même dossier ».
+    expect(text).toContain("Prévois 162 Go libres sur ton disque.");
+    expect(text).toContain("relance-le dans le même dossier");
   });
 
   it("omet les deux conseils de volume quand il est inconnu", () => {
-    const text = render(createElement(ExportAdvice, { totalBytes: 0 }));
+    const text = advice({ totalBytes: 0 });
     expect(text).not.toContain("synchronisé");
     expect(text).not.toContain("libres sur ton disque");
-    expect(text).toContain("Crée un nouveau dossier");
+    expect(text).toContain("Clique sur « Nouveau dossier »");
     expect(text).toContain("Laisse cette page ouverte");
+  });
+
+  it("omet aussi les conseils de volume en reprise quand il est inconnu", () => {
+    const text = advice({ totalBytes: 0, resuming: true });
+    expect(text).not.toContain("libres sur ton disque");
+    expect(text).toContain("Tu as déjà commencé");
+  });
+});
+
+describe("ExportLaunchPanel", () => {
+  const props = {
+    totalBytes: 3 * GIB,
+    rootName: "Agence Dupont",
+    savedFolderName: null as string | null,
+    busy: false,
+    onChooseFolder: vi.fn(),
+    onResume: vi.fn(),
+  };
+  const panel = (overrides: Partial<typeof props> = {}) => createElement(ExportLaunchPanel, { ...props, ...overrides });
+  /** Le composant n'a pas de hook : on lit directement l'arbre qu'il renvoie. */
+  const buttonsOf = (overrides: Partial<typeof props> = {}) =>
+    findAll(ExportLaunchPanel({ ...props, ...overrides }), Button);
+  const labelOf = (button: ReactElement) => render(button);
+
+  it("sans dossier mémorisé : « Choisir un dossier et télécharger » est l'action principale, seule", () => {
+    const buttons = buttonsOf();
+    expect(buttons).toHaveLength(1);
+    expect(labelOf(buttons[0])).toBe("Choisir un dossier et télécharger");
+    expect(buttons[0].props.variant ?? "default").toBe("default");
+    expect(buttons[0].props.onClick).toBe(props.onChooseFolder);
+
+    const text = render(panel());
+    expect(text).toContain("Clique sur « Nouveau dossier », nomme-le « Agence Dupont »");
+    expect(text).toContain("Chrome te demandera ensuite d'autoriser l'accès à ce dossier");
+    expect(text).not.toContain("Reprendre");
+    expect(text).not.toContain("repart de zéro");
+  });
+
+  it("avec un dossier mémorisé : « Reprendre dans » devient le bouton principal, en premier", () => {
+    const buttons = buttonsOf({ savedFolderName: "Agence Dupont" });
+    expect(buttons).toHaveLength(2);
+
+    expect(labelOf(buttons[0])).toBe("Reprendre dans « Agence Dupont »");
+    expect(buttons[0].props.variant ?? "default").toBe("default");
+    expect(buttons[0].props.onClick).toBe(props.onResume);
+
+    expect(labelOf(buttons[1])).toBe("Choisir un autre dossier");
+    expect(buttons[1].props.variant).toBe("outline");
+    expect(buttons[1].props.onClick).toBe(props.onChooseFolder);
+  });
+
+  it("avec un dossier mémorisé : le conseil et la mention disent qu'un autre dossier repart de zéro", () => {
+    const text = render(panel({ savedFolderName: "Agence Dupont" }));
+    expect(text).toContain("Tu as déjà commencé : reprends dans le même dossier — un nouveau dossier repart de zéro");
+    expect(text).toContain(
+      "« Reprendre » ne retélécharge pas les fichiers déjà enregistrés ; « Choisir un autre dossier » repart de zéro.",
+    );
+    expect(text).not.toContain("Clique sur « Nouveau dossier »");
+    expect(text).not.toContain("Choisir un dossier et télécharger");
+  });
+
+  it("dans les deux cas, la puce de fin dit de relancer dans le même dossier", () => {
+    expect(render(panel())).toContain("relance-le dans le même dossier");
+    expect(render(panel({ savedFolderName: "Agence Dupont" }))).toContain("relance-le dans le même dossier");
+  });
+
+  it("pendant la préparation : le bouton principal charge, l'autre est désactivé", () => {
+    const resume = buttonsOf({ savedFolderName: "Agence Dupont", busy: true });
+    expect(resume[0].props.loading).toBe(true);
+    expect(resume[1].props.disabled).toBe(true);
+
+    const first = buttonsOf({ busy: true });
+    expect(first[0].props.loading).toBe(true);
   });
 });
 
@@ -249,7 +370,14 @@ describe("ExportSession (premier rendu, avant tout clic)", () => {
   it("propose de choisir un dossier, sans « Reprendre » tant qu'aucun dossier n'est mémorisé", () => {
     expect(text).toContain("Choisir un dossier et télécharger");
     expect(text).not.toContain("Reprendre dans");
+    expect(text).not.toContain("Choisir un autre dossier");
     expect(text).toContain("Chrome te demandera ensuite d'autoriser l'accès à ce dossier");
+  });
+
+  it("guide la création du dossier avec le nom de la racine du manifeste", () => {
+    expect(text).toContain("Clique sur « Nouveau dossier », nomme-le « Agence Dupont » et sélectionne-le");
+    expect(text).toContain("Sur Windows, crée-le près de la racine du disque");
+    expect(text).toContain("relance-le dans le même dossier");
   });
 
   it("ne propose aucun lancement pour un lien sans fichier", () => {
@@ -343,6 +471,82 @@ describe("ExportProgressCard", () => {
   it("indique l'arrêt en cours", () => {
     const text = render(createElement(ExportProgressCard, { ...base, progress: progress(), rate: 1, stopping: true }));
     expect(text).toContain("Arrêt en cours…");
+  });
+
+  /** aria-label de chaque role=progressbar, dans l'ordre du document (null = barre sans nom). */
+  function progressbarNames(html: string): Array<string | null> {
+    const tags = html.match(/<[^>]*role="progressbar"[^>]*>/g) ?? [];
+    return tags.map((tag) => /aria-label="([^"]*)"/.exec(tag)?.[1] ?? null);
+  }
+
+  it("nomme chaque barre : « Progression globale », puis le chemin court de chaque fichier", () => {
+    const html = renderToStaticMarkup(
+      createElement(ExportProgressCard, {
+        ...base,
+        rate: 0,
+        progress: progress({
+          active: [
+            { ref: "m.1", path: ["Agence", "Sarah", "Behind", "Cuisine", "rush-01.mov"], received: GIB, size: 2 * GIB, phase: "downloading" },
+            { ref: "m.2", path: ["Agence", "Paul", "Behind", "rush-02.mov"], received: GIB, size: GIB, phase: "finalizing" },
+            { ref: "d.1", path: ["Agence", "Commun", "Fiches", "Fiches.xlsx"], received: 120, size: null, phase: "downloading" },
+          ],
+        }),
+      }),
+    );
+
+    expect(progressbarNames(html)).toEqual([
+      "Progression globale",
+      "Cuisine / rush-01.mov",
+      "Behind / rush-02.mov",
+      "Fiches / Fiches.xlsx",
+    ]);
+  });
+
+  it("nomme aussi la barre globale avant le premier instantané du moteur", () => {
+    const html = renderToStaticMarkup(createElement(ExportProgressCard, { ...base, progress: null, rate: null }));
+    expect(progressbarNames(html)).toEqual(["Progression globale"]);
+  });
+});
+
+describe("Progress (primitive) : nom accessible", () => {
+  const names = (html: string) =>
+    (html.match(/<[^>]*role="progressbar"[^>]*>/g) ?? []).map((tag) => /aria-label="([^"]*)"/.exec(tag)?.[1] ?? null);
+
+  it("rend `label` en aria-label du role=progressbar, barre linéaire comme circulaire", () => {
+    expect(names(renderToStaticMarkup(createElement(Progress, { value: 40, label: "Envoi du fichier" })))).toEqual([
+      "Envoi du fichier",
+    ]);
+    expect(
+      names(renderToStaticMarkup(createElement(Progress, { value: 40, variant: "circular", label: "Envoi du fichier" }))),
+    ).toEqual(["Envoi du fichier"]);
+  });
+
+  it("n'ajoute aucun aria-label sans `label` (appelants existants inchangés)", () => {
+    const html = renderToStaticMarkup(createElement(Progress, { value: 40 }));
+    expect(names(html)).toEqual([null]);
+    expect(html).not.toContain("aria-label");
+    expect(renderToStaticMarkup(createElement(Progress, { value: 40, variant: "circular" }))).not.toContain("aria-label");
+  });
+
+  it("garde les attributs de valeur, y compris indéterminé", () => {
+    const html = renderToStaticMarkup(createElement(Progress, { value: 40, label: "x" }));
+    expect(html).toContain('aria-valuenow="40"');
+    expect(html).toContain('aria-valuemax="100"');
+    expect(renderToStaticMarkup(createElement(Progress, { indeterminate: true, label: "x" }))).not.toContain("aria-valuenow");
+  });
+});
+
+describe("ExportPageFrame", () => {
+  // Sans hook : appelé comme une simple fonction, ce qui évite de passer `children` en prop de createElement.
+  it("rend la colonne dans un <main>, avec les mêmes classes qu'avant", () => {
+    const html = renderToStaticMarkup(ExportPageFrame({ children: "contenu" }));
+    expect(html).toContain('<main class="mx-auto max-w-2xl">contenu</main>');
+    expect(html.match(/<main[\s>]/g)).toHaveLength(1);
+  });
+
+  it("centre verticalement une carte isolée, toujours dans le <main>", () => {
+    const html = renderToStaticMarkup(ExportPageFrame({ centered: true, children: "carte" }));
+    expect(html).toContain('<main class="mx-auto max-w-2xl flex min-h-[70vh] flex-col justify-center">carte</main>');
   });
 });
 

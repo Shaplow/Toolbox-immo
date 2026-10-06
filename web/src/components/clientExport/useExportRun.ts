@@ -18,7 +18,7 @@ import {
   type EngineResult,
 } from "@/lib/clientExport/downloadEngine";
 import type { ExportManifest } from "@/lib/clientExport/types";
-import { postEvent, signUrls } from "./exportApi";
+import { signUrls, startSessionEvents, type SessionEvents } from "./exportApi";
 import { EMPTY_REPORT, reportFromProgress, smoothRate } from "./exportModel";
 
 export type RunView =
@@ -59,11 +59,11 @@ export function useExportRun(token: string, manifest: ExportManifest) {
     );
   }
 
-  function finish(result: EngineResult) {
+  function finish(result: EngineResult, events: SessionEvents) {
     setView({ kind: "finished", result });
     // Un lien révoqué ne peut plus recevoir de bilan.
     if (result.reason === "link_gone") return;
-    void postEvent(token, { type: result.reason === "done" ? "completed" : "stopped", ...result.report });
+    void events.finish({ type: result.reason === "done" ? "completed" : "stopped", ...result.report });
   }
 
   /** Lance (ou relance) le téléchargement dans `root`. Ne rejette jamais. */
@@ -75,7 +75,8 @@ export function useExportRun(token: string, manifest: ExportManifest) {
     rateRef.current = null;
     setView({ kind: "running", progress: null, rate: null, stopping: false, connectionIssue: false });
     // Chaque lancement compte, reprises comprises : l'admin voit combien de fois le client a dû relancer.
-    void postEvent(token, { type: "started", ...EMPTY_REPORT });
+    // Le bilan final de cette session passe par `events` : il ne part jamais avant ce « started ».
+    const events = startSessionEvents(token, { type: "started", ...EMPTY_REPORT });
 
     try {
       const result = await runDownload({
@@ -97,15 +98,15 @@ export function useExportRun(token: string, manifest: ExportManifest) {
           setView((current) => (current.kind === "running" ? { ...current, progress, rate } : current));
         },
       });
-      finish(result);
+      finish(result, events);
     } catch (error) {
       const partial = reportFromProgress(latestProgressRef.current);
       if (error instanceof LinkGoneError) {
-        finish({ reason: "link_gone", report: partial, failures: [], missing: [] });
+        finish({ reason: "link_gone", report: partial, failures: [], missing: [] }, events);
       } else {
         const detail = error instanceof Error && error.message ? ` (${error.message})` : "";
         setView({ kind: "crashed", message: `Le téléchargement s'est arrêté de façon inattendue${detail}.` });
-        void postEvent(token, { type: "stopped", ...partial });
+        void events.finish({ type: "stopped", ...partial });
       }
     } finally {
       controllerRef.current = null;

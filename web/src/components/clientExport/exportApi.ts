@@ -259,3 +259,33 @@ export async function postEvent(
     // Lien révoqué, serveur absent : l'admin ne verra pas ce bilan, sans autre conséquence.
   }
 }
+
+/** Les événements d'UNE session de téléchargement, dans l'ordre où le serveur doit les voir. */
+export interface SessionEvents {
+  /**
+   * Bilan final (`completed` ou `stopped`). Part une fois « started » réglé,
+   * livré ou abandonné. Ne rejette jamais.
+   */
+  finish(event: ExportEventRequest): Promise<void>;
+}
+
+/**
+ * Envoie « started » tout de suite, et ne laisse partir le bilan final de la
+ * même session qu'après lui.
+ *
+ * Sans cet ordre, les deux requêtes courent en parallèle : `postEvent` réessaie
+ * après 2 s puis 10 s, donc un « started » retardé (serveur occupé, déploiement)
+ * peut arriver APRÈS le « completed » d'une session courte, par exemple une
+ * reprise où tout est déjà présent. L'admin lirait alors « lancé » pour un
+ * téléchargement fini. Le coût est un bilan final retardé d'autant quand le
+ * serveur est indisponible, ce qui ne change rien : il le serait aussi.
+ */
+export function startSessionEvents(
+  token: string,
+  started: ExportEventRequest,
+  options: Pick<ApiCallOptions, "fetchImpl" | "retryDelaysMs"> = {},
+): SessionEvents {
+  // `postEvent` ne rejette jamais : la promesse se règle toujours, le `then` suivant part dans tous les cas.
+  const startedSettled = postEvent(token, started, options);
+  return { finish: (event) => startedSettled.then(() => postEvent(token, event, options)) };
+}

@@ -30,6 +30,11 @@ async function renderPage(): Promise<string> {
   return renderToStaticMarkup(await ExportPage({ params: Promise.resolve({ token: TOKEN }) }));
 }
 
+/** Repères « contenu principal » d'un rendu : exactement un par page, sinon un lecteur d'écran se perd. */
+function mainCount(html: string): number {
+  return (html.match(/<main[\s>]/g) ?? []).length;
+}
+
 beforeEach(() => {
   verify.mockReset();
 });
@@ -58,6 +63,36 @@ describe("ExportPage", () => {
     expect(text).toContain("Ce lien a expiré");
     expect(text).toContain("Demande un nouveau lien à ton interlocuteur.");
     expect(text).not.toContain("Agence Dupont");
+  });
+
+  it("porte un seul <main> dans chaque état : lien expiré, désactivé, valide", async () => {
+    verify.mockResolvedValue({ valid: false, reason: "expired" });
+    expect(mainCount(await renderPage())).toBe(1);
+
+    verify.mockResolvedValue({ valid: false, reason: "revoked" });
+    expect(mainCount(await renderPage())).toBe(1);
+
+    verify.mockResolvedValue({
+      valid: true,
+      link: {
+        id: "link_1",
+        clientId: "client_1",
+        clientName: "Agence Dupont",
+        expiresAt: new Date("2026-10-13T12:34:00.000Z"),
+        firstOpenedAt: null,
+        selection: {
+          clientId: "client_1",
+          accountIds: [],
+          mediaLibraryIds: [],
+          dataLibraryIds: [],
+          includePublications: false,
+        },
+      },
+    });
+    const html = await renderPage();
+    expect(mainCount(html)).toBe(1);
+    // Le titre de la page est dans le <main> : c'est lui que « aller au contenu principal » doit atteindre.
+    expect(html).toMatch(/<main[^>]*>[\s\S]*<h1[^>]*>Agence Dupont<\/h1>/);
   });
 
   it("explique un lien désactivé, sans aucune donnée du client", async () => {
@@ -114,6 +149,10 @@ describe("ExportNotFound", () => {
     expect(text).toContain("Ce lien n'est plus valide");
     expect(text).toContain("incorrect, expiré ou désactivé");
     expect(text).toContain("Demande un nouveau lien à ton interlocuteur.");
+  });
+
+  it("porte un seul <main>", () => {
+    expect(mainCount(html)).toBe(1);
   });
 
   it("ne renvoie nulle part : ni lien, ni connexion", () => {

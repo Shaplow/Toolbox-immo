@@ -20,8 +20,8 @@ import { ensureWritePermission, resolveExportRoot } from "@/lib/clientExport/dow
 import { saveRootHandle } from "@/lib/clientExport/handleStore";
 import type { ExportManifest } from "@/lib/clientExport/types";
 import { isAbortError } from "./exportApi";
-import { ExportAdvice } from "./ExportAdvice";
-import { useBeforeUnloadGuard, useSavedRoot, useWakeLock } from "./exportHooks";
+import { useAbandonWritesOnPageHide, useBeforeUnloadGuard, useSavedRoot, useWakeLock } from "./exportHooks";
+import { ExportLaunchPanel } from "./ExportLaunchPanel";
 import { isFolderReachable } from "./folderAccess";
 import { ExportProgressCard } from "./ExportProgressCard";
 import { ExportRecap, ExportSkippedList } from "./ExportRecap";
@@ -51,6 +51,7 @@ export function ExportSession({ token, manifest }: ExportSessionProps) {
   const running = run.view.kind === "running";
   useWakeLock(running);
   useBeforeUnloadGuard(running);
+  useAbandonWritesOnPageHide(running);
 
   async function chooseFolderAndStart() {
     try {
@@ -189,26 +190,14 @@ export function ExportSession({ token, manifest }: ExportSessionProps) {
       <ExportRecap manifest={manifest} />
       <ExportSkippedList skipped={manifest.skipped} />
       {manifest.totals.files > 0 && (
-        <>
-          <ExportAdvice totalBytes={manifest.totals.bytes} />
-          <div className="space-y-2.5">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button size="lg" icon={FolderDown} loading={busy} onClick={() => void chooseFolderAndStart()}>
-                Choisir un dossier et télécharger
-              </Button>
-              {savedRoot && (
-                <Button size="lg" variant="outline" icon={RotateCcw} disabled={busy} onClick={() => void resume()}>
-                  Reprendre dans « {savedRoot.name} »
-                </Button>
-              )}
-            </div>
-            <p className="text-[12px] leading-relaxed text-muted-foreground">
-              Chrome te demandera ensuite d&apos;autoriser l&apos;accès à ce dossier : accepte pour que les fichiers
-              puissent y être enregistrés.
-              {savedRoot && " Tu as déjà commencé : « Reprendre » continue sans retélécharger les fichiers déjà enregistrés."}
-            </p>
-          </div>
-        </>
+        <ExportLaunchPanel
+          totalBytes={manifest.totals.bytes}
+          rootName={manifest.rootName}
+          savedFolderName={savedRoot?.name ?? null}
+          busy={busy}
+          onChooseFolder={() => void chooseFolderAndStart()}
+          onResume={() => void resume()}
+        />
       )}
     </div>
   );
