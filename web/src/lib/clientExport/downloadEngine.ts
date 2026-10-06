@@ -24,6 +24,18 @@
  *   bibliothèque de milliers de petits sons, les fichiers légers qui suivent dans
  *   la file sont signés avec le fichier courant (≤ 5 refs par appel), au rythme
  *   plafonné d'un appel toutes les 600 ms.
+ * - **Un essai raté ne laisse rien d'ouvert.** Une réponse dont le corps n'est
+ *   jamais lu garde sa connexion : quelques flux orphelins (dossier verrouillé,
+ *   nom refusé, accès perdu… à chaque essai) saturent le pool de connexions et
+ *   font échouer des fichiers sains. Tout essai non commité annule donc sa
+ *   requête, quelle que soit l'étape qui a échoué.
+ * - **Fermer ou recharger l'onglet.** Le fichier vide posé au nom final survit
+ *   à l'onglet : `abandonInFlightWrites()` (appelée sur `pagehide`) défait les
+ *   écritures en cours sans rien attendre — la chaîne asynchrone du nettoyage
+ *   normal n'a pas le temps d'aboutir pendant un déchargement.
+ * - **`Retry-After`.** Sur un 429 ou un 503 le serveur dit quand revenir : l'essai
+ *   suivant attend le plus long du délai prévu et de ce `Retry-After` (plafonné),
+ *   sans dépasser le nombre d'essais.
  *
  * Aucune dépendance serveur : le module est chargé dans le navigateur et se
  * teste en Node avec de faux handles et un `fetch` injecté.
@@ -118,6 +130,17 @@ export interface DownloadEngineOptions {
 const DEFAULT_CONCURRENCY = 3;
 const DEFAULT_STALL_TIMEOUT_MS = 60_000;
 const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [2_000, 8_000, 30_000];
+
+/** Plafond d'une attente dictée par `Retry-After` : on ne fait pas attendre le visiteur plus longtemps sur la foi du serveur. */
+const MAX_RETRY_AFTER_MS = 90_000;
+
+/**
+ * Le serveur annonce une taille différente de celle du manifeste chargé avec la
+ * page : le fichier a changé depuis, et ce manifeste reste figé jusqu'au
+ * rechargement. Réessayer redonnerait le même écart.
+ */
+const FILE_CHANGED_MESSAGE =
+  "Ce fichier a changé depuis l'ouverture de la page : recharge la page pour le récupérer.";
 
 /** Plafond d'un setTimeout navigateur (au-delà, il se déclenche aussitôt). */
 const MAX_TIMER_MS = 2 ** 31 - 1;
@@ -222,6 +245,30 @@ function declaredLength(response: Response): number | null {
   return raw && /^\d+$/.test(raw) ? Number(raw) : null;
 }
 
+/**
+ * Attente demandée par un 429 ou un 503 (`Retry-After` : un nombre de secondes ou
+ * une date HTTP), plafonnée à MAX_RETRY_AFTER_MS. `null` si absente, illisible,
+ * déjà échue ou hors des deux statuts concernés.
+ *
+ * Sur l'endpoint S3 présigné (autre origine), le navigateur ne livre cet en-tête
+ * que si le bucket l'expose en CORS : sans cela on retombe sur le délai prévu.
+ */
+function retryAfterOf(response: Response): number | null {
+  if (response.status !== 429 && response.status !== 503) return null;
+  const raw = response.headers.get("retry-after")?.trim();
+  if (!raw) return null;
+
+  let waitMs: number;
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    waitMs = Number(raw) * 1000;
+  } else {
+    // Date HTTP : relative à l'horloge réelle, pas à `options.now` (une horloge de progression).
+    waitMs = Date.parse(raw) - Date.now();
+  }
+  if (!Number.isFinite(waitMs) || waitMs <= 0) return null;
+  return Math.min(waitMs, MAX_RETRY_AFTER_MS);
+}
+
 async function discardBody(response: Response): Promise<void> {
   try {
     await response.body?.cancel();
@@ -250,6 +297,19 @@ async function removePlaceholder(dir: FileSystemDirectoryHandle, name: string): 
     if (file.size === 0) await dir.removeEntry(name);
   } catch {
     /* au mieux : la reprise réécrit de toute façon un fichier de taille fausse */
+  }
+}
+
+/**
+ * Retire l'entrée sans la relire : un seul aller-retour, pour la fermeture de
+ * l'onglet (voir `abandonInFlightWrites`). Uniquement pour un fichier que le
+ * moteur vient de créer et qu'aucune écriture n'a commité.
+ */
+async function removeEntryQuietly(dir: FileSystemDirectoryHandle, name: string): Promise<void> {
+  try {
+    await dir.removeEntry(name);
+  } catch {
+    /* encore verrouillé ou déjà retiré : le nettoyage normal prend le relais */
   }
 }
 
@@ -328,13 +388,18 @@ class FatalFileError extends Error {
   }
 }
 
-/** Essai raté, à retenter. `immediate` : inutile d'attendre (il faut juste une nouvelle URL). */
+/**
+ * Essai raté, à retenter. `immediate` : inutile d'attendre (il faut juste une
+ * nouvelle URL). `retryAfterMs` : attente minimale imposée par le serveur (429, 503).
+ */
 class AttemptError extends Error {
   readonly immediate: boolean;
-  constructor(message: string, immediate = false) {
+  readonly retryAfterMs: number | null;
+  constructor(message: string, immediate = false, retryAfterMs: number | null = null) {
     super(message);
     this.name = "AttemptError";
     this.immediate = immediate;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -363,12 +428,15 @@ interface FailureDescription {
   message: string;
   fatal: boolean;
   immediate: boolean;
+  retryAfterMs: number | null;
 }
 
 /** Message FR lisible (le client le voit dans la liste des échecs) et nature de l'échec. */
 function describeFailure(err: unknown): FailureDescription {
-  if (err instanceof FatalFileError) return { message: err.message, fatal: true, immediate: false };
-  if (err instanceof AttemptError) return { message: err.message, fatal: false, immediate: err.immediate };
+  if (err instanceof FatalFileError) return { message: err.message, fatal: true, immediate: false, retryAfterMs: null };
+  if (err instanceof AttemptError) {
+    return { message: err.message, fatal: false, immediate: err.immediate, retryAfterMs: err.retryAfterMs };
+  }
 
   const detail = errorMessage(err);
   let message: string;
@@ -385,7 +453,7 @@ function describeFailure(err: unknown): FailureDescription {
     default:
       message = `Erreur inattendue${detail ? ` (${detail})` : ""}.`;
   }
-  return { message, fatal: false, immediate: false };
+  return { message, fatal: false, immediate: false, retryAfterMs: null };
 }
 
 type AttemptOutcome = { kind: "written"; bytes: number } | { kind: "skipped" } | { kind: "missing" };
@@ -399,6 +467,17 @@ interface DownloadContext {
   /** Un fichier portait déjà ce nom avant l'essai (donc le fichier vide créé n'est pas de notre fait). */
   existed: boolean;
 }
+
+/**
+ * Un téléchargement de fichier en cours, vu de l'extérieur du run qui le possède :
+ * de quoi l'abandonner sans attendre, sans passer par la boucle du moteur.
+ */
+interface InFlightWrite {
+  abandon(): void;
+}
+
+/** Téléchargements en cours de TOUS les runs actifs du module : la page n'a qu'une fonction à appeler. */
+const inFlightWrites = new Set<InFlightWrite>();
 
 // ─── Exécution ───────────────────────────────────────────────────────────────
 
@@ -616,7 +695,9 @@ class DownloadRun {
           this.recordFailure(file, failure.message);
           return;
         }
-        if (!failure.immediate) await this.sleep(this.retryDelaysMs[attempt]);
+        // Le délai prévu vaut plancher : un Retry-After plus court ne raccourcit jamais
+        // l'attente, un plus long (429, 503) l'allonge. Le nombre d'essais, lui, ne bouge pas.
+        if (!failure.immediate) await this.sleep(Math.max(this.retryDelaysMs[attempt], failure.retryAfterMs ?? 0));
         if (this.stopped) return;
       }
     }
@@ -743,9 +824,44 @@ class DownloadRun {
       controller.abort();
     });
 
+    let openResponse: Response | null = null;
     let writable: FileSystemWritableFileStream | null = null;
     let createdPlaceholder = false;
     let committed = false;
+
+    // Abandon synchrone depuis l'extérieur (`abandonInFlightWrites`, fermeture de l'onglet).
+    // `pipe` : le flux d'écriture, dont la fin signifie que le writable est défait ;
+    // `cleanup` : le retrait du fichier vide, que le finally attend avant de rendre la
+    // main (un nouvel essai ne recrée jamais le fichier sous un retrait encore en vol).
+    const handover = {
+      abandoned: false,
+      pipe: null as Promise<void> | null,
+      cleanup: null as Promise<void> | null,
+    };
+    const startCleanup = (pipe: Promise<void>) => {
+      handover.cleanup = (async () => {
+        // removeEntry échoue tant que le writable est ouvert : on attend que le pipe l'ait défait.
+        // Un pipe arrivé au bout malgré l'abandon (le signal est tombé trop tard) a livré un
+        // fichier complet, que close() va commiter : on n'y touche surtout pas.
+        const failed = await pipe.then(() => false, () => true);
+        if (failed && createdPlaceholder) await removeEntryQuietly(dir, name);
+      })();
+    };
+    const inFlight: InFlightWrite = {
+      abandon: () => {
+        // close() en cours : Chrome valide un fichier complet, peut-être déjà commité
+        // quand le retrait arriverait — on n'y touche pas. Un second appel ne refait rien.
+        if (entry.phase === "finalizing" || handover.abandoned) return;
+        handover.abandoned = true;
+        // Annule la requête et fait avorter le writable par le pipe lui-même : l'appeler
+        // directement est refusé tant que pipeTo le verrouille (TypeError).
+        controller.abort();
+        // Sans flux encore (réponse ou writable en cours d'obtention) : le signal est déjà
+        // aborté, le pipe avortera dès son départ et le nettoyage s'y accrochera alors.
+        if (handover.pipe !== null) startCleanup(handover.pipe);
+      },
+    };
+    inFlightWrites.add(inFlight);
 
     try {
       let response: Response;
@@ -759,6 +875,7 @@ class DownloadRun {
       } catch {
         throw new AttemptError("Connexion impossible ou interrompue avant le début du téléchargement.");
       }
+      openResponse = response;
 
       if (response.status === 404) {
         await discardBody(response);
@@ -771,15 +888,21 @@ class DownloadRun {
       }
       if (!response.ok) {
         await discardBody(response);
-        throw new AttemptError(`Le serveur de fichiers a répondu avec une erreur (${response.status}).`);
+        throw new AttemptError(
+          `Le serveur de fichiers a répondu avec une erreur (${response.status}).`,
+          false,
+          retryAfterOf(response),
+        );
       }
 
       const declared = declaredLength(response);
-      // Une taille annoncée différente de celle du manifeste ne pourra jamais passer
-      // le contrôle final : inutile de télécharger des Go pour le constater.
+      // Une taille annoncée (corps non encodé) différente de celle du manifeste ne
+      // passera jamais le contrôle final, et ce n'est pas une panne passagère : le
+      // fichier a changé depuis le chargement du manifeste, que seul un rechargement
+      // de la page rafraîchit. Inutile de télécharger des Go, ni de réessayer.
       if (declared !== null && file.size !== null && declared !== file.size) {
         await discardBody(response);
-        throw new AttemptError(`Taille inattendue : ${describeSizes(declared, file.size)}.`);
+        throw new FatalFileError(FILE_CHANGED_MESSAGE);
       }
       const body = response.body;
       if (body === null && file.size !== 0 && declared !== 0) {
@@ -810,7 +933,10 @@ class DownloadRun {
         },
       });
       if (body !== null) {
-        await body.pipeThrough(counter).pipeTo(writable, { preventClose: true, signal: controller.signal });
+        const pipe = body.pipeThrough(counter).pipeTo(writable, { preventClose: true, signal: controller.signal });
+        handover.pipe = pipe;
+        if (handover.abandoned) startCleanup(pipe);
+        await pipe;
       }
 
       // Plus aucun octet n'est attendu : close() peut relire longtemps (SHA-256) sans que ce soit un blocage.
@@ -844,9 +970,20 @@ class DownloadRun {
     } finally {
       watchdog.stop();
       detachStop();
+      // L'essai est fini : plus rien à abandonner de l'extérieur, le nettoyage qui suit est le sien.
+      inFlightWrites.delete(inFlight);
       if (!committed) {
+        // D'abord la requête : si l'échec précède le pipe (dossier verrouillé, nom refusé,
+        // accès perdu…), personne ne lit la réponse et sa connexion resterait ouverte —
+        // l'arrêt global ne la retient plus, `detachStop` est déjà passé. Sans effet sur
+        // un corps déjà lu ou annulé.
+        controller.abort();
+        if (openResponse) void discardBody(openResponse);
         // abort() jette le .crswap : la cible existante reste intacte.
         if (writable) await abortQuietly(writable);
+        // Un retrait lancé par abandonInFlightWrites() se termine avant qu'un nouvel essai
+        // puisse recréer le même fichier ; le nettoyage normal passe ensuite derrière.
+        if (handover.cleanup) await handover.cleanup;
         if (createdPlaceholder) await removePlaceholder(dir, name);
       }
     }
@@ -1017,6 +1154,45 @@ class DownloadRun {
  */
 export async function runDownload(options: DownloadEngineOptions): Promise<EngineResult> {
   return new DownloadRun(options).execute();
+}
+
+/**
+ * Abandonne, SANS RIEN ATTENDRE, les fichiers en cours de téléchargement de tous
+ * les runs actifs : à appeler sur `pagehide` pendant un run, pour que fermer ou
+ * recharger l'onglet ne laisse pas de fichiers vides au nom final (ils ressemblent
+ * à des vidéos cassées).
+ *
+ * Pour chaque fichier : la requête est annulée à l'instant, le writable avorte
+ * (le `.crswap` est jeté, une cible existante reste intacte) puis le fichier vide
+ * que le moteur avait créé est retiré. Un fichier déjà en « Finalisation… » est
+ * laissé à Chrome, qui peut encore le commiter.
+ *
+ * Pourquoi une fonction à part plutôt que d'annuler le signal du run (vérifié dans
+ * Chromium) : le nettoyage normal enchaîne davantage d'allers-retours (avorter,
+ * relire le fichier, vérifier sa taille, le retirer) et n'aboutit pas pendant un
+ * déchargement, alors que « avorter puis retirer » n'en demande que deux. Et
+ * `removeEntry` seul échoue tant que le writable est ouvert, alors que `abort()`
+ * sur le writable est refusé tant que `pipeTo` le verrouille : l'avortement passe
+ * donc par le signal du pipe.
+ *
+ * Au mieux, par nature : une écriture déjà partie doit s'achever avant que le
+ * writable puisse avorter, et le navigateur peut détruire la page avant la fin.
+ * La course est gagnée presque à chaque fois à débit modéré, de moins en moins
+ * quand le disque est saturé. Un fichier vide qui resterait est de toute façon
+ * réécrit à la reprise (sa taille diffère du manifeste).
+ *
+ * Ne stoppe pas les runs : un fichier abandonné compte comme un essai raté et
+ * repart de zéro au prochain essai, si la page est restaurée (bfcache). La page
+ * garde donc son propre arrêt (`AbortSignal`) pour ne lancer aucun autre fichier.
+ */
+export function abandonInFlightWrites(): void {
+  for (const write of [...inFlightWrites]) {
+    try {
+      write.abandon();
+    } catch {
+      /* un fichier qui résiste ne doit pas empêcher d'abandonner les autres */
+    }
+  }
 }
 
 /**

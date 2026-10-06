@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  abandonInFlightWrites,
   ensureWritePermission,
   LinkGoneError,
   resolveExportRoot,
@@ -39,7 +40,12 @@ function concat(chunks: Uint8Array[]): Uint8Array {
 const joinPath = (parent: string, name: string) => (parent ? `${parent}/${name}` : name);
 
 interface FsHooks {
-  beforeCreateWritable?: (path: string) => void;
+  /** Peut lever (accès refusé, fichier verrouillé) ou attendre (ouverture du flux d'écriture figée). */
+  beforeCreateWritable?: (path: string) => void | Promise<void>;
+  /** Avant chaque getFileHandle ; `create` vaut true quand l'appel crée le fichier. Peut lever. */
+  beforeGetFileHandle?: (path: string, create: boolean) => void;
+  /** Peut attendre : close() figé, comme Chrome qui relit tout le fichier pour son SHA-256. */
+  beforeClose?: (path: string) => void | Promise<void>;
   onWrite?: (path: string) => void;
 }
 
@@ -60,14 +66,15 @@ class MemFile {
 
   async createWritable(): Promise<WritableStream<Uint8Array>> {
     await microtask();
-    this.fs.hooks.beforeCreateWritable?.(this.path);
+    await this.fs.hooks.beforeCreateWritable?.(this.path);
     const chunks: Uint8Array[] = [];
     return new WritableStream<Uint8Array>({
       write: (chunk) => {
         this.fs.hooks.onWrite?.(this.path);
         chunks.push(chunk);
       },
-      close: () => {
+      close: async () => {
+        await this.fs.hooks.beforeClose?.(this.path);
         this.data = concat(chunks);
         this.fs.commits.push(this.path);
       },
@@ -109,6 +116,7 @@ class MemDir {
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<MemFile> {
     this.fs.checkName(name, Boolean(options?.create));
     await microtask();
+    this.fs.hooks.beforeGetFileHandle?.(joinPath(this.path, name), Boolean(options?.create));
     const existing = this.entries.get(name);
     if (existing) {
       if (existing.kind !== "file") throw domError("TypeMismatchError");
@@ -208,6 +216,8 @@ class MemFs {
 interface Plan {
   /** Statut HTTP (défaut 200). */
   status?: number;
+  /** En-têtes d'une réponse en erreur (Retry-After d'un 429 ou d'un 503). */
+  headers?: Record<string, string>;
   /** Octets réellement livrés avant de fermer le flux (défaut : tout). */
   serve?: number;
   /** Content-Length annoncé : undefined = taille du contenu, null = absent. */
@@ -263,7 +273,7 @@ class FakeServer {
 
     if (signal.aborted) throw domError("AbortError");
     const status = plan.status ?? 200;
-    if (status !== 200) return new Response(null, { status });
+    if (status !== 200) return new Response(null, { status, headers: plan.headers });
 
     const data = this.contents.get(ref);
     if (!data) throw new Error(`Aucun contenu pour ${ref}`);
@@ -401,6 +411,23 @@ function harness() {
       });
     },
   };
+}
+
+/** Résout quand chacun de ces chemins a reçu `writes` écritures : leur flux est bien en cours. */
+function whenWritten(t: ReturnType<typeof harness>, paths: string[], writes = 2): Promise<void> {
+  const counts = new Map<string, number>();
+  return new Promise<void>((resolve) => {
+    t.fs.hooks.onWrite = (path) => {
+      counts.set(path, (counts.get(path) ?? 0) + 1);
+      if (paths.every((candidate) => (counts.get(candidate) ?? 0) >= writes)) resolve();
+    };
+  });
+}
+
+/** Attend qu'une condition devienne vraie (sondage à la milliseconde, ~2 s au plus). */
+async function waitUntil(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 2_000 && !condition(); i += 1) await sleep(1);
+  expect(condition()).toBe(true);
 }
 
 afterEach(() => {
@@ -646,17 +673,42 @@ describe("runDownload — réponses du serveur de fichiers", () => {
     expect(result.failures[0].error).toContain("Taille inattendue");
     expect(t.fs.commits).toEqual([]);
     expect(t.fs.exists("A/a.bin")).toBe(false);
+    // Sans Content-Length, un écart constaté après lecture peut être une troncature : on réessaie.
+    expect(t.server.fetchCalls).toHaveLength(4);
   });
 
-  it("refuse tout de suite un Content-Length différent de la taille attendue, sans télécharger le corps", async () => {
+  it("réessaie un écart de taille constaté après lecture, sans Content-Length (troncature possible)", async () => {
+    const t = harness();
+    t.add("ref.a", "A/a.bin", "0123456789", { contentLength: null, serve: 7 }, { contentLength: null });
+
+    const result = await t.run();
+
+    expect(result.report).toMatchObject({ files: 1, bytes: 10, failed: 0 });
+    expect(t.fs.text("A/a.bin")).toBe("0123456789");
+    expect(t.server.fetchCalls).toHaveLength(2);
+  });
+
+  it("refuse sans réessai un Content-Length différent de la taille attendue : le fichier a changé", async () => {
     const t = harness();
     t.add("ref.a", "A/a.bin", "0123456789", { contentLength: 99 });
+    t.add("ref.b", "A/b.bin", "BBBB");
 
-    const result = await t.run({ retryDelaysMs: [] });
+    // Les réessais restent permis : c'est le constat, pas leur absence, qui arrête le fichier.
+    const result = await t.run();
 
-    expect(result.report.failed).toBe(1);
-    expect(result.failures[0].error).toContain("Taille inattendue");
-    expect(t.fs.files()).toEqual([]); // rien n'a même été créé
+    expect(result.reason).toBe("done");
+    expect(result.report).toMatchObject({ files: 1, failed: 1 });
+    expect(result.failures).toEqual([
+      {
+        ref: "ref.a",
+        path: ["Client", "A", "a.bin"],
+        error: "Ce fichier a changé depuis l'ouverture de la page : recharge la page pour le récupérer.",
+      },
+    ]);
+    // Une seule requête, corps jamais lu : inutile de télécharger des Go pour un échec certain.
+    expect(t.server.fetchCalls.filter((call) => call.ref === "ref.a")).toHaveLength(1);
+    expect(t.fs.exists("A/a.bin")).toBe(false); // rien n'a même été créé
+    expect(t.fs.text("A/b.bin")).toBe("BBBB");
     expect(t.server.inFlight).toBe(0);
   });
 
@@ -801,6 +853,7 @@ describe("runDownload — essais épuisés", () => {
     expect(t.server.fetchCalls.filter((call) => call.ref === "ref.a")).toHaveLength(1);
     expect(t.fs.exists("A/bad:name.bin")).toBe(false);
     expect(t.fs.text("A/b.bin")).toBe("BBBB");
+    expect(t.server.inFlight).toBe(0); // la réponse reçue avant le refus du nom n'est pas restée ouverte
   });
 
   it("échoue sans réessai les fichiers d'un dossier dont le nom est refusé", async () => {
@@ -816,6 +869,192 @@ describe("runDownload — essais épuisés", () => {
     expect(result.failures.map((f) => f.ref).sort()).toEqual(["ref.a", "ref.b"]);
     expect(result.failures[0].error).toContain("dossier");
     expect(t.server.fetchCalls.map((call) => call.ref)).toEqual(["ref.c"]);
+  });
+});
+
+describe("runDownload — un essai raté n'abandonne aucune réponse ouverte", () => {
+  it("annule la réponse quand createWritable échoue (fichier verrouillé), à chaque essai", async () => {
+    const t = harness();
+    t.fs.hooks.beforeCreateWritable = (path) => {
+      if (path === "A/locked.bin") throw domError("NoModificationAllowedError");
+    };
+    t.add("ref.locked", "A/locked.bin", "LOCKED");
+    t.add("ref.ok", "A/ok.bin", "OKOK");
+
+    const result = await t.run();
+
+    expect(result.report).toMatchObject({ files: 1, failed: 1 });
+    expect(result.failures[0]).toMatchObject({
+      ref: "ref.locked",
+      error: expect.stringContaining("utilisé par un autre programme"),
+    });
+    expect(t.server.fetchCalls.filter((call) => call.ref === "ref.locked")).toHaveLength(4); // 1 + 3 réessais
+    // Chaque essai laissait sa réponse ouverte, jamais lue : les flux s'empilaient jusqu'à
+    // saturer les connexions et faire échouer des fichiers sains.
+    expect(t.server.inFlight).toBe(0);
+    expect(t.server.maxInFlight).toBeLessThanOrEqual(2); // l'essai verrouillé + le fichier sain
+    expect(t.fs.text("A/ok.bin")).toBe("OKOK");
+    expect(t.fs.exists("A/locked.bin")).toBe(false);
+  });
+
+  it("annule la réponse quand getFileHandle({ create }) échoue, à chaque essai", async () => {
+    const t = harness();
+    t.fs.hooks.beforeGetFileHandle = (path, create) => {
+      if (create && path === "A/lost.bin") throw domError("NotFoundError");
+    };
+    t.add("ref.lost", "A/lost.bin", "LOST");
+    t.add("ref.ok", "A/ok.bin", "OKOK");
+
+    const result = await t.run();
+
+    expect(result.report).toMatchObject({ files: 1, failed: 1 });
+    expect(result.failures[0].error).toContain("dossier de destination est introuvable");
+    expect(t.server.fetchCalls.filter((call) => call.ref === "ref.lost")).toHaveLength(4);
+    expect(t.server.inFlight).toBe(0);
+    expect(t.server.maxInFlight).toBeLessThanOrEqual(2);
+    expect(t.fs.text("A/ok.bin")).toBe("OKOK");
+  });
+});
+
+describe("runDownload — Retry-After (429, 503)", () => {
+  it("attend le Retry-After d'un 429, plus long que le délai prévu, avant de réessayer", async () => {
+    vi.useFakeTimers();
+    const t = harness();
+    t.add("ref.a", "A/a.bin", "AAAA", { status: 429, headers: { "Retry-After": "30" } }, {});
+
+    const run = t.run({ concurrency: 1 }); // délai prévu : 1 ms
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.server.fetchCalls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(t.server.fetchCalls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await run;
+
+    expect(t.server.fetchCalls).toHaveLength(2);
+    expect(result.report).toMatchObject({ files: 1, failed: 0 });
+    expect(t.fs.text("A/a.bin")).toBe("AAAA");
+  });
+
+  it("lit un Retry-After en date HTTP, y compris sur la route d'un .xlsx de taille inconnue (503)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-06T12:00:00.000Z"));
+    const t = harness();
+    t.addUnknownSize(
+      "d.lib.c",
+      "A/data.xlsx",
+      "XLSX",
+      { status: 503, headers: { "Retry-After": "Tue, 06 Oct 2026 12:00:20 GMT" } },
+      {},
+    );
+
+    const run = t.run({ concurrency: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(t.server.fetchCalls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await run;
+
+    expect(t.server.fetchCalls).toHaveLength(2);
+    expect(result.report).toMatchObject({ files: 1, failed: 0 });
+    expect(t.fs.text("A/data.xlsx")).toBe("XLSX");
+  });
+
+  it("garde le délai prévu quand il dépasse le Retry-After", async () => {
+    vi.useFakeTimers();
+    const t = harness();
+    t.add("ref.a", "A/a.bin", "AAAA", { status: 429, headers: { "Retry-After": "1" } }, {});
+
+    const run = t.run({ concurrency: 1, retryDelaysMs: [5_000] });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(t.server.fetchCalls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await run;
+
+    expect(t.server.fetchCalls).toHaveLength(2);
+    expect(result.report).toMatchObject({ files: 1, failed: 0 });
+  });
+
+  it("plafonne un Retry-After démesuré à 90 s", async () => {
+    vi.useFakeTimers();
+    const t = harness();
+    t.add("ref.a", "A/a.bin", "AAAA", { status: 429, headers: { "Retry-After": "86400" } }, {});
+
+    const run = t.run({ concurrency: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(89_999);
+    expect(t.server.fetchCalls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await run;
+
+    expect(t.server.fetchCalls).toHaveLength(2);
+    expect(result.report).toMatchObject({ files: 1, failed: 0 });
+  });
+
+  it.each(["bientôt", "0", "Tue, 06 Oct 2026 11:00:00 GMT"])(
+    "retombe sur le délai prévu quand le Retry-After est illisible ou échu (%s)",
+    async (retryAfter) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-10-06T12:00:00.000Z"));
+      const t = harness();
+      t.add("ref.a", "A/a.bin", "AAAA", { status: 429, headers: { "Retry-After": retryAfter } }, {});
+
+      const run = t.run({ concurrency: 1, retryDelaysMs: [50] });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(49);
+      expect(t.server.fetchCalls).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await run;
+
+      expect(t.server.fetchCalls).toHaveLength(2);
+      expect(result.report).toMatchObject({ files: 1, failed: 0 });
+    },
+  );
+
+  it("n'applique le Retry-After qu'aux statuts 429 et 503", async () => {
+    vi.useFakeTimers();
+    const t = harness();
+    t.add("ref.a", "A/a.bin", "AAAA", { status: 500, headers: { "Retry-After": "30" } }, {});
+
+    const run = t.run({ concurrency: 1, retryDelaysMs: [10] });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(10);
+    const result = await run;
+
+    expect(t.server.fetchCalls).toHaveLength(2);
+    expect(result.report).toMatchObject({ files: 1, failed: 0 });
+  });
+
+  it("ne dépasse pas le nombre d'essais : un 429 persistant finit en échec", async () => {
+    vi.useFakeTimers();
+    const t = harness();
+    t.add("ref.a", "A/a.bin", "AAAA", { status: 429, headers: { "Retry-After": "2" } }); // toujours 429
+
+    const run = t.run({ concurrency: 1, retryDelaysMs: [10, 10] });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(2_000);
+    const result = await run;
+
+    expect(t.server.fetchCalls).toHaveLength(3); // 1 + 2 réessais, pas un de plus
+    expect(result.report).toMatchObject({ files: 0, failed: 1 });
+    expect(result.failures[0].error).toContain("(429)");
+  });
+
+  it("interrompt l'attente d'un Retry-After quand l'arrêt est demandé", async () => {
+    vi.useFakeTimers();
+    const t = harness();
+    const controller = new AbortController();
+    t.add("ref.a", "A/a.bin", "AAAA", { status: 429, headers: { "Retry-After": "60" } }, {});
+
+    const run = t.run({ concurrency: 1, signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort(); // pendant les 60 s d'attente, sans faire avancer l'horloge
+
+    const result = await run;
+    expect(result.reason).toBe("aborted");
+    expect(result.failures).toEqual([]);
+    expect(t.server.fetchCalls).toHaveLength(1);
   });
 });
 
@@ -860,6 +1099,9 @@ describe("runDownload — arrêts globaux", () => {
     expect(result.failures).toEqual([]);
     expect(t.fs.commits).toEqual([]);
     expect(t.fs.files()).toEqual([]);
+    // Le fichier dont createWritable a été refusé avait déjà sa réponse : elle est annulée
+    // avec les autres (l'arrêt global ne la retenait plus, son essai était fini).
+    expect(t.server.inFlight).toBe(0);
   });
 
   it("NotAllowedError à la lecture d'un fichier existant → permission_lost", async () => {
@@ -1035,28 +1277,186 @@ describe("runDownload — chien de garde", () => {
   it("ne confond pas la finalisation avec un blocage (close() sans octet entrant)", async () => {
     const t = harness();
     t.add("ref.a", "A/a.bin", "AAAA");
-    // Fige close() bien au-delà du délai : Chrome relit tout le fichier ici.
-    const original = t.fs.root.getFileHandle.bind(t.fs.root);
-    vi.spyOn(t.fs.root, "getFileHandle").mockImplementation(async (name, options) => {
-      const handle = await original(name, options);
-      const createWritable = handle.createWritable.bind(handle);
-      handle.createWritable = async () => {
-        const writable = await createWritable();
-        const close = writable.close.bind(writable);
-        writable.close = async () => {
-          await sleep(80);
-          return close();
-        };
-        return writable;
-      };
-      return handle;
-    });
+    // Fige close() bien au-delà du chien de garde : Chrome relit tout le fichier
+    // ici (SHA-256). Le fichier est dans un sous-dossier : le hook du faux système
+    // de fichiers l'atteint, contrairement à un espion posé sur la racine.
+    let closes = 0;
+    t.fs.hooks.beforeClose = async () => {
+      closes += 1;
+      await sleep(80);
+    };
 
     const result = await t.run({ stallTimeoutMs: 30 });
+
+    expect(closes).toBe(1);
 
     expect(result.report).toMatchObject({ files: 1, failed: 0 });
     expect(t.server.fetchCalls).toHaveLength(1);
     expect(t.fs.text("A/a.bin")).toBe("AAAA");
+  });
+});
+
+// ─── Fermeture de l'onglet ───────────────────────────────────────────────────
+
+describe("abandonInFlightWrites", () => {
+  it("abandonne sur-le-champ les écritures en cours : requêtes annulées, writables défaits, fichiers vides retirés", async () => {
+    const t = harness();
+    // 1er essai figé après 4 octets jusqu'à l'abandon, le 2e passe.
+    t.add("ref.a", "A/a.bin", "0123456789", { chunkSize: 2, hangAfter: 4 }, {});
+    t.add("ref.b", "A/b.bin", "0123456789", { chunkSize: 2, hangAfter: 4 }, {});
+    const streaming = whenWritten(t, ["A/a.bin", "A/b.bin"]);
+    const run = t.run({ retryDelaysMs: [300] });
+    await streaming;
+    expect(t.server.inFlight).toBe(2);
+
+    abandonInFlightWrites();
+    abandonInFlightWrites(); // un second appel ne refait rien
+    // Synchrone : les requêtes sont déjà coupées, avant qu'aucune promesse ne se règle.
+    expect(t.server.inFlight).toBe(0);
+
+    await sleep(25); // largement avant le 2e essai (300 ms)
+    expect([...t.fs.aborts].sort()).toEqual(["A/a.bin", "A/b.bin"]);
+    expect([...t.fs.removed].sort()).toEqual(["A/a.bin", "A/b.bin"]);
+    expect(t.fs.files()).toEqual([]); // aucun fichier vide au nom final
+    expect(t.fs.commits).toEqual([]);
+
+    // Le run n'est pas arrêté : chaque fichier repart de zéro et aboutit (page restaurée).
+    const result = await run;
+    expect(result.reason).toBe("done");
+    expect(result.report).toMatchObject({ files: 2, failed: 0 });
+    expect(t.fs.text("A/a.bin")).toBe("0123456789");
+    expect(t.fs.text("A/b.bin")).toBe("0123456789");
+    expect(t.server.fetchCalls).toHaveLength(4);
+    expect(t.server.inFlight).toBe(0);
+  });
+
+  it("abandonne les écritures de tous les runs actifs", async () => {
+    const a = harness();
+    const b = harness();
+    a.add("ref.a", "A/a.bin", "0123456789", { chunkSize: 2, hangAfter: 4 }, {});
+    b.add("ref.b", "B/b.bin", "0123456789", { chunkSize: 2, hangAfter: 4 }, {});
+    const streaming = Promise.all([whenWritten(a, ["A/a.bin"]), whenWritten(b, ["B/b.bin"])]);
+    const runA = a.run({ retryDelaysMs: [100] });
+    const runB = b.run({ retryDelaysMs: [100] });
+    await streaming;
+
+    abandonInFlightWrites();
+    expect(a.server.inFlight).toBe(0);
+    expect(b.server.inFlight).toBe(0);
+
+    const [resultA, resultB] = await Promise.all([runA, runB]);
+    expect(a.fs.aborts).toEqual(["A/a.bin"]);
+    expect(b.fs.aborts).toEqual(["B/b.bin"]);
+    expect(resultA.report).toMatchObject({ files: 1, failed: 0 });
+    expect(resultB.report).toMatchObject({ files: 1, failed: 0 });
+    expect(a.fs.text("A/a.bin")).toBe("0123456789");
+    expect(b.fs.text("B/b.bin")).toBe("0123456789");
+  });
+
+  it("ne touche pas à un fichier qui existait déjà : seule l'écriture en cours est jetée", async () => {
+    const t = harness();
+    t.fs.put("A/a.bin", "ANCIEN"); // taille différente du manifeste : il sera réécrit
+    t.add("ref.a", "A/a.bin", "0123456789", { chunkSize: 2, hangAfter: 4 }, {});
+    const streaming = whenWritten(t, ["A/a.bin"]);
+    const run = t.run({ retryDelaysMs: [300] });
+    await streaming;
+
+    abandonInFlightWrites();
+    await sleep(25);
+
+    expect(t.fs.aborts).toEqual(["A/a.bin"]);
+    expect(t.fs.removed).toEqual([]); // le moteur ne l'avait pas créé : pas de retrait
+    expect(t.fs.text("A/a.bin")).toBe("ANCIEN"); // et la cible n'a pas bougé
+
+    const result = await run;
+    expect(result.report).toMatchObject({ files: 1, failed: 0 });
+    expect(t.fs.text("A/a.bin")).toBe("0123456789");
+    expect(t.fs.removed).toEqual([]);
+  });
+
+  it("abandonne aussi un fichier dont le writable est encore en cours d'ouverture", async () => {
+    const t = harness();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let first = true;
+    t.fs.hooks.beforeCreateWritable = () => {
+      if (!first) return undefined;
+      first = false;
+      return gate; // le premier createWritable se fait attendre
+    };
+    t.add("ref.a", "A/a.bin", "0123456789", {}, {});
+    const run = t.run({ retryDelaysMs: [300] });
+    await waitUntil(() => t.fs.exists("A/a.bin")); // fichier vide posé, writable pas encore ouvert
+    expect(t.server.inFlight).toBe(1);
+
+    abandonInFlightWrites();
+    expect(t.server.inFlight).toBe(0);
+
+    release();
+    await sleep(25);
+    // Le pipe démarre avec un signal déjà aborté : le writable avorte, le fichier vide disparaît.
+    expect(t.fs.aborts).toEqual(["A/a.bin"]);
+    expect(t.fs.removed).toEqual(["A/a.bin"]);
+    expect(t.fs.files()).toEqual([]);
+
+    const result = await run;
+    expect(result.report).toMatchObject({ files: 1, failed: 0 });
+    expect(t.fs.text("A/a.bin")).toBe("0123456789");
+  });
+
+  it("laisse aller au bout un fichier déjà en « Finalisation » : Chrome peut encore le commiter", async () => {
+    const t = harness();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    t.fs.hooks.beforeClose = () => gate; // close() figé, comme pendant le SHA-256 d'un gros fichier
+    t.add("ref.a", "A/a.bin", "AAAA");
+    let clock = 0;
+    let finalizing: () => void = () => {};
+    const inFinalization = new Promise<void>((resolve) => {
+      finalizing = resolve;
+    });
+
+    const run = t.run({
+      now: () => (clock += 300), // chaque état de progression est émis aussitôt
+      onProgress: (progress) => {
+        if (progress.active.some((file) => file.phase === "finalizing")) finalizing();
+      },
+    });
+    await inFinalization;
+
+    abandonInFlightWrites();
+    await sleep(20);
+    expect(t.fs.aborts).toEqual([]);
+    expect(t.fs.removed).toEqual([]);
+
+    release();
+    const result = await run;
+    expect(result.report).toMatchObject({ files: 1, bytes: 4, failed: 0 });
+    expect(t.fs.text("A/a.bin")).toBe("AAAA");
+    expect(t.fs.commits).toEqual(["A/a.bin"]);
+    expect(t.fs.aborts).toEqual([]);
+    expect(t.fs.removed).toEqual([]);
+    expect(t.server.fetchCalls).toHaveLength(1);
+  });
+
+  it("ne fait rien quand aucun téléchargement n'est en cours, et n'affecte pas les runs suivants", async () => {
+    expect(() => abandonInFlightWrites()).not.toThrow();
+
+    const t = harness();
+    t.add("ref.a", "A/a.bin", "AAAA");
+    expect((await t.run()).report).toMatchObject({ files: 1, failed: 0 });
+    abandonInFlightWrites(); // run terminé : plus rien à abandonner
+
+    const next = harness();
+    next.add("ref.b", "B/b.bin", "BBBB");
+    const result = await next.run();
+    expect(result.report).toMatchObject({ files: 1, failed: 0 });
+    expect(next.server.fetchCalls).toHaveLength(1); // aucun essai perdu
+    expect(next.fs.text("B/b.bin")).toBe("BBBB");
   });
 });
 
