@@ -338,6 +338,34 @@ test.describe("Lien de téléchargement client", () => {
     const file = await request.get(urls[sarahRush.ref]);
     expect(file.status()).toBe(200);
     expect((await file.body()).length).toBe(FILES.sarahRush.length);
+
+    // La route data ne sert que les couples (bibliothèque, compte) du manifeste :
+    // jamais les fiches d'un compte d'un autre client, ni d'un compte sans fiche réservée.
+    for (const account of [ids.intrus, ids.paul, "", "inconnu"]) {
+      const res = await request.get(`/api/export/${rawToken}/data/${ids.dataLib}?account=${account}`);
+      expect(res.status(), `account=${account}`).toBe(404);
+    }
+  });
+
+  test("un lien partiel ne sert que sa sélection", async ({ page, request }) => {
+    await loginAs(page, "admin");
+    const { rawToken } = await createLinkAsAdmin(page.request, {
+      accountIds: [ids.sarah],
+      mediaLibraryIds: [ids.videoLib],
+      dataLibraryIds: [],
+      includePublications: false,
+    });
+    const manifest = (await (await request.get(`/api/export/${rawToken}/manifest`)).json()) as Manifest;
+    expect(manifest.files.map((f) => f.path.at(-1))).toEqual(["sarah-rush.mov"]);
+
+    // Hors sélection : le son de Paul, le son commun, la publication de Sarah, les fiches.
+    const outside = [`m.${ids.paulVoice}.${ids.paul}`, `m.${ids.ambiance}.c`, `p.${ids.slotPublished}`];
+    const { urls, missing } = (await (
+      await request.post(`/api/export/${rawToken}/urls`, { data: { refs: outside } })
+    ).json()) as { urls: Record<string, string>; missing: string[] };
+    expect(urls).toEqual({});
+    expect(missing.sort()).toEqual([...outside].sort());
+    expect((await request.get(`/api/export/${rawToken}/data/${ids.dataLib}?account=c`)).status()).toBe(404);
   });
 
   test("les fiches partent en .xlsx, communes et réservées séparées", async ({ page, request }) => {
@@ -496,10 +524,17 @@ test.describe("Lien de téléchargement client", () => {
         else expect(tree[key], key).toBeGreaterThan(0);
       }
 
-      // Reprise : après rechargement, le dossier mémorisé est proposé et rien n'est retéléchargé.
+      // Reprise : après rechargement, le dossier mémorisé est proposé et rien n'est
+      // retéléchargé — aucune requête vers un fichier média ou vidéo (/uploads en
+      // stockage local) ; seules les feuilles .xlsx, de taille inconnue, sont refaites.
       await visitor.reload();
+      const fileRequests: string[] = [];
+      visitor.on("request", (req) => {
+        if (new URL(req.url()).pathname.startsWith("/uploads/")) fileRequests.push(req.url());
+      });
       await visitor.getByRole("button", { name: /Reprendre dans/ }).click();
       await expect(visitor.getByText("Téléchargement terminé")).toBeVisible({ timeout: 60_000 });
+      expect(fileRequests).toEqual([]);
       expect(await readTree()).toEqual(tree);
     } finally {
       await context.close();
