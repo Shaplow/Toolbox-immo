@@ -133,6 +133,54 @@ export async function createPresignedDownloadUrl(
   return getSignedUrl(client, command, { expiresIn });
 }
 
+/**
+ * GET pré-signé SANS Content-Disposition, pour un fetch() navigateur qui écrit
+ * lui-même le fichier (page publique d'export client, File System Access).
+ *
+ * Toujours l'endpoint S3 : un pré-signé ne marche pas sur le domaine custom, et
+ * la CORS du bucket s'y applique. Chaque URL est unique (signature + date) :
+ * aucune réponse mise en cache sans Access-Control-Allow-Origin ne peut être
+ * resservie, contrairement à l'URL publique du CDN.
+ */
+export async function createPresignedGetUrl(key: string, expiresIn = 3600): Promise<string> {
+  requireR2();
+  const { bucket } = getR2Config();
+  const client = createClient();
+  return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket!, Key: key }), { expiresIn });
+}
+
+/**
+ * Tailles de tous les objets sous des préfixes (ListObjectsV2 paginé, 1000 clés
+ * par page). Moins cher qu'un HEAD par clé dès qu'il y a beaucoup de tailles à
+ * retrouver.
+ */
+export async function listR2ObjectSizes(prefixes: readonly string[]): Promise<Map<string, number>> {
+  requireR2();
+  const { bucket } = getR2Config();
+  const client = createClient();
+  const sizes = new Map<string, number>();
+  for (const prefix of prefixes) {
+    let continuationToken: string | undefined = undefined;
+    do {
+      const response: ListObjectsV2CommandOutput = await withRetry(`list:${prefix}`, () =>
+        client.send(
+          new ListObjectsV2Command({
+            Bucket: bucket!,
+            Prefix: prefix,
+            MaxKeys: 1000,
+            ContinuationToken: continuationToken,
+          }),
+        ),
+      );
+      for (const obj of response.Contents ?? []) {
+        if (obj.Key && typeof obj.Size === "number") sizes.set(obj.Key, obj.Size);
+      }
+      continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+    } while (continuationToken);
+  }
+  return sizes;
+}
+
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
 export interface UploadResult {
