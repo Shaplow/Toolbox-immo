@@ -1,5 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isPublicPath } from "@/lib/http/publicRoutes";
 
 /**
  * Middleware de protection des routes.
@@ -8,10 +9,15 @@ import { auth } from "@/lib/auth";
  * - /login          → public, redirige vers /home si déjà connecté
  * - /api/auth/*     → public (NextAuth handlers)
  * - /api/webhooks/* → public (callbacks RunPod, vérifiés par RUNPOD_WEBHOOK_SECRET)
- * - /api/preview/*  → public (rendu HTML template, protégé dans la route elle-même)
+ * - isPublicPath    → public (liens tokenisés /validate, /data-fill et crons :
+ *                     le jeton ou CRON_SECRET est vérifié par chaque handler)
  * - /api/*          → authentification requise
  * - /(app)/*        → authentification requise (le layout (app) vérifie aussi)
  * - /*              → authentification requise par défaut
+ *
+ * Toute nouvelle page ou API publique DOIT être déclarée dans
+ * lib/http/publicRoutes.ts : sinon une page renvoie vers /login et une API
+ * répond 401 aux visiteurs sans session.
  *
  * Les vérifications de permissions fines (ex: captions, templates:edit)
  * sont faites dans chaque page/layout, pas ici, pour éviter des appels DB
@@ -25,6 +31,9 @@ export async function proxy(req: NextRequest) {
 
   // Webhooks RunPod — protégés par RUNPOD_WEBHOOK_SECRET dans chaque handler
   if (pathname.startsWith("/api/webhooks/")) return NextResponse.next();
+
+  // Liens tokenisés et crons — le jeton (ou CRON_SECRET) est vérifié par le handler
+  if (isPublicPath(pathname)) return NextResponse.next();
 
   // Route interne de génération — protégée par INTERNAL_API_KEY (pas de session)
   if (pathname.match(/^\/api\/renders\/[^/]+\/generate$/)) {

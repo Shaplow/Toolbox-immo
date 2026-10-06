@@ -33,6 +33,7 @@ import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscriptio
 import { transcribeRenderLocal } from "@/lib/transcribeRenderLocal";
 import { runpodConfigured } from "@/lib/runpod";
 import { r2Configured } from "@/lib/r2";
+import { getClientIp } from "@/lib/http/rateLimit";
 
 type RouteContext = { params: Promise<{ token: string }> };
 
@@ -72,10 +73,7 @@ function checkRateLimit(ip: string): boolean {
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
   // Rate-limit
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
+  const ip = getClientIp(req);
   if (!checkRateLimit(ip)) {
     return NextResponse.json({ error: "Trop de requêtes" }, { status: 429 });
   }

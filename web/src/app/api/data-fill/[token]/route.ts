@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getClientIp } from "@/lib/http/rateLimit";
 
 /**
  * Route publique de remplissage de DataLibrary (Phase 1.x Vague 3).
@@ -45,14 +46,6 @@ function checkRateLimit(ip: string): boolean {
   if (entry.count >= RATE_LIMIT_MAX_REQUESTS) return false;
   entry.count++;
   return true;
-}
-
-function getClientIp(req: NextRequest): string {
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  const xr = req.headers.get("x-real-ip");
-  if (xr) return xr;
-  return "unknown";
 }
 
 async function loadLibraryByToken(token: string) {
