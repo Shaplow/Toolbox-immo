@@ -25,7 +25,8 @@
 
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { execSync, spawn, type ChildProcess } from "child_process";
-import { mkdirSync, existsSync } from "fs";
+import { mkdirSync, existsSync, writeFileSync } from "fs";
+import { createHash } from "crypto";
 import { dirname, resolve } from "path";
 import { config as loadEnv } from "dotenv";
 import { PrismaClient } from "@prisma/client";
@@ -46,6 +47,11 @@ const TEST_DB_URL =
 
 const ADMIN_USERNAME = "test_admin";
 const ADMIN_PASSWORD = "testpass";
+
+// Jetons connus des liens d'export seedés par seedClientExportFixtures (64 hex,
+// seul leur sha256 est en base) — pour capturer la page publique /export/[token].
+const UX_EXPORT_TOKEN = "a1".repeat(32);
+const UX_EXPORT_REVOKED_TOKEN = "b2".repeat(32);
 
 // Flags CLI :
 //   --headed   → lance Chromium visible (utile pour observer ce que le script fait)
@@ -159,6 +165,31 @@ const SURFACES: Surface[] = [
     path: "/fiches/ux-fiche-dispo",
     wait: 700,
     desc: "Fiche Tournage en attente de réponse — bandeau « es-tu disponible ? »",
+  },
+  // ── Lien de téléchargement des données d'un client (06/10/2026) ──
+  {
+    name: "16-fiche-client-liens-export",
+    path: "/admin/clients/test-client-1",
+    wait: 1200,
+    desc: "Fiche client — bouton « Lien de téléchargement » + carte des liens (actif, révoqué, expiré, activité)",
+  },
+  {
+    name: "17-export-public",
+    path: `/export/${UX_EXPORT_TOKEN}`,
+    wait: 2000,
+    desc: "Page publique du lien — récap, conseils, bouton « Choisir un dossier et télécharger »",
+  },
+  {
+    name: "18-export-public-revoque",
+    path: `/export/${UX_EXPORT_REVOKED_TOKEN}`,
+    wait: 600,
+    desc: "Page publique d'un lien révoqué — « Ce lien a été désactivé », aucune donnée client",
+  },
+  {
+    name: "19-export-public-inconnu",
+    path: `/export/${"0".repeat(64)}`,
+    wait: 600,
+    desc: "Jeton inconnu — 404 neutre, sans renvoi vers /login",
   },
 ];
 
@@ -518,6 +549,28 @@ const SCENARIOS: Scenario[] = [
         label: "03-detail-data-library",
         action: { type: "goto", path: "/admin/libraries/data/test-data-lib" },
         settleMs: 2200,
+      },
+    ],
+  },
+  {
+    name: "client-export-admin",
+    description:
+      "Admin crée un lien de téléchargement des données d'un client : fiche client → tiroir (contenus, comptes, bibliothèques avec volumes, validité) → lien créé à copier. Vérifier que les volumes et « dont N communs » sont lisibles et que la consigne Chrome/Edge est claire.",
+    steps: [
+      {
+        label: "01-fiche-client",
+        action: { type: "goto", path: "/admin/clients/test-client-1" },
+        settleMs: 1000,
+      },
+      {
+        label: "02-tiroir-selection",
+        action: { type: "click", selector: 'button:has-text("Lien de téléchargement")' },
+        settleMs: 2500,
+      },
+      {
+        label: "03-lien-cree",
+        action: { type: "click", selector: '[role="dialog"] button:has-text("Créer le lien")' },
+        settleMs: 1200,
       },
     ],
   },
@@ -1449,6 +1502,143 @@ async function seedEntityFixtures(): Promise<void> {
   }
 }
 
+/**
+ * Lien de téléchargement des données d'un client : de vrais fichiers sous
+ * public/uploads (le stockage local de l'e2e) réservés au compte de test, des
+ * communs, des fiches, et trois liens (actif avec activité, révoqué, expiré)
+ * aux jetons connus. Sans fichiers réels, la page publique ne montrerait que
+ * des « fichiers indisponibles ».
+ */
+async function seedClientExportFixtures(): Promise<void> {
+  const prisma = new PrismaClient({
+    datasources: { db: { url: TEST_DB_URL } },
+  });
+  try {
+    const [admin, account] = await Promise.all([
+      prisma.user.findUnique({ where: { email: "admin@test.local" } }),
+      prisma.instagramAccount.findFirst({ where: { handle: "test_account" } }),
+    ]);
+    if (!admin || !account || account.clientId !== "test-client-1") {
+      throw new Error("Fixtures de base manquantes — npm run test:db:seed d'abord.");
+    }
+
+    const uploads = resolve(webDir, "public", "uploads");
+    mkdirSync(uploads, { recursive: true });
+
+    await prisma.mediaLibrary.upsert({
+      where: { id: "ux-export-vlib" },
+      update: {},
+      create: { id: "ux-export-vlib", name: "Behind the scene", type: "video" },
+    });
+    await prisma.mediaLibrary.upsert({
+      where: { id: "ux-export-alib" },
+      update: {},
+      create: { id: "ux-export-alib", name: "Musiques d'ambiance", type: "audio" },
+    });
+
+    const assets = [
+      { id: "ux-export-a1", lib: "ux-export-vlib", name: "Cuisine - plan large.mov", tag: "Cuisine", kb: 900, reserved: true },
+      { id: "ux-export-a2", lib: "ux-export-vlib", name: "Salon - travelling.mov", tag: "Salon", kb: 1400, reserved: true },
+      { id: "ux-export-a3", lib: "ux-export-vlib", name: "Façade.mov", tag: null, kb: 600, reserved: true },
+      { id: "ux-export-m1", lib: "ux-export-alib", name: "Ambiance douce.mp3", tag: null, kb: 300, reserved: false },
+    ];
+    for (const asset of assets) {
+      const ext = asset.name.split(".").pop()!;
+      writeFileSync(resolve(uploads, `${asset.id}.${ext}`), Buffer.alloc(asset.kb * 1024, 7));
+      await prisma.mediaAsset.upsert({
+        where: { id: asset.id },
+        update: { sizeBytes: BigInt(asset.kb * 1024) },
+        create: {
+          id: asset.id,
+          libraryId: asset.lib,
+          filename: asset.name,
+          r2Key: `content-library/${ext === "mp3" ? "audio" : "videos"}/${asset.id}.${ext}`,
+          url: `/uploads/${asset.id}.${ext}`,
+          mimeType: ext === "mp3" ? "audio/mpeg" : "video/quicktime",
+          setTag: asset.tag,
+          sizeBytes: BigInt(asset.kb * 1024),
+          ...(asset.reserved ? { accesses: { create: [{ accountId: account.id }] } } : {}),
+        },
+      });
+    }
+
+    await prisma.dataLibrary.upsert({
+      where: { id: "ux-export-dlib" },
+      update: {},
+      create: {
+        id: "ux-export-dlib",
+        name: "Chiffres du marché",
+        templateType: "RPI",
+        fieldsSchema: JSON.stringify([
+          { key: "quartier", label: "Quartier", type: "text" },
+          { key: "prix_m2", label: "Prix au m²", type: "number" },
+        ]),
+        entries: {
+          create: [
+            { fields: JSON.stringify({ quartier: "Croix-Rousse", prix_m2: 5100 }) },
+            { fields: JSON.stringify({ quartier: "Confluence", prix_m2: 6200 }) },
+            {
+              fields: JSON.stringify({ quartier: "Bellecour", prix_m2: 7400 }),
+              accesses: { create: [{ accountId: account.id }] },
+            },
+          ],
+        },
+      },
+    });
+
+    // Liens : recréés à chaque passage (jetons connus, activité figée) — y
+    // compris ceux qu'a créés le scénario client-export-admin au passage précédent.
+    const hash = (token: string) => createHash("sha256").update(token).digest("hex");
+    await prisma.clientExportLink.deleteMany({ where: { clientId: "test-client-1" } });
+    const day = 24 * 60 * 60 * 1000;
+    const selection = {
+      clientId: "test-client-1",
+      accountIds: [account.id],
+      mediaLibraryIds: ["ux-export-vlib", "ux-export-alib"],
+      dataLibraryIds: ["ux-export-dlib"],
+      includePublications: true,
+      createdByUserId: admin.id,
+    };
+    await prisma.clientExportLink.create({
+      data: {
+        ...selection,
+        tokenHash: hash(UX_EXPORT_TOKEN),
+        label: "UX — Fin de contrat",
+        expiresAt: new Date(Date.now() + 6 * day),
+        firstOpenedAt: new Date(Date.now() - day),
+        lastOpenedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        downloadStartedAt: new Date(Date.now() - day),
+        startCount: 2,
+      },
+    });
+    await prisma.clientExportLink.create({
+      data: {
+        ...selection,
+        tokenHash: hash(UX_EXPORT_REVOKED_TOKEN),
+        label: "UX — Rushs septembre",
+        expiresAt: new Date(Date.now() + 3 * day),
+        revokedAt: new Date(Date.now() - 2 * day),
+      },
+    });
+    await prisma.clientExportLink.create({
+      data: {
+        ...selection,
+        tokenHash: hash(`${UX_EXPORT_TOKEN}-expired`),
+        label: "UX — Export de juin",
+        expiresAt: new Date(Date.now() - 10 * day),
+        downloadStartedAt: new Date(Date.now() - 14 * day),
+        downloadCompletedAt: new Date(Date.now() - 14 * day),
+        startCount: 1,
+        lastReport: { files: 5, bytes: 3_276_800, skipped: 0, failed: 0, missing: 0 },
+      },
+    });
+
+    console.log("  ↳ Export client : 4 médias, 3 fiches, liens actif / révoqué / expiré");
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 async function main() {
   console.log(`▶ Audit UX — capture surfaces + scenarios + 10 patterns canoniques`);
   console.log(`  Output : ${OUTPUT_DIR}`);
@@ -1464,6 +1654,8 @@ async function main() {
   await seedAdminFixtures();
   // Seed fiches (métaobjet) : la surface /fiches/[id] n'avait aucune fixture.
   await seedEntityFixtures();
+  // Lien de téléchargement client : fichiers réels, communs, fiches, 3 liens.
+  await seedClientExportFixtures();
 
   let ownsServer: ChildProcess | null = null;
   if (!(await isServerUp())) {
