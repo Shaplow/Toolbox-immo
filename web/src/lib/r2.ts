@@ -235,8 +235,13 @@ function isNotFoundError(err: unknown): boolean {
 
 /**
  * HEAD d'un objet : taille et ETag, ou null si la clé n'existe pas.
- * Relance uniquement les erreurs transitoires (un 404 répond tout de suite) ;
- * throw sur une vraie erreur réseau / auth persistante.
+ *
+ * Relance uniquement les erreurs transitoires : pas de statut HTTP (coupure
+ * réseau, timeout), 429 ou 5xx. Un 404 répond tout de suite (null) et tout autre
+ * 4xx (403 identifiants révoqués, 400…) échoue sans attendre : le relancer ne ferait
+ * que coûter ~1,3 s de plus à chaque appelant avant la même erreur (objectExistsInR2
+ * est sur des chemins chauds, en rafale). Throw sur une vraie erreur réseau / auth
+ * persistante.
  */
 export async function headR2Object(key: string): Promise<R2ObjectHead | null> {
   requireR2();
@@ -246,7 +251,12 @@ export async function headR2Object(key: string): Promise<R2ObjectHead | null> {
     const out = await withRetryIf(
       `head:${key}`,
       () => client.send(new HeadObjectCommand({ Bucket: bucket!, Key: key })),
-      (err) => !isNotFoundError(err),
+      (err) => {
+        if (isNotFoundError(err)) return false;
+        const status = (err as { $metadata?: { httpStatusCode?: number } } | null)?.$metadata
+          ?.httpStatusCode;
+        return status === undefined || status === 429 || status >= 500;
+      },
       [300, 1000],
     );
     return { contentLength: out.ContentLength ?? 0, etag: out.ETag ?? null };

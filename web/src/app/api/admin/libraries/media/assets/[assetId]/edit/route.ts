@@ -12,6 +12,15 @@ type Params = { params: Promise<{ assetId: string }> };
 const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY ?? "";
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID ?? "";
 
+/** Origine d'une URL pour les logs : sans chemin ni query, qui peut porter une signature. */
+function originForLog(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "URL illisible";
+  }
+}
+
 /**
  * POST /api/admin/libraries/media/assets/[assetId]/edit
  *
@@ -214,6 +223,22 @@ export async function GET(_req: NextRequest, { params }: Params) {
         if (typeof out.duration === "number") assetUpdate.duration = out.duration;
         if (out.video_url && isR2PublicUrl(out.video_url)) {
           assetUpdate.url = `${out.video_url.split("?")[0]}?v=${Date.now()}`;
+        } else if (out.video_url) {
+          // Origine rejetée (dérive de config du worker : son R2_PUBLIC_URL n'est
+          // pas le nôtre). Le webhook fait échouer le job ; ici il est perdu
+          // depuis plus de 15 min et l'édition a bien eu lieu : le worker a
+          // réécrit l'objet sous la MÊME clé. On n'adopte pas l'URL étrangère,
+          // mais on garde taille et durée du nouveau fichier et on cache-buste
+          // l'URL actuelle — sinon CDN et navigateurs serviraient l'ancienne vidéo.
+          console.error(
+            `[admin/libraries/media/assets/${assetId}/edit] poll job=${job.id} : video_url hors R2 rejeté ` +
+              `(origine ${originForLog(out.video_url)}), URL de l'asset cache-bustée sans changer d'origine`,
+          );
+          const current = await prisma.mediaAsset.findUnique({
+            where: { id: assetId },
+            select: { url: true },
+          });
+          if (current) assetUpdate.url = `${current.url.split("?")[0]}?v=${job.id}`;
         }
 
         await prisma.$transaction([

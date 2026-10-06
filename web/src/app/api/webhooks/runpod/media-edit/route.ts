@@ -67,10 +67,22 @@ export async function POST(req: NextRequest) {
     if (output.video_url && newUrl === undefined) {
       const errorMsg = `Output video_url non-R2 rejeté (sécurité) : ${output.video_url}`;
       console.error(`[webhook/media-edit] job=${job.id} ${errorMsg}`);
-      await prisma.mediaEditJob.update({
-        where: { id: job.id },
-        data: { status: "failed", errorMsg },
-      });
+      // Le job échoue, mais le worker a déjà réécrit l'objet sous la même clé :
+      // la taille stockée est périmée. L'export client contrôle strictement la
+      // taille annoncée — avec l'ancienne valeur, ce fichier serait refusé
+      // (« Ce fichier a changé… ») à chaque passage. Relue par HEAD hors transaction, comme sur le
+      // chemin nominal ; null si illisible (l'export la recalculera).
+      const sizeBytes = await readEditedAssetSize(job.assetId);
+      await prisma.$transaction([
+        prisma.mediaEditJob.update({
+          where: { id: job.id },
+          data: { status: "failed", errorMsg },
+        }),
+        prisma.mediaAsset.updateMany({
+          where: { id: job.assetId },
+          data: { sizeBytes },
+        }),
+      ]);
       return NextResponse.json({ ok: true });
     }
 
