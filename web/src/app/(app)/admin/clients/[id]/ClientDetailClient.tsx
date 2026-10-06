@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Building2, ChevronLeft, Check, Plus, Instagram } from "lucide-react";
+import { Building2, ChevronLeft, Check, Download, Plus, Instagram } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "@/components/ui/Toast";
@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { InstagramAccountRow, type InstagramAccountData } from "@/components/admin/InstagramAccountRow";
+import { ClientExportDrawer } from "@/components/admin/clients/ClientExportDrawer";
+import { ClientExportLinksCard } from "@/components/admin/clients/ClientExportLinksCard";
 
 export type ClientDetailAccountStub = {
   id: string;
@@ -36,9 +38,11 @@ interface Props {
   clientId: string;
   initialClient: ClientDetailData;
   initialAccounts: ClientDetailAccountStub[];
+  /** Admin en mode normal : les liens de téléchargement refusent l'impersonation et la « vue comme ». */
+  canExport: boolean;
 }
 
-export function ClientDetailClient({ clientId, initialClient, initialAccounts }: Props) {
+export function ClientDetailClient({ clientId, initialClient, initialAccounts, canExport }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -81,6 +85,12 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
   const [addForm, setAddForm] = useState({ name: "", handle: "" });
   const [addFormError, setAddFormError] = useState<string | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
+
+  // Liens de téléchargement des données du client : le tiroir s'ouvre depuis
+  // l'en-tête comme depuis la carte ; `linksRefreshKey` recharge la carte
+  // quand un lien vient d'être créé.
+  const [exportDrawerOpen, setExportDrawerOpen] = useState(false);
+  const [linksRefreshKey, setLinksRefreshKey] = useState(0);
 
   // Search dans le picker de comptes (onglet Infos)
   const [accountSearch, setAccountSearch] = useState("");
@@ -230,6 +240,17 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
           </div>
           <h1 className="text-xl font-semibold text-foreground truncate">{client.name}</h1>
         </div>
+        {/* Sans compte rattaché il n'y a rien à exporter : pas de bouton. */}
+        {canExport && client.accounts.length > 0 && (
+          <Button
+            variant="secondary"
+            icon={Download}
+            className="shrink-0"
+            onClick={() => setExportDrawerOpen(true)}
+          >
+            Lien de téléchargement
+          </Button>
+        )}
       </div>
 
       {/* Onglets */}
@@ -407,6 +428,15 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
               </>
             )}
           </div>
+
+          {/* Liens de téléchargement des données du client (admin en mode normal) */}
+          {canExport && (
+            <ClientExportLinksCard
+              clientId={clientId}
+              refreshKey={linksRefreshKey}
+              onCreate={() => setExportDrawerOpen(true)}
+            />
+          )}
         </div>
       )}
 
@@ -508,6 +538,15 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
             </div>
           )}
         </div>
+      )}
+
+      {canExport && (
+        <ClientExportDrawer
+          clientId={clientId}
+          open={exportDrawerOpen}
+          onClose={() => setExportDrawerOpen(false)}
+          onCreated={() => setLinksRefreshKey((n) => n + 1)}
+        />
       )}
     </div>
   );

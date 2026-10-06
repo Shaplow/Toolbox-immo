@@ -85,6 +85,9 @@ export default async function AdminClientDetailPage({ params }: PageProps) {
       clientId={id}
       initialClient={initialClient}
       initialAccounts={initialAccounts}
+      // En impersonation ou « vue comme », l'API des liens répond 403 : on
+      // masque le bouton et la carte plutôt que d'afficher un écran en erreur.
+      canExport={ctx.canAdminBypass}
     />
   );
 }
