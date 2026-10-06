@@ -16,7 +16,8 @@
  * (proxy.ts), le premier passage réel balaie donc des mois d'orphelins d'un coup :
  * - dry-run par défaut (il faut le demander explicitement pour supprimer) ;
  * - disjoncteur `maxDeletes` : au-delà, rien n'est supprimé et le résultat le dit ;
- * - détail par préfixe (volume + échantillons de clés) pour juger un dry-run.
+ * - détail par classe de clé (volume + échantillons, cf. keyClass) pour juger
+ *   un dry-run.
  *
  * Usage :
  *   import { cleanupOrphanR2Objects } from "@/lib/r2Cleanup"
@@ -33,12 +34,12 @@ import { prisma } from "@/lib/prisma";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface PrefixReport {
-  /** Orphelins trouvés sous ce préfixe. */
+export interface ClassReport {
+  /** Orphelins trouvés dans cette classe de clés. */
   orphans: number;
   /** Volume cumulé de ces orphelins, en octets. */
   bytes: number;
-  /** Premières clés orphelines (au plus SAMPLE_SIZE) — de quoi relire un dry-run à l'œil. */
+  /** Premières clés orphelines de la classe (au plus SAMPLE_SIZE) — de quoi relire un dry-run à l'œil. */
   samples: string[];
 }
 
@@ -51,8 +52,11 @@ export interface CleanupResult {
   deleted: number;
   /** Si true, aucune suppression n'a été effectuée. */
   dryRun: boolean;
-  /** Détail par préfixe scanné. */
-  byPrefix: Record<string, PrefixReport>;
+  /**
+   * Détail par CLASSE de clé (cf. keyClass), pour les seules classes qui ont des
+   * orphelins : une classe absente n'en a aucun.
+   */
+  byClass: Record<string, ClassReport>;
   /** Passage réel refusé par le disjoncteur : rien n'a été supprimé. */
   refused: { reason: "too_many_orphans"; maxDeletes: number } | null;
 }
@@ -81,7 +85,7 @@ const CUTOFF_MS = 24 * 60 * 60 * 1000; // 24h
 /** Plafond de suppressions d'un passage réel, sauf surcharge explicite. */
 export const DEFAULT_MAX_DELETES = 500;
 
-/** Clés orphelines rapportées par préfixe. */
+/** Clés orphelines rapportées par classe. */
 const SAMPLE_SIZE = 20;
 
 /** Prefixes R2 scannés. Chaque prefix a son propre cross-check DB.
@@ -145,6 +149,36 @@ export function parseCleanupParams(searchParams: URLSearchParams): CleanupParams
  */
 export function posterKeyForAsset(assetId: string): string {
   return `content-library/posters/${assetId}.jpg`;
+}
+
+// Classe d'une clé pour le rapport d'un dry-run : le sous-dossier qui dit de quoi
+// il s'agit, pas le préfixe scanné. ListObjectsV2 rend les clés par ordre
+// lexicographique : avec un seul échantillon par préfixe, 20 orphelins sous
+// content-library/audio/ cachaient à jamais une classe voisine (les vignettes
+// de posters/ avant leur protection, ou toute classe future), et sous
+// publications/ on ne voyait que les slots les plus anciens, jamais les rushes
+// ou les versions récents. Or ce rapport est le seul garde-fou avant `apply=1`.
+//
+//   publications/<slot>/<sous-dossier>/…  →  publications/*/<sous-dossier>/
+//       (rushes, versions, brief, cover-monteur…) ; un fichier posé directement
+//       sous le slot (résidu d'upload avorté) tombe dans publications/*/
+//   content-library/<sous-dossier>/…      →  content-library/<sous-dossier>/
+//       (audio, posters, videos)
+//   tout autre préfixe scanné (transcription/, inputs/captions/) : tel quel.
+//
+// Le préfixe scanné décide de la forme : un préfixe ajouté à SCAN_PREFIXES a sa
+// propre classe sans toucher cette fonction.
+//
+// (Commentaire de ligne exprès : « publications/*/ » fermerait un bloc JSDoc.)
+export function keyClass(key: string, scannedPrefix: string): string {
+  const segments = key.split("/");
+  if (scannedPrefix === "publications/") {
+    return segments.length > 3 ? `publications/*/${segments[2]}/` : "publications/*/";
+  }
+  if (scannedPrefix === "content-library/") {
+    return segments.length > 2 ? `content-library/${segments[1]}/` : "content-library/";
+  }
+  return scannedPrefix;
 }
 
 /**
@@ -257,12 +291,9 @@ export async function cleanupOrphanR2Objects(
   // 2. Paginer ListObjectsV2 sur chaque prefix scanné
   let scanned = 0;
   const orphanKeys: string[] = [];
-  const byPrefix: Record<string, PrefixReport> = {};
+  const byClass: Record<string, ClassReport> = {};
 
   for (const prefix of SCAN_PREFIXES) {
-    const report: PrefixReport = { orphans: 0, bytes: 0, samples: [] };
-    byPrefix[prefix] = report;
-
     let continuationToken: string | undefined = undefined;
     do {
       const command = new ListObjectsV2Command({
@@ -285,6 +316,11 @@ export async function cleanupOrphanR2Objects(
 
         if (isOld && isOrphan) {
           orphanKeys.push(obj.Key);
+          const report = (byClass[keyClass(obj.Key, prefix)] ??= {
+            orphans: 0,
+            bytes: 0,
+            samples: [],
+          });
           report.orphans++;
           report.bytes += obj.Size ?? 0;
           if (report.samples.length < SAMPLE_SIZE) report.samples.push(obj.Key);
@@ -316,7 +352,7 @@ export async function cleanupOrphanR2Objects(
     orphans: orphanKeys.length,
     deleted,
     dryRun,
-    byPrefix,
+    byClass,
     refused,
   };
 }

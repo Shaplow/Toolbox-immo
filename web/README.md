@@ -198,10 +198,36 @@ tail -f /var/log/nginx/error.log
 
 **Route** : `POST /api/cron/r2-cleanup`
 
-Supprime les objets R2 sous le prefix `publications/` créés il y a plus de 24h
-et non référencés dans les tables `PublicationRush`, `PublicationVersion` ou
-`PublicationBriefAttachment`. Utile pour nettoyer les uploads interrompus ou
-les multipart abandonnés.
+Supprime les objets R2 orphelins : créés il y a plus de 24 h et dont la clé n'est
+référencée par aucune ligne de la base. Utile pour nettoyer les uploads
+interrompus et les sources jamais soumises. Le même appel abandonne aussi les
+uploads multipart inachevés depuis plus de 48 h (invisibles pour le listing
+d'objets, mais facturés par R2).
+
+**Dry-run par défaut.** Sans paramètre, la route compte et détaille les orphelins
+sans rien supprimer (`deleted: 0`). La suppression se demande explicitement :
+
+| Appel | Effet |
+|---|---|
+| `POST /api/cron/r2-cleanup` | Dry-run : rien n'est supprimé (ni objet, ni multipart) |
+| `…?apply=1` | Passage réel : supprime les orphelins et abandonne les multipart inachevés |
+| `…?apply=1&maxDeletes=N` | Disjoncteur : au-delà de N orphelins (500 par défaut), aucun objet n'est supprimé et la route répond **409** |
+| `…?dryRun=true` | Ancienne forme : reste un dry-run, même combinée à `apply=1` |
+
+**Préfixes scannés** : `publications/`, `content-library/`, `transcription/`,
+`inputs/captions/`. Un objet n'est supprimé que si sa clé est absente de TOUTES
+les sources ci-dessous (`collectReferencedKeys` dans `src/lib/r2Cleanup.ts`) :
+
+- `PublicationRush`, `PublicationVersion`, `PublicationBriefAttachment` : `r2Key`
+- `CoverFramePack.finalCoverKey` : covers monteur
+- `MediaAsset` : le fichier (`r2Key`) **et la vignette**, c'est-à-dire
+  `content-library/posters/<id>.jpg` par convention, plus la clé lue dans `posterUrl`
+- `TranscriptionJob` : `inputKey` et `outputJsonKey` (les `segments.json` sont
+  persistants et vivent sous le même préfixe que les sources)
+- `CaptionJob` : `inputKey` et `outputKey`
+
+**Attention** : ajouter un préfixe à scanner sans ajouter sa source de références
+ferait supprimer des objets vivants. Toujours la source d'abord.
 
 **Variable d'environnement requise** :
 
@@ -209,22 +235,63 @@ les multipart abandonnés.
 CRON_SECRET=<secret aléatoire fort — min 32 chars>
 ```
 
-**Câblage (cron-job.org, Vercel cron, systemd timer, etc.)** :
-
-```bash
-# Exemple curl — chaque nuit à 4h00 UTC
-curl -X POST https://<votre-domaine>/api/cron/r2-cleanup \
-     -H "x-cron-secret: $CRON_SECRET"
-
-# Dry-run manuel (ne supprime rien, retourne juste les stats)
-curl -X POST "https://<votre-domaine>/api/cron/r2-cleanup?dryRun=true" \
-     -H "x-cron-secret: $CRON_SECRET"
-```
-
 **Réponse** :
 
 ```json
-{ "scanned": 42, "orphans": 3, "deleted": 3, "dryRun": false }
+{
+  "scanned": 1204,
+  "orphans": 3,
+  "deleted": 0,
+  "dryRun": true,
+  "refused": null,
+  "byClass": {
+    "publications/*/rushes/": { "orphans": 2, "bytes": 52428800, "samples": ["publications/<slot>/rushes/…"] },
+    "content-library/audio/": { "orphans": 1, "bytes": 4194304, "samples": ["content-library/audio/…"] }
+  },
+  "multipart": { "found": 0, "aborted": 0, "bytesFreed": 0, "dryRun": true }
+}
+```
+
+`byClass` ventile les orphelins par type de fichier (`publications/*/rushes/`,
+`versions`, `brief`, `cover-monteur`, `content-library/audio/`, `posters`,
+`videos`, `transcription/`, `inputs/captions/`) avec, pour chacun, le nombre,
+le volume en octets et au plus 20 clés d'exemple. Seules les classes qui ont
+des orphelins apparaissent.
+
+| Statut | Sens |
+|---|---|
+| 200 | Dry-run, ou passage réel effectué |
+| 409 | **Passage réel refusé par le disjoncteur** : plus de `maxDeletes` orphelins, rien n'a été supprimé. Même corps que le 200, avec `refused: { "reason": "too_many_orphans", "maxDeletes": N }`. Volontairement un échec HTTP : sinon cron-job.org ou la crontab y voient un succès et la fuite de stockage se répète chaque nuit sans alerte. Le nettoyage des multipart, indépendant, a eu lieu. |
+| 401 / 503 | Secret absent ou invalide / `CRON_SECRET` non configuré |
+| 500 | Erreur interne (R2 non configuré, base indisponible…) |
+
+**Avant de câbler `apply=1` — relire un dry-run en prod** :
+
+1. Lancer un dry-run à la main (commande ci-dessous), puis relire les `samples`
+   de chaque classe de `byClass` : chaque clé doit être un vrai abandon (upload
+   interrompu, source jamais soumise…). Une clé qui ressemble à un fichier vivant
+   (vignette, sortie de transcription, cover…) trahit une source de références
+   manquante : ne pas câbler `apply=1`.
+2. Faire le premier passage réel à la main, avec un `maxDeletes` assumé : il
+   balaie des mois d'orphelins, bien au-delà des 500 par défaut.
+3. Seulement ensuite, câbler la tâche planifiée avec `?apply=1` et le plafond par
+   défaut. Un passage nocturne qui dépasse 500 orphelins répond alors 409 :
+   activer l'alerte sur les statuts non 2xx côté planificateur.
+
+**Câblage (cron-job.org, systemd timer, crontab, etc.)** :
+
+```bash
+# Dry-run manuel (ne supprime rien, retourne le détail par classe)
+curl -X POST "https://<votre-domaine>/api/cron/r2-cleanup" \
+     -H "x-cron-secret: $CRON_SECRET"
+
+# Premier passage réel, à la main, plafond relevé après relecture du dry-run
+curl -X POST "https://<votre-domaine>/api/cron/r2-cleanup?apply=1&maxDeletes=5000" \
+     -H "x-cron-secret: $CRON_SECRET"
+
+# Planifié chaque nuit à 4h00 UTC — à câbler APRÈS la relecture d'un dry-run
+curl -X POST "https://<votre-domaine>/api/cron/r2-cleanup?apply=1" \
+     -H "x-cron-secret: $CRON_SECRET"
 ```
 
 **Schedule recommandé** : `0 4 * * *` (04:00 UTC tous les jours)

@@ -16,9 +16,15 @@
  * Body : vide (POST uniquement — pas de GET pour réduire la surface en prod)
  *
  * Réponse :
- *   200 { scanned, orphans, deleted, dryRun, refused, byPrefix, multipart: { found, aborted, bytesFreed } }
- *   `byPrefix[prefix] = { orphans, bytes, samples }` : relire les échantillons
- *   d'un dry-run avant le premier passage réel.
+ *   200 { scanned, orphans, deleted, dryRun, refused: null, byClass, multipart: { found, aborted, bytesFreed } }
+ *   409 même corps, avec `refused: { reason, maxDeletes }` : le disjoncteur a
+ *       refusé le passage réel, rien n'a été supprimé. Un statut d'erreur plutôt
+ *       qu'un 200, sinon cron-job.org ou la crontab y voient un succès et la fuite
+ *       de stockage se répète chaque nuit sans alerte.
+ *   `byClass[classe] = { orphans, bytes, samples }`, pour les seules classes qui
+ *   ont des orphelins : un sous-dossier par type de fichier (rushes, versions,
+ *   vignettes, sons…) plutôt que par préfixe scanné, cf. keyClass. Relire les
+ *   échantillons d'un dry-run avant le premier passage réel.
  *
  * Deux nettoyages distincts sont exécutés :
  *   1. Objets orphelins (ListObjectsV2 + cross-check DB) — cf. lib/r2Cleanup.ts
@@ -26,6 +32,8 @@
  *      en cours n'est pas un objet), donc jamais couverts par le point 1, alors
  *      que R2 facture les parties déjà poussées. Un onglet fermé pendant un
  *      upload de 100 Go coûte 100 Go permanents sans ce nettoyage.
+ *   Ils ne sont PAS couplés : le disjoncteur du point 1 ne retient pas le point 2
+ *   (un faux positif de référencement n'a aucun lien avec un multipart inachevé).
  *
  * Câblage externe (crontab, cron-job.org, etc.) :
  *   - Méthode : POST
@@ -69,11 +77,18 @@ export async function POST(req: NextRequest) {
   // 4. Exécution du nettoyage
   try {
     const result = await cleanupOrphanR2Objects({ dryRun, maxDeletes });
-    console.log(
+    const summary =
       `[cron/r2-cleanup] Orphelins — scanned=${result.scanned}, orphans=${result.orphans}, ` +
-        `deleted=${result.deleted}, dryRun=${result.dryRun}` +
-        (result.refused ? `, REFUSÉ (plus de ${result.refused.maxDeletes} orphelins)` : ""),
-    );
+      `deleted=${result.deleted}, dryRun=${result.dryRun}`;
+    if (result.refused) {
+      // Erreur, pas info : un passage réel refusé chaque nuit doit se voir.
+      console.error(
+        `${summary}, REFUSÉ : plus de ${result.refused.maxDeletes} orphelins, rien n'a été supprimé ` +
+          `(relire un dry-run, puis relancer avec un maxDeletes plus haut)`,
+      );
+    } else {
+      console.log(summary);
+    }
 
     // Uploads multipart inachevés. Best-effort et isolé du bloc précédent : un
     // échec ici ne doit pas masquer le résultat du nettoyage d'orphelins, qui a
@@ -91,7 +106,9 @@ export async function POST(req: NextRequest) {
       multipart = { error: mpErr instanceof Error ? mpErr.message : "Erreur interne" };
     }
 
-    return NextResponse.json({ ...result, multipart });
+    // 409 si le disjoncteur a refusé le passage réel : corps inchangé, mais le
+    // cron externe voit un échec.
+    return NextResponse.json({ ...result, multipart }, { status: result.refused ? 409 : 200 });
   } catch (err) {
     console.error("[cron/r2-cleanup] Erreur :", err);
     const message = err instanceof Error ? err.message : "Erreur interne";
