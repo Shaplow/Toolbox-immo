@@ -184,6 +184,8 @@ export async function createMediaAssetFromR2({
         url: destUrl,
         mimeType: "video/mp4",
         duration: duration ?? null,
+        // Taille exacte de la copie : le buffer vient d'être écrit tel quel.
+        sizeBytes: BigInt(buffer.byteLength),
         tags: JSON.stringify(tags ?? []),
         setTag: setTag ?? null,
         source: "generated",

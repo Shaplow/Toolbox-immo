@@ -19,7 +19,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
-import { withRetry } from "@/lib/retry";
+import { withRetry, withRetryIf } from "@/lib/retry";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -174,22 +174,46 @@ export async function uploadToR2(
 
 // ─── Existence check ─────────────────────────────────────────────────────────
 
+export interface R2ObjectHead {
+  /** Taille en octets (number JS : exact sous 2^53). */
+  contentLength: number;
+  etag: string | null;
+}
+
+function isNotFoundError(err: unknown): boolean {
+  const e = err as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
+  return e?.$metadata?.httpStatusCode === 404 || e?.name === "NotFound";
+}
+
+/**
+ * HEAD d'un objet : taille et ETag, ou null si la clé n'existe pas.
+ * Relance uniquement les erreurs transitoires (un 404 répond tout de suite) ;
+ * throw sur une vraie erreur réseau / auth persistante.
+ */
+export async function headR2Object(key: string): Promise<R2ObjectHead | null> {
+  requireR2();
+  const { bucket } = getR2Config();
+  const client = createClient();
+  try {
+    const out = await withRetryIf(
+      `head:${key}`,
+      () => client.send(new HeadObjectCommand({ Bucket: bucket!, Key: key })),
+      (err) => !isNotFoundError(err),
+      [300, 1000],
+    );
+    return { contentLength: out.ContentLength ?? 0, etag: out.ETag ?? null };
+  } catch (err: unknown) {
+    if (isNotFoundError(err)) return null;
+    throw err;
+  }
+}
+
 /**
  * Returns true when the key exists in R2.
  * Throws only on genuine network / auth errors (not on 404).
  */
 export async function objectExistsInR2(key: string): Promise<boolean> {
-  requireR2();
-  const { bucket } = getR2Config();
-  const client = createClient();
-  try {
-    await client.send(new HeadObjectCommand({ Bucket: bucket!, Key: key }));
-    return true;
-  } catch (err: unknown) {
-    const code = (err as { name?: string; $metadata?: { httpStatusCode?: number } });
-    if (code.$metadata?.httpStatusCode === 404 || code.name === "NotFound") return false;
-    throw err;
-  }
+  return (await headR2Object(key)) !== null;
 }
 
 // ─── Delete ───────────────────────────────────────────────────────────────────

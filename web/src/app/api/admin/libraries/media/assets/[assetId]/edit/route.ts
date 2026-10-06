@@ -4,6 +4,8 @@ import { canManageMediaAssets } from "@/lib/permissions/mediaLibrary";
 import { prisma } from "@/lib/prisma";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
+import { isR2PublicUrl } from "@/lib/r2";
+import { readEditedAssetSize } from "@/lib/services/mediaAsset/assetSize";
 
 type Params = { params: Promise<{ assetId: string }> };
 
@@ -203,15 +205,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
       const rp = await fetchRunpodStatus(RUNPOD_ENDPOINT_ID, RUNPOD_API_KEY, job.runpodId);
       if (rp.status === "COMPLETED" && rp.output) {
         const out = rp.output as { duration?: number; video_url?: string };
-        const assetUpdate: Record<string, unknown> = {};
+        // Même règles que le webhook media-edit : taille relue par HEAD (le
+        // fichier vient d'être réécrit), et origine R2 exigée pour l'URL —
+        // elle est rendue telle quelle dans les templates.
+        const assetUpdate: Record<string, unknown> = {
+          sizeBytes: await readEditedAssetSize(assetId),
+        };
         if (typeof out.duration === "number") assetUpdate.duration = out.duration;
-        if (out.video_url) assetUpdate.url = `${out.video_url.split("?")[0]}?v=${Date.now()}`;
+        if (out.video_url && isR2PublicUrl(out.video_url)) {
+          assetUpdate.url = `${out.video_url.split("?")[0]}?v=${Date.now()}`;
+        }
 
         await prisma.$transaction([
           prisma.mediaEditJob.update({ where: { id: job.id }, data: { status: "done" } }),
-          ...(Object.keys(assetUpdate).length > 0
-            ? [prisma.mediaAsset.update({ where: { id: assetId }, data: assetUpdate })]
-            : []),
+          prisma.mediaAsset.update({ where: { id: assetId }, data: assetUpdate }),
         ]);
         return NextResponse.json({ job: { ...job, status: "done" } });
       } else if (["FAILED", "CANCELLED", "TIMED_OUT"].includes(rp.status)) {

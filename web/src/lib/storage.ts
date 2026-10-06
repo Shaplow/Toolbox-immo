@@ -162,6 +162,37 @@ export async function getObjectSize(key: string): Promise<number | null> {
 }
 
 /**
+ * Fichier disque derrière une URL publique locale `/uploads/...`.
+ *
+ * Stockage local uniquement. La médiathèque range ses fichiers sous
+ * `public/uploads/<id>.<ext>`, ce qui ne correspond PAS à `MediaAsset.r2Key`
+ * (`content-library/...`) : il faut partir de `asset.url`. La query (`?v=`
+ * posée après une édition) est retirée ; tout chemin qui sortirait de
+ * public/uploads est refusé (null).
+ */
+export function localPathForPublicUrl(url: string): string | null {
+  const pathname = url.split(/[?#]/)[0];
+  if (!pathname.startsWith("/uploads/")) return null;
+  try {
+    return keyToLocalPath(decodeURIComponent(pathname.slice("/uploads/".length)));
+  } catch {
+    return null;
+  }
+}
+
+/** Taille en octets du fichier local derrière une URL `/uploads/...`, null si absent. */
+export async function localFileSizeForUrl(url: string): Promise<number | null> {
+  const full = localPathForPublicUrl(url);
+  if (!full) return null;
+  try {
+    const s = await stat(full);
+    return s.isFile() ? s.size : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Helper d'accès interne (pour les tests / scripts). Expose le chemin
  * physique d'un key en mode local. Throw en mode R2.
  */

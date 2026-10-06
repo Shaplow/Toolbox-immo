@@ -199,8 +199,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     });
     if (!asset) return NextResponse.json({ error: "Asset introuvable" }, { status: 404 });
 
-    const { accesses, ...rest } = asset;
-    return NextResponse.json({ ...rest, accessAccountIds: accesses.map((a) => a.accountId) });
+    const { accesses, sizeBytes, ...rest } = asset;
+    return NextResponse.json({
+      ...rest,
+      // BigInt → number : NextResponse.json lève sur un bigint (exact sous 2^53).
+      sizeBytes: sizeBytes == null ? null : Number(sizeBytes),
+      accessAccountIds: accesses.map((a) => a.accountId),
+    });
   } catch (err) {
     console.error(`[admin/libraries/media/assets/${assetIdPatch}] PATCH error:`, err);
     return NextResponse.json({ error: "Erreur serveur lors de la mise à jour" }, { status: 500 });

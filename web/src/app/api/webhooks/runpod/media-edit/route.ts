@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyAndParseRunpodWebhook } from "@/lib/webhooks/runpod";
 import { isR2PublicUrl } from "@/lib/r2";
+import { readEditedAssetSize } from "@/lib/services/mediaAsset/assetSize";
 
 /**
  * POST /api/webhooks/runpod/media-edit
@@ -73,10 +74,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    // Le worker réécrit le fichier sous la même clé (ré-encodage MP4) sans
+    // renvoyer sa taille : on la relit par HEAD, HORS transaction (appel réseau).
+    // Échec → null, l'export client la recalculera.
+    const sizeBytes = await readEditedAssetSize(job.assetId);
+
     await prisma.$transaction(async (tx) => {
       await tx.mediaEditJob.update({
         where: { id: job.id },
         data: { status: "done" },
+      });
+
+      // L'ancienne taille est fausse dès que le fichier a été réécrit.
+      await tx.mediaAsset.update({
+        where: { id: job.assetId },
+        data: { sizeBytes },
       });
 
       if (newDuration !== undefined || newUrl !== undefined) {

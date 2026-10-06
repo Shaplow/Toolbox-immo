@@ -569,6 +569,12 @@ model MediaAsset {
   posterUrl      String?
   /// Durée en secondes (remplie au probe après upload)
   duration       Float?
+  /// Taille du fichier en octets (HEAD R2 au confirm, copie à l'auto-save,
+  /// HEAD après media_edit qui réécrit le fichier). BigInt : 2 Gio = 2 147 483 648
+  /// dépasse INT4. Null = inconnue (asset historique, upload jamais confirmé) —
+  /// l'export client la complète paresseusement. Toujours convertir en Number
+  /// avant un JSON (NextResponse.json lève sur un bigint).
+  sizeBytes      BigInt?
   /// JSON string[] — tags métier associés au fichier : ["RPI","RTIPS","RPOD"]
   tags           String             @default("[]")
   /// Clé de groupement pour les paires intro/outro (même lieu, même tenue).
