@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { ExportLinkSummary, ExportPreview } from "@/lib/clientExport/types";
+import { createExportLinkSchema } from "@/lib/clientExport/schemas";
+import type { ExportLinkSummary, ExportPreview, ExportReport } from "@/lib/clientExport/types";
 import {
+  CONTENT_KEYS,
+  CREATE_LINK_LABEL,
   DURATION_OPTIONS,
   EMPTY_VOLUME,
+  LINK_ACTION_LABELS,
+  ROTATE_HINT,
   buildCreateRequest,
   computeExportModel,
   defaultSelection,
@@ -23,6 +28,7 @@ import {
   setAccounts,
   setContent,
   setLibraries,
+  unavailableNeedsAction,
   type ExportDrawerSelection,
 } from "../clientExportModel";
 
@@ -76,7 +82,9 @@ function makePreview(overrides: Partial<ExportPreview> = {}): ExportPreview {
     ],
     publications: {
       perAccount: { a1: { files: 7, bytes: 3 * GO } },
-      unavailable: { a1: 2, a2: 1 },
+      // Par compte PUIS par motif, comme le serveur : 2 posts image chez a1, une
+      // vidéo résolue mais absente du stockage chez a2.
+      unavailable: { a1: { image_post: 2 }, a2: { missing: 1 } },
     },
     missingFiles: 0,
     ...overrides,
@@ -137,8 +145,10 @@ describe("computeExportModel — sélection par défaut", () => {
     expect(video?.common).toBe(0);
   });
 
-  it("compte, par ligne publications, les non exportables des comptes cochés", () => {
-    expect(row(model, "publications").unavailable).toBe(3);
+  it("compte, par ligne publications, les non exportables des comptes cochés, par motif", () => {
+    expect(row(model, "publications").unavailable).toEqual({ image_post: 2, missing: 1 });
+    // Les autres lignes n'ont pas de publications non exportables.
+    expect(row(model, "video").unavailable).toEqual({});
   });
 
   it("calcule le volume de chaque compte sans les communs", () => {
@@ -190,7 +200,11 @@ describe("computeExportModel — comptes", () => {
     const onlyA2 = setAccounts(defaultSelection(preview), ["a1", "a3"], false);
     const model = compute(preview, onlyA2);
     const publications = row(model, "publications");
-    expect(publications).toMatchObject({ available: false, checked: false, unavailable: 1 });
+    expect(publications).toMatchObject({
+      available: false,
+      checked: false,
+      unavailable: { missing: 1 },
+    });
     expect(model.payload.includePublications).toBe(false);
 
     // On recoche a1 : la ligne se rallume d'elle-même.
@@ -218,6 +232,59 @@ describe("computeExportModel — comptes", () => {
       bytes: 100 * GO + 10 * MO + 3 * GO,
       entries: 120,
     });
+  });
+});
+
+describe("computeExportModel — publications non exportables", () => {
+  const preview = makePreview({
+    publications: {
+      perAccount: { a1: { files: 7, bytes: 3 * GO } },
+      unavailable: {
+        a1: { image_post: 2, missing: 1 },
+        a2: { image_post: 1, no_video: 4 },
+        a3: { not_on_r2: 2 },
+      },
+    },
+    // Médias de la médiathèque : un compte à part, qui n'entre jamais dans les publications.
+    missingFiles: 5,
+  });
+
+  it("somme par motif, sur les comptes cochés seulement", () => {
+    const all = compute(preview, defaultSelection(preview));
+    expect(row(all, "publications").unavailable).toEqual({
+      image_post: 3,
+      no_video: 4,
+      not_on_r2: 2,
+      missing: 1,
+    });
+
+    const withoutA2 = compute(preview, setAccounts(defaultSelection(preview), ["a2"], false));
+    expect(row(withoutA2, "publications").unavailable).toEqual({
+      image_post: 2,
+      not_on_r2: 2,
+      missing: 1,
+    });
+
+    const none = compute(preview, setAccounts(defaultSelection(preview), ["a1", "a2", "a3"], false));
+    expect(row(none, "publications").unavailable).toEqual({});
+  });
+
+  it("n'y mêle pas les médias introuvables : l'alerte a son propre compteur", () => {
+    // Un fichier introuvable n'est plus compté deux fois : `missingFiles` ne
+    // porte que les médias, `unavailable` que les publications.
+    const model = compute(preview, defaultSelection(preview));
+    expect(row(model, "publications").unavailable.missing).toBe(1);
+    expect(preview.missingFiles).toBe(5);
+  });
+
+  it("ne confond pas un post image (normal) avec ce qui demande une action", () => {
+    expect(unavailableNeedsAction({ image_post: 3 })).toBe(false);
+    expect(unavailableNeedsAction({})).toBe(false);
+    expect(unavailableNeedsAction({ image_post: 3, missing: 1 })).toBe(true);
+    expect(unavailableNeedsAction({ no_video: 1 })).toBe(true);
+    expect(unavailableNeedsAction({ not_on_r2: 1 })).toBe(true);
+    // Un compteur à zéro n'est pas un défaut.
+    expect(unavailableNeedsAction({ image_post: 2, missing: 0 })).toBe(false);
   });
 });
 
@@ -311,6 +378,102 @@ describe("buildCreateRequest", () => {
   });
 });
 
+// ─── Contrat avec la route de création ───────────────────────────────────────
+//
+// Le corps que le tiroir envoie doit passer le schéma que la route applique
+// (`.strict()`) : un champ ajouté côté UI sans mise à jour du schéma ferait
+// échouer chaque création avec « Unrecognized key(s) in object » dans un toast.
+// Ce contrat n'était couvert que par l'e2e, dont la suite dérive.
+
+/** null = accepté ; sinon les problèmes que la route renverrait. */
+function schemaIssues(body: unknown): string[] | null {
+  const parsed = createExportLinkSchema.safeParse(body);
+  return parsed.success
+    ? null
+    : parsed.error.issues.map((issue) => `${issue.path.join(".") || "(corps)"} : ${issue.message}`);
+}
+
+/** Toutes les parties d'une liste (2^n), pour parcourir chaque sélection possible. */
+function subsets<T>(items: readonly T[]): T[][] {
+  return items.reduce<T[][]>((all, item) => [...all, ...all.map((subset) => [...subset, item])], [[]]);
+}
+
+describe("buildCreateRequest ↔ createExportLinkSchema", () => {
+  const preview = makePreview();
+  const allAccountIds = preview.accounts.map((account) => account.id);
+
+  it("le corps de la sélection par défaut passe le schéma de la route", () => {
+    const model = compute(preview, defaultSelection(preview));
+    const request = buildCreateRequest(model, 7, "");
+    expect(request).not.toBeNull();
+    expect(schemaIssues(request)).toBeNull();
+  });
+
+  it("chaque durée proposée, et un libellé saisi, passent le schéma", () => {
+    const model = compute(preview, defaultSelection(preview));
+    for (const option of DURATION_OPTIONS) {
+      const request = buildCreateRequest(model, parseDuration(option.value), "  Fin de contrat ");
+      expect(schemaIssues(request), `durée ${option.value}`).toBeNull();
+    }
+  });
+
+  it("une sélection vide est refusée par le schéma, comme par le tiroir", () => {
+    // Aucun compte : le tiroir ne construit pas de requête, et le schéma refuserait celle-ci.
+    const noAccount = compute(preview, setAccounts(defaultSelection(preview), allAccountIds, false));
+    expect(buildCreateRequest(noAccount, 7, "")).toBeNull();
+    const noAccountIssues = schemaIssues({ label: null, expiresInDays: 7, ...noAccount.payload });
+    expect(noAccountIssues?.some((issue) => issue.startsWith("accountIds"))).toBe(true);
+
+    // Des comptes, mais plus aucun contenu.
+    let selection = setLibraries(defaultSelection(preview), ["v1", "v3", "s1", "d1"], false);
+    selection = setContent(selection, "publications", false);
+    const noContent = compute(preview, selection);
+    expect(noContent.payload.accountIds.length).toBeGreaterThan(0);
+    expect(buildCreateRequest(noContent, 7, "")).toBeNull();
+    expect(schemaIssues({ label: null, expiresInDays: 7, ...noContent.payload })).not.toBeNull();
+  });
+
+  it("« Créer le lien » est actif exactement quand la route accepterait le corps", () => {
+    const libraryIds = preview.libraries.map((library) => library.id);
+    const mismatches: string[] = [];
+    let accepted = 0;
+    let refused = 0;
+
+    // 8 parties de comptes × 32 de bibliothèques × 16 de contenus : toutes les sélections possibles.
+    for (const accounts of subsets(allAccountIds)) {
+      for (const libraries of subsets(libraryIds)) {
+        for (const contents of subsets(CONTENT_KEYS)) {
+          const selection: ExportDrawerSelection = {
+            contents: {
+              video: contents.includes("video"),
+              audio: contents.includes("audio"),
+              data: contents.includes("data"),
+              publications: contents.includes("publications"),
+            },
+            accountIds: new Set(accounts),
+            libraryIds: new Set(libraries),
+          };
+          const model = compute(preview, selection);
+          const enabled = buildCreateRequest(model, 7, "") !== null;
+          const issues = schemaIssues({ label: null, expiresInDays: 7, ...model.payload });
+          if (issues === null) accepted += 1;
+          else refused += 1;
+          if (enabled !== (issues === null)) {
+            mismatches.push(
+              `${JSON.stringify({ accounts, libraries, contents })} : bouton ${enabled ? "actif" : "bloqué"}, route ${issues === null ? "accepte" : `refuse (${issues.join(", ")})`}`,
+            );
+          }
+        }
+      }
+    }
+
+    expect(mismatches).toEqual([]);
+    // Le parcours n'est pas vide de sens : il couvre des sélections des deux sortes.
+    expect(accepted).toBeGreaterThan(0);
+    expect(refused).toBeGreaterThan(0);
+  });
+});
+
 describe("durées et adresse", () => {
   it("propose les cinq durées autorisées, 7 jours compris", () => {
     expect(DURATION_OPTIONS.map((o) => o.label)).toEqual([
@@ -367,16 +530,41 @@ describe("formatage des volumes", () => {
     expect(pluralFr(2, "fichier", "fichiers")).toBe("2 fichiers");
   });
 
-  it("accorde les avertissements", () => {
-    expect(describeUnavailablePublications(1)).toBe(
-      "1 publication non exportable (image ou vidéo introuvable)",
+  it("dit les publications non exportables par motif, au pluriel français", () => {
+    expect(describeUnavailablePublications({ image_post: 2, missing: 1 })).toBe(
+      "2 posts image (non inclus) · 1 vidéo introuvable dans le stockage",
     );
-    expect(describeUnavailablePublications(3)).toBe(
-      "3 publications non exportables (image ou vidéo introuvable)",
+    expect(describeUnavailablePublications({ image_post: 1 })).toBe("1 post image (non inclus)");
+    expect(describeUnavailablePublications({ missing: 2 })).toBe(
+      "2 vidéos introuvables dans le stockage",
     );
-    expect(describeMissingFiles(1)).toBe("1 fichier introuvable dans le stockage ne sera pas inclus.");
+    expect(describeUnavailablePublications({ no_video: 1, not_on_r2: 1 })).toBe(
+      "1 publication sans vidéo finale · 1 vidéo hébergée hors du stockage",
+    );
+    expect(describeUnavailablePublications({ no_video: 3, not_on_r2: 2 })).toBe(
+      "3 publications sans vidéo finale · 2 vidéos hébergées hors du stockage",
+    );
+  });
+
+  it("garde un ordre stable : le post image d'abord, les défauts ensuite", () => {
+    expect(
+      describeUnavailablePublications({ missing: 1, not_on_r2: 1, no_video: 1, image_post: 1 }),
+    ).toBe(
+      "1 post image (non inclus) · 1 publication sans vidéo finale · 1 vidéo hébergée hors du stockage · 1 vidéo introuvable dans le stockage",
+    );
+  });
+
+  it("n'écrit rien quand il n'y a aucune publication non exportable", () => {
+    expect(describeUnavailablePublications({})).toBeNull();
+    expect(describeUnavailablePublications({ image_post: 0, missing: 0 })).toBeNull();
+  });
+
+  it("accorde l'alerte des fichiers de la médiathèque introuvables", () => {
+    expect(describeMissingFiles(1)).toBe(
+      "1 fichier de la médiathèque introuvable dans le stockage ne sera pas inclus.",
+    );
     expect(describeMissingFiles(14)).toBe(
-      "14 fichiers introuvables dans le stockage ne seront pas inclus.",
+      "14 fichiers de la médiathèque introuvables dans le stockage ne seront pas inclus.",
     );
   });
 });
@@ -421,19 +609,29 @@ describe("lignes de la carte des liens", () => {
     expect(describeLinkCreation(makeLink({ createdBy: null }))).toBe("Créé le 6 oct. 2026");
   });
 
-  it("contenu : comptes, bibliothèques par type, publications", () => {
+  it("contenu : comptes, bibliothèques par type (jamais lues comme des fichiers), publications", () => {
     expect(describeLinkContent(makeLink())).toBe(
-      "3 comptes · 2 biblio. vidéo · 1 son · 1 données · publications",
+      "3 comptes · 2 biblio. vidéo · 1 biblio. son · 1 biblio. données · publications",
     );
+    // « biblio. » ne prend pas de s : c'est une abréviation.
     expect(
       describeLinkContent(
         makeLink({
           accountIds: ["a1"],
-          libraries: { video: 0, audio: 2, data: 0 },
+          libraries: { video: 0, audio: 2, data: 3 },
           includePublications: false,
         }),
       ),
-    ).toBe("1 compte · 2 sons");
+    ).toBe("1 compte · 2 biblio. son · 3 biblio. données");
+    expect(
+      describeLinkContent(
+        makeLink({
+          accountIds: ["a1", "a2"],
+          libraries: { video: 1, audio: 0, data: 0 },
+          includePublications: true,
+        }),
+      ),
+    ).toBe("2 comptes · 1 biblio. vidéo · publications");
   });
 
   it("validité : expire, expiré, révoqué", () => {
@@ -458,10 +656,83 @@ describe("lignes de la carte des liens", () => {
     expect(linkActions("expired")).toEqual(["extend", "revoke"]);
     expect(linkActions("revoked")).toEqual([]);
   });
+
+  it("deux actions de la carte ne portent jamais le même libellé", () => {
+    // « Nouveau lien » nommait à la fois le bouton d'en-tête (créer un AUTRE lien) et
+    // l'item de ligne (régénérer l'adresse, qui coupe l'ancienne) : un admin qui
+    // avait perdu une adresse créait un second lien, le premier restant actif.
+    const labels = [CREATE_LINK_LABEL, ...Object.values(LINK_ACTION_LABELS)];
+    expect(new Set(labels.map((label) => label.toLowerCase())).size).toBe(labels.length);
+    expect(LINK_ACTION_LABELS.rotate).toBe("Régénérer l'adresse");
+  });
+
+  it("garde les poignées que l'e2e vise", () => {
+    expect(LINK_ACTION_LABELS.extend).toBe("Prolonger de 7 jours");
+    expect(LINK_ACTION_LABELS.revoke).toBe("Révoquer");
+  });
+
+  it("les aides renvoient à l'item de menu réel, pas à « Nouveau lien »", () => {
+    expect(ROTATE_HINT).toBe("« Régénérer l'adresse » dans le menu ⋯ du lien");
+    expect(ROTATE_HINT).toContain(LINK_ACTION_LABELS.rotate);
+    expect(ROTATE_HINT).not.toContain(CREATE_LINK_LABEL);
+  });
 });
 
 describe("activité d'un lien", () => {
-  const report = { files: 812, bytes: 163 * GO, skipped: 0, failed: 0, missing: 0 };
+  // Paris est à UTC+2 : 14:32 et 17:10 le 8 oct., 14:00 et 14:20 le 10 oct.
+  const T0 = "2026-10-08T12:32:00.000Z";
+  const T1 = "2026-10-08T15:10:00.000Z";
+  const T2 = "2026-10-10T12:00:00.000Z";
+  const T3 = "2026-10-10T12:20:00.000Z";
+
+  const everything: ExportReport = { files: 812, bytes: 163 * GO, skipped: 0, failed: 0, missing: 0 };
+  const nothing: ExportReport = { files: 0, bytes: 0, skipped: 0, failed: 0, missing: 0 };
+
+  type PageEvent =
+    | { type: "started"; at: string }
+    | { type: "completed" | "stopped"; at: string; report: ExportReport };
+
+  const started = (at: string): PageEvent => ({ type: "started", at });
+  const completed = (at: string, report: Partial<ExportReport> = {}): PageEvent => ({
+    type: "completed",
+    at,
+    report: { ...everything, ...report },
+  });
+  const stopped = (at: string, report: Partial<ExportReport>): PageEvent => ({
+    type: "stopped",
+    at,
+    report: { ...nothing, ...report },
+  });
+
+  /**
+   * Rejoue des événements de la page publique comme `recordExportEvent` les écrit
+   * (contrat d'`ExportLinkSummary`) : un lancement pose `downloadStartedAt` (le
+   * DERNIER) et remet le bilan à null ; seule une fin SANS échec pose
+   * `downloadCompletedAt` ; tout bilan remplace le précédent. Les tests ne
+   * décrivent ainsi que des états que le serveur produit réellement.
+   */
+  function replay(events: PageEvent[]): ExportLinkSummary {
+    return events.reduce<ExportLinkSummary>((link, event) => {
+      if (event.type === "started") {
+        return {
+          ...link,
+          startCount: link.startCount + 1,
+          downloadStartedAt: event.at,
+          lastReport: null,
+        };
+      }
+      return {
+        ...link,
+        lastReport: event.report,
+        downloadCompletedAt:
+          event.type === "completed" && event.report.failed === 0
+            ? event.at
+            : link.downloadCompletedAt,
+      };
+    }, makeLink());
+  }
+
+  const activity = (events: PageEvent[]) => describeLinkActivity(replay(events), NOW);
 
   it("jamais ouvert, puis ouvert (la dernière ouverture)", () => {
     expect(describeLinkActivity(makeLink(), NOW)).toBe("Jamais ouvert");
@@ -476,59 +747,118 @@ describe("activité d'un lien", () => {
     ).toBe("Ouvert le 8 oct. à 14:32");
   });
 
-  it("téléchargement lancé, avec le nombre de reprises (le premier lancement n'en est pas une)", () => {
-    const started = makeLink({ downloadStartedAt: "2026-10-08T12:32:00.000Z", startCount: 1 });
-    expect(describeLinkActivity(started, NOW)).toBe("Téléchargement lancé le 8 oct. à 14:32");
-    expect(describeLinkActivity({ ...started, startCount: 2 }, NOW)).toBe(
-      "Téléchargement lancé le 8 oct. à 14:32 · 1 reprise",
-    );
-    expect(describeLinkActivity({ ...started, startCount: 4 }, NOW)).toBe(
-      "Téléchargement lancé le 8 oct. à 14:32 · 3 reprises",
-    );
-  });
-
-  it("terminé, avec fichiers, volume et échecs", () => {
-    const done = makeLink({
-      downloadStartedAt: "2026-10-08T12:32:00.000Z",
-      downloadCompletedAt: "2026-10-08T15:10:00.000Z",
-      startCount: 1,
-      lastReport: report,
-    });
-    expect(describeLinkActivity(done, NOW)).toBe("Terminé le 8 oct. à 17:10 · 812 fichiers · 163 Go");
-    expect(
-      describeLinkActivity({ ...done, lastReport: { ...report, failed: 3 } }, NOW),
-    ).toBe("Terminé le 8 oct. à 17:10 · 812 fichiers · 163 Go · 3 en échec");
-  });
-
-  it("n'affiche pas un volume faux après une reprise", () => {
-    const resumed = makeLink({
-      downloadStartedAt: "2026-10-08T12:32:00.000Z",
-      downloadCompletedAt: "2026-10-09T09:00:00.000Z",
-      startCount: 2,
-      // Octets écrits pendant la seule dernière session.
-      lastReport: { ...report, bytes: 20 * GO },
-    });
-    expect(describeLinkActivity(resumed, NOW)).toBe("Terminé le 9 oct. à 11:00 · 812 fichiers");
-  });
-
-  it("terminé sans bilan : la date seule", () => {
-    const done = makeLink({
-      downloadStartedAt: "2026-10-08T12:32:00.000Z",
-      downloadCompletedAt: "2026-10-08T15:10:00.000Z",
-      startCount: 1,
-    });
-    expect(describeLinkActivity(done, NOW)).toBe("Terminé le 8 oct. à 17:10");
-  });
-
-  it("un téléchargement relancé après un « terminé » repasse en « lancé »", () => {
-    const relaunched = makeLink({
-      downloadStartedAt: "2026-10-10T12:00:00.000Z",
-      downloadCompletedAt: "2026-10-08T15:10:00.000Z",
-      startCount: 2,
-      lastReport: report,
-    });
-    expect(describeLinkActivity(relaunched, NOW)).toBe(
+  it("lancé sans bilan (en cours, ou onglet fermé) : le nombre de reprises, le premier lancement n'en est pas une", () => {
+    expect(activity([started(T0)])).toBe("Téléchargement lancé le 8 oct. à 14:32");
+    // Le lancement remet le bilan de la session précédente à null : « lancé », pas « incomplet ».
+    expect(activity([started(T0), stopped(T1, { files: 40 }), started(T2)])).toBe(
       "Téléchargement lancé le 10 oct. à 14:00 · 1 reprise",
     );
+    // `downloadStartedAt` est le DERNIER lancement.
+    expect(activity([started(T0), started(T1), started(T2), started(T3)])).toBe(
+      "Téléchargement lancé le 10 oct. à 14:20 · 3 reprises",
+    );
+  });
+
+  it("terminé sans échec : la fin, les fichiers et le volume (une seule session)", () => {
+    expect(activity([started(T0), completed(T1)])).toBe(
+      "Terminé le 8 oct. à 17:10 · 812 fichiers · 163 Go",
+    );
+  });
+
+  it("terminé sans volume quand le bilan ne compte qu'une part du livré", () => {
+    // Reprise : les octets du bilan sont ceux de la dernière session seulement.
+    expect(
+      activity([
+        started(T0),
+        stopped(T1, { files: 40, bytes: 8 * GO }),
+        started(T2),
+        completed(T3, { skipped: 40, bytes: 155 * GO }),
+      ]),
+    ).toBe("Terminé le 10 oct. à 14:20 · 812 fichiers");
+
+    // Premier lancement dans un dossier déjà garni (autre lien, mêmes fichiers) : des fichiers sautés.
+    expect(activity([started(T0), completed(T1, { skipped: 5, bytes: 2 * GO })])).toBe(
+      "Terminé le 8 oct. à 17:10 · 812 fichiers",
+    );
+
+    // Rien écrit : aucun octet à annoncer.
+    expect(activity([started(T0), completed(T1, { skipped: 812, bytes: 0 })])).toBe(
+      "Terminé le 8 oct. à 17:10 · 812 fichiers",
+    );
+  });
+
+  it("terminé avec des échecs : incomplet, jamais « lancé » ni « terminé »", () => {
+    const line = activity([started(T0), completed(T1, { files: 809, failed: 3 })]);
+    expect(line).toBe("Téléchargement incomplet · 809 fichiers · 3 en échec · lancé le 8 oct. à 14:32");
+    expect(line).not.toContain("Terminé");
+  });
+
+  it("arrêté : incomplet, avec ce qui est déjà chez le client", () => {
+    expect(activity([started(T0), stopped(T1, { files: 40, bytes: 8 * GO })])).toBe(
+      "Téléchargement incomplet · 40 fichiers · lancé le 8 oct. à 14:32",
+    );
+    expect(activity([started(T0), stopped(T1, { files: 40, failed: 2 })])).toBe(
+      "Téléchargement incomplet · 40 fichiers · 2 en échec · lancé le 8 oct. à 14:32",
+    );
+    expect(activity([started(T0), stopped(T1, { files: 0 })])).toBe(
+      "Téléchargement incomplet · 0 fichier · lancé le 8 oct. à 14:32",
+    );
+  });
+
+  it("relancé après un terminé : « lancé », le bilan terminé n'est plus celui de la session courante", () => {
+    expect(activity([started(T0), completed(T1), started(T2)])).toBe(
+      "Téléchargement lancé le 10 oct. à 14:00 · 1 reprise",
+    );
+  });
+
+  it("relancé après un terminé puis arrêté : le bilan arrêté ne se lit pas sous « Terminé »", () => {
+    const line = activity([
+      started(T0),
+      completed(T1),
+      started(T2),
+      stopped(T3, { files: 3, bytes: GO }),
+    ]);
+    expect(line).toBe("Téléchargement incomplet · 3 fichiers · lancé le 10 oct. à 14:00");
+    expect(line).not.toContain("Terminé");
+    expect(line).not.toContain("812");
+  });
+
+  it("échecs réessayés jusqu'au bout : terminé, sans volume (reprise)", () => {
+    expect(
+      activity([
+        started(T0),
+        completed(T1, { files: 809, failed: 3 }),
+        started(T2),
+        completed(T3, { skipped: 809, bytes: 2 * GO }),
+      ]),
+    ).toBe("Terminé le 10 oct. à 14:20 · 812 fichiers");
+  });
+
+  it("lancement jamais enregistré (la page n'a pas pu l'envoyer) : le bilan suffit", () => {
+    expect(activity([completed(T1)])).toBe("Terminé le 8 oct. à 17:10 · 812 fichiers · 163 Go");
+    // Sans lancement connu, aucune date de lancement à donner.
+    expect(activity([stopped(T1, { files: 40 })])).toBe("Téléchargement incomplet · 40 fichiers");
+  });
+
+  it("fin et lancement au même instant : terminé", () => {
+    const sameInstant = makeLink({
+      downloadStartedAt: T1,
+      downloadCompletedAt: T1,
+      startCount: 1,
+      lastReport: everything,
+    });
+    expect(describeLinkActivity(sameInstant, NOW)).toBe(
+      "Terminé le 8 oct. à 17:10 · 812 fichiers · 163 Go",
+    );
+  });
+
+  it("terminé dont le bilan stocké est illisible : la date seule", () => {
+    // `parseReport` rend null quand le JSON de `lastReport` n'est pas un objet.
+    const unreadable = makeLink({
+      downloadStartedAt: T0,
+      downloadCompletedAt: T1,
+      startCount: 1,
+    });
+    expect(describeLinkActivity(unreadable, NOW)).toBe("Terminé le 8 oct. à 17:10");
   });
 });

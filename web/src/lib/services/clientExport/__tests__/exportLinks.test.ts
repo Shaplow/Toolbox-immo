@@ -1,16 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockFindUnique = vi.fn();
+const mockUpdate = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     clientExportLink: {
       findUnique: (...args: unknown[]) => mockFindUnique(...args),
+      update: (...args: unknown[]) => mockUpdate(...args),
     },
   },
 }));
 
-import { exportLinkStatus, verifyExportToken } from "@/lib/services/clientExport/exportLinks";
+import { Prisma } from "@prisma/client";
+import { exportLinkStatus, recordExportEvent, verifyExportToken } from "@/lib/services/clientExport/exportLinks";
 import { hashToken } from "@/lib/publications/clientValidation";
 
 const TOKEN = "a".repeat(64);
@@ -91,5 +94,40 @@ describe("verifyExportToken", () => {
         },
       },
     });
+  });
+});
+
+describe("recordExportEvent", () => {
+  const report = { files: 40, bytes: 5_000, skipped: 2, failed: 0, missing: 0 };
+
+  beforeEach(() => {
+    mockUpdate.mockReset().mockResolvedValue({});
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+
+  const dataOf = () => mockUpdate.mock.calls[0][0].data;
+
+  it("un lancement pose le DERNIER départ et efface le bilan précédent", async () => {
+    await recordExportEvent("link1", { type: "started", ...report });
+    expect(dataOf()).toEqual({
+      startCount: { increment: 1 },
+      downloadStartedAt: NOW,
+      lastReport: Prisma.DbNull,
+    });
+  });
+
+  it("une fin sans échec pose « terminé » et le bilan", async () => {
+    await recordExportEvent("link1", { type: "completed", ...report });
+    expect(dataOf()).toEqual({ lastReport: report, downloadCompletedAt: NOW });
+  });
+
+  it("une fin avec échecs, ou un arrêt, ne pose que le bilan", async () => {
+    await recordExportEvent("link1", { type: "completed", ...report, failed: 3 });
+    expect(dataOf()).toEqual({ lastReport: { ...report, failed: 3 } });
+
+    mockUpdate.mockClear();
+    await recordExportEvent("link1", { type: "stopped", ...report });
+    expect(dataOf()).toEqual({ lastReport: report });
   });
 });

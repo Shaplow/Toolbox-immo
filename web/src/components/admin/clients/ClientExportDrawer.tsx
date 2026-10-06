@@ -27,7 +27,7 @@ import type {
   ExportPreview,
 } from "@/lib/clientExport/types";
 import { createExportLink, errorMessage, fetchExportPreview } from "./clientExportApi";
-import { exportLinkUrl } from "./clientExportModel";
+import { ROTATE_HINT, exportLinkUrl } from "./clientExportModel";
 import { ExportLinkShare } from "./ExportLinkShare";
 import { ExportSelectionForm } from "./ExportSelectionForm";
 
@@ -131,7 +131,7 @@ function DrawerContent({
         // mais personne ne peut le lire : on le dit, la régénération le rattrape.
         onPhaseChange("editing");
         toast.error(
-          "Le lien est créé mais son adresse n'a pas été renvoyée. Utilise « Nouveau lien » dans la liste.",
+          `Le lien est créé mais son adresse n'a pas été renvoyée. Utilise ${ROTATE_HINT}.`,
         );
         return;
       }

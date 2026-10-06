@@ -38,6 +38,7 @@ import {
   setAccounts,
   setContent,
   setLibraries,
+  unavailableNeedsAction,
   type AccountLine,
   type ContentRow,
   type ExportBlocker,
@@ -235,6 +236,7 @@ function rowClass(disabled: boolean, align: "start" | "center" = "start"): strin
 
 function ContentRowItem({ row, onChange }: { row: ContentRow; onChange: (on: boolean) => void }) {
   const disabled = !row.available;
+  const unavailableText = describeUnavailablePublications(row.unavailable);
   return (
     <li>
       <label className={rowClass(disabled)}>
@@ -249,9 +251,18 @@ function ContentRowItem({ row, onChange }: { row: ContentRow; onChange: (on: boo
         <span className="min-w-0 flex-1">
           <span className="block text-[13px] font-medium text-foreground">{row.label}</span>
           <span className="block text-[11.5px] leading-snug text-muted-foreground">{row.hint}</span>
-          {row.unavailable > 0 && (
-            <span className="block text-[11.5px] leading-snug text-warning-700">
-              {describeUnavailablePublications(row.unavailable)}
+          {unavailableText && (
+            // Warning seulement s'il y a quelque chose à corriger : des posts image
+            // seuls sont normaux, pas une alerte.
+            <span
+              className={[
+                "block text-[11.5px] leading-snug",
+                unavailableNeedsAction(row.unavailable)
+                  ? "text-warning-700"
+                  : "text-muted-foreground",
+              ].join(" ")}
+            >
+              {unavailableText}
             </span>
           )}
         </span>

@@ -53,7 +53,7 @@ export async function buildExportPreview(clientId: string): Promise<ExportPrevie
     ]),
   );
   const publicationsPerAccount: Record<string, ExportVolume> = {};
-  const unavailable: Record<string, number> = {};
+  const unavailable: ExportPreview["publications"]["unavailable"] = {};
 
   const countItem = (item: ExportItem) => {
     if (item.kind === "publication") {
@@ -72,9 +72,12 @@ export async function buildExportPreview(clientId: string): Promise<ExportPrevie
   };
   sized.items.forEach(countItem);
 
+  // Par compte PUIS par motif : un post image est normal, une vidéo introuvable
+  // demande une action avant d'envoyer le lien.
   for (const skip of [...scope.skipped, ...sized.skipped]) {
     if (skip.kind === "publication" && skip.accountId) {
-      unavailable[skip.accountId] = (unavailable[skip.accountId] ?? 0) + 1;
+      const perReason = (unavailable[skip.accountId] ??= {});
+      perReason[skip.reason] = (perReason[skip.reason] ?? 0) + 1;
     }
   }
 
@@ -90,6 +93,7 @@ export async function buildExportPreview(clientId: string): Promise<ExportPrevie
       .filter(hasContent)
       .sort((a, b) => typeOrder[a.type] - typeOrder[b.type] || a.name.localeCompare(b.name, "fr")),
     publications: { perAccount: publicationsPerAccount, unavailable },
-    missingFiles: sized.skipped.filter((s) => s.reason === "missing").length,
+    // Médias seulement : les publications introuvables sont déjà dans `unavailable`.
+    missingFiles: sized.skipped.filter((s) => s.reason === "missing" && s.kind === "media").length,
   };
 }

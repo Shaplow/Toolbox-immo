@@ -13,7 +13,7 @@ import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
-import { describeExpiry } from "./clientExportModel";
+import { ROTATE_HINT, describeExpiry } from "./clientExportModel";
 
 interface ExportLinkShareProps {
   url: string;
@@ -87,8 +87,7 @@ export function ExportLinkShare({ url, expiresAt }: ExportLinkShareProps) {
         À ouvrir dans Google Chrome ou Microsoft Edge, sur un ordinateur.
       </p>
       <p className="text-[12px] leading-relaxed text-muted-foreground">
-        Ce lien ne sera plus affiché : copie-le maintenant. Si tu le perds, utilise « Nouveau lien »
-        dans la liste.
+        Ce lien ne sera plus affiché : copie-le maintenant. Si tu le perds, utilise {ROTATE_HINT}.
       </p>
     </div>
   );

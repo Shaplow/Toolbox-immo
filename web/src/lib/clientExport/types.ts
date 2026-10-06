@@ -220,10 +220,17 @@ export interface ExportPreview {
   }>;
   publications: {
     perAccount: Record<string, ExportVolume>;
-    /** Publications publiées mais non exportables, par compte (image, hors stockage, sans vidéo). */
-    unavailable: Record<string, number>;
+    /**
+     * Publications publiées mais non exportables, par compte PUIS par motif :
+     * un post image est normal, une vidéo introuvable demande une action.
+     * (`missing` = vidéo résolue mais absente du stockage.)
+     */
+    unavailable: Record<string, Partial<Record<ExportSkipReason, number>>>;
   };
-  /** Fichiers introuvables dans le stockage (exclus des volumes). */
+  /**
+   * Médias (vidéos, sons) introuvables dans le stockage, exclus des volumes.
+   * Les publications introuvables sont comptées dans `publications.unavailable`.
+   */
   missingFiles: number;
 }
 
@@ -243,9 +250,16 @@ export interface ExportLinkSummary {
   includePublications: boolean;
   firstOpenedAt: string | null;
   lastOpenedAt: string | null;
+  /** DERNIER lancement (reprises comprises). */
   downloadStartedAt: string | null;
+  /** Dernière session terminée SANS échec. */
   downloadCompletedAt: string | null;
   startCount: number;
+  /**
+   * Bilan de la dernière session finie (terminée ou arrêtée). Remis à null à
+   * chaque lancement : null + downloadStartedAt = session en cours, ou fermée
+   * sans bilan (onglet fermé, plantage).
+   */
   lastReport: ExportReport | null;
 }
 

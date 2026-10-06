@@ -19,6 +19,8 @@ import {
   type ExportLinkStatus,
   type ExportLinkSummary,
   type ExportPreview,
+  type ExportReport,
+  type ExportSkipReason,
   type ExportVolume,
 } from "@/lib/clientExport/types";
 import { dateFr, parisDayKey, shortDateFr, timeFr } from "@/lib/date/formatFr";
@@ -107,15 +109,85 @@ export function formatVolume(volume: SelectionVolume): string {
   return parts.length > 0 ? parts.join(" · ") : "Rien à exporter";
 }
 
-/** « 2 publications non exportables » : celles qu'on ne pourra pas mettre dans le dossier. */
-export function describeUnavailablePublications(count: number): string {
-  return `${pluralFr(count, "publication", "publications")} non ${count >= 2 ? "exportables" : "exportable"} (image ou vidéo introuvable)`;
+// ─── Publications non exportables ────────────────────────────────────────────
+
+/**
+ * Publications publiées mais non exportables, par motif (somme sur les comptes
+ * cochés). Un post image est normal ; une vidéo introuvable demande une action :
+ * un compteur unique les confondait.
+ */
+export type UnavailableCounts = Partial<Record<ExportSkipReason, number>>;
+
+/**
+ * Motifs dans l'ordre d'affichage : le cas normal (post image) d'abord, puis ce
+ * qui est à corriger avant d'envoyer le lien.
+ */
+const UNAVAILABLE_REASONS: readonly ExportSkipReason[] = [
+  "image_post",
+  "no_video",
+  "not_on_r2",
+  "missing",
+];
+
+/** `Record` exhaustif : un nouveau motif côté serveur ne compile pas sans son libellé. */
+const UNAVAILABLE_WORDING: Record<ExportSkipReason, { one: string; many: string }> = {
+  image_post: { one: "post image (non inclus)", many: "posts image (non inclus)" },
+  no_video: { one: "publication sans vidéo finale", many: "publications sans vidéo finale" },
+  not_on_r2: {
+    one: "vidéo hébergée hors du stockage",
+    many: "vidéos hébergées hors du stockage",
+  },
+  missing: {
+    one: "vidéo introuvable dans le stockage",
+    many: "vidéos introuvables dans le stockage",
+  },
+};
+
+function addUnavailable(
+  total: UnavailableCounts,
+  extra: UnavailableCounts | undefined,
+): UnavailableCounts {
+  if (!extra) return total;
+  const next: UnavailableCounts = { ...total };
+  for (const reason of UNAVAILABLE_REASONS) {
+    const count = extra[reason] ?? 0;
+    if (count > 0) next[reason] = (next[reason] ?? 0) + count;
+  }
+  return next;
 }
 
+/** « 2 posts image (non inclus) · 1 vidéo introuvable dans le stockage » ; null s'il n'y en a aucune. */
+export function describeUnavailablePublications(counts: UnavailableCounts): string | null {
+  const parts: string[] = [];
+  for (const reason of UNAVAILABLE_REASONS) {
+    const count = counts[reason] ?? 0;
+    if (count <= 0) continue;
+    const { one, many } = UNAVAILABLE_WORDING[reason];
+    parts.push(pluralFr(count, one, many));
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/**
+ * Y a-t-il quelque chose à corriger avant d'envoyer le lien ? Les posts image
+ * sont hors du périmètre « Vidéos publiées » par construction : ils ne méritent
+ * pas la couleur d'un avertissement.
+ */
+export function unavailableNeedsAction(counts: UnavailableCounts): boolean {
+  return UNAVAILABLE_REASONS.some(
+    (reason) => reason !== "image_post" && (counts[reason] ?? 0) > 0,
+  );
+}
+
+/**
+ * Vidéos et sons de la médiathèque absents du stockage. « De la médiathèque » :
+ * les publications introuvables sont dites à part (`describeUnavailablePublications`),
+ * le même fichier ne doit pas se lire comme compté deux fois.
+ */
 export function describeMissingFiles(count: number): string {
   return count >= 2
-    ? `${formatCount(count)} fichiers introuvables dans le stockage ne seront pas inclus.`
-    : `${formatCount(count)} fichier introuvable dans le stockage ne sera pas inclus.`;
+    ? `${formatCount(count)} fichiers de la médiathèque introuvables dans le stockage ne seront pas inclus.`
+    : `${formatCount(count)} fichier de la médiathèque introuvable dans le stockage ne sera pas inclus.`;
 }
 
 // ─── Sélection du tiroir ─────────────────────────────────────────────────────
@@ -205,8 +277,8 @@ export interface ContentRow {
   available: boolean;
   /** Case affichée : voulue par l'admin ET disponible. */
   checked: boolean;
-  /** Publications publiées mais non exportables, comptes cochés (ligne « publications »). */
-  unavailable: number;
+  /** Publications publiées mais non exportables, par motif, comptes cochés (ligne « publications » ; vide sinon). */
+  unavailable: UnavailableCounts;
 }
 
 export interface LibraryLine {
@@ -281,10 +353,10 @@ export function computeExportModel(
 
     if (key === "publications") {
       let volume = EMPTY_VOLUME;
-      let unavailable = 0;
+      let unavailable: UnavailableCounts = {};
       for (const id of accountIds) {
         volume = addVolumes(volume, volumeOf("video", preview.publications.perAccount[id]));
-        unavailable += preview.publications.unavailable[id] ?? 0;
+        unavailable = addUnavailable(unavailable, preview.publications.unavailable[id]);
       }
       const available = volume.files > 0;
       return { key, ...meta, volume, available, checked: selection.contents[key] && available, unavailable };
@@ -298,7 +370,7 @@ export function computeExportModel(
       if (!isEmptyVolume(libraryTotal)) available = true;
       if (libraryIds.has(library.id)) volume = addVolumes(volume, libraryTotal);
     }
-    return { key, ...meta, volume, available, checked: selection.contents[key] && available, unavailable: 0 };
+    return { key, ...meta, volume, available, checked: selection.contents[key] && available, unavailable: {} };
   });
 
   const checkedKeys = new Set(rows.filter((row) => row.checked).map((row) => row.key));
@@ -429,6 +501,30 @@ export function formatCommon(line: Pick<LibraryLine, "type" | "common">): string
 
 export type LinkAction = "rotate" | "extend" | "revoke";
 
+/** Prolongation proposée par le menu d'une ligne. */
+export const EXTEND_LINK_DAYS: ExportLinkDurationDays = 7;
+
+/** Bouton d'en-tête de la carte : crée un AUTRE lien (sélection à refaire, les liens existants restent actifs). */
+export const CREATE_LINK_LABEL = "Nouveau lien";
+
+/**
+ * Items du menu ⋯ d'une ligne. Aucun ne reprend « Nouveau lien » : l'admin qui
+ * avait perdu une adresse cliquait le bouton d'en-tête, plus visible, et créait
+ * un second lien alors que le premier, dont personne n'avait l'adresse, restait
+ * actif. « Prolonger de 7 jours » et « Révoquer » servent aussi de poignées e2e.
+ */
+export const LINK_ACTION_LABELS: Record<LinkAction, string> = {
+  rotate: "Régénérer l'adresse",
+  extend: `Prolonger de ${EXTEND_LINK_DAYS} jours`,
+  revoke: "Révoquer",
+};
+
+/**
+ * Où retrouver l'action, à citer dans les aides (« Si tu le perds, utilise … ») :
+ * elles pointent vers le libellé réel du menu au lieu de le recopier.
+ */
+export const ROTATE_HINT = `« ${LINK_ACTION_LABELS.rotate} » dans le menu ⋯ du lien`;
+
 /**
  * Un lien actif peut être régénéré, prolongé ou révoqué ; un lien expiré peut
  * être prolongé (ou révoqué pour de bon) ; un lien révoqué est définitif.
@@ -457,12 +553,18 @@ export function describeLinkCreation(link: ExportLinkSummary): string {
   return `Créé le ${dateFr(link.createdAt)}${author ? ` par ${author}` : ""}`;
 }
 
-/** « 3 comptes · 2 biblio. vidéo · 1 son · 1 données · publications » */
+/**
+ * « 3 comptes · 2 biblio. vidéo · 1 biblio. son · 1 biblio. données · publications »
+ *
+ * Ces nombres comptent des BIBLIOTHÈQUES, pas des fichiers : « 2 sons » se lisait
+ * comme deux pistes, « 1 données » était agrammatical. « biblio. » est une
+ * abréviation, donc invariable au pluriel.
+ */
 export function describeLinkContent(link: ExportLinkSummary): string {
   const parts = [pluralFr(link.accountIds.length, "compte", "comptes")];
   if (link.libraries.video > 0) parts.push(`${formatCount(link.libraries.video)} biblio. vidéo`);
-  if (link.libraries.audio > 0) parts.push(pluralFr(link.libraries.audio, "son", "sons"));
-  if (link.libraries.data > 0) parts.push(`${formatCount(link.libraries.data)} données`);
+  if (link.libraries.audio > 0) parts.push(`${formatCount(link.libraries.audio)} biblio. son`);
+  if (link.libraries.data > 0) parts.push(`${formatCount(link.libraries.data)} biblio. données`);
   if (link.includePublications) parts.push("publications");
   return parts.join(" · ");
 }
@@ -484,31 +586,58 @@ export function describeExpiry(expiresAt: string, now: Date = new Date()): strin
   return `Valable jusqu'au ${dateTimeSmart(expiresAt, now)}.`;
 }
 
+function timeOf(iso: string): number {
+  return new Date(iso).getTime();
+}
+
 /**
- * Ce que le client a fait du lien, du plus avancé au moins avancé.
+ * Octets livrés, quand le bilan permet de l'affirmer. Il ne compte que ce qui a
+ * été écrit pendant la DERNIÈRE session : après une reprise (startCount > 1), ou
+ * dans un dossier déjà garni (fichiers sautés), ce n'est qu'une part du volume.
+ * Mieux vaut n'afficher aucun chiffre qu'un faux.
+ */
+function deliveredBytes(link: ExportLinkSummary, report: ExportReport): number | null {
+  if (report.bytes <= 0 || report.skipped > 0 || link.startCount > 1) return null;
+  return report.bytes;
+}
+
+/**
+ * Ce que le client a fait du lien : l'ÉTAT COURANT, pas le meilleur état atteint
+ * (un client qui revient et relance après un « terminé » redevient « lancé »).
  *
- * Un téléchargement relancé APRÈS un « terminé » (le client revient, par
- * exemple pour récupérer un fichier de plus) repasse en « lancé » : le dernier
- * événement décrit l'état courant, pas le meilleur état atteint.
+ * Lit les champs comme `recordExportEvent` les écrit (cf. `ExportLinkSummary`) :
+ * `downloadStartedAt` est le DERNIER lancement, `downloadCompletedAt` la dernière
+ * session terminée SANS échec, `lastReport` le bilan de la dernière session
+ * finie (terminée ou arrêtée), remis à null à chaque lancement. D'où :
+ *  - fin sans échec, aucun lancement depuis → « Terminé » ;
+ *  - bilan sans fin propre → « incomplet ». Le serveur ne distingue pas une
+ *    session arrêtée d'une session terminée avec des échecs : le mot couvre les
+ *    deux, les chiffres disent lequel ;
+ *  - lancé sans bilan (en cours, ou onglet fermé) → « lancé » ;
+ *  - sinon ouvert, ou jamais ouvert.
  */
 export function describeLinkActivity(link: ExportLinkSummary, now: Date = new Date()): string {
   const started = link.downloadStartedAt;
   const completed = link.downloadCompletedAt;
-  const finished =
-    completed !== null &&
-    (started === null || new Date(started).getTime() <= new Date(completed).getTime());
+  const report = link.lastReport;
 
-  if (finished && completed) {
+  // Une fin plus ancienne que le dernier lancement date d'une session
+  // précédente : elle ne dit rien de la session courante.
+  if (completed !== null && (started === null || timeOf(started) <= timeOf(completed))) {
     const parts = [`Terminé le ${dateTimeSmart(completed, now)}`];
-    const report = link.lastReport;
     if (report) {
       parts.push(formatFiles(report.files));
-      // Le bilan compte les octets écrits pendant la DERNIÈRE session : après une
-      // reprise, il sous-estime le volume livré — on n'affiche alors aucun chiffre
-      // plutôt qu'un faux.
-      if (report.bytes > 0 && link.startCount <= 1) parts.push(formatMaxSize(report.bytes));
-      if (report.failed > 0) parts.push(`${formatCount(report.failed)} en échec`);
+      const bytes = deliveredBytes(link, report);
+      if (bytes !== null) parts.push(formatMaxSize(bytes));
     }
+    return parts.join(" · ");
+  }
+
+  if (report) {
+    const parts = ["Téléchargement incomplet", formatFiles(report.files)];
+    if (report.failed > 0) parts.push(`${formatCount(report.failed)} en échec`);
+    // Le serveur ne garde pas l'heure de l'arrêt : seul le lancement situe la session.
+    if (started) parts.push(`lancé le ${dateTimeSmart(started, now)}`);
     return parts.join(" · ");
   }
 

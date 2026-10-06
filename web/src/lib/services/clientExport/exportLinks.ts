@@ -9,7 +9,7 @@
  */
 
 import { randomBytes } from "crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hashToken } from "@/lib/publications/clientValidation";
 import type {
@@ -303,14 +303,10 @@ export async function recordExportEvent(linkId: string, event: ExportEventReques
   const now = new Date();
   let data: Prisma.ClientExportLinkUpdateInput;
   if (event.type === "started") {
-    const current = await prisma.clientExportLink.findUnique({
-      where: { id: linkId },
-      select: { downloadStartedAt: true },
-    });
-    data = {
-      startCount: { increment: 1 },
-      ...(current?.downloadStartedAt ? {} : { downloadStartedAt: now }),
-    };
+    // DERNIER lancement, et bilan remis à zéro : la carte admin ne doit jamais
+    // montrer la date d'une session avec le bilan d'une autre. La page n'envoie
+    // le bilan final qu'après ce `started` (useExportRun).
+    data = { startCount: { increment: 1 }, downloadStartedAt: now, lastReport: Prisma.DbNull };
   } else {
     // « Terminé » seulement sans échec : un client qui a tout récupéré.
     const complete = event.type === "completed" && event.failed === 0;

@@ -4,9 +4,12 @@
  * Carte « Liens de téléchargement » de la fiche client (onglet Infos, admin).
  *
  * Liste les liens déjà créés avec leur contenu, leur validité et ce que le
- * client en a fait (ouvert, téléchargement lancé, terminé) — de quoi savoir s'il
- * faut relancer. Le jeton brut n'est jamais relu : un lien perdu se régénère
- * (« Nouveau lien »), ce qui invalide l'ancien.
+ * client en a fait (ouvert, téléchargement lancé, incomplet, terminé) — de quoi
+ * savoir s'il faut relancer. Le jeton brut n'est jamais relu : une adresse
+ * perdue se régénère (« Régénérer l'adresse », menu ⋯ de la ligne), ce qui
+ * invalide l'ancienne. Le bouton d'en-tête « Nouveau lien », lui, crée un autre
+ * lien et laisse les existants actifs : les deux libellés ne se ressemblent pas
+ * exprès (cf. `LINK_ACTION_LABELS`).
  */
 
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
@@ -29,6 +32,9 @@ import type {
 } from "@/lib/clientExport/types";
 import { errorMessage, fetchExportLinks, updateExportLink } from "./clientExportApi";
 import {
+  CREATE_LINK_LABEL,
+  EXTEND_LINK_DAYS,
+  LINK_ACTION_LABELS,
   LINK_STATUS_BADGE,
   describeLinkActivity,
   describeLinkContent,
@@ -56,7 +62,6 @@ interface RegeneratedLink {
   expiresAt: string;
 }
 
-const EXTEND_DAYS = 7;
 const LOAD_ERROR_TITLE = "Impossible de charger les liens";
 
 export function ClientExportLinksCard({ clientId, refreshKey, onCreate }: ClientExportLinksCardProps) {
@@ -112,9 +117,9 @@ export function ClientExportLinksCard({ clientId, refreshKey, onCreate }: Client
   }
 
   async function handleExtend(link: ExportLinkSummary) {
-    const result = await mutate(link, { action: "extend", days: EXTEND_DAYS });
+    const result = await mutate(link, { action: "extend", days: EXTEND_LINK_DAYS });
     if (!result) return;
-    toast.success(`Lien prolongé de ${EXTEND_DAYS} jours`);
+    toast.success(`Lien prolongé de ${EXTEND_LINK_DAYS} jours`);
     reload();
   }
 
@@ -123,7 +128,7 @@ export function ClientExportLinksCard({ clientId, refreshKey, onCreate }: Client
       title: "Révoquer ce lien ?",
       description:
         "Le client ne pourra plus télécharger. Les fichiers déjà téléchargés restent chez lui.",
-      confirmLabel: "Révoquer",
+      confirmLabel: LINK_ACTION_LABELS.revoke,
       variant: "danger",
     });
     if (!ok) return;
@@ -134,20 +139,21 @@ export function ClientExportLinksCard({ clientId, refreshKey, onCreate }: Client
   }
 
   async function handleRotate(link: ExportLinkSummary) {
-    // Le client peut être au milieu d'un téléchargement : couper l'ancien lien
-    // est un geste à confirmer, comme la révocation.
+    // Le client peut être au milieu d'un téléchargement : couper l'ancienne
+    // adresse est un geste à confirmer, comme la révocation.
     const ok = await confirm({
-      title: "Générer un nouveau lien ?",
+      title: `${LINK_ACTION_LABELS.rotate} ?`,
       description:
-        "L'ancien lien cessera de fonctionner : il faudra envoyer la nouvelle adresse au client.",
-      confirmLabel: "Générer un nouveau lien",
+        "L'adresse actuelle cessera de fonctionner : il faudra envoyer la nouvelle au client. Le contenu du lien ne change pas.",
+      confirmLabel: LINK_ACTION_LABELS.rotate,
     });
     if (!ok) return;
     const result = await mutate(link, { action: "rotate" });
     if (!result) return;
     reload();
     if (!result.rawToken) {
-      toast.error("Le nouveau lien est créé mais son adresse n'a pas été renvoyée. Réessaie.");
+      // L'ancienne adresse est déjà coupée : seule une nouvelle régénération donnera la bonne.
+      toast.error("L'adresse est régénérée mais n'a pas été renvoyée. Régénère-la de nouveau.");
       return;
     }
     setRegenerated({
@@ -224,7 +230,7 @@ export function ClientExportLinksCard({ clientId, refreshKey, onCreate }: Client
         title="Liens de téléchargement"
         actions={
           <Button size="sm" variant="secondary" icon={Plus} onClick={onCreate}>
-            Nouveau lien
+            {CREATE_LINK_LABEL}
           </Button>
         }
       />
@@ -234,10 +240,10 @@ export function ClientExportLinksCard({ clientId, refreshKey, onCreate }: Client
 
       {regenerated && (
         <Modal open onClose={() => setRegenerated(null)} size="lg" dismissOnBackdrop={false}>
-          <Modal.Header onClose={() => setRegenerated(null)}>Nouveau lien créé</Modal.Header>
+          <Modal.Header onClose={() => setRegenerated(null)}>Adresse régénérée</Modal.Header>
           <Modal.Body className="space-y-3">
             <p className="text-[13px] text-foreground">
-              L&apos;ancien lien ne fonctionne plus : envoie celui-ci au client.
+              L&apos;ancienne adresse ne fonctionne plus : envoie celle-ci au client.
             </p>
             <ExportLinkShare url={regenerated.url} expiresAt={regenerated.expiresAt} />
           </Modal.Body>
@@ -282,14 +288,14 @@ function LinkRow({
   const items: MenuItems = [];
   const actions = linkActions(link.status);
   if (actions.includes("rotate")) {
-    items.push({ label: "Nouveau lien", icon: RefreshCw, onClick: onRotate });
+    items.push({ label: LINK_ACTION_LABELS.rotate, icon: RefreshCw, onClick: onRotate });
   }
   if (actions.includes("extend")) {
-    items.push({ label: `Prolonger de ${EXTEND_DAYS} jours`, icon: CalendarPlus, onClick: onExtend });
+    items.push({ label: LINK_ACTION_LABELS.extend, icon: CalendarPlus, onClick: onExtend });
   }
   if (actions.includes("revoke")) {
     if (items.length > 0) items.push("separator");
-    items.push({ label: "Révoquer", icon: Ban, destructive: true, onClick: onRevoke });
+    items.push({ label: LINK_ACTION_LABELS.revoke, icon: Ban, destructive: true, onClick: onRevoke });
   }
 
   return (
