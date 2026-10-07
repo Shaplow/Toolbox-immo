@@ -114,11 +114,15 @@ export async function createPresignedUploadUrl(
  * @param key        Chemin dans le bucket, ex: "content-library/videos/abc.mp4"
  * @param filename   Nom de fichier à proposer au téléchargement
  * @param expiresIn  Durée de validité en secondes (défaut: 1 heure)
+ * @param contentDisposition  En-tête complet, à la place de `attachment; filename="…"`
+ *                   (ce défaut est en ASCII : pour un nom accentué, passer
+ *                   `attachmentDisposition()` de lib/transcription/batches.ts)
  */
 export async function createPresignedDownloadUrl(
   key: string,
   filename: string,
-  expiresIn = 3600
+  expiresIn = 3600,
+  contentDisposition?: string
 ): Promise<string> {
   requireR2();
   const { bucket } = getR2Config();
@@ -128,7 +132,7 @@ export async function createPresignedDownloadUrl(
   const command = new GetObjectCommand({
     Bucket: bucket!,
     Key: key,
-    ResponseContentDisposition: `attachment; filename="${safeFilename}"`,
+    ResponseContentDisposition: contentDisposition ?? `attachment; filename="${safeFilename}"`,
   });
   return getSignedUrl(client, command, { expiresIn });
 }
