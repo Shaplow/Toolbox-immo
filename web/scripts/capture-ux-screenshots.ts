@@ -199,6 +199,8 @@ const SURFACES: Surface[] = [
 type StepAction =
   | { type: "goto"; path: string }
   | { type: "click"; selector: string }
+  /** Survol : fige une info-bulle pour la capture. */
+  | { type: "hover"; selector: string }
   | { type: "fill"; selector: string; value: string }
   | { type: "wait"; ms: number }
   /** Upload un fichier dans l'input[type=file] désigné (la dropzone l'a en hidden). */
@@ -574,6 +576,29 @@ const SCENARIOS: Scenario[] = [
       },
     ],
   },
+  {
+    name: "captions-retention",
+    description:
+      "« Mes générations » → onglet Captions : un sous-titrage de l'Atelier encore disponible et un autre expiré. Vérifier que la règle des 60 jours sans téléchargement se comprend sans survol, et que l'expiré dit comment récupérer la vidéo.",
+    steps: [
+      {
+        label: "01-mes-generations",
+        action: { type: "goto", path: "/listings" },
+        capture: false,
+        settleMs: 1200,
+      },
+      {
+        label: "02-onglet-captions",
+        action: { type: "click", selector: 'button:has-text("Captions")' },
+        settleMs: 800,
+      },
+      {
+        label: "03-survol-expiree",
+        action: { type: "hover", selector: "text=Expirée" },
+        settleMs: 800,
+      },
+    ],
+  },
   // Scenario rotation-simulation retiré (V8.14) : la vue Rotation est déjà
   // capturée par medialib-admin-tour step 06, et useAdvancedMode persiste
   // dans localStorage entre scenarios — relancer le toggle ici inversait
@@ -617,6 +642,9 @@ async function runStep(page: Page, step: Step): Promise<void> {
       break;
     case "click":
       await page.locator(action.selector).first().click({ timeout: 10_000 });
+      break;
+    case "hover":
+      await page.locator(action.selector).first().hover({ timeout: 10_000 });
       break;
     case "fill":
       await page.locator(action.selector).first().fill(action.value);
@@ -1639,6 +1667,57 @@ async function seedClientExportFixtures(): Promise<void> {
   }
 }
 
+/**
+ * Rétention des vidéos sous-titrées de l'Atelier : un sous-titrage récent (clé R2
+ * reconnue, fichier servi en local) et un expiré, pour le scenario captions-retention.
+ */
+async function seedCaptionRetentionFixtures(): Promise<void> {
+  const prisma = new PrismaClient({
+    datasources: { db: { url: TEST_DB_URL } },
+  });
+  try {
+    const admin = await prisma.user.findUnique({ where: { email: "admin@test.local" } });
+    if (!admin) throw new Error("Fixtures de base manquantes — npm run test:db:seed d'abord.");
+
+    const DAY = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const recentTs = now - 3 * DAY;
+    const rows = [
+      {
+        id: "ux-caption-retention-dispo",
+        createdAt: new Date(recentTs),
+        inputUrl: "visite-appartement-lyon.mp4",
+        outputKey: `outputs/captions/${admin.id}/${recentTs}/full.mp4`,
+        outputUrl: "/api/captions/outputs/temp/ux-retention/full.mp4",
+        outputExpiredAt: null,
+      },
+      {
+        id: "ux-caption-retention-expiree",
+        createdAt: new Date(now - 75 * DAY),
+        inputUrl: "visite-maison-annecy.mp4",
+        outputKey: null,
+        outputUrl: null,
+        outputExpiredAt: new Date(now - 14 * DAY),
+      },
+    ];
+    for (const { id, ...row } of rows) {
+      const data = {
+        ...row,
+        userId: admin.id,
+        status: "COMPLETED",
+        slotId: null,
+        presetId: "test-caption-preset-1",
+        srtFilename: "captions.json",
+        srtContent: "1\n00:00:00,000 --> 00:00:02,000\nBienvenue dans cet appartement\n",
+      };
+      await prisma.captionJob.upsert({ where: { id }, update: data, create: { id, ...data } });
+    }
+    console.log("  ↳ Rétention captions : 1 sous-titrage disponible, 1 expiré");
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 async function main() {
   console.log(`▶ Audit UX — capture surfaces + scenarios + 10 patterns canoniques`);
   console.log(`  Output : ${OUTPUT_DIR}`);
@@ -1656,6 +1735,8 @@ async function main() {
   await seedEntityFixtures();
   // Lien de téléchargement client : fichiers réels, communs, fiches, 3 liens.
   await seedClientExportFixtures();
+  // Sous-titrages de l'Atelier : un disponible, un expiré (règle des 60 jours).
+  await seedCaptionRetentionFixtures();
 
   let ownsServer: ChildProcess | null = null;
   if (!(await isServerUp())) {
