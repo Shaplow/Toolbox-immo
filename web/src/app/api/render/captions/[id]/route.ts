@@ -17,9 +17,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser, requireAdmin } from "@/lib/api/requireAuth";
 import { prisma } from "@/lib/prisma";
-import { getR2PublicUrl, deleteFromR2, r2Configured } from "@/lib/r2";
+import { getR2PublicUrl, isR2PublicUrl } from "@/lib/r2";
 import { resolveRunpodJobPhase, runpodConfigured, isPodJobId } from "@/lib/runpod";
 import { onCaptionsCompleted } from "@/lib/services/slot/pipelineHooks";
+import { releaseJobSource } from "@/lib/upload/releaseJobSource";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -28,6 +29,30 @@ const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
 const STALL_MS = 2 * 60 * 60 * 1000; // 2 hours
 /** Jobs QUEUED without a runpodJobId for longer than this are considered abandoned. */
 const PRE_SUBMIT_STALL_MS = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * Libère la vidéo source avec la même garde que le webhook : seule une vidéo
+ * uploadée pour ce job (« inputs/captions/ ») est supprimée. En mode « utiliser
+ * la vidéo du slot », `inputKey` est le montage ou le rendu de la publication,
+ * que ce chemin supprimait sans condition.
+ */
+async function releaseSource(job: { id: string; inputKey: string | null }) {
+  await releaseJobSource(prisma, "caption", job).catch((err) =>
+    console.warn(`[captions/status] libération de la source échouée job=${job.id}:`, err),
+  );
+}
+
+/** Le webhook a résolu le job pendant ce poll : on renvoie l'état qu'il a écrit. */
+async function storedStatus(id: string) {
+  const current = await prisma.captionJob.findUnique({ where: { id } });
+  if (current?.status === "COMPLETED") {
+    return NextResponse.json({ status: "COMPLETED", videoUrl: current.outputUrl });
+  }
+  if (current?.status === "FAILED") {
+    return NextResponse.json({ status: "FAILED", error: current.errorMsg ?? "Le rendu a échoué" });
+  }
+  return NextResponse.json({ status: current?.status ?? "PROCESSING" });
+}
 
 export async function GET(
   _req: NextRequest,
@@ -57,6 +82,9 @@ export async function GET(
       videoUrl: job.outputUrl,
       srtContent: job.srtContent ?? null,
       presetId: job.presetId ?? null,
+      // Vidéo supprimée par la purge de rétention (`outputUrl` est alors nul) :
+      // le client affiche « Expirée » plutôt qu'un lecteur sans source.
+      expired: job.outputExpiredAt != null,
     });
   }
   if (job.status === "FAILED") {
@@ -96,16 +124,22 @@ export async function GET(
     if (resolved.phase === "completed") {
       const out = resolved.output;
       const outputKey = out?.output_key ?? job.outputKey ?? "";
-      const videoUrl = out?.video_url ?? (outputKey ? getR2PublicUrl(outputKey) : null);
-      await prisma.captionJob.update({
-        where: { id: job.id },
-        data: { status: "COMPLETED", outputUrl: videoUrl ?? undefined, inputKey: null },
+      // Même garde d'origine que le webhook : une video_url hors de notre R2
+      // (worker mal configuré) cède la place à l'URL tirée de la clé.
+      const videoUrl =
+        out?.video_url && isR2PublicUrl(out.video_url)
+          ? out.video_url
+          : outputKey
+            ? getR2PublicUrl(outputKey)
+            : null;
+      // Garde d'état : si le webhook a terminé le job entre la lecture et ici,
+      // il a déjà libéré la source et lancé les hooks.
+      const { count } = await prisma.captionJob.updateMany({
+        where: { id: job.id, status: "PROCESSING" },
+        data: { status: "COMPLETED", outputUrl: videoUrl ?? undefined },
       });
-      if (job.inputKey && r2Configured()) {
-        deleteFromR2(job.inputKey).catch((err) =>
-          console.warn(`[captions/status] R2 cleanup failed for key=${job.inputKey}:`, err)
-        );
-      }
+      if (count === 0) return storedStatus(job.id);
+      await releaseSource(job);
       // Parité webhook RunPod : log activity + auto-transition pipeline.
       await onCaptionsCompleted(job.id);
       return NextResponse.json({ status: "COMPLETED", videoUrl });
@@ -116,19 +150,16 @@ export async function GET(
         resolved.phase === "stalled"
           ? "Le rendu RunPod n'a plus répondu depuis plus de 2 heures"
           : (resolved as { phase: "failed"; error: string }).error;
-      const stalled = await prisma.captionJob.update({
-        where: { id: job.id },
-        data: { status: "FAILED", errorMsg, inputKey: null },
+      const { count } = await prisma.captionJob.updateMany({
+        where: { id: job.id, status: "PROCESSING" },
+        data: { status: "FAILED", errorMsg },
       });
-      if (job.inputKey && r2Configured()) {
-        deleteFromR2(job.inputKey).catch((err) =>
-          console.warn(`[captions/status] R2 cleanup failed for key=${job.inputKey}:`, err)
-        );
-      }
+      if (count === 0) return storedStatus(job.id);
+      await releaseSource(job);
       if (resolved.phase === "stalled") {
         console.warn(`[render/captions/status] job ${job.id} stalled (runpodJobId=${job.runpodJobId}) — marked FAILED`);
       }
-      return NextResponse.json({ status: stalled.status, error: errorMsg });
+      return NextResponse.json({ status: "FAILED", error: errorMsg });
     }
 
     if (resolved.phase === "unreachable") {

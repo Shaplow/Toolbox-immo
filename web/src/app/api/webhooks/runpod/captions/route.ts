@@ -62,10 +62,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await prisma.captionJob.update({
-      where: { id: job.id },
+    // Garde d'état : si le poll de secours (GET /api/render/captions/[id]) a résolu le
+    // job entre la lecture et ici, il a déjà libéré la source et lancé les hooks.
+    const { count } = await prisma.captionJob.updateMany({
+      where: { id: job.id, status: { in: ["QUEUED", "PROCESSING"] } },
       data: { status: "COMPLETED", outputUrl: videoUrl ?? null },
     });
+    if (count === 0) return NextResponse.json({ ok: true });
 
     // Correctif perte de données : ce webhook nullait `inputKey` et supprimait
     // l'objet R2 SANS CONDITION. Or avec l'option « utiliser la vidéo du slot »,
@@ -86,10 +89,12 @@ export async function POST(req: NextRequest) {
   } else {
     const errorMsg = output?.error ?? error ?? `RunPod status: ${status}`;
 
-    await prisma.captionJob.update({
-      where: { id: job.id },
+    // Même garde d'état qu'en branche COMPLETED.
+    const { count } = await prisma.captionJob.updateMany({
+      where: { id: job.id, status: { in: ["QUEUED", "PROCESSING"] } },
       data: { status: "FAILED", errorMsg },
     });
+    if (count === 0) return NextResponse.json({ ok: true });
 
     // Même garde qu'en branche COMPLETED : ne jamais supprimer une source qui
     // appartient à un render ou à une version montée.
