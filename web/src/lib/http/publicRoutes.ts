@@ -21,7 +21,7 @@ const PUBLIC_PATTERNS: readonly RegExp[] = [
   /^\/data-fill\/[^/]+$/,
   /^\/api\/data-fill\/[^/]+$/,
   // Crons — CRON_SECRET vérifié en temps constant dans chaque handler
-  /^\/api\/cron\/(?:r2-cleanup|pod-reconcile|calendar)$/,
+  /^\/api\/cron\/(?:r2-cleanup|caption-retention|pod-reconcile|calendar)$/,
   // Lien de téléchargement des données d'un client — services/clientExport/exportLinks.ts
   /^\/export\/[^/]+$/,
   /^\/api\/export\/[^/]+\/(?:manifest|urls|events|data\/[^/]+)$/,

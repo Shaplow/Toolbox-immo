@@ -8,6 +8,7 @@ describe("isPublicPath", () => {
     "/data-fill/abc123",
     "/api/data-fill/abc123",
     "/api/cron/r2-cleanup",
+    "/api/cron/caption-retention",
     "/api/cron/pod-reconcile",
     "/api/cron/calendar",
     "/export/9f2c",
@@ -35,6 +36,8 @@ describe("isPublicPath", () => {
     "/api/cron/autre",
     "/api/cron/r2-cleanup/extra",
     "/api/cron/r2-cleanupx",
+    "/api/cron/caption-retention/x",
+    "/api/cron/caption-retentionx",
     // export : jeton seul, sous-routes listées seulement
     "/export",
     "/export/9f2c/extra",

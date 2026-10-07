@@ -574,10 +574,12 @@ test.describe("Routes publiques rouvertes (proxy.ts)", () => {
   });
 
   test("les crons atteignent leur handler (secret vérifié par la route)", async ({ request }) => {
-    const res = await request.post("/api/cron/r2-cleanup");
-    const body = (await res.json()) as { error?: string };
-    // 401 « Unauthorized » du handler, ou 503 si CRON_SECRET n'est pas configuré —
-    // jamais le 401 « Non authentifié » du proxy.
-    expect(body.error).not.toBe("Non authentifié");
+    for (const path of ["/api/cron/r2-cleanup", "/api/cron/caption-retention"]) {
+      const res = await request.post(path);
+      const body = (await res.json()) as { error?: string };
+      // 401 « Unauthorized » du handler, ou 503 si CRON_SECRET n'est pas configuré —
+      // jamais le 401 « Non authentifié » du proxy.
+      expect(body.error, path).not.toBe("Non authentifié");
+    }
   });
 });

@@ -46,8 +46,9 @@ const TRANSCRIPTION_PROCESSING_STALL_MS = 6 * 60 * 60 * 1000; // 6 h
 // Seuil pour qu'un job orphelin (slotId=null) soit considéré "vieux".
 // 30 jours après la cassure du lien slot, le job est très probablement
 // inutilisé — flaggué dans le summary pour monitoring (pas supprimé
-// automatiquement : on garde l'audit). Le cleanup réel passe par script
-// dédié si besoin.
+// automatiquement : on garde l'audit). Le cleanup réel passe, pour les vidéos
+// sous-titrées de l'Atelier, par POST /api/cron/caption-retention (60 jours
+// sans activité) ; pour le reste, par script dédié si besoin.
 const ORPHAN_AGE_MS        = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 export async function POST() {
@@ -261,12 +262,16 @@ export async function POST() {
   // dédié. Ces orphelins viennent typiquement de slots supprimés via
   // /api/calendar/slots/[id] (DELETE pose SetNull sur Render.publication
   // SlotId et CaptionJob.slotId).
+  // Les sous-titrages dont la vidéo a déjà été purgée (outputExpiredAt posé, cf.
+  // /api/cron/caption-retention) ne comptent plus : le fichier a disparu, il ne
+  // reste que la ligne d'historique, rien à nettoyer.
   const orphanCutoff = new Date(now.getTime() - ORPHAN_AGE_MS);
   const [orphanCaptions, orphanRenders] = await Promise.all([
     prisma.captionJob.count({
       where: {
         slotId: null,
         status: { in: ["COMPLETED", "FAILED"] },
+        outputExpiredAt: null,
         updatedAt: { lt: orphanCutoff },
       },
     }),
