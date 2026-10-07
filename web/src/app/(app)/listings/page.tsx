@@ -7,6 +7,8 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
 import { toUserRole } from "@/lib/permissions/role";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
+import { captionOutputAvailableUntil, isSubjectToRetention } from "@/lib/captions/outputRetention";
+import { isR2PublicUrl } from "@/lib/r2";
 import { History, Info, ChevronLeft, X } from "lucide-react";
 
 const LISTING_INCLUDE = {
@@ -33,6 +35,21 @@ const LISTING_INCLUDE = {
 
 interface PageProps {
   searchParams: Promise<{ slotId?: string }>;
+}
+
+/**
+ * La route GET /api/render/captions/[id]/download saura-t-elle servir ce job ? Elle lit
+ * la clé R2 du job (ou, à défaut, celle d'une `outputUrl` du bucket public) et accepte
+ * en stockage local le seul proxy /api/captions/. Un lien de téléchargement posé sur une
+ * ligne qu'elle ne sait pas servir finirait en 404, d'où la décision côté serveur.
+ */
+function isCaptionDownloadable(job: { outputKey: string | null; outputUrl: string | null }): boolean {
+  return !!job.outputKey || !!job.outputUrl?.startsWith("/api/captions/") || isR2PublicUrl(job.outputUrl);
+}
+
+/** ISO de `date` si elle est à venir, sinon null (hors du composant : `Date.now()` y est impur). */
+function isoIfUpcoming(date: Date | null): string | null {
+  return date && date.getTime() > Date.now() ? date.toISOString() : null;
 }
 
 export default async function ListingsPage({ searchParams }: PageProps) {
@@ -113,6 +130,8 @@ export default async function ListingsPage({ searchParams }: PageProps) {
     take: 50,
     include: {
       user: { select: { name: true, email: true } },
+      // Sous-titre actif d'une publication : jamais purgé, donc pas de mention de durée.
+      activeForSlot: { select: { id: true } },
     },
   });
 
@@ -226,6 +245,17 @@ export default async function ListingsPage({ searchParams }: PageProps) {
       const raw = j.inputUrl.split("/").pop()?.split("?")[0] ?? "";
       inputName = raw.replace(/\.[^.]+$/, "") || null;
     }
+    // « Expirée » = vidéo purgée d'un job terminé. Le nettoyage couvre aussi les jobs en
+    // échec : une ligne FAILED peut porter `outputExpiredAt` sans avoir jamais eu de
+    // vidéo à perdre, elle reste « Échec ».
+    const completed = j.status === "COMPLETED";
+    const expired = completed && !!j.outputExpiredAt;
+    // Fin de garde annoncée seulement pour un sous-titrage de l'Atelier terminé et encore
+    // disponible : les jobs de publication ou du pipeline auto ne sont jamais purgés. Une
+    // date déjà passée (purge de la nuit pas encore tournée) n'est pas annoncée : la vidéo
+    // reste téléchargeable, et ce téléchargement repousse la fin de garde.
+    const keepUntil =
+      completed && !expired && isSubjectToRetention(j) ? captionOutputAvailableUntil(j) : null;
     return {
       id: j.id,
       status: j.status,
@@ -235,6 +265,9 @@ export default async function ListingsPage({ searchParams }: PageProps) {
       ownerName: isAdmin ? (j.user.name ?? j.user.email ?? "?") : null,
       presetId: j.presetId ?? null,
       errorMsg: j.errorMsg ?? null,
+      expired,
+      availableUntil: isoIfUpcoming(keepUntil),
+      downloadable: isCaptionDownloadable(j),
     };
   });
 

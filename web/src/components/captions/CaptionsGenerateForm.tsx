@@ -1336,7 +1336,7 @@ export default function CaptionsGenerateForm({
           />
 
           {/* F3-step5 — queue + lien retour extraits dans CaptionsJobQueue */}
-          <CaptionsJobQueue jobs={jobs} returnTo={returnTo} busy={busy} />
+          <CaptionsJobQueue jobs={jobs} returnTo={returnTo} busy={busy} retentionNotice={!slotId} />
         </>}
           </div>
         </div>

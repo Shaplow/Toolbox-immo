@@ -18,6 +18,10 @@ import { useAnchoredPosition, POPOVER_Z_INDEX } from "./useAnchoredPosition";
  * plus que la hauteur déclarée.
  *
  * Délai d'ouverture : 200ms (évite les flashes au passage rapide).
+ *
+ * `wrap` : par défaut la bulle tient sur UNE ligne (`whitespace-nowrap`), faite
+ * pour un libellé court. Un texte de plusieurs phrases la rendrait plus large
+ * que l'écran ; `wrap` la borne et la laisse passer à la ligne.
  */
 interface TooltipProps {
   content: ReactNode;
@@ -25,6 +29,8 @@ interface TooltipProps {
   delay?: number;
   children: ReactNode;
   className?: string;
+  /** Texte long : largeur bornée et retour à la ligne, au lieu d'une seule ligne. */
+  wrap?: boolean;
 }
 
 /**
@@ -35,7 +41,7 @@ interface TooltipProps {
  */
 const TOOLTIP_HEIGHT = 26;
 
-export function Tooltip({ content, side = "top", delay = 200, children, className }: TooltipProps) {
+export function Tooltip({ content, side = "top", delay = 200, children, className, wrap = false }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLSpanElement>(null);
   const bubbleRef = useRef<HTMLSpanElement>(null);
@@ -86,7 +92,10 @@ export function Tooltip({ content, side = "top", delay = 200, children, classNam
               left: position.left,
               zIndex: POPOVER_Z_INDEX,
             }}
-            className="pointer-events-none whitespace-nowrap rounded-md bg-zinc-900 px-2 py-1 text-[11px] font-medium text-white shadow-lg"
+            className={[
+              "pointer-events-none rounded-md bg-zinc-900 px-2 py-1 text-[11px] font-medium text-white shadow-lg",
+              wrap ? "max-w-xs whitespace-normal leading-snug" : "whitespace-nowrap",
+            ].join(" ")}
           >
             {content}
           </span>,

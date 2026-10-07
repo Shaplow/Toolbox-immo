@@ -35,10 +35,14 @@ import {
   RotateCw,
   ImageIcon,
 } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
 import { Combobox } from "@/components/ui/Combobox";
 import { Input } from "@/components/ui/Input";
 import { Chip } from "@/components/ui/Chip";
 import { Pagination } from "@/components/ui/Pagination";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { CAPTION_RETENTION_COPY } from "@/lib/captions/outputRetention";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import { RenderQuickView, type QuickViewRender } from "./RenderQuickView";
 import { DeleteListingButton } from "./DeleteListingButton";
@@ -84,7 +88,17 @@ export type CaptionJobRow = {
   ownerName: string | null;
   presetId: string | null;
   errorMsg: string | null;
+  /** Vidéo supprimée par la purge de rétention (job terminé) : la ligne reste en historique. */
+  expired: boolean;
+  /** Fin de garde (ISO) — seulement pour un sous-titrage de l'Atelier terminé, disponible,
+   *  dont la date est à venir. Null pour une publication, le pipeline auto ou une date passée. */
+  availableUntil: string | null;
+  /** La route de téléchargement sait servir ce job (décidé côté serveur) : sans cela, pas de lien. */
+  downloadable: boolean;
 };
+
+/** « DONE » : statut posé côté client par l'événement SSE (le serveur écrit « COMPLETED »). */
+const CAPTION_COMPLETED = new Set(["COMPLETED", "DONE"]);
 
 export type TranscriptionJobRow = {
   id: string;
@@ -184,6 +198,12 @@ interface TimelineEntry {
   ownerName?: string | null;
   /** Message d'erreur affiché sous la row quand status FAILED/ERROR. */
   errorMsg?: string | null;
+  /** Lien de téléchargement direct (tab Captions) ; `title` = info-bulle du lien.
+   *  Ignoré si `rowActions` porte déjà un téléchargement. */
+  download?: { href: string; title: string };
+  /** Mention à côté du statut, détaillée au survol (ex. vidéo expirée). Le survol ne
+   *  suffit ni au clavier ni au tactile : l'essentiel doit aussi figurer dans `sublabel`. */
+  notice?: { label: string; tooltip: string };
   /** Actions inline disponibles (tab Générations uniquement). */
   rowActions?: {
     templateId: string | null;
@@ -284,8 +304,13 @@ function TimelineRow({
   const isError = ["FAILED", "ERROR"].includes(entry.status);
   const showError = isError && entry.errorMsg;
   const actions = entry.rowActions;
+  // Un seul lien de téléchargement par ligne : celui du render courant (Générations)
+  // ou, pour un caption, celui de la route qui enregistre le téléchargement.
+  const download = actions?.downloadUrl
+    ? { href: actions.downloadUrl, title: `Télécharger ${actions.downloadExt?.toUpperCase() ?? ""}` }
+    : entry.download;
   const canRegen = !!actions?.templateId;
-  const canDownload = !!actions?.downloadUrl;
+  const canDownload = !!download;
   const canQuickView = !!actions && actions.renders.length > 0;
   const canDelete = !!actions?.canDelete;
   const canRevert = !!actions?.revertRenderId;
@@ -313,6 +338,11 @@ function TimelineRow({
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-[13px] font-semibold text-foreground truncate">{entry.title}</p>
             <StatusBadge status={entry.status} />
+            {entry.notice && (
+              <Tooltip wrap content={entry.notice.tooltip}>
+                <Badge className="cursor-help">{entry.notice.label}</Badge>
+              </Tooltip>
+            )}
             {actions && actions.renders.length > 1 && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-warning-50/70 text-warning-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)] tabular-nums">
                 {actions.renders.length} variantes
@@ -362,12 +392,12 @@ function TimelineRow({
                   <RotateCw size={13} />
                 </button>
               )}
-              {canDownload && (
+              {download && (
                 <a
-                  href={actions!.downloadUrl!}
+                  href={download.href}
                   download
                   onClick={(e) => e.stopPropagation()}
-                  title={`Télécharger ${actions!.downloadExt?.toUpperCase() ?? ""}`}
+                  title={download.title}
                   aria-label="Télécharger"
                   className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-all focus-ring"
                 >
@@ -471,17 +501,43 @@ function listingToEntry(
 }
 
 function captionToEntry(job: CaptionJobRow): TimelineEntry {
+  // Le téléchargement passe par la route qui enregistre l'activité (rétention des
+  // vidéos de l'Atelier) ; `downloadable` vient du serveur, pour qu'aucune ligne ne
+  // propose un lien qui finirait en 404. La date de fin de garde n'est annoncée que si
+  // le serveur l'a fournie : les sous-titrages de publication et du pipeline auto ne
+  // sont jamais purgés, leur lien reste sans promesse de durée.
+  const download =
+    CAPTION_COMPLETED.has(job.status) && !job.expired && job.downloadable
+      ? {
+          href: `/api/render/captions/${job.id}/download`,
+          title: job.availableUntil
+            ? CAPTION_RETENTION_COPY.availableUntil(job.availableUntil)
+            : "Télécharger la vidéo",
+        }
+      : undefined;
+  // Vidéo expirée : la raison est dite en clair sous le titre, à la place du preset.
+  // L'info-bulle du badge ne se déclenche ni au clavier ni au tactile.
+  const sublabel = job.expired
+    ? CAPTION_RETENTION_COPY.expiredShort
+    : job.presetId
+      ? `Preset ${job.presetId.slice(0, 8)}…`
+      : null;
   return {
     id: job.id,
     icon: Film,
     iconTone: "sky",
     title: job.inputName ?? "Caption sans nom",
-    sublabel: job.presetId ? `Preset ${job.presetId.slice(0, 8)}…` : null,
+    sublabel,
     status: job.status,
     createdAt: job.createdAt,
+    // La ligne mène à la page de régénération : la vidéo expirée s'y relance (srtContent gardé).
     href: job.presetId ? `/captions/${job.presetId}/generate?captionJobId=${job.id}` : "/captions",
     ownerName: job.ownerName,
     errorMsg: job.errorMsg,
+    download,
+    notice: job.expired
+      ? { label: CAPTION_RETENTION_COPY.expiredBadge, tooltip: CAPTION_RETENTION_COPY.expiredTooltip }
+      : undefined,
   };
 }
 
@@ -633,12 +689,16 @@ export function ListingsClient({
     if (event.jobType === "captions") {
       setCaptionStates((prev) => {
         if (!prev[event.jobId]) return prev;
+        const videoUrl = typeof event.videoUrl === "string" ? event.videoUrl : null;
         return {
           ...prev,
           [event.jobId]: {
             ...prev[event.jobId],
             status: event.status === "COMPLETED" ? "DONE" : event.status,
-            outputUrl: typeof event.videoUrl === "string" ? event.videoUrl : prev[event.jobId].outputUrl,
+            outputUrl: videoUrl ?? prev[event.jobId].outputUrl,
+            // Le serveur vient d'enregistrer cette URL (bucket public ou proxy local) :
+            // la route de téléchargement sait la servir sans attendre un rechargement.
+            downloadable: videoUrl !== null || prev[event.jobId].downloadable,
           },
         };
       });
@@ -746,6 +806,15 @@ export function ListingsClient({
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .map(coverPackToEntry),
     [filteredCoverPacks],
+  );
+
+  // Rappel de la durée de garde, en clair : la date en `title` du lien de téléchargement et
+  // l'info-bulle du badge ne se déclenchent ni au clavier ni au tactile. Seulement si une
+  // ligne est concernée : un utilisateur qui ne sous-titre que des publications n'a rien à
+  // craindre de la purge, la lui annoncer serait faux.
+  const showRetentionNotice = useMemo(
+    () => initialCaptionJobs.some((j) => j.expired || j.availableUntil !== null),
+    [initialCaptionJobs],
   );
 
   const rawEntries: TimelineEntry[] =
@@ -892,6 +961,12 @@ export function ListingsClient({
           )}
         </div>
       </div>
+
+      {tab === "captions" && showRetentionNotice && (
+        <Alert variant="info" className="mb-6">
+          {CAPTION_RETENTION_COPY.notice}
+        </Alert>
+      )}
 
       {/* Empty state */}
       {isEmpty && (

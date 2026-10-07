@@ -15,6 +15,8 @@
  */
 
 import { AlertCircle, CheckCircle2, Clock, Download } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
+import { CAPTION_RETENTION_COPY } from "@/lib/captions/outputRetention";
 
 interface QueuedJob {
   id: string;
@@ -30,9 +32,12 @@ interface Props {
    *  premier job soumis et hors d'un cycle busy. */
   returnTo?: string | null;
   busy: boolean;
+  /** Rappelle la durée de garde des vidéos : à activer pour l'Atelier, pas
+   *  pour un sous-titrage lié à une publication (jamais purgé). */
+  retentionNotice?: boolean;
 }
 
-export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
+export function CaptionsJobQueue({ jobs, returnTo, busy, retentionNotice = false }: Props) {
   if (jobs.length === 0) return null;
 
   return (
@@ -57,6 +62,11 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
             {jobs.length}
           </span>
         </div>
+        {retentionNotice && (
+          <Alert variant="info" className="mb-3">
+            {CAPTION_RETENTION_COPY.notice}
+          </Alert>
+        )}
         <div className="flex flex-col gap-2">
           {jobs.map((job) => {
             const isDone = job.status === "DONE" || job.status === "COMPLETED";
@@ -90,10 +100,13 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
                     </p>
                   </div>
 
-                  {/* Download action */}
+                  {/* Download action — passe par la route qui enregistre le
+                      téléchargement (rétention des vidéos) ; même origine, donc
+                      `download` est honoré. Le <video> ci-dessous reste sur l'URL
+                      publique : lire en streaming ne compte pas comme activité. */}
                   {isDone && job.videoUrl && (
                     <a
-                      href={job.videoUrl}
+                      href={`/api/render/captions/${job.id}/download`}
                       download
                       className="shrink-0 inline-flex items-center gap-1.5 text-xs bg-danger-600 hover:bg-danger-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
                     >
