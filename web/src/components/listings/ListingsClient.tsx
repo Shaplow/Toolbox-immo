@@ -47,6 +47,7 @@ import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import { RenderQuickView, type QuickViewRender } from "./RenderQuickView";
 import { DeleteListingButton } from "./DeleteListingButton";
 import { RevertRenderButton } from "./RevertRenderButton";
+import { renderThumbnailUrl } from "@/lib/renderer/renderThumbnailUrl";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,7 +66,10 @@ export type RenderRow = {
 export type ListingRow = {
   id: string;
   templateId: string | null;
-  jsonData: string;
+  /** Le bien saisi (« 12 rue de la Paix · 11e · 450 000 € ») — cf. summarizeListingValues. */
+  summary: string | null;
+  /** Valeurs saisies, hors médias : la recherche porte aussi dessus. */
+  searchText: string;
   createdAt: string;
   ownerName: string | null;
   template: { id: string; name: string; client: string | null; formats: string } | null;
@@ -204,6 +208,10 @@ interface TimelineEntry {
   /** Mention à côté du statut, détaillée au survol (ex. vidéo expirée). Le survol ne
    *  suffit ni au clavier ni au tactile : l'essentiel doit aussi figurer dans `sublabel`. */
   notice?: { label: string; tooltip: string };
+  /** Texte en plus du titre et du sous-titre sur lequel porte la recherche. */
+  searchText?: string;
+  /** Vignette du visuel, à la place de l'icône (renders image terminés). */
+  thumbUrl?: string | null;
   /** Actions inline disponibles (tab Générations uniquement). */
   rowActions?: {
     templateId: string | null;
@@ -292,6 +300,31 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function RowIcon({ icon: Icon, tone }: { icon: typeof Film; tone: Tone }) {
+  return (
+    <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-xl ${TONE_ICON_BG[tone]}`}>
+      <Icon size={15} />
+    </div>
+  );
+}
+
+/** Vignette d'un visuel ; repli sur l'icône si elle ne charge pas (PNG disparu du disque). */
+function RowThumbnail({ src, icon, tone }: { src: string; icon: typeof Film; tone: Tone }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <RowIcon icon={icon} tone={tone} />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      className="shrink-0 w-14 h-10 rounded-md object-cover border border-border bg-muted"
+    />
+  );
+}
+
 function TimelineRow({
   entry,
   onQuickView,
@@ -331,9 +364,11 @@ function TimelineRow({
           pas perturber le calcul du padding et permettre l'effet hover smooth. */}
       <span className={`absolute inset-y-2.5 left-0 w-[3px] rounded-r-full ${TONE_LEFT_BAR[entry.iconTone]}`} />
       <div className="flex items-center gap-3">
-        <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-xl  ${TONE_ICON_BG[entry.iconTone]}`}>
-          <Icon size={15} />
-        </div>
+        {entry.thumbUrl ? (
+          <RowThumbnail key={entry.thumbUrl} src={entry.thumbUrl} icon={Icon} tone={entry.iconTone} />
+        ) : (
+          <RowIcon icon={Icon} tone={entry.iconTone} />
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-[13px] font-semibold text-foreground truncate">{entry.title}</p>
@@ -429,8 +464,12 @@ function listingToEntry(
   isAdmin: boolean,
 ): TimelineEntry {
   const template = item.listing.template;
-  const titleBase = template?.name ?? "Template supprimé";
+  const templateName = template?.name ?? "Template supprimé";
+  // La ligne porte le nom du bien : toutes les affiches d'un template se ressemblent,
+  // c'est le bien qu'on cherche. Le template passe alors en tête du sous-titre.
+  const titleBase = item.listing.summary ?? templateName;
   const sublabelParts: string[] = [];
+  if (item.listing.summary) sublabelParts.push(templateName);
   if (template?.client) sublabelParts.push(template.client);
   if (item.render && template) {
     try {
@@ -497,6 +536,8 @@ function listingToEntry(
     href: item.render ? `/renders/${item.render.id}` : `/templates`,
     ownerName: item.listing.ownerName,
     rowActions,
+    searchText: item.listing.searchText,
+    thumbUrl: currentRender ? renderThumbnailUrl(currentRender) : null,
   };
 }
 
@@ -835,7 +876,9 @@ export function ListingsClient({
       if (statusFilter === "done" && !STATUS_DONE.has(e.status)) return false;
       if (statusFilter === "failed" && !STATUS_ERROR.has(e.status)) return false;
       if (q) {
-        const haystack = [e.title, e.sublabel ?? "", e.ownerName ?? ""].join(" ").toLowerCase();
+        const haystack = [e.title, e.sublabel ?? "", e.ownerName ?? "", e.searchText ?? ""]
+          .join(" ")
+          .toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
@@ -925,7 +968,14 @@ export function ListingsClient({
         {/* Filtres : search + status chips + user admin */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex-1 min-w-[200px] max-w-[320px]">
-            <Input value={search} onChange={setSearch} placeholder="Rechercher (titre, template, user)" icon={Search} />
+            <Input
+              value={search}
+              onChange={setSearch}
+              placeholder={
+                tab === "templates" ? "Rechercher (adresse, prix, template…)" : "Rechercher (titre, template, user)"
+              }
+              icon={Search}
+            />
           </div>
           <div className="inline-flex items-center gap-1">
             {([

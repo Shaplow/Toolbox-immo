@@ -30,8 +30,8 @@ import { onRenderCompleted } from "@/lib/services/slot/pipelineHooks";
 import { enrichListingWithEntityFields, loadRenderEntityContext } from "./enrichListingWithEntityFields";
 import { notifyUser } from "@/lib/sseStore";
 import { createLimiter } from "@/lib/concurrency";
+import { RENDERS_DIR } from "./renderPaths";
 
-const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
 const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
 const RUNPOD_SUBMIT_TIMEOUT_MS = 30 * 1000;
 
@@ -342,7 +342,7 @@ export async function generateRender(renderId: string): Promise<void> {
   const pngScaleFactor = PRINT_FORMATS.includes(canvas.format) ? 3 : 1;
 
   // 5. Créer dossier de sortie
-  await mkdir(OUTPUT_DIR, { recursive: true });
+  await mkdir(RENDERS_DIR, { recursive: true });
 
   // 6. Générer PNG
   await updateRenderTracking(renderId, {
@@ -353,7 +353,7 @@ export async function generateRender(renderId: string): Promise<void> {
   });
   const pngBuffer = await renderPNG(html, width, height, pngScaleFactor);
   const pngFilename = `${renderId}.png`;
-  await writeFile(path.join(OUTPUT_DIR, pngFilename), pngBuffer);
+  await writeFile(path.join(RENDERS_DIR, pngFilename), pngBuffer);
 
   // 7. Mettre à jour le render en DB (avec avertissements éventuels)
   await updateRenderTracking(renderId, {

@@ -9,6 +9,7 @@ import { toUserRole } from "@/lib/permissions/role";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { captionOutputAvailableUntil, isSubjectToRetention } from "@/lib/captions/outputRetention";
 import { isR2PublicUrl } from "@/lib/r2";
+import { summarizeListingValues } from "@/lib/generate/listingSummary";
 import { History, Info, ChevronLeft, X } from "lucide-react";
 
 const LISTING_INCLUDE = {
@@ -215,10 +216,12 @@ export default async function ListingsPage({ searchParams }: PageProps) {
   }
 
   // Serialize for the client component
+  // Le bien (adresse, prix…) plutôt que le jsonData brut : de quoi titrer la ligne
+  // et chercher dans les valeurs saisies, sans envoyer au navigateur URL ni provenance.
   const rows: ListingRow[] = listings.map((l) => ({
     id: l.id,
     templateId: l.templateId,
-    jsonData: l.jsonData,
+    ...summarizeListingValues(l.jsonData),
     createdAt: l.createdAt.toISOString(),
     ownerName: isAdmin ? (l.user.name ?? l.user.email ?? "?") : null,
     template: l.template
