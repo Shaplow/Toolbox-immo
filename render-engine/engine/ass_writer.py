@@ -5,8 +5,9 @@ import math
 from pathlib import Path
 from typing import Optional
 
-from .layout import SubtitleBlock
-from .models import RenderConfig, StyleConfig
+from .layout import PositionedLine, SubtitleBlock
+from .libass_metrics import LibassFace, load_libass_face
+from .models import BACKGROUND_REFERENCE_HEIGHT, RenderConfig, StyleConfig
 from .probe import VideoInfo
 
 
@@ -473,10 +474,12 @@ def _write_word_pop_events(
     config: RenderConfig,
     use_two_layers: bool,
     layers_to_emit: list[int],
+    layer_base: int = 0,
 ) -> None:
     """Word-pop: exactly ONE word visible at any given time, no fade.
     Each word gets its own Dialogue event that lasts until the next word starts.
-    All words across all lines are treated as a flat chronological sequence."""
+    All words across all lines are treated as a flat chronological sequence.
+    `layer_base` shifts the text layers up (1 when a background box sits on 0)."""
     all_words = [
         (li, word)
         for li, line in enumerate(block.lines)
@@ -509,13 +512,13 @@ def _write_word_pop_events(
                 etags = _style_effect_tags(eff_s)
                 wtext = _escape_ass_text(_apply_transform(word.word, hl_style.text_transform))
                 tag = rf"\an8\pos({line.center_x},{line.y}){etags}"
-                content.append(f"Dialogue: {lyr},{ev_start},{ev_end},{sname},,0,0,0,,{{{tag}}}{wtext}")
+                content.append(f"Dialogue: {lyr + layer_base},{ev_start},{ev_end},{sname},,0,0,0,,{{{tag}}}{wtext}")
             else:
                 eff_base = _style_for_layer(config.base_style, lyr) if use_two_layers else config.base_style
                 etags = _style_effect_tags(eff_base)
                 wtext = _escape_ass_text(_apply_transform(word.word, config.base_style.text_transform))
                 tag = rf"\an8\pos({line.center_x},{line.y}){etags}"
-                content.append(f"Dialogue: {lyr},{ev_start},{ev_end},Base,,0,0,0,,{{{tag}}}{wtext}")
+                content.append(f"Dialogue: {lyr + layer_base},{ev_start},{ev_end},Base,,0,0,0,,{{{tag}}}{wtext}")
 
 
 # Minimum centiseconds the last step (= last word fully visible) must stay on screen.
@@ -591,11 +594,12 @@ def _compute_step_pairs(
     return pairs
 
 
-def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: RenderConfig, block_end_cs: int, use_two_layers: bool = False, layers_to_emit: list[int] | None = None):
+def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: RenderConfig, block_end_cs: int, use_two_layers: bool = False, layers_to_emit: list[int] | None = None, layer_base: int = 0):
     """Word-pop appear — same multi-line structure as reveal mode.
     Supports two-layer rendering (layers_to_emit=[0,1]) so that shadow-blur
     halo (Layer 0) and glow (Layer 1) are emitted as separate Dialogue events,
-    matching the behavior of the reveal and static presets."""
+    matching the behavior of the reveal and static presets.
+    `layer_base` shifts the text layers up (1 when a background box sits on 0)."""
     if not block.lines:
         return
     if layers_to_emit is None:
@@ -626,7 +630,125 @@ def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: 
                 else:
                     text = _base_words_text_appear(line.words, -1, config, layer=lyr_key)
                 tag = _animation_tag("appear", line.center_x, line.y, eff_base, align=8)
-                content.append(f"Dialogue: {lyr},{ev_start},{ev_end},Base,,0,0,0,,{{{tag}}}{text}")
+                content.append(f"Dialogue: {lyr + layer_base},{ev_start},{ev_end},Base,,0,0,0,,{{{tag}}}{text}")
+
+
+# ── Background box ────────────────────────────────────────────────────────────
+# One rounded rectangle per block, drawn as a vector shape (\p1) on Layer 0 —
+# below every text layer — and fixed for the whole block whatever the
+# animation. BorderStyle 3 is not used: it draws one square box per line
+# (per event) and the alpha accumulates where the boxes overlap.
+
+BOX_STYLE_NAME = "CaptionBox"
+# Control-point distance (fraction of the radius) of a cubic Bézier that
+# approximates a quarter circle.
+_BEZIER_KAPPA = 0.5523
+
+
+def _fmt_num(value: float) -> str:
+    text = f"{value:.2f}".rstrip("0").rstrip(".")
+    return "0" if text in ("", "-0") else text
+
+
+def _rounded_rect_drawing(width: float, height: float, radius: float) -> str:
+    """ASS drawing of a width×height rectangle with its top-left corner at the
+    drawing origin and corners rounded by `radius` (clamped to half a side).
+    The shape's bounding box is exactly [0, width]×[0, height], so \\an7\\pos
+    places it at the right spot in libass and VSFilter alike."""
+    w, h = width, height
+    r = max(0.0, min(radius, w / 2, h / 2))
+    f = _fmt_num
+    if r <= 0:
+        return f"m 0 0 l {f(w)} 0 {f(w)} {f(h)} 0 {f(h)}"
+    c = r * (1 - _BEZIER_KAPPA)
+    return " ".join([
+        f"m {f(r)} 0",
+        f"l {f(w - r)} 0",
+        f"b {f(w - c)} 0 {f(w)} {f(c)} {f(w)} {f(r)}",
+        f"l {f(w)} {f(h - r)}",
+        f"b {f(w)} {f(h - c)} {f(w - c)} {f(h)} {f(w - r)} {f(h)}",
+        f"l {f(r)} {f(h)}",
+        f"b {f(c)} {f(h)} 0 {f(h - c)} 0 {f(h - r)}",
+        f"l 0 {f(r)}",
+        f"b 0 {f(c)} {f(c)} 0 {f(r)} 0",
+    ])
+
+
+def _measure_line_for_box(
+    line: PositionedLine,
+    faces: dict[str, LibassFace],
+    config: RenderConfig,
+    keywords: frozenset[str],
+) -> tuple[float, float, float, float] | None:
+    """(advance width, trailing spacing, ink top, ink bottom) of one line as
+    libass draws it, in video px — ink values are absolute y.
+
+    Width: sum of the advances of each word in its own style + Base-style
+    spaces (spaces stay Base after the \\r resets). libass centres this
+    advance box, which includes the letter spacing added after the LAST glyph
+    too: that trailing spacing is returned so the box can drop it on the right.
+    Vertical: with \\an8, libass places the baseline at line.y + the largest
+    line ascender of the fonts in the line; the ink spans the reference glyphs
+    of those fonts."""
+    if not line.words:
+        return None
+    base_face = faces["Base"]
+    width = 0.0
+    face = base_face
+    line_faces: list[LibassFace] = []
+    for index, word in enumerate(line.words):
+        group = _should_highlight(word, config, keywords)
+        face = faces[_hl_style_for_group(group, config)[0]] if group is not None else base_face
+        if index > 0:
+            width += base_face.advance(" ")
+        width += face.advance(_apply_transform(word.word, face.text_transform))
+        if face not in line_faces:
+            line_faces.append(face)
+    baseline = line.y + max(f.ascent for f in line_faces)
+    extents = [f.ink_extent() for f in line_faces]
+    ink_top = baseline + min(top for top, _ in extents)
+    ink_bottom = baseline + max(bottom for _, bottom in extents)
+    return width, face.spacing, ink_top, ink_bottom
+
+
+def _background_event(
+    lines: list[PositionedLine],
+    faces: dict[str, LibassFace],
+    config: RenderConfig,
+    keywords: frozenset[str],
+    video_info: VideoInfo,
+    start: str,
+    end: str,
+    center_x: int | None = None,
+) -> str | None:
+    """Dialogue event (Layer 0) of the rounded box wrapping every line of a
+    block. `center_x` overrides line.center_x for the presets that centre
+    differently (reveal uses the frame centre)."""
+    bg = config.background
+    measured = []
+    for line in lines:
+        metrics = _measure_line_for_box(line, faces, config, keywords)
+        if metrics is not None:
+            measured.append((line.center_x if center_x is None else center_x, *metrics))
+    if not measured:
+        return None
+
+    scale = video_info.height / BACKGROUND_REFERENCE_HEIGHT
+    pad_x = bg.padding_x * scale
+    pad_y = bg.padding_y * scale
+    x0 = round(min(cx - width / 2 for cx, width, _, _, _ in measured) - pad_x)
+    x1 = round(max(cx + width / 2 - trailing for cx, width, trailing, _, _ in measured) + pad_x)
+    y0 = round(min(top for _, _, _, top, _ in measured) - pad_y)
+    y1 = round(max(bottom for _, _, _, _, bottom in measured) + pad_y)
+    if x1 <= x0 or y1 <= y0:
+        return None
+
+    drawing = _rounded_rect_drawing(x1 - x0, y1 - y0, bg.radius * scale)
+    tag = (
+        rf"\an7\pos({x0},{y0})\bord0\shad0\blur0\be0"
+        rf"\1c{_hex_to_ass_tag_color(bg.color)}\1a&H{_alpha_to_ass(bg.opacity)}&\p1"
+    )
+    return f"Dialogue: 0,{start},{end},{BOX_STYLE_NAME},,0,0,0,,{{{tag}}}{drawing}{{\\p0}}"
 
 
 def _style_line(
@@ -655,9 +777,15 @@ def write_ass_file(
     blocks: list[SubtitleBlock],
     config: RenderConfig,
     video_info: VideoInfo,
+    fonts_dir: str | Path | None = None,
 ) -> Path:
+    """`fonts_dir` is required only when config.background is enabled: the box
+    is measured from the font files at libass's scale."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    background_on = config.background.enabled
+    if background_on and fonts_dir is None:
+        raise ValueError("write_ass_file: fonts_dir is required to measure the background box")
 
     base_style = config.base_style
     base_size = int(video_info.height * base_style.size_ratio)
@@ -733,6 +861,23 @@ def write_ass_file(
                 spacing=hl2.spacing,
             )
         )
+    if background_on:
+        bg = config.background
+        content.append(
+            _style_line(
+                name=BOX_STYLE_NAME,
+                font=base_font,
+                size=base_size,
+                color=f"&H{_alpha_to_ass(bg.opacity)}{_hex_to_bgr6(bg.color)}",
+                outline_color="&H00000000",
+                back_color="&H00000000",
+                outline=0,
+                shadow=0,
+                bold=False,
+                italic=False,
+                spacing=0.0,
+            )
+        )
     content.append("")
     content.append("[Events]")
     content.append("Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text")
@@ -767,6 +912,27 @@ def write_ass_file(
     use_two_layers = any(_needs_two_layers(s) for s in _styles_in_use)
     layers_to_emit = [0, 1] if use_two_layers else [0]
 
+    # Background box: Layer 0 belongs to it, text layers move up by one.
+    # When it is off, layer_base = 0 and the output is unchanged.
+    layer_base = 1 if background_on else 0
+    box_faces: dict[str, LibassFace] = {}
+    box_keywords: frozenset[str] = frozenset()
+    if background_on:
+        box_faces["Base"] = load_libass_face(
+            base_font, base_size, fonts_dir, base_style.spacing, base_style.text_transform,
+        )
+        box_faces["Highlight"] = load_libass_face(
+            hl_font, highlight_size, fonts_dir,
+            config.highlight_style.spacing, config.highlight_style.text_transform,
+        )
+        if config.highlight_style2 is not None:
+            hl2 = config.highlight_style2
+            box_faces["Highlight2"] = load_libass_face(
+                CJK_FALLBACK_FONT if cjk_mode else hl2.font,
+                int(video_info.height * hl2.size_ratio), fonts_dir, hl2.spacing, hl2.text_transform,
+            )
+        box_keywords = _highlight_keywords(config)
+
     # Fin de bloc : on respecte le timecode déclaré par l'utilisateur (block.end
     # = fin du dernier mot après realignSegment). Pas de queue de lecture ajoutée
     # — l'utilisateur a posé les timecodes, on ne déborde pas.
@@ -796,15 +962,26 @@ def write_ass_file(
         effective_end = block_end_cs / 100.0
         effective_block = SubtitleBlock(start=block.start, end=effective_end, lines=block.lines)
 
+        if background_on and block_end_cs > block_start_cs:
+            # One box per block, for the block's whole duration — words that
+            # appear one by one (appear / reveal / word_pop) do not resize it.
+            box_event = _background_event(
+                effective_block.lines, box_faces, config, box_keywords, video_info,
+                block_start, block_end,
+                center_x=video_info.width // 2 if preset == "reveal" else None,
+            )
+            if box_event is not None:
+                content.append(box_event)
+
         if word_pop:
             # ── Word-pop: one word visible at a time, instant switch ──────────
-            _write_word_pop_events(content, effective_block, config, use_two_layers, layers_to_emit)
+            _write_word_pop_events(content, effective_block, config, use_two_layers, layers_to_emit, layer_base)
         elif animated:
             if preset == "appear":
                 # ── Appear: one Dialogue per line per word-step ───────────────
                 # Per-step events allow static \4a masking for future words so
                 # libass \t(\4a) issues are bypassed entirely.
-                _write_appear_base_events(content, effective_block, config, block_end_cs, use_two_layers, layers_to_emit)
+                _write_appear_base_events(content, effective_block, config, block_end_cs, use_two_layers, layers_to_emit, layer_base)
             else:
                 # ── Reveal: letter-by-letter via \t() in one Dialogue per line ─
                 center_x = video_info.width // 2
@@ -817,7 +994,7 @@ def write_ass_file(
                         effect_tags = _style_effect_tags(eff_base)
                         tag = rf"\an8\pos({center_x},{line.y}){effect_tags}"
                         text = _animated_line_text(line.words, block.start, config, preset, layer=lyr_key)
-                        content.append(f"Dialogue: {lyr},{block_start},{block_end},Base,,0,0,0,,{{{tag}}}{text}")
+                        content.append(f"Dialogue: {lyr + layer_base},{block_start},{block_end},Base,,0,0,0,,{{{tag}}}{text}")
         else:
             # ── Static (none) — one event per line ───────────────────────────
             for lyr in layers_to_emit:
@@ -826,7 +1003,7 @@ def write_ass_file(
                 for line in effective_block.lines:
                     text = _base_words_text(line.words, config, layer=lyr_key)
                     tag = _animation_tag(preset, line.center_x, line.y, eff_base, align=8)
-                    content.append(f"Dialogue: {lyr},{block_start},{block_end},Base,,0,0,0,,{{{tag}}}{text}")
+                    content.append(f"Dialogue: {lyr + layer_base},{block_start},{block_end},Base,,0,0,0,,{{{tag}}}{text}")
 
     output_path.write_text("\n".join(content), encoding="utf-8")
     return output_path

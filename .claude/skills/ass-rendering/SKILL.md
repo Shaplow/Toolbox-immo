@@ -18,6 +18,7 @@ It is **not** the same as the captions orchestration layer (jobs, RunPod, R2). F
 | `render-engine/engine/models.py` | `StyleConfig`, `RenderConfig`, `LayoutConfig`, `AnimationConfig` |
 | `render-engine/engine/render.py` | Entry point — calls layout then `write_ass_file()`, then FFmpeg subtitle filter |
 | `render-engine/engine/fonts.py` | Font path resolution for PIL measurement |
+| `render-engine/engine/libass_metrics.py` | Font metrics at libass's real scale (OS/2 win metrics) — used by the background box |
 
 > `_resolve_captions_engine()` in `app.py` always returns `"ass"`. No other captions engine is active or present in the repo.
 
@@ -74,6 +75,10 @@ glow_intensity > shadow_blur > outline > nothing
 ```
 When **both** `glow_intensity > 0` **and** `shadow_blur > 0` are active on the same style, two separate Dialogue events are emitted (the two-layer system — see below).
 
+### libass font size ≠ em (PIL ≠ libass)
+libass (like VSFilter) treats the ASS `Fontsize` as **usWinAscent + usWinDescent** (OS/2), not as the em: rendered em = `size × unitsPerEm / (winAscent + winDescent)` — ÷1.23 Libre Caslon Text, ÷1.30 Bebas Neue, ÷1.41 Playfair Display. With `\an8\pos(x,y)` the baseline sits at `y + size × winAscent / (winAscent + winDescent)`.
+`layout.py` measures with PIL using the size as the em, so its widths are 1.2–1.4× too large: lines wrap earlier than "Largeur max" suggests (with auto safe area, ~65 % of the frame for Caslon). **Deliberately not fixed**: it would move the line breaks of every existing preset. Anything that must match the rendered pixels (e.g. the background box) goes through `libass_metrics.load_libass_face()`.
+
 ### `ScaledBorderAndShadow: yes`
 This must be in `[Script Info]`. It scales border and shadow values with the video resolution so that `\bord4` looks the same on 720p and 1080p.
 
@@ -109,6 +114,9 @@ Checked via `_style_for_layer(style, layer)` which returns a copy with the unuse
 
 ### Highlight shadow inheritance
 `_hl_style_with_shadow(hl_style, base_style)` — if the highlight style has no shadow of its own (`shadow=0` and `shadow_blur=0`), it **inherits the base style shadow settings**. This prevents highlighted words from floating without a shadow when the base has one.
+
+### Background box (`RenderConfig.background`)
+UI keys `effects.background_*` → `BackgroundConfig` (disabled by default — the .ass output is then byte-identical to the one produced before the option existed). One rounded rectangle **per block** (not one per line): `\p1` drawing with Bézier corners, style `CaptionBox`, `\an7\pos(x0,y0)\bord0\shad0`, on **Layer 0**. Text layers shift by `layer_base = 1` (two-layer mode → 1 and 2). It is fixed for the whole block under every animation. Width = longest line's advance (libass scale) + 2 × padding_x, centred like libass centres (`line.center_x`, the frame centre for reveal). Height = reference ink (`Hdbfhklgjpqy`, or `H` in all caps) of the first and last lines + 2 × padding_y. Margins/radius are px of a 1080×1920 video, scaled by `height / 1920`. `write_ass_file(..., fonts_dir=...)` is required when the background is on. Do not use BorderStyle 3: one square box per line, and the alpha accumulates where the boxes overlap.
 
 ## Animation Presets
 

@@ -442,10 +442,11 @@ export default function CaptionsApp({
       config.effects.shadow_enabled ? 'Ombre' : null,
       config.effects.glow_enabled ? 'Lueur' : null,
       config.effects.outline_enabled ? 'Contour' : null,
+      config.effects.background_enabled ? 'Fond' : null,
       highlighted.size > 0 ? `Highlight (${highlighted.size})` : null,
     ].filter(Boolean)
     return effects.length ? `Actifs : ${effects.join(' • ')}` : 'Aucun effet actif'
-  }, [config.effects.shadow_enabled, config.effects.glow_enabled, config.effects.outline_enabled, highlighted.size])
+  }, [config.effects.shadow_enabled, config.effects.glow_enabled, config.effects.outline_enabled, config.effects.background_enabled, highlighted.size])
 
   const F = CaptionsField
 
@@ -654,7 +655,7 @@ export default function CaptionsApp({
                 </>)}
               </CaptionsCard>
 
-              <CaptionsCard title="Effets" subtitle="Ombre, lueur et contour" icon={<Sparkles size={15}/>}> 
+              <CaptionsCard title="Effets" subtitle="Ombre, lueur, contour et fond" icon={<Sparkles size={15}/>}>
                 <div className="cx-effect-block">
                   <label className="cx-toggle-row">
                     <input type="checkbox" checked={config.effects.shadow_enabled} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, shadow_enabled: e.target.checked } }))} />
@@ -718,6 +719,26 @@ export default function CaptionsApp({
                         <label><input type="checkbox" checked={config.effects.outline_targets.highlight} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, outline_targets: { ...c.effects.outline_targets, highlight: e.target.checked } } }))} />Highlight 1</label>
                         <label><input type="checkbox" checked={config.effects.outline_targets.highlight2} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, outline_targets: { ...c.effects.outline_targets, highlight2: e.target.checked } } }))} />Highlight 2</label>
                       </div>
+                    </div>
+                  )}
+                </div>
+                <div className="cx-effect-block">
+                  <label className="cx-toggle-row">
+                    <input type="checkbox" checked={config.effects.background_enabled} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, background_enabled: e.target.checked } }))} />
+                    <span className="cx-toggle-label">Fond (encadré arrondi)</span>
+                  </label>
+                  {config.effects.background_enabled && (
+                    <div className="cx-effect-fields">
+                      <div className="cx-grid two">
+                        <F label="Couleur"><input type="color" value={config.effects.background_color} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, background_color: e.target.value } }))} /></F>
+                        <F label="Opacité" value={`${Math.round(config.effects.background_opacity * 100)}%`}><input type="range" min={0} max={100} step={1} value={Math.round(config.effects.background_opacity * 100)} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, background_opacity: Number(e.target.value) / 100 } }))} /></F>
+                      </div>
+                      <div className="cx-grid three">
+                        <F label="Marge horiz." value={`${config.effects.background_padding_x}px`}><input type="range" min={0} max={120} step={1} value={config.effects.background_padding_x} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, background_padding_x: Number(e.target.value) } }))} /></F>
+                        <F label="Marge vert." value={`${config.effects.background_padding_y}px`}><input type="range" min={0} max={120} step={1} value={config.effects.background_padding_y} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, background_padding_y: Number(e.target.value) } }))} /></F>
+                        <F label="Arrondi" value={`${config.effects.background_radius}px`}><input type="range" min={0} max={120} step={1} value={config.effects.background_radius} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, background_radius: Number(e.target.value) } }))} /></F>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">Un seul encadré par bloc, fixe pendant tout le bloc. Marges et arrondi en px d&apos;une vidéo 1080×1920.</p>
                     </div>
                   )}
                 </div>

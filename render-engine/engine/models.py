@@ -80,6 +80,25 @@ class BlockRules(BaseModel):
     max_duration: float = Field(default=4.5, ge=1.0, le=10.0)
 
 
+# Reference height for the background margins and radius: values are pixels
+# of a 1080×1920 video, scaled to the real height (like the font, which is
+# a ratio of the height).
+BACKGROUND_REFERENCE_HEIGHT = 1920
+
+
+class BackgroundConfig(BaseModel):
+    """Rounded box drawn behind each subtitle block — a single rectangle that
+    spans all the lines of the block. Disabled by default: when it is off the
+    .ass output is byte-identical to the one produced before this option existed."""
+    enabled: bool = False
+    color: str = "#2B2B2B"
+    opacity: float = Field(default=0.8, ge=0.0, le=1.0)
+    # Pixels at BACKGROUND_REFERENCE_HEIGHT, on each side of the text.
+    padding_x: float = Field(default=30.0, ge=0.0, le=300.0)
+    padding_y: float = Field(default=20.0, ge=0.0, le=300.0)
+    radius: float = Field(default=36.0, ge=0.0, le=300.0)
+
+
 CaptionEngine = Literal["ass"]
 
 
@@ -91,6 +110,7 @@ class RenderConfig(BaseModel):
     highlight: HighlightConfig
     animation: AnimationConfig
     block_rules: BlockRules = Field(default_factory=BlockRules)
+    background: BackgroundConfig = Field(default_factory=BackgroundConfig)
     engine: CaptionEngine = "ass"
     # When True, trailing punctuation (.,:!?;) is stripped from each word's
     # displayed text. Block splitting still uses the original text with punctuation.

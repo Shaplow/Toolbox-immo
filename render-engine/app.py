@@ -326,7 +326,7 @@ def _render_ass_from_context(
 ) -> Path:
     blocks = build_layout(words, video_info=video_info, config=cfg, fonts_dir=fonts_dir)
     ass_path = OUTPUTS_DIR / "temp" / "captions.ass"
-    write_ass_file(output_path=ass_path, blocks=blocks, config=cfg, video_info=video_info)
+    write_ass_file(output_path=ass_path, blocks=blocks, config=cfg, video_info=video_info, fonts_dir=fonts_dir)
     return ass_path
 
 

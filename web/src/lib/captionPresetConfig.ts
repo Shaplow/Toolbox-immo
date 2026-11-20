@@ -56,6 +56,15 @@ export type CaptionConfigState = {
     outline_color: string
     outline_width: number
     outline_targets: { base: boolean; highlight: boolean; highlight2: boolean }
+    /** Encadré arrondi derrière chaque bloc (un seul rectangle pour toutes ses lignes). */
+    background_enabled: boolean
+    background_color: string
+    /** Opacité 0–1. */
+    background_opacity: number
+    /** Marges et arrondi en px d'une vidéo 1080×1920 (mis à l'échelle par le moteur). */
+    background_padding_x: number
+    background_padding_y: number
+    background_radius: number
   }
   animation: 'none' | 'appear' | 'reveal' | 'word_pop'
   animation_enabled: boolean
@@ -79,6 +88,8 @@ export const DEFAULT_CAPTION_CONFIG: CaptionConfigState = {
     glow_intensity: 0,
     outline_enabled: false, outline_color: '#000000', outline_width: 3,
     outline_targets: { base: true, highlight: true, highlight2: true },
+    background_enabled: false, background_color: '#2b2b2b', background_opacity: 0.8,
+    background_padding_x: 30, background_padding_y: 20, background_radius: 36,
   },
   animation: 'reveal', animation_enabled: true, export_profile: 'balanced', preview_time: 0,
 }

@@ -174,6 +174,17 @@ def _build_config(cfg: dict[str, Any]) -> RenderConfig:
 
     keywords = _parse_keywords(cfg.get("highlight_keywords")) if _to_bool(cfg.get("highlight_enabled"), False) else []
 
+    # ── Background box (one rounded rectangle per block) ─────────────────────
+    # Margins / radius in px of a 1080×1920 video (see models.BackgroundConfig).
+    background = {
+        "enabled": _to_bool(effects.get("background_enabled"), False),
+        "color": effects.get("background_color", "#2B2B2B"),
+        "opacity": float(effects.get("background_opacity", 0.8)),
+        "padding_x": float(effects.get("background_padding_x", 30.0)),
+        "padding_y": float(effects.get("background_padding_y", 20.0)),
+        "radius": float(effects.get("background_radius", 36.0)),
+    }
+
     highlight2_enabled = _to_bool(highlight2.get("enabled"), False)
     highlight_style2 = {
         "font": highlight2.get("font", "Didot"),
@@ -252,6 +263,7 @@ def _build_config(cfg: dict[str, Any]) -> RenderConfig:
         highlight={"mode": "keywords", "keywords": keywords},
         animation={"preset": animation_preset},
         block_rules={"pause_threshold": 0.5, "max_duration": 4.5},
+        background=background,
         engine=_resolve_captions_engine(cfg.get("engine")),
     )
 
@@ -1325,6 +1337,12 @@ def default_config():
             "glow_color_auto": False,
             "glow_targets": {"base": True, "highlight": True, "highlight2": True},
             "glow_intensity": 0.0,
+            "background_enabled": cfg.background.enabled,
+            "background_color": cfg.background.color,
+            "background_opacity": cfg.background.opacity,
+            "background_padding_x": cfg.background.padding_x,
+            "background_padding_y": cfg.background.padding_y,
+            "background_radius": cfg.background.radius,
         },
         "animation": "reveal",
         "animation_enabled": True,
