@@ -28,22 +28,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # FFmpeg statique avec NVENC + libx264 — build BtbN GPL (linux64)
 # GPL inclut libx264 (fallback CPU si NVENC indisponible) + NVENC (GPU).
 # Version pinée pour garantir un comportement libass stable entre les rebuilds.
-# Pour mettre à jour : remplacer l'URL par un nouvel autobuild BtbN.
 #
-# ⚠️ BtbN SUPPRIME ses anciens autobuilds (rétention de quelques mois seulement).
-# Le pin précédent (autobuild-2026-05-17-13-15) renvoyait 404 : l'image n'était
-# plus reconstructible du tout. Si le build échoue ici avec un 404, c'est ça —
-# repointer sur un autobuild présent dans
-# https://github.com/BtbN/FFmpeg-Builds/releases (ne PAS utiliser le tag
-# `latest`, qui casserait la reproductibilité que ce pin cherche à garantir).
+# ⚠️ TOUJOURS PINER UN BUILD DE FIN DE MOIS (autobuild-AAAA-MM-<dernier jour>-…).
+# Le dépôt (ex-BtbN/FFmpeg-Builds, devenu FFmpeg-Builds/FFmpeg-Builds) ne garde
+# les autobuilds quotidiens qu'environ 2 semaines, mais conserve ceux du dernier
+# jour de chaque mois (encore en ligne fin 2026 depuis 2024-12-31). Les pins
+# 2026-05-17 puis 2026-08-10, pris en milieu de mois, ont tous deux fini en 404
+# et rendu l'image impossible à reconstruire.
+# Ne PAS utiliser le tag `latest` : il casserait la reproductibilité visée.
 #
-# Repin du 2026-08-11 (le précédent avait expiré). Ce build est vérifié comme
-# incluant `--enable-openssl` + le protocole `https` et les options
-# `-reconnect*` / `-rw_timeout` — requis par l'extraction audio en streaming
-# depuis R2 (cf. engine/audio_source.py).
-# À surveiller après ce changement : le rendu libass des sous-titres, que le pin
-# d'origine visait à figer.
-RUN FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-10-13-17/ffmpeg-N-126039-g6bbc22dc09-linux64-gpl.tar.xz \
+# Repin du 2026-11-21 sur le build du 2026-08-31 — le plus proche du précédent
+# (2026-08-10, celui de l'image v78 en prod) pour limiter la dérive libass.
+# Vérifié : `--enable-openssl` (protocole https) + options `-reconnect*` /
+# `-rw_timeout` (extraction audio en streaming depuis R2, cf.
+# engine/audio_source.py), `--enable-libass`, `--enable-ffnvcodec` (NVENC),
+# `--enable-libx264`, `--enable-libzimg` (zscale, tonemap HDR).
+RUN FFMPEG_URL=https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-N-126342-gf88b741dbf-linux64-gpl.tar.xz \
     && FFMPEG_DIR=$(basename "$FFMPEG_URL" .tar.xz) \
     && wget -q "$FFMPEG_URL" \
     && tar -xf "${FFMPEG_DIR}.tar.xz" \
